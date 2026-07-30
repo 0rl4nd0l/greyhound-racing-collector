@@ -21,6 +21,18 @@ overrun, and post-jump requests fail closed.
 
 ## Odds source and collector concurrency
 
+Race resolution reads one collector-owned
+`shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json`
+packet beneath the first `--capture-evidence-root` (or the explicit
+`--current-race-index`). A successful scheduled odds-refresh cycle atomically
+replaces this fixed packet with at most 32 selected races and seals the source
+refresh-report path and SHA-256. The predictor validates the packet schema,
+canonical bytes, source path and hash, exact TheDogs identities, timezone-aware
+jump timestamps, uniqueness, row bound, and configured 1,200-second maximum
+source age. It does not browse, scan race/evidence directories, publish a timer
+request, or wait for a timer boundary during discovery. Missing, stale, changed,
+or invalid packets fail closed before a browser starts.
+
 `--odds-source auto` first performs a direct race-keyed lookup for a current
 sealed receipt. The append-only exact-receipt index binds the request, exact
 race identity, runner set, source file paths and hashes, capture attempt, append
@@ -77,6 +89,8 @@ The checked-in latency budget is enforced as six explicit components:
 discovery 12 seconds, lock 1, capture 60, validation 8, scoring 30, and safety
 15. A fresh capture therefore requires more than 114 seconds after resolution
 (126 seconds including discovery), while receipt reuse requires more than 53
+seconds. Discovery is one bounded local packet-and-source validation within its
+12-second wall-clock budget; index freshness is independently capped at 1,200
 seconds. Failure occurs before the Sportsbet browser starts when the applicable
 margin is not available. The collector recomputes the remaining margin after
 lock acquisition and again after exact TheDogs refresh, immediately before the

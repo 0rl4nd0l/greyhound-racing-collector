@@ -72,7 +72,9 @@ class ModelIdentity:
 
 @dataclass
 class Dependencies:
-    schedule: Callable[[datetime, float], Sequence[Mapping[str, Any]]]
+    schedule: Callable[
+        [datetime, float, Path, Path, int], Sequence[Mapping[str, Any]]
+    ]
     seal_features: Callable[..., Mapping[str, Path]]
     score_residual: Callable[..., Mapping[str, Any]]
     now: Callable[[], datetime]

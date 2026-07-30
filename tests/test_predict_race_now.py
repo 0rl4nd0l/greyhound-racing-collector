@@ -6,6 +6,7 @@ import inspect
 import json
 import os
 import sqlite3
+import sys
 from collections.abc import Mapping
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -326,7 +327,7 @@ def dependencies(
         }
 
     return Dependencies(
-        schedule=lambda current_time, timeout_seconds: [race()],
+        schedule=lambda *values: [race()],
         seal_features=fake_seal_features,
         score_residual=fake_score_residual,
         now=now,
@@ -453,22 +454,66 @@ def test_master_packet_adapter_reuses_pr56_validated_handoff(
     assert score_calls[0]["capture_path"] == capture
 
 
-def test_default_schedule_uses_only_bounded_current_date_index(
-    monkeypatch: pytest.MonkeyPatch,
+def test_default_schedule_reads_only_collector_owned_bounded_index(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    import upcoming_race_browser
+    evidence_root = tmp_path / "evidence"
+    source = evidence_root / "shadow_autopilot_v1_fixture/odds_capture_refresh_report.json"
+    state = evidence_root / "shadow_autopilot_daemon_runtime/odds_capture_state.json"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(
+        canonical_bytes(
+            {
+                "generated_at": NOW.isoformat(),
+                "selected_count": 1,
+                "selected_races": [
+                    {
+                        "date": "2026-07-19",
+                        "jump_datetime": "2026-07-19T13:00:00+10:00",
+                        "race_id": RACE_ID,
+                        "race_id_aliases": [RACE_ID],
+                        "race_number": 5,
+                        "race_time": "13:00",
+                        "race_url": (
+                            "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
+                        ),
+                        "venue": "GUNN",
+                    }
+                ],
+            }
+        )
+    )
+    published = synchronous_capture.publish_current_race_index(
+        state_path=state,
+        evidence_root=evidence_root,
+        source_refresh_report_path=source,
+        run_id="fixture",
+    )
+    browser_sentinel = object()
+    monkeypatch.setitem(sys.modules, "upcoming_race_browser", browser_sentinel)
 
-    dates: list[Any] = []
+    races = predict_now._default_schedule(
+        NOW,
+        12,
+        synchronous_capture.current_race_index_path(state),
+        evidence_root,
+        900,
+    )
 
-    class Browser:
-        def get_races_for_date(self, race_date: Any):
-            dates.append(race_date)
-            return [race()]
-
-    monkeypatch.setattr(upcoming_race_browser, "UpcomingRaceBrowser", Browser)
-
-    assert predict_now._default_schedule(NOW, 12) == [race()]
-    assert dates == [NOW.date()]
+    assert published["status"] == "PUBLISHED"
+    assert sys.modules["upcoming_race_browser"] is browser_sentinel
+    assert races == [
+        {
+            "date": "2026-07-19",
+            "jump_datetime": "2026-07-19T13:00:00+10:00",
+            "race_id": RACE_ID,
+            "race_id_aliases": [RACE_ID],
+            "race_number": 5,
+            "race_time": "13:00",
+            "race_url": "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5",
+            "venue": "GUNN",
+        }
+    ]
 
 
 def test_default_refresh_downloads_only_exact_target_into_bundle(
@@ -1357,6 +1402,7 @@ def test_checked_in_latency_budget_is_declared_and_bounded():
             "scoring_seconds": 30,
             "validation_seconds": 8,
         }
+        assert config["bundle"]["current_index_max_age_seconds"] == 1200
 
     for name in ("market_form_residual_v1.schema.json", "market_only_v1.schema.json"):
         schema = json.loads((Path("configs/prediction/schemas") / name).read_bytes())

@@ -2194,7 +2194,7 @@ def test_run_odds_capture_once_uses_lock_and_writes_compact_report(tmp_path, mon
     launch_dir = tmp_path / "launch"
     launch_dir.mkdir()
     lock_path = launch_dir / "runtime" / "shadow.lock"
-    state_path = tmp_path / "runtime" / "odds_capture_state.json"
+    state_path = evidence_root / "shadow_autopilot_daemon_runtime/odds_capture_state.json"
     autopilot_dir = evidence_root / "shadow_autopilot_v1_odds_only_autopilot"
 
     monkeypatch.setattr(daemon, "ROOT", tmp_path)
@@ -2242,6 +2242,23 @@ def test_run_odds_capture_once_uses_lock_and_writes_compact_report(tmp_path, mon
             autopilot_dir / "odds_capture_refresh_report.json",
             {
                 "status": "SUCCESS",
+                "generated_at": "2026-06-12T00:01:01+10:00",
+                "selected_count": 1,
+                "selected_races": [
+                    {
+                        "date": "2026-06-12",
+                        "jump_datetime": "2026-06-12T10:48:00+10:00",
+                        "race_id": "Race 1 - HEA - 2026-06-12",
+                        "race_id_aliases": ["Race 1 - HEA - 2026-06-12"],
+                        "race_number": 1,
+                        "race_time": "10:48",
+                        "race_url": (
+                            "https://www.thedogs.com.au/racing/healesville/"
+                            "2026-06-12/1"
+                        ),
+                        "venue": "HEA",
+                    }
+                ],
                 "next_preferred_window": {
                     "status": "WAITING_FOR_FUTURE_WINDOW",
                     "next_window_opens_at": "2026-06-12T09:48:00+10:00",
@@ -2304,7 +2321,15 @@ def test_run_odds_capture_once_uses_lock_and_writes_compact_report(tmp_path, mon
         "AUTONOMOUS_LIVE_ODDS_CAPTURE_NO_ELIGIBLE_WINDOWS"
     )
     assert report["allowed_write_scope"] == "append_only_live_odds_rows_when_validation_passes"
+    assert report["current_race_index_publish"]["status"] == "PUBLISHED"
     assert not lock_path.exists()
+    current_index = json.loads(
+        (
+            state_path.parent / "manual_prediction_current_race_index.json"
+        ).read_text()
+    )
+    assert current_index["race_count"] == 1
+    assert current_index["races"][0]["race_id"] == "Race 1 - HEA - 2026-06-12"
     written = json.loads((output_dir / "odds_capture_only_daemon_report.json").read_text())
     manifest = json.loads((output_dir / "output_manifest.json").read_text())
     state = json.loads(state_path.read_text())
