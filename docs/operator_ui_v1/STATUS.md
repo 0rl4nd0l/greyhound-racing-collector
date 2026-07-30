@@ -5,7 +5,7 @@ Observed 2026-07-31 at the frozen accepted R1 product checkpoint:
 | Field | State |
 |---|---|
 | Repository | `0rl4nd0l/greyhound-racing-collector` |
-| Branch | Isolated Codex X launcher branch at the frozen accepted R1 product checkpoint |
+| Branch | No current branch claim; ledger state is durable independently of delivery mechanics |
 | HEAD / tree | `e10cff293141569b1a5a169dd05efc8109e3c603` / `07f02fc46b88b47bf0ade8ee264505f8b47c7d91` |
 | Baseline cleanliness | clean |
 | Historical/upstream source | Actual historical merge parent `51a5287d05c790e3855e5b74ce7117a29340135e`; later `origin/master` drift `f38a125f6364b8a60d17ae9c971b0ce172874eea`, tree `408a8adbfa2bd436132bc4d2c63e952aeb57c5a5`, parent `51a5287d05c790e3855e5b74ce7117a29340135e`; local merge `0b08966b31c15d8b459b9c6b60a48b19030a9ce4` |
