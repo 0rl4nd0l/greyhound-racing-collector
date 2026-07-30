@@ -6,6 +6,8 @@ from pathlib import Path
 
 from race_collection.manual_prediction_collector_request import (
     ManualPredictionCollectorProtocol,
+    canonical_bytes,
+    sha256_bytes,
 )
 from scripts import shadow_autopilot_v1 as autopilot
 
@@ -729,6 +731,257 @@ def test_manual_request_missing_exact_attempt_emits_terminal_response(tmp_path):
 
     assert response["status"] == "CAPTURE_FAILED"
     assert protocol.read_response(str(request["request_id"])) == response
+
+
+def test_capture_only_manual_request_seals_response_without_shadow_model(
+    tmp_path, monkeypatch
+):
+    from scripts import predict_race_now
+
+    generated_at = datetime.now().astimezone()
+    evidence_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
+    db_path = tmp_path / "greyhound_racing_data.db"
+    db_path.write_text("db", encoding="utf-8")
+    lock_path = tmp_path / "daemon_runtime/shadow_autopilot.lock"
+    lock_path.parent.mkdir()
+    autopilot.write_json(
+        lock_path,
+        {
+            "pid": os.getppid(),
+            "hostname": socket.gethostname(),
+            "run_id": "scheduled-capture-only",
+        },
+    )
+    protocol = ManualPredictionCollectorProtocol(
+        evidence_root / autopilot.PROTOCOL_DIRECTORY
+    )
+    jump_at = generated_at + timedelta(minutes=30)
+    race_date = jump_at.date().isoformat()
+    race = {
+        "race_id": f"Race 1 - WPK - {race_date}",
+        "url": (
+            "https://www.thedogs.com.au/racing/wentworth-park/"
+            f"{race_date}/1/example"
+        ),
+        "venue": "WPK",
+        "race_number": 1,
+        "race_date": race_date,
+        "jump_timestamp": jump_at.isoformat(),
+    }
+    request = protocol.publish_request(
+        race=race,
+        expected_runners=[],
+        created_at=generated_at,
+        expires_at=generated_at + timedelta(minutes=10),
+    )
+    step_names: list[str] = []
+    capture_commands: list[list[str]] = []
+    handoff: dict[str, object] = {}
+
+    monkeypatch.setattr(autopilot, "ROOT", tmp_path)
+    monkeypatch.setattr(autopilot, "protected_hashes", lambda: {})
+
+    def command_value(command, flag):
+        return Path(command[command.index(flag) + 1])
+
+    def fake_step_command(
+        *,
+        name,
+        command,
+        output_dir,
+        cwd=autopilot.ROOT,
+        timeout_seconds=None,
+    ):
+        step_names.append(name)
+        if name == "refresh_odds_capture_candidates":
+            autopilot.write_json(
+                command_value(command, "--output"),
+                {"status": "READY", "dry_run": False, "files": []},
+            )
+        elif name == "autonomous_live_odds_capture":
+            capture_commands.append(list(command))
+            claimed_protocol = ManualPredictionCollectorProtocol(
+                command_value(command, "--manual-request-root")
+            )
+            context = claimed_protocol.claimed_request(
+                command[command.index("--manual-request-id") + 1]
+            )
+            captured_at = datetime.now().astimezone()
+            claimed_protocol.begin_attempt(
+                context,
+                now=captured_at,
+                collector_run_id=command[
+                    command.index("--collector-run-id") + 1
+                ],
+            )
+            runners = [
+                {
+                    "dog_name": "Alpha",
+                    "dog_clean_name": "Alpha",
+                    "box_number": 1,
+                    "identity": "ALPHA",
+                    "odds_decimal": 2.5,
+                },
+                {
+                    "dog_name": "Beta",
+                    "dog_clean_name": "Beta",
+                    "box_number": 2,
+                    "identity": "BETA",
+                    "odds_decimal": 4.0,
+                },
+            ]
+            validation = {
+                "schema_version": "autonomous_live_odds_capture_validation_v1",
+                "status": "PASS",
+                "source_url": "https://www.sportsbet.com.au/example",
+                "accepted_rows": runners,
+                "accepted_place_rows": runners,
+                "reasons": [],
+            }
+            attempt = {
+                "schema_version": "autonomous_live_odds_capture_attempt_v1",
+                "race_id": race["race_id"],
+                "status": "APPENDED",
+                "reasons": [],
+                "capture_window_minutes": 10,
+                "validation": validation,
+            }
+            capture_report = {
+                "schema_version": "autonomous_live_odds_capture_report_v1",
+                "final_status": "AUTONOMOUS_LIVE_ODDS_CAPTURE_APPENDED",
+                "status": "APPENDED",
+                "execute": True,
+                "allow_auto_scrape_odds": True,
+                "ready_count": 1,
+                "validation_pass_count": 1,
+                "inserted_live_odds_rows": 4,
+                "status_counts": {"APPENDED": 1},
+                "attempts": [attempt],
+            }
+            capture_dir = command_value(command, "--output-dir")
+            autopilot.write_json(
+                capture_dir / "autonomous_live_odds_capture_report.json",
+                capture_report,
+            )
+            report_raw = canonical_bytes(capture_report)
+            form_raw = b"dog_name,box_number\nAlpha,1\nBeta,2\n"
+            sidecar_raw = canonical_bytes(
+                {"participants": [{"dog_name": "Alpha"}, {"dog_name": "Beta"}]}
+            )
+            handoff.update(
+                {
+                    "schema_version": "on_demand_verified_master_packet_v1",
+                    "race_id": race["race_id"],
+                    "append_timestamp": captured_at.isoformat(),
+                    "source_report_sha256": sha256_bytes(report_raw),
+                    "source_form_sha256": sha256_bytes(form_raw),
+                    "source_sidecar_sha256": sha256_bytes(sidecar_raw),
+                    "packet_record_schema_version": (
+                        "market_form_residual_shadow_record_v3"
+                    ),
+                    "packet_record_checksum_sha256": "d" * 64,
+                    "packet_effective_state_schema_version": (
+                        "market_form_residual_effective_state_v2"
+                    ),
+                    "packet_effective_state_sha256": "e" * 64,
+                    "_report_bytes": report_raw,
+                    "_form_bytes": form_raw,
+                    "_sidecar_bytes": sidecar_raw,
+                }
+            )
+        return {
+            "name": name,
+            "command": list(command),
+            "returncode": 0,
+            "timeout_seconds": timeout_seconds,
+        }
+
+    monkeypatch.setattr(autopilot, "step_command", fake_step_command)
+    monkeypatch.setattr(
+        predict_race_now,
+        "discover_capture_handoff",
+        lambda **_: handoff,
+    )
+
+    args = autopilot.parse_args(
+        [
+            "--run-id",
+            "capture_only_manual_request",
+            "--evidence-root",
+            str(evidence_root),
+            "--collector-lock-path",
+            str(lock_path),
+            "--current-time",
+            generated_at.isoformat(),
+            "--db",
+            str(db_path),
+            "--enable-autonomous-odds-capture",
+            "--execute-autonomous-odds-capture",
+            "--allow-auto-scrape-odds",
+            "--skip-primary-refresh",
+            "--skip-shadow-run",
+            "--skip-odds-snapshot",
+            "--skip-result-join",
+            "--skip-aggregate",
+            "--skip-status",
+            "--skip-unified-dataset",
+        ]
+    )
+
+    autopilot.run_autopilot(args)
+
+    response = protocol.read_response(str(request["request_id"]))
+    assert response is not None
+    assert response["status"] == "RECEIPT_READY"
+    assert protocol.attempt_path(str(request["request_id"])).exists()
+    assert protocol.receipt_path(str(request["request_id"])).exists()
+    consumed = protocol.consume_response(
+        str(request["request_id"]),
+        now=datetime.now().astimezone(),
+    )
+    assert consumed["response"]["status"] == "RECEIPT_READY"
+    assert len(list((protocol.root / "responses").glob("*.json"))) == 1
+    assert len(list((protocol.root / "consumed").glob("*.json"))) == 1
+    assert step_names == [
+        "refresh_odds_capture_candidates",
+        "autonomous_live_odds_capture",
+    ]
+    assert len(capture_commands) == 1
+    assert command_value(
+        capture_commands[0], "--manual-request-root"
+    ) == protocol.root
+    assert capture_commands[0][
+        capture_commands[0].index("--manual-request-id") + 1
+    ] == request["request_id"]
+    assert capture_commands[0][
+        capture_commands[0].index("--collector-run-id") + 1
+    ] == "scheduled-capture-only"
+
+
+def test_full_shadow_run_without_model_still_fails_closed(tmp_path, monkeypatch):
+    evidence_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
+    db_path = tmp_path / "greyhound_racing_data.db"
+    db_path.write_text("db", encoding="utf-8")
+
+    monkeypatch.setattr(autopilot, "ROOT", tmp_path)
+    monkeypatch.setattr(autopilot, "protected_hashes", lambda: {})
+    args = autopilot.parse_args(
+        [
+            "--run-id",
+            "full_shadow_without_model",
+            "--evidence-root",
+            str(evidence_root),
+            "--db",
+            str(db_path),
+        ]
+    )
+
+    try:
+        autopilot.run_autopilot(args)
+    except RuntimeError as exc:
+        assert "shadow_model_required_for_no_training_autopilot" in str(exc)
+    else:
+        raise AssertionError("expected a genuine shadow run to require a model")
 
 
 def test_autonomous_live_odds_capture_status_surfaces_inserted_rows():
