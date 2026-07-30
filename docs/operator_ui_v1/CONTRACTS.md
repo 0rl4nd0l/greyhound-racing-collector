@@ -26,9 +26,17 @@ authentication.
 
 The UI observes repository and server-owned evidence. It does not own the
 collector, browser, shared lock, canonical racing database/history, model
-registry, training, deployment, or promotion. The scheduled collector remains
-the sole browser/shared-lock/capture authority. Existing Flask mutation routes
-are not precedent for this product.
+registry, training, deployment, or promotion. Collector code remains the sole
+browser/shared-lock/capture/append authority. When current receipt reuse cannot
+satisfy the selected mode, the predictor may synchronously invoke one
+`scripts/shadow_autopilot_daemon.py capture-one` child process group.
+`capture-one` is a collector-owned entrypoint using the same canonical browser,
+daemon lock, validated Sportsbet capture, and append-only `live_odds`
+implementation as the scheduled collector; it is not a second collector or
+browser. The unchanged background timer is never interactive transport. UI/API
+code owns no lock/browser/capture implementation and never directly signals or
+manipulates collector or browser children. Existing Flask mutation routes are
+not precedent for this product.
 
 The plan's named `greyhound_PROJECT.md` and `greyhound_EVIDENCE.md` are absent.
 The current equivalents used here are
@@ -138,12 +146,19 @@ These policies are exhaustive; an adapter may not invent or defer a threshold:
 - **P-BUNDLE-LIST-60:** a directory/index listing observation is fresh for 60
   seconds. Each listed bundle must independently pass P-IMMUTABLE-HISTORICAL.
 - **P-JOB-5-DEADLINE:** persisted UI job and protocol directories are scanned
-  in one observation no older than 5 seconds. Each phase deadline is the
-  earliest of the immutable request `expires_at`, target jump, job deadline,
-  and phase start plus its configured limit. Collector response waiting uses
-  the exact checked-in config value (currently 600 seconds, schema maximum 900);
-  absent/invalid limits are `DATA_MISSING`. A passed deadline is `TIMED_OUT` or
-  `EXPIRED`, never progress.
+  in one observation no older than 5 seconds. The checked-in deterministic
+  fields are `discovery_seconds=12`, `lock_seconds=1`,
+  `capture_seconds=60`, `validation_seconds=8`, `scoring_seconds=30`,
+  `safety_seconds=15`, and `receipt_max_age_seconds=900`. The `capture-one`
+  child timeout is `lock + capture + validation + safety`, currently `84s`.
+  Fresh capture is eligible only with strictly more than `126s` to jump
+  including discovery (`114s` after discovery); receipt reuse requires
+  strictly more than `53s`. Request expiry is the exact target jump. The active
+  phase/job deadline is the earliest applicable immutable request expiry,
+  exact jump, durable job deadline, and current checked-in phase/budget limit.
+  Missing, invalid, or drifted budget/config identity is `DATA_MISSING`. There
+  is no response-polling wait, retry, or deadline extension. A passed deadline
+  is `TIMED_OUT` or `EXPIRED`, never progress.
 - **P-REPORT-24H:** a report observation is fresh for
   `age_seconds <= 86400`, with exact input population, source identity, and
   every chain hash matching.
@@ -170,7 +185,7 @@ only supported claim.
 | Upcoming races | Collector-produced current-run `refresh_prejump_report.json` and/or `odds_capture_refresh_report.json` selected-race evidence plus validated runner identities and runner-set hash, under collector ownership. | P-UPCOMING-300-PREJUMP. Missing/ambiguous race, jump, source URL, meeting, or runner identity is `UNAVAILABLE`; disagreement is `DIVERGENT`; post-jump is expired. UI/API reads MUST NOT call `UpcomingRaceBrowser`, start a browser, scrape, capture, or acquire a lock. | Exact pre-jump race and ordered validated runner set available for selection. |
 | Model/config catalog | Finite checked-in configs and schemas resolved by `scripts/predict_race_now.py --list-configs`, plus matching frozen model/deployed manifest hashes. | P-CATALOG-60. Hash the exact observed files and normalized finite catalog; all repository, deployed, model, schema, and config identities must agree. Missing is `DATA_MISSING`; mismatch is `DIVERGENT`; invalid schema is `INVALID`. | Finite server-allowlisted model/config choices with exact byte identities. |
 | Bundle list/detail | Private isolated bundle `result.json` and `bundle_manifest.json` produced by `scripts/predict_race_now.py`, with every manifest entry rehashed and exact job/race binding verified. | Listing uses P-BUNDLE-LIST-60; verified detail uses P-IMMUTABLE-HISTORICAL. Tamper/missing bytes are `INVALID`/`UNAVAILABLE`. Historical bundle age never makes it a current prediction. | The verified result of one named historical prediction run. |
-| Prediction progress | Future persisted UI job state plus request, claim, attempt, response, receipt, and consume records owned by `race_collection/manual_prediction_collector_request.py`; verified bundle for scoring/result. | P-JOB-5-DEADLINE. Scan all sources together; validate schemas, hashes, uniqueness, ordering, exact job/race binding, and phase deadline. Missing events remain `WAITING` only before deadline; gaps cannot be fabricated. Probabilities require verified `PREDICTION_READY`. | Last persisted UI phase and corresponding exact protocol evidence. |
+| Prediction progress | Durable UI job plus predictor PID, process-group/session, start/finish/exit, and terminal identity; request, claim, attempt, response, optional receipt, exact-receipt index, and consume records owned by `race_collection/manual_prediction_collector_request.py`; `capture-one` status/output; verified `on_demand_verified_collector_capture_v2` handoff; `collector_run_id`, `request_sha256`, `claim_sha256`, `attempt_sha256`, `response_sha256`, `capture_attempt_sha256`, `append_report_sha256`, `source_report_sha256`, `source_form_sha256`, `source_sidecar_sha256`, `runner_set_sha256`, relevant timestamps and deterministic reason; scoring bundle/result/manifest after protocol completion. | P-JOB-5-DEADLINE. Scan all sources together; validate schemas, hashes, uniqueness, ordering, and exact race/runner/model/config/job/process binding. Missing events remain `WAITING` only before deadline; gaps cannot be fabricated. Browser/path/root/current-time/lock inputs and raw collector process control are not UI evidence or authority. Probabilities require verified `PREDICTION_READY`. | Last persisted UI phase and corresponding exact protocol, capture, and scoring evidence. |
 | Corpus readiness | Current matching report-only inventory and scorecard chain built by `scripts/build_race_evidence_inventory_packet.py`, including input population/source identity, exclusions, closure evidence, generated time, and chain hashes. | P-REPORT-24H. Exact input/source identities and all referenced report hashes must match. Missing/stale/mismatch blocks readiness. Raw DB counts never substitute. | Report-defined readiness and exclusions for the exact named population. |
 | Model lineage/evaluation | Immutable model/config/manifest plus the matching named evaluation, rolling comparison, promotion-distance, and refinement-chain hashes and slice identities. | Artifacts use P-IMMUTABLE-HISTORICAL; a “current evaluation” listing uses P-REPORT-24H and must bind the exact model/config/source slice. Missing or mismatch is unavailable/divergent. A historical slice never becomes present quality or promotion evidence because bytes remain available. | Identity and reported evaluation for one explicitly named historical slice. |
 | UI audit | No current store exists. Future separate UI operations store and its scan/integrity/reference-hash observation. | Now: `DATA_MISSING — UI audit store not implemented`. Future: P-OPS-5. Application logs do not substitute. | Future verified UI operation events only. |
@@ -210,8 +225,17 @@ UI phases may be `SUBMITTED`, `VALIDATED`, `WAITING_FOR_CLAIM`, `CLAIMED`,
 Collector terminal statuses remain separate and exact: `RECEIPT_READY`,
 `REQUEST_EXPIRED`, `RACE_NOT_FOUND`, `CAPTURE_WINDOW_CLOSED`,
 `IDENTITY_MISMATCH`, and `CAPTURE_FAILED`. `RECEIPT_READY` is not prediction
-success. One lifecycle is exactly one request, claim, attempt, response,
-optional receipt, and consume. There is no retry or race substitution.
+success. Synchronous/public terminal classifications also include `BUSY`,
+`CANCELLED`, and `INSUFFICIENT_PREJUMP_MARGIN`; these are not new V1 response
+statuses. Each maps to a preserved V1 `CAPTURE_FAILED` response with a
+deterministic reason, unless cancellation occurs after a receipt was already
+sealed, in which case that receipt remains reusable. `BUSY` includes validated
+existing-owner evidence and is immediate: there is no lock wait, steal, or
+retry. At expiry or jump, terminal responses are normalized deterministically.
+Where applicable, timestamps satisfy
+`created_at <= claimed_at <= attempt.started_at <= responded_at <= consumed_at`.
+One lifecycle is exactly one request, claim, attempt, response, optional
+receipt, and consume. There is no retry or race substitution.
 
 ## 7. Release actions
 
@@ -226,8 +250,16 @@ optional receipt, and consume. There is no retry or race substitution.
 
 Idempotency is actor-and-operation scoped. Retransmission with the same key
 returns the same job; different inputs are rejected. One accepted job launches
-at most one fixed-argument subprocess and publishes at most one collector
-request. Timeout is terminal and authorizes no retry.
+at most one UI-owned fixed-argv predictor subprocess. That predictor publishes
+at most one collector request and, only when capture is needed, starts at most
+one collector-owned `capture-one` child process group; valid receipt reuse
+starts none. Neither layer retries, launches a second predictor, acquisition,
+or browser, republishes after an attempt, waits for or steals the lock, or
+substitutes the race. Timeout or cancellation is terminal; the predictor
+terminates and reaps its collector process group, and the UI never signals that
+group directly. Restart or reconnect returns the same persisted job and may not
+duplicate either process or request. This is one click to one job to one
+predictor invocation, not one total operating-system process.
 
 ## 8. Forbidden controls and inputs
 
@@ -241,7 +273,11 @@ profitability, wagering, or betting output/action; or public/anonymous access.
 
 The R3 worker constructs one fixed argv solely from server-owned allowlists and
 never uses a shell. UI/API code never acquires the collector lock, starts a
-browser, calls direct capture, or writes canonical racing/history data.
+browser, calls direct capture, writes canonical racing/history data, or
+directly signals/manipulates collector or browser children. The predictor may
+invoke the one fixed-argv collector-owned `capture-one` entrypoint described in
+sections 1 and 7; the background timer remains unchanged and is not manual
+request transport.
 
 ## 9. Release and proof gates
 
@@ -264,9 +300,18 @@ rate-limit and cross-actor isolation; durable monotonic job state and
 idempotency; exact identity
 revalidation; fixed argv/no-shell/no-path/no-root/no-time inputs; read-only
 history DB; zero outcome leakage; no-lock/no-browser/no-capture proof; one
-request/claim/attempt/response/optional receipt/consume; one invocation; stable
-timeouts; verified bundle before probabilities; and no canonical, model, or
-runtime writes.
+request/claim/attempt/response/optional receipt/consume; one predictor
+invocation; stable timeouts; verified bundle before probabilities; and no
+canonical, model, or runtime writes. Deterministic tests must prove
+reconnect/progress follows the synchronous job, protocol, capture-one, and
+scoring records rather than a
+fabricated timer wait; cancellation/timeout reaps the child group without a
+duplicate attempt; lock contention is immediate; the before-discovery,
+after-discovery, and post-capture/reuse pre-jump margin checkpoints and
+public-to-V1 status mapping are exact; timestamp ordering
+`created_at <= claimed_at <= attempt.started_at <= responded_at <= consumed_at`
+is preserved; and one click/job yields at most one predictor invocation, one
+request, and zero or one `capture-one` child group.
 
 Generated deployment requires separate Level 4 owner authority after
 independent exact-head review: repository-generated unit/config, private bind,
@@ -274,11 +319,17 @@ secret handling, feature flag default-off, reversible disable/rollback without
 evidence deletion, and matching deployed commit/tree/unit/config hashes.
 
 One bounded live proof requires separate explicit live-action authority. It
-observes installed/generated identity, one natural collector cycle, then runs
-one suitable exact race once. It must preserve raw UI/protocol/bundle evidence,
-perform no retry/service workaround/outcome access/prohibited mutation, and
-stop after the first terminal result. Runtime-proven may be claimed only after
-valid scoring provenance.
+observes exact deployed/generated identity and one natural collector cycle,
+then creates one exact job from one click for one suitable exact race. It must
+preserve the exact observed protocol, status, timestamps, hashes, raw
+UI/protocol/bundle evidence, synchronous records, and bundle provenance;
+perform no fabricated timer wait, retry/service workaround, outcome access, or
+prohibited mutation; and stop after the first terminal result. On the naturally
+reached path it must show at most one predictor invocation, one request, and
+zero or one `capture-one` child group, as applicable. It must neither induce nor
+claim contention, cancellation/timeout, margin-checkpoint, status-mapping, or
+other failure branches not observed on that path. Runtime-proven may be claimed
+only after valid scoring provenance.
 
 R4 requires applicable R2 gates; P-REPORT-24H matching corpus chain; exact
 lineage/evaluation evidence and claim limits; draft-only separate storage;
