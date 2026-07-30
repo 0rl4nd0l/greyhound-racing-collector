@@ -100,11 +100,12 @@ Linux `/proc/self/fd` and `O_NOFOLLOW` remain platform
 limitations; the accepted work does not claim detection of absolute same-inode
 concurrent content mutation.
 
-R1 history remains unchanged. In particular, the `GHU-011L` selected suite is
-still recorded as running and has no invented terminal result; the rejected F
-broad result remains rejected. The distinct post-upstream
-`full_forecasting` selected broader gate remains pending and is not the running
-pre-upstream `GHU-011L` suite. No `GHU-011` acceptance is claimed.
+At the historical `GHU-000C1` checkpoint, R1 history remained unchanged. In
+particular, the `GHU-011L` selected suite was still recorded as running and had
+no invented terminal result; the rejected F broad result remained rejected.
+The distinct post-upstream `full_forecasting` selected broader gate remained
+pending and was not the running pre-upstream `GHU-011L` suite. No `GHU-011`
+acceptance was claimed at that time.
 
 `GHU-000` was accepted at original base
 `9be52ecd589615b4ebd6212bd9595be761520b89`. `GHU-000A` accepted source-delta
