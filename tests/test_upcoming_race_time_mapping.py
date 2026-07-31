@@ -613,15 +613,30 @@ def test_equivalent_grade_forms_do_not_create_false_conflict():
             "target_grade_source": "canonical_pre_race_page",
         },
         {
+            "grade": "Grade 4",
             "target_grade": "Grade 4",
             "target_grade_source": "thedogs_meeting_card_exact_race",
+            "target_grade_context_schema": "thedogs_meeting_card_exact_race_v1",
             "target_grade_equivalence_key": "GRADE:4",
+            "target_grade_exact_value": "Grade 4",
+            "target_grade_race_date": "2026-07-17",
+            "target_grade_race_number": 10,
+            "target_grade_race_url": race_url,
+            "target_grade_source_url": "https://www.thedogs.com.au/racing/2026-07-17",
+            "target_grade_source_sha256": MEETING_CARD_SHA256,
+            "target_grade_venue": "MAND",
         },
         race_url,
     )
 
-    assert merged["target_grade"] == "4th Grade"
-    assert merged["target_grade_source"] == "canonical_pre_race_page"
+    assert merged["target_grade"] == "Grade 4"
+    assert merged["target_grade_source"] == "thedogs_meeting_card_exact_race"
+    assert merged["target_grade_context_schema"] == (
+        "thedogs_meeting_card_exact_race_v1"
+    )
+    assert merged["target_grade_exact_value"] == "Grade 4"
+    assert merged["target_grade_race_url"] == race_url
+    assert merged["target_grade_source_sha256"] == MEETING_CARD_SHA256
 
 
 def test_current_race_header_accepts_non_graded_class():
