@@ -728,6 +728,16 @@ def _v2_runner_rows(
                 if not box_text:
                     raise ValueError("runner_box_missing")
                 box, name = int(box_text), name_cell
+                import re
+                prefix = re.match(r"^([0-9]{1,2})\.\s+(.+)$", name_cell)
+                if prefix is not None:
+                    if int(prefix.group(1)) != box:
+                        raise ValueError("runner_box_prefix_mismatch")
+                    name = prefix.group(2).strip()
+                    if re.match(r"^[0-9]", name):
+                        raise ValueError("runner_box_prefix_ambiguous")
+                elif re.match(r"^[0-9]", name_cell):
+                    raise ValueError("runner_box_prefix_malformed")
             csv_runners.append((box, " ".join(name.split()).upper()))
     except (csv.Error, TypeError, ValueError) as exc:
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="csv_runner_rows_invalid") from exc

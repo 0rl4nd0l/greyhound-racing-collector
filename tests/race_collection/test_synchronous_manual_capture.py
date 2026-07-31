@@ -778,6 +778,52 @@ def test_v2_runner_hash_binds_source_generated_at(tmp_path: Path):
     assert first[2] != second[2]
 
 
+def test_v2_runner_seal_accepts_matching_name_prefix_with_explicit_box(tmp_path: Path):
+    evidence_root = tmp_path / "evidence"
+    race_url = "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
+    observed = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
+    coverage = _runner_coverage(evidence_root, race_url, observed)
+    csv_path = Path(coverage["races"][0]["csv_path"])
+    csv_path.write_bytes(b"box|dog_name\n1|1. Alpha\n2|2. Beta\n")
+
+    rows, _, _ = capture._v2_runner_rows(
+        {
+            "date": "2026-07-19", "jump_datetime": "2026-07-19T13:00:00+10:00",
+            "race_number": 5, "race_url": race_url, "venue": "GUNN",
+        },
+        {"generated_at": observed.isoformat(), "sidecar_metadata_coverage": coverage},
+        evidence_root=evidence_root,
+    )
+
+    assert [(row["box"], row["identity"]) for row in rows] == [(1, "ALPHA"), (2, "BETA")]
+
+
+@pytest.mark.parametrize(
+    "name", ["2. Alpha", "1 Alpha", "1: Alpha", "123. Alpha", "1. 2. Alpha"]
+)
+def test_v2_runner_seal_rejects_invalid_name_prefix_with_explicit_box(
+    tmp_path: Path, name: str
+):
+    evidence_root = tmp_path / "evidence"
+    race_url = "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
+    observed = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
+    coverage = _runner_coverage(evidence_root, race_url, observed)
+    csv_path = Path(coverage["races"][0]["csv_path"])
+    csv_path.write_text(f"box|dog_name\n1|{name}\n2|Beta\n", encoding="utf-8")
+
+    with pytest.raises(CaptureOneRejected) as rejected:
+        capture._v2_runner_rows(
+            {
+                "date": "2026-07-19", "jump_datetime": "2026-07-19T13:00:00+10:00",
+                "race_number": 5, "race_url": race_url, "venue": "GUNN",
+            },
+            {"generated_at": observed.isoformat(), "sidecar_metadata_coverage": coverage},
+            evidence_root=evidence_root,
+        )
+
+    assert rejected.value.details["reason"] == "csv_runner_rows_invalid"
+
+
 def test_v2_requires_matching_successful_retained_publication(tmp_path: Path):
     evidence_root = tmp_path / "evidence"
     state = evidence_root / "shadow_autopilot_daemon_runtime/odds_capture_state.json"
