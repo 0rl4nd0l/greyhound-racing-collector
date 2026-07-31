@@ -153,7 +153,12 @@ def _identity_key(value: Any, name: str) -> str:
     return normalized
 
 
-def _canonical_source_url(value: Any, name: str) -> str:
+def _canonical_source_url(
+    value: Any,
+    name: str,
+    *,
+    allow_official_result_query: bool = False,
+) -> str:
     url = _known_text(value, name)
     parsed = urlsplit(url)
     if (
@@ -162,7 +167,14 @@ def _canonical_source_url(value: Any, name: str) -> str:
         or parsed.hostname not in {"www.thedogs.com.au", "thedogs.com.au"}
         or parsed.username is not None
         or parsed.password is not None
-        or parsed.query
+        or (
+            parsed.query
+            and not (
+                allow_official_result_query
+                and parsed.query == "trial=false"
+                and parsed.path.endswith("/results")
+            )
+        )
         or parsed.fragment
     ):
         raise SourceAdmissionRejected(f"{name} is not a canonical source URL")
@@ -928,8 +940,16 @@ def _admit_official_first(
                         stage["source_document_last_modified"],
                         "source document Last-Modified",
                     )
-                _canonical_source_url(stage.get("request_url"), "official request URL")
-                _canonical_source_url(stage.get("final_url"), "official final URL")
+                _canonical_source_url(
+                    stage.get("request_url"),
+                    "official request URL",
+                    allow_official_result_query=True,
+                )
+                _canonical_source_url(
+                    stage.get("final_url"),
+                    "official final URL",
+                    allow_official_result_query=True,
+                )
                 started = _aware_timestamp(stage.get("request_started_at"), "request started")
                 received = _aware_timestamp(
                     stage.get("response_received_at"), "response received"
@@ -1075,8 +1095,16 @@ def _admit_official_first(
                     raise SourceAdmissionRejected(
                         "official-first response reconstruction disagrees"
                     )
-                _canonical_source_url(observation.get("request_url"), "official request URL")
-                _canonical_source_url(observation.get("final_url"), "official final URL")
+                _canonical_source_url(
+                    observation.get("request_url"),
+                    "official request URL",
+                    allow_official_result_query=True,
+                )
+                _canonical_source_url(
+                    observation.get("final_url"),
+                    "official final URL",
+                    allow_official_result_query=True,
+                )
                 started = _aware_timestamp(
                     observation.get("request_started_at"), "request started"
                 )
