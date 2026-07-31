@@ -345,9 +345,7 @@ def test_source_admission_detects_missing_raw_bytes_and_hash_drift(tmp_path):
 
 def test_status_detects_stored_artifact_hash_drift(tmp_path):
     corpus = _stable_corpus(tmp_path)
-    artifact = next((tmp_path / "artifacts").rglob("*"))
-    while artifact.is_dir():
-        artifact = next(artifact.rglob("*"))
+    artifact = corpus.artifacts.path_for(corpus.artifacts.checksum(_html()))
     artifact.write_bytes(b"tampered")
     with pytest.raises(ForwardCorpusRejected):
         corpus.status()
