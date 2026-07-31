@@ -398,7 +398,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Level 1 fixture UI only; no operational mutation.
 - Claims supported: The accepted R1 fixture-backed dashboard only, with prototype/research-only labeling and fixture-state evidence.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Preserve the accepted R1 fixture checkpoint; the ledger-only `GHU-016A` closeout is in review.
+- Next safe action: Preserve the accepted R1 fixture checkpoint and parent-accepted/integrated `GHU-016A`; `GHU-020A` is next.
 - Closeout evidence: On 2026-07-30, accepted dependency `GHU-010` was verified and `GHU-011` transitioned legally `planned -> ready`. Implementation evidence spans `GHU-011L` run `20260730T135824Z-1bacc67937-e184ab`, session `019fb351-f550-7682-9a15-ba28e7f5e1e0`, and `GHU-011M` run `20260730T181451Z-b836e769ae-738e8d`, session `019fb43c-b9e8-7c30-823d-894c79e30695`. Independent `GHU-011M` review run `20260730T181807Z-e10cff2931-e22d8c`, session `019fb43f-a9bd-7363-851c-d6a392a44548`, returned `ACCEPT_GHU_011M`. The exact product delta is base `6e0b0d99c296a4c984faf0775bab88f8689e66da`, tree `bff53978cdfeea8f604404432e1d672cba95a692`, to head/integration `e10cff293141569b1a5a169dd05efc8109e3c603`, tree `07f02fc46b88b47bf0ade8ee264505f8b47c7d91`, and changes exactly `app.py`; `static/css/operator-ui.css`; `templates/operator_ui.html`; `templates/operator_ui_components.html`; `tests/playwright/operator-ui-shell.spec.js`; `tests/test_operator_ui_shell.py`. Base-to-head binary diff SHA-256: `7641c45d98a26590e64fff71a50d9dc1b7639b03ee1e6c1fb05aedbecd58681b`. Per-file head SHA-256 values in that order: `7d948ad95c314c857b0379f5a2aae63587bf2dfb3a6adc2867f12ac82d23f7f2`; `ce995078d9a7bffa8baea4e924f9a55e2dc272908a9574feb7bce21756e8a9b7`; `961c8054076b04240285acd0a74ea955f8b4b1af99271ae782092c0c2d1c407d`; `203956f714d6e4622ec4c21a1e32d2da62f6c9baf5af6a549297e750543dc17f`; `6bc876014659a24ca072cad73e31d298b898445dc7d4e981e47835486ee0a9e4`; `45b8e96df32c64f2d389cbe64ba86d87e487cf28d5c1942d497fe0a921f9a24c`. Focused command `/tmp/ghu010-validation-73f1e5d/bin/python -m pytest -q tests/test_operator_ui_shell.py` exited 0 with `5 passed`. Private browser server command `PORT=5002 FLASK_ENV=testing MODULE_GUARD_STRICT=0 PREDICTION_IMPORT_MODE=relaxed ENABLE_ENDPOINT_DROPDOWNS=1 TESTING=1 TRAINING_MAX_SECS=30 DISABLE_NAV_DROPDOWNS=1 /tmp/ghu010-validation-73f1e5d/bin/python app.py --host localhost --port 5002` was stopped after validation. Browser command `NODE_PATH=/tmp/ghu010-node-73f1e5d/node_modules PLAYWRIGHT_BROWSERS_PATH=/tmp/ghu010-playwright-browsers /tmp/ghu010-node-73f1e5d/node_modules/.bin/playwright test tests/playwright/operator-ui-shell.spec.js --config=playwright.config.js --project=chromium-desktop --reporter=line --workers=1` exited 0 with `3 passed`. Classifier command `python3 scripts/ci/classify_forecasting_changes.py --base f38a125f6364b8a60d17ae9c971b0ce172874eea --head e10cff293141569b1a5a169dd05efc8109e3c603` exited 0 and selected `full_forecasting`. First broad command `TMPDIR=/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/operator-ui-validation-tmp/ghu011m-e10-full uv run --no-project --with-requirements requirements/all.in python -m pytest -q --noconftest tests/race_collection` exited 1 with `1 failed, 550 passed, 40 subtests passed in 4945.67s`. Isolated diagnostic checkpoint `86f39d54d3949c7bc2b6f670c809a6e5dea5050d`, tree `944336f6465bf4d23786d0fcf9ef894cd04565c2`, changes only `tests/race_collection/test_phase7_runtime_adapter.py`; target/module/full passed 1, 25, and 551 tests plus 40 subtests. It is `EXCLUDED`, `UNMERGED`, and `RETAINED`, not discarded; root cause is `UNKNOWN`. Gate reviewer run `20260730T222316Z-86f39d54d3-b5f20d`, session `019fb520-39bf-7be0-863e-7c3b8ced34bf`, returned verdict A `ACCEPT`. Parent accepted the exact product checkpoint at the head/integration identity above. Publication/push/PR/default-branch merge/deploy/runtime mutation/live proof: `NOT_OCCURRED`.
 
 ## GHU-012 — Exact upcoming-race picker prototype
@@ -419,7 +419,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Level 1 fixture UI only; no operational mutation.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Preserve accepted R1 evidence; `GHU-016A` must be parent-integrated before R2 readiness is effective.
+- Next safe action: Preserve accepted R1 evidence and parent-accepted/integrated `GHU-016A`; `GHU-020A` is next.
 - Closeout evidence: Accepted R1 checkpoint `51fe070ba2a0778bca0b0334c00cae9d75561952`, tree `0c2b82a391b8dd0a1dcc525cf4203edc910843c1`; reviewer child `eda938ef8b7cf07d87eb37719e0929c2` verdict `PRODUCT ACCEPT` / `GATE ACCEPT`; parent integrated exact checkpoint. Focused pytest `5 passed in 0.50s`; Chromium `5 passed in 6.9s`; classifier `full_forecasting`; broad and stable-node truth is recorded in `GHU-016`.
 
 ## GHU-013 — Prediction lifecycle and result prototype
@@ -440,7 +440,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Level 1 fixture UI only; no operational mutation.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Preserve accepted R1 evidence; `GHU-016A` must be parent-integrated before R2 readiness is effective.
+- Next safe action: Preserve accepted R1 evidence and parent-accepted/integrated `GHU-016A`; `GHU-020A` is next.
 - Closeout evidence: Accepted R1 checkpoint `51fe070ba2a0778bca0b0334c00cae9d75561952` / `0c2b82a391b8dd0a1dcc525cf4203edc910843c1`; reviewer `PRODUCT ACCEPT` / `GATE ACCEPT`; parent integrated exact checkpoint. Evidence is shared with the atomic tranche and recorded in `GHU-016`.
 
 ## GHU-014 — Collector, corpus, models, system-health and audit prototype pages
@@ -461,7 +461,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Level 1 fixture UI only; no operational mutation.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Preserve accepted R1 evidence; `GHU-016A` must be parent-integrated before R2 readiness is effective.
+- Next safe action: Preserve accepted R1 evidence and parent-accepted/integrated `GHU-016A`; `GHU-020A` is next.
 - Closeout evidence: Accepted R1 checkpoint `51fe070ba2a0778bca0b0334c00cae9d75561952` / `0c2b82a391b8dd0a1dcc525cf4203edc910843c1`; reviewer `PRODUCT ACCEPT` / `GATE ACCEPT`; parent integrated exact checkpoint. Evidence is shared with the atomic tranche and recorded in `GHU-016`.
 
 ## GHU-015 — Prototype navigation, accessibility and browser regression
@@ -482,7 +482,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Level 1 fixture UI only; no operational mutation.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Preserve accepted R1 evidence; `GHU-016A` must be parent-integrated before R2 readiness is effective.
+- Next safe action: Preserve accepted R1 evidence and parent-accepted/integrated `GHU-016A`; `GHU-020A` is next.
 - Closeout evidence: Accepted R1 checkpoint `51fe070ba2a0778bca0b0334c00cae9d75561952` / `0c2b82a391b8dd0a1dcc525cf4203edc910843c1`; reviewer `PRODUCT ACCEPT` / `GATE ACCEPT`; parent integrated exact checkpoint. Evidence is shared with the atomic tranche and recorded in `GHU-016`.
 
 ## GHU-016 — Prototype owner review and frozen UX contract
@@ -503,7 +503,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Level 1 fixture UI only; no operational mutation.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Parent must inspect and integrate `GHU-016A`; only then may R2 tickets become effective.
+- Next safe action: Preserve accepted R1 evidence and parent-accepted/integrated `GHU-016A`; `GHU-020A` is next.
 - Closeout evidence: Accepted product checkpoint `51fe070ba2a0778bca0b0334c00cae9d75561952`, tree `0c2b82a391b8dd0a1dcc525cf4203edc910843c1`; reviewer run `20260731T001624Z-51fe070ba2-937103`, child `eda938ef8b7cf07d87eb37719e0929c2`, verdict `PRODUCT ACCEPT` and `GATE ACCEPT`; parent fast-forward integrated exact checkpoint. Focused pytest `5 passed in 0.50s`; Chromium desktop `5 passed in 6.9s`; classifier `full_forecasting`; seven-path binary diff SHA-256 `3f74ec86de1ab68b0fbb1a13125efa6fa416e3cc1fdc9bfc658f97118d3dc135`. Broad timestamped run is `15 failed, 536 passed, 40 subtests passed in 5400.39s`, all 15 path-safety failures; identical stable detached nodes passed `15 passed in 12.47s`. Visual review found no blocking issue; desktop/mobile screenshot hashes are recorded in STATUS/DECISIONS. No push/PR/default-branch merge/deploy/runtime proof occurred.
 
 ## GHU-016A — R1 acceptance and frozen UX ledger closeout correction
@@ -521,7 +521,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Ledger-only correction; parent review, acceptance, and integration are complete at the recorded identity.
 - Claims supported: Parent-accepted corrected documentation closeout and recorded accepted R1 evidence.
 - Claims unsupported: Deployment, runtime proof, prediction, training, promotion, betting, or public exposure.
-- Next safe action: Preserve the parent-accepted R1 ledger closeout and independently review the `GHU-020` implementation candidate.
+- Next safe action: Preserve the parent-accepted R1 ledger closeout and accepted finite evidence/read-only foundation evidence; `GHU-020A` is next.
 - Closeout evidence: Parent-accepted and integrated corrected closeout at commit `3505efb299d25320fd86a0bf76aef5bf953fb5a7`, tree `567c913b7be46c4d5747c8bf74d2fb4df5d8f664`; this supersedes the rejected `978c4c92514701453f7c8a3252ca33880352764b` candidate while preserving its history.
 
 ## GHU-020 — Finite evidence and read-only foundations
@@ -542,8 +542,8 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Authenticated Level 1 GET/read-only authority with mandatory access audit.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Preserve the rejected `GHU-020`/`GHU-020B`/`GHU-020C` checkpoints as evidence and independently review `GHU-020D`; parent then decides acceptance/integration. `GHU-020A` remains planned and untouched.
-- Closeout evidence: Local candidate transition `ready -> active -> review` from exact clean base `3505efb299d25320fd86a0bf76aef5bf953fb5a7`, tree `567c913b7be46c4d5747c8bf74d2fb4df5d8f664`. Candidate paths are `src/operator_ui/__init__.py`, `src/operator_ui/foundation.py`, `tests/operator_ui/test_foundation.py`, this ticket ledger, and `docs/operator_ui_v1/STATUS.md`. Its worker lacked pytest, so the worker's focused invocation exited before collection. Preserved rejected checkpoint `57256bc7f15b7311e3cffbcd1b5887e10084bfb6`, tree `ef2284ccef699477de55f6581572391335059bac`, subsequently received parent focused result `2 failed, 39 passed`; it is evidence, not accepted history. `GHU-020B` and `GHU-020C` are preserved rejected review evidence; `GHU-020D` owns only the remaining verification/open identity-gap correction. Parent decision, commit/PR/merge/deploy/runtime proof remain pending.
+- Next safe action: Preserve the rejected `GHU-020`/`GHU-020B`/`GHU-020C` checkpoints and accepted `GHU-020D`/`GHU-020E` evidence; proceed to `GHU-020A`.
+- Closeout evidence: Local candidate transition `ready -> active -> review -> blocked` from exact clean base `3505efb299d25320fd86a0bf76aef5bf953fb5a7`, tree `567c913b7be46c4d5747c8bf74d2fb4df5d8f664`. Candidate paths are `src/operator_ui/__init__.py`, `src/operator_ui/foundation.py`, `tests/operator_ui/test_foundation.py`, this ticket ledger, and `docs/operator_ui_v1/STATUS.md`. Its worker lacked pytest, so the worker's focused invocation exited before collection. Preserved rejected checkpoint `57256bc7f15b7311e3cffbcd1b5887e10084bfb6`, tree `ef2284ccef699477de55f6581572391335059bac`, subsequently received parent focused result `2 failed, 39 passed`; it is evidence, not accepted history. `GHU-020B` and `GHU-020C` are preserved rejected review evidence. The successor `GHU-020D` correction and finite foundation outcome are accepted at the exact evidence recorded below; this rejected predecessor remains blocked evidence.
 
 ## GHU-020B — Correct finite evidence and read-only path binding
 
@@ -560,7 +560,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Bounded local implementation and validation only.
 - Claims supported: Local correction evidence only until independent review and parent acceptance.
 - Claims unsupported: Parent acceptance, accepted history, authentication/audit, current-health proof from historical evidence, deployment, runtime/data mutation, prediction, training, promotion, betting, or public exposure.
-- Next safe action: Preserve this rejected checkpoint and review evidence; independently review `GHU-020C`, after which parent decides acceptance/integration.
+- Next safe action: Preserve rejected `GHU-020`/`GHU-020B`/`GHU-020C` predecessor and review evidence and accepted `GHU-020D`/formal `GHU-020E` evidence; `GHU-020A` is next.
 - Closeout evidence: Preserved rejected checkpoint HEAD `182fc11dc995d114363e903e5e679aa78edd9602`, tree `9fa01491c2d0f210c989fcc3166e1e6f75e65a4e`, is evidence, not accepted history. Main reviewer session `019fb65c-03ac-7720-b63c-88e18acca58d`, run `20260731T040821Z-182fc11dc9-4738ef`, returned `REJECT_GHU_020B` for exactly two blocking findings: construction retained no root/component/file/database inode identity against later same-path ordinary replacement; and immutable-historical policy accepted arbitrary supported-claim prose while returning `AVAILABLE/FRESH`. `GHU-020C` owns only these two corrections. Parent acceptance/integration, commit/PR/push/merge/deploy/publication/runtime mutation remain pending or `NOT_OCCURRED`.
 
 ## GHU-020C — Bind configured identities and finite historical claims
@@ -578,14 +578,14 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Bounded local implementation and validation only.
 - Claims supported: Frozen local correction evidence only until independent review and parent acceptance.
 - Claims unsupported: Acceptance or accepted history; authentication/adapters/API/UI/jobs/service work; current health, promotion readiness, representative present quality, deployment, runtime/data mutation, prediction, training, betting, or public exposure.
-- Next safe action: Preserve this rejected checkpoint and exact review evidence; independently review `GHU-020D`, after which parent decides acceptance/integration.
+- Next safe action: Preserve this rejected checkpoint and exact review evidence; use the accepted `GHU-020D` correction and current ledger-only `GHU-020E` closeout.
 - Closeout evidence: Transitioned `planned -> ready -> active -> review` from exact clean preserved rejected base HEAD `182fc11dc995d114363e903e5e679aa78edd9602`, tree `9fa01491c2d0f210c989fcc3166e1e6f75e65a4e`. Focused pytest was attempted with the available `/usr/bin/python3` but pytest is unavailable (`No module named pytest`); no dependency was added. No-pycache compilation and direct focused JSON/SQLite smoke scenarios passed. Candidate checkpoint commit HEAD `1e436a461e51923d97b44929bcb198bc20535e0b`, tree `1425b9d11a3ab192a31f63426f1145b7ea00759e`, exists. Main reviewer session `019fb682-d853-76e2-9d6d-20835750d7bd`, run `20260731T045046Z-1e436a461e-70062d`, returned `REJECT_GHU_020C` for one exact blocker: retained construction identities were verified only before fresh `lstat`/open, allowing a root/component/file/database replacement in that gap to become a new internally consistent accepted identity. Parent integration commit, push, merge, deploy, publication, and runtime/data mutation remain `NOT_OCCURRED`.
 
 ## GHU-020D — Close retained-identity verification/open gap
 
 - Release: `R2`
 - Priority: `P1`
-- Status: `review`
+- Status: `accepted`
 - Dependencies: `GHU-016`, `GHU-016A`, plus preserved `GHU-020`, `GHU-020B`, and `GHU-020C` rejected-checkpoint/review evidence
 - Session role: Fresh bounded Codex X correction implementation session
 - Outcome: Binds every opened root, nested component, source file, and SQLite database descriptor to its retained construction identity through observation/connect.
@@ -593,18 +593,36 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Non-goals: No authentication, adapters, API, UI, jobs, services, dependencies, browser/collector use, locks, runtime/data mutation, canonical database/history access, arbitrary locators, commit, merge, push, deploy, or publication.
 - Acceptance: Deterministic replacement of an ordinary same-path root, nested component, source file, or SQLite database after initial construction-binding verification but before or during open/connect fails closed; unchanged reads/connects pass. Opened descriptors for every retained component compare directly with retained construction identities and remain verified through observation/connect.
 - Validation: Exact supplied-interpreter focused pytest with external TMPDIR; no-pycache compilation; `git diff --check`; exact allowlist/status/count/cross-reference checks; repository classifier. The rejected candidate broad run remains interrupted with no pass claim and is not rerun.
-- Authority: Bounded local implementation and validation only.
-- Claims supported: Frozen local correction evidence only until independent review and parent acceptance.
-- Claims unsupported: Acceptance or accepted history; authentication/adapters/API/UI/jobs/service work; deployment, runtime/data mutation, canonical database/history access, prediction, training, promotion, betting, or public exposure.
-- Next safe action: Independently review this frozen bounded delta; parent decides acceptance/integration.
-- Closeout evidence: Transitioned `planned -> ready -> active -> review` from exact clean preserved rejected `GHU-020C` candidate HEAD `1e436a461e51923d97b44929bcb198bc20535e0b`, tree `1425b9d11a3ab192a31f63426f1145b7ea00759e`. Exact supplied-interpreter focused pytest passed `62 passed in 0.27s`; no-pycache compilation, `git diff --check`, exact allowlist/status/count/cross-reference checks, and repository classifier passed. The classifier selected `full_forecasting`; the broad suite was not run, and the prior rejected-candidate broad interruption has no pass claim. Final frozen diff and file hashes are reported by this implementer. Independent review and parent acceptance/integration remain pending; commit, push, merge, deploy, publication, runtime/data mutation, and canonical database/history access are `NOT_OCCURRED`.
+- Authority: Parent-accepted and integrated bounded foundation correction; no operational mutation.
+- Claims supported: The accepted finite evidence/read-only foundation outcome and its exact validation/review/integration evidence only.
+- Claims unsupported: Authentication/adapters/API/UI/jobs/service work; R2 completion, deployment, runtime/data mutation, canonical database/history access, prediction, training, promotion, betting, or public exposure.
+- Next safe action: Preserve accepted `GHU-020D`, rejected prior `GHU-020E` candidate and non-formal `GHU-020F` evidence, and the non-formal `GHU-020G` correction; proceed to `GHU-020A`.
+- Closeout evidence: Transitioned `planned -> ready -> active -> review -> accepted` from exact clean preserved rejected `GHU-020C` candidate HEAD `1e436a461e51923d97b44929bcb198bc20535e0b`, tree `1425b9d11a3ab192a31f63426f1145b7ea00759e`. Final candidate HEAD `8b1ac4235d478a0ef62380bbf61a265731f4d3e4`, tree `612e6a4ce27f9d3bf49274831b8f8e29121d5a12`. These historical `GHU-020C`/`GHU-020D` objects are archived evidence and are not claimed independently recomputable in this worktree. Historical D correction diff SHA-256 `cb3aa4bda38e069bb31800f286a4a3dadd0d2dabe5e11e30312cd8a55e5c1e13` is archived evidence; accepted-base-to-final-product diff SHA-256 `10eae73d4490ee3fd52d722fb1ff8bc3b8a1a7969bfdca034b397ce28de17e1f` remains accepted product evidence. Parent focused validation passed 62 tests. The exact frozen full-forecasting gate command used `PYTHONDONTWRITEBYTECODE=1`, external `TMPDIR`, and `uv run --no-project --with-requirements requirements/all.in python -m pytest -q --noconftest tests/race_collection`; result `551 passed, 40 subtests passed in 6001.15s (1:40:01)`, exit 0. Reviewer session `019fb68d-96c4-7cb3-9cfc-a50c4f49d5cc`, run `20260731T050230Z-8b1ac4235d-ce8207`, returned `ACCEPT_GHU_020D`. Parent mechanically integrated the identical product tree without rejected checkpoint history at HEAD `c95b0467ded033bdb995da7941b44a11a04b22b7`, tree `612e6a4ce27f9d3bf49274831b8f8e29121d5a12`, branch `agent/operator-ui-programme-20260730`. Push, PR, merge, deploy, publication, runtime/data mutation, and canonical database/history access are `NOT_OCCURRED`.
+
+## GHU-020E — Accepted foundation ledger-only closeout
+
+- Release: `R2`
+- Priority: `P1`
+- Status: `accepted`
+- Dependencies: `GHU-020D`, `GHU-016A`
+- Session role: Fresh bounded Codex X documentation implementer
+- Outcome: Records the parent-accepted `GHU-020D` finite evidence/read-only foundation and exact integration evidence without changing product/test bytes.
+- Scope: Update only `docs/operator_ui_v1/STATUS.md` and this ticket ledger; preserve rejected `GHU-020`, `GHU-020B`, and `GHU-020C` histories.
+- Non-goals: No code, tests, templates, assets, dependencies, runtime, data, services, Git history, external state, commit, push, PR, merge, deploy, publication, collector/browser, or lock action.
+- Acceptance: `GHU-020D` is accepted with exact focused, broad, reviewer, diff, and parent integration identities; counts, dependencies, current pointers, and next-safe-action pointers make `GHU-020A` the next ticket.
+- Validation: Exact two-path allowlist, `git diff --check`, status counts, ticket uniqueness/dependencies/current pointers/stale-pointer scan, hashes/identities, and repository classifier only; no product tests or broad suite.
+- Authority: Parent-accepted formal ledger closeout as corrected by non-formal `GHU-020G`; no implementer acceptance authority.
+- Claims supported: The corrected parent-accepted ledger closeout, recorded parent-accepted `GHU-020D` foundation evidence, and exact rejected-candidate evidence only.
+- Claims unsupported: R2 completion, runtime proof, deployment, prediction, training, promotion, betting, public exposure, or any runtime/data mutation.
+- Next safe action: Preserve rejected prior `GHU-020E` and non-formal `GHU-020F` candidate evidence and the non-formal `GHU-020G` correction; `GHU-020A` is the next ticket.
+- Closeout evidence: Preserved rejected prior candidate at exact clean base `c95b0467ded033bdb995da7941b44a11a04b22b7` and candidate `7462e42cd191adcbe1adc43ebe420b2c93226455`. Live recomputation produced binary diff SHA-256 `a0aa6cb799d98c0a5b6d27320ffa0328d35857e4499a95f33db63ef8583332da`, candidate `STATUS.md` SHA-256 `cd11d85d32946a7f59d657225deeba569ec34823a4a52c3a07d26a8cca92978a`, and candidate `TICKETS.md` SHA-256 `315c54392da34320cd56f9fe4bb1bba9514fb931129d8f57d07b15eba3f3bc21`. Non-formal `GHU-020F` remains rejected evidence at exact commit `fd87bee4fb912154be33f5cd71e4505a220e323c`, tree `e4c31a7ed695757d10c59d0f32c5f7f5cc692388`, parent `7462e42cd191adcbe1adc43ebe420b2c93226455`; its parent-to-F binary diff SHA-256 is `40b1303fdd2821f776d4b08be10f2839f57c683b905d99159944f8af568dedb8`, accepted-product-base `c95b0467ded033bdb995da7941b44a11a04b22b7` to F binary diff SHA-256 is `2510ece8dbebe136dbc7dfaea887727155879aab9b58499493f221cba7cab0d5`, and F file SHA-256 values are `e033a570f65dd0ae041a6733c7e34efff82bb8513e9011e0e31489ad2e592faa` for `STATUS.md` and `73ca99aa024e580f1577ab87f9abbefccffea12b19c8e9ae43bd8826b1c7dcab` for `TICKETS.md`. Main reviewer session `019fb6fc-f83e-7902-b8e2-2e47f18d1957`, run `20260731T070407Z-fd87bee4fb-450905`, returned `REJECT_GHU_020F` for exactly three stale live Next safe action fields: accepted `GHU-016` still required inspection/integration of already accepted `GHU-016A`; accepted `GHU-016A` still required review of superseded `GHU-020`; blocked `GHU-020B` still required review/acceptance of already rejected `GHU-020C`. `GHU-020G` is the smallest non-formal correction/supersession record for those fields: it changes no formal counts or product, preserves accepted formal `GHU-020E`, accepted R1/`GHU-016A` and `GHU-020D` foundation evidence, and all rejected predecessor/E/F evidence, and creates no recursive closeout. Reviewer/parent freezes final G diff/file hashes externally with the exact commit/tree; self-referential final G hashes are not recorded in these files. Push, PR, merge, deploy, publication, runtime/data mutation, product-test execution, collector/browser use, and lock manipulation are `NOT_OCCURRED`.
 
 ## GHU-020A — Connected-mode authentication, session and UI audit prerequisite
 
 - Release: `R2`
 - Priority: `P1`
 - Status: `planned`
-- Dependencies: `GHU-020D`, `GHU-016A`
+- Dependencies: `GHU-020E`, `GHU-016A`
 - Session role: Fresh bounded Codex X security implementation session
 - Outcome: Establishes the default-off connected-mode security and append-only UI operations audit boundary before any operational read disclosure.
 - Scope: Add server-side Level-1 authentication/authorization; secure configured secrets and session expiry/rotation; CSRF for authentication forms and reusable CSRF enforcement for later mutation; a separate append-only UI operations/access-audit store. Every authenticated operational GET must append and confirm its audit event before disclosure; append failure returns a deterministic non-operational error with no evidence content. Keep the store separate from the canonical racing DB and future prediction-job DB.
@@ -614,7 +632,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Authenticated Level-1 security boundary; parent owns acceptance and integration.
 - Claims supported: Only the accepted security prerequisite after independent review and parent integration.
 - Claims unsupported: Public exposure, mutation, runtime proof, prediction, training, promotion, betting, or canonical DB writes.
-- Next safe action: Wait for parent-accepted/integrated `GHU-020D` and preserve parent-accepted/integrated `GHU-016A`, then assign a fresh bounded implementer.
+- Next safe action: Preserve rejected prior `GHU-020E` and non-formal `GHU-020F` candidate evidence, the non-formal `GHU-020G` correction, and parent-accepted/integrated `GHU-016A`; assign a fresh bounded implementer for this next ticket.
 - Closeout evidence: PENDING.
 
 ## GHU-021 — Versioned read-only operator API
@@ -622,7 +640,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Release: `R2`
 - Priority: `P2`
 - Status: `planned`
-- Dependencies: `GHU-020D`, `GHU-020A`
+- Dependencies: `GHU-020E`, `GHU-020A`
 - Model routing: GPT-5.6 Terra; fallback GPT-5.6 Luna
 - Session role: Fresh Codex X implementation session
 - Outcome: Exposes narrow versioned endpoints for the prototype without allowing operational mutation.
@@ -635,7 +653,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Authenticated Level 1 GET/read-only authority with mandatory access audit.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Wait for parent-accepted/integrated `GHU-020D` and `GHU-020A`, then parent may mark ready and assign one fresh bounded implementer.
+- Next safe action: Preserve parent-accepted `GHU-020E`; wait for parent-accepted/integrated `GHU-020A`, then parent may mark ready and assign one fresh bounded implementer.
 - Closeout evidence: PENDING: exact base/head/tree/path/diff identities, commands/exits, focused tests, reviewer identity/verdict, parent decision, and applicable commit/PR/merge/deploy/proof fields.
 
 ## GHU-022 — Exact upcoming-race live catalog
@@ -643,7 +661,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Release: `R2`
 - Priority: `P2`
 - Status: `planned`
-- Dependencies: `GHU-020`, `GHU-020A`, `GHU-021`, `GHU-000C1`
+- Dependencies: `GHU-020E`, `GHU-020A`, `GHU-021`, `GHU-000C1`
 - Model routing: GPT-5.6 Sol; fallback GPT-5.6 Terra
 - Session role: Fresh Codex X implementation session
 - Outcome: Populates the race picker from current source-safe upcoming-race evidence.
@@ -664,7 +682,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Release: `R2`
 - Priority: `P2`
 - Status: `planned`
-- Dependencies: `GHU-020`, `GHU-020A`, `GHU-021`
+- Dependencies: `GHU-020E`, `GHU-020A`, `GHU-021`
 - Model routing: GPT-5.6 Sol; fallback GPT-5.6 Terra
 - Session role: Fresh Codex X implementation session
 - Outcome: Lets the UI inspect prior manual prediction attempts and replay evidence without interpreting logs ad hoc.
@@ -685,7 +703,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Release: `R2`
 - Priority: `P2`
 - Status: `planned`
-- Dependencies: `GHU-020`, `GHU-020A`, `GHU-021`
+- Dependencies: `GHU-020E`, `GHU-020A`, `GHU-021`
 - Model routing: GPT-5.6 Sol; fallback GPT-5.6 Terra
 - Session role: Fresh Codex X implementation session
 - Outcome: Provides component-level operational truth without giving the web app service authority.
@@ -706,7 +724,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Release: `R2`
 - Priority: `P2`
 - Status: `planned`
-- Dependencies: `GHU-020`, `GHU-020A`, `GHU-021`
+- Dependencies: `GHU-020E`, `GHU-020A`, `GHU-021`
 - Model routing: GPT-5.6 Sol; fallback GPT-5.6 Terra
 - Session role: Fresh Codex X implementation session
 - Outcome: Connects the corpus funnel and model cards to approved evidence rather than illustrative counts.

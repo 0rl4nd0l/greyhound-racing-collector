@@ -9,11 +9,11 @@ Observed 2026-07-31 at the frozen accepted R1 product checkpoint:
 | HEAD / tree | `51fe070ba2a0778bca0b0334c00cae9d75561952` / `0c2b82a391b8dd0a1dcc525cf4203edc910843c1` |
 | Baseline cleanliness | clean |
 | Historical/upstream source | Actual historical merge parent `51a5287d05c790e3855e5b74ce7117a29340135e`; later `origin/master` drift `f38a125f6364b8a60d17ae9c971b0ce172874eea`, tree `408a8adbfa2bd436132bc4d2c63e952aeb57c5a5`, parent `51a5287d05c790e3855e5b74ce7117a29340135e`; local merge `0b08966b31c15d8b459b9c6b60a48b19030a9ce4` |
-| Current release / ticket | R1 and its `GHU-016A` corrected closeout are parent-accepted; `GHU-020B` and `GHU-020C` are blocked at preserved rejected review evidence and `GHU-020D` is the current local correction candidate in review |
-| Counts | 15 accepted tickets, 0 ready, 1 review, 13 blocked, 2 deferred, 19 planned (plus accepted audit milestone `GHU-000A`) |
-| Assignment | `GHU-020D` retained-identity verification/open-gap correction candidate is assigned to this fresh bounded implementer |
-| Next safe action | Independently review the frozen local `GHU-020D` correction; parent then decides acceptance/integration. `GHU-020A` remains planned and untouched. |
-| Validation | Exact supplied-interpreter focused pytest passed `62 passed in 0.27s`; no-pycache compilation, `git diff --check`, allowlist/status/count/cross-reference checks, and repository classifier passed. The classifier selected `full_forecasting`; the broad suite was not run. The prior broad candidate run was deliberately interrupted after rejection and has no pass claim. Independent review and parent acceptance remain pending. |
+| Current release / ticket | R1 and its `GHU-016A` corrected closeout remain parent-accepted; `GHU-020B`, `GHU-020C`, the prior ledger-only `GHU-020E` candidate, and non-formal `GHU-020F` remain rejected evidence; `GHU-020D` and its finite evidence/read-only foundation outcome are parent-accepted and integrated; accepted formal `GHU-020E` is corrected by non-formal record `GHU-020G` |
+| Counts | 17 accepted tickets, 0 ready, 0 review, 13 blocked, 2 deferred, 19 planned (plus accepted audit milestone `GHU-000A`) |
+| Assignment | No active ticket; `GHU-020A` is next |
+| Next safe action | Preserve rejected `GHU-020`/`GHU-020B`/`GHU-020C`, prior `GHU-020E` candidate, and non-formal `GHU-020F` evidence, accepted/integrated `GHU-020D`, and the non-formal `GHU-020G` ledger correction; `GHU-020A` is the next ticket. |
+| Validation | Parent focused validation of the final `GHU-020D` candidate passed `62 tests`. The exact frozen full-forecasting gate passed `551 passed, 40 subtests passed in 6001.15s (1:40:01)`, exit 0. Main reviewer session `019fb68d-96c4-7cb3-9cfc-a50c4f49d5cc`, run `20260731T050230Z-8b1ac4235d-ce8207`, returned `ACCEPT_GHU_020D`. This ledger-only closeout reruns no product tests or broad suite. |
 
 `GHU-000B` audit run `20260730T172346Z-1bacc67937-3c5f6b`, session
 `019fb40d-e8ed-7d40-8ab2-8ad2b156552c`, child
@@ -462,14 +462,77 @@ blocker: the construction identities were checked only before fresh
 consistent accepted identity. `GHU-020C` is blocked preserved evidence.
 
 `GHU-020D` owns only that verification/open-gap correction and transitioned
-`planned -> ready -> active -> review` from the exact clean rejected
-`GHU-020C` checkpoint. It opens the configured root and each nested component
-by descriptor, compares every opened descriptor to the retained construction
-identity, holds the complete descriptor chain, and rechecks it through file
-observation or SQLite connect. Independent review and parent
-acceptance/integration remain pending. The `GHU-020C` checkpoint commit exists,
-but parent integration commit, push, merge, deploy, publication, runtime/data
-mutation, and canonical database/history access remain `NOT_OCCURRED`.
+`planned -> ready -> active -> review -> accepted` from the exact clean
+rejected `GHU-020C` checkpoint. It opens the configured root and each nested
+component by descriptor, compares every opened descriptor to the retained
+construction identity, holds the complete descriptor chain, and rechecks it
+through file observation or SQLite connect. Candidate HEAD
+`8b1ac4235d478a0ef62380bbf61a265731f4d3e4`, tree
+`612e6a4ce27f9d3bf49274831b8f8e29121d5a12`, was independently accepted by
+reviewer session `019fb68d-96c4-7cb3-9cfc-a50c4f49d5cc`, run
+`20260731T050230Z-8b1ac4235d-ce8207`, verdict `ACCEPT_GHU_020D`. Parent
+integrated the identical tree mechanically at integration HEAD
+`c95b0467ded033bdb995da7941b44a11a04b22b7`, tree
+`612e6a4ce27f9d3bf49274831b8f8e29121d5a12`, branch
+`agent/operator-ui-programme-20260730`, without rejected checkpoint history.
+Parent focused validation passed 62 tests. The exact frozen gate command was
+`PYTHONDONTWRITEBYTECODE=1` with external `TMPDIR` and
+`uv run --no-project --with-requirements requirements/all.in python -m pytest
+-q --noconftest tests/race_collection`; it passed `551 passed, 40 subtests
+passed in 6001.15s (1:40:01)`, exit 0. Exact `GHU-020D` correction diff
+SHA-256 is
+`cb3aa4bda38e069bb31800f286a4a3dadd0d2dabe5e11e30312cd8a55e5c1e13`;
+accepted-base-to-final-product diff SHA-256 is
+`10eae73d4490ee3fd52d722fb1ff8bc3b8a1a7969bfdca034b397ce28de17e1f`.
+Push, PR, merge, deploy, publication, runtime/data mutation, and canonical
+database/history access remain `NOT_OCCURRED`.
+
+The prior `GHU-020E` ledger-only candidate is preserved rejected evidence. At exact clean
+base `c95b0467ded033bdb995da7941b44a11a04b22b7` and candidate
+`7462e42cd191adcbe1adc43ebe420b2c93226455`, its live-recomputed binary diff
+SHA-256 is
+`a0aa6cb799d98c0a5b6d27320ffa0328d35857e4499a95f33db63ef8583332da`;
+candidate `STATUS.md` SHA-256 is
+`cd11d85d32946a7f59d657225deeba569ec34823a4a52c3a07d26a8cca92978a`
+and candidate `TICKETS.md` SHA-256 is
+`315c54392da34320cd56f9fe4bb1bba9514fb931129d8f57d07b15eba3f3bc21`.
+The historical `GHU-020C`/`GHU-020D` checkpoint objects are archived evidence
+and are not claimed independently recomputable in this worktree. In
+particular, historical D correction SHA-256
+`cb3aa4bda38e069bb31800f286a4a3dadd0d2dabe5e11e30312cd8a55e5c1e13`
+is archived evidence, while accepted-base-to-final-product diff SHA-256
+`10eae73d4490ee3fd52d722fb1ff8bc3b8a1a7969bfdca034b397ce28de17e1f`
+remains the accepted product evidence.
+
+The non-formal `GHU-020F` candidate is rejected evidence at exact commit
+`fd87bee4fb912154be33f5cd71e4505a220e323c`, tree
+`e4c31a7ed695757d10c59d0f32c5f7f5cc692388`, from parent
+`7462e42cd191adcbe1adc43ebe420b2c93226455`. Its parent-to-candidate binary
+diff SHA-256 is
+`40b1303fdd2821f776d4b08be10f2839f57c683b905d99159944f8af568dedb8`;
+the final accepted-product-base `c95b0467ded033bdb995da7941b44a11a04b22b7`
+to F binary diff SHA-256 is
+`2510ece8dbebe136dbc7dfaea887727155879aab9b58499493f221cba7cab0d5`.
+F file SHA-256 values are
+`e033a570f65dd0ae041a6733c7e34efff82bb8513e9011e0e31489ad2e592faa`
+for `STATUS.md` and
+`73ca99aa024e580f1577ab87f9abbefccffea12b19c8e9ae43bd8826b1c7dcab`
+for `TICKETS.md`. Main reviewer session
+`019fb6fc-f83e-7902-b8e2-2e47f18d1957`, run
+`20260731T070407Z-fd87bee4fb-450905`, returned `REJECT_GHU_020F` for exactly
+three stale live Next safe action fields: accepted `GHU-016` still required
+inspection/integration of already accepted `GHU-016A`; accepted `GHU-016A`
+still required review of the superseded `GHU-020` candidate; and blocked
+`GHU-020B` still required review/acceptance of already rejected `GHU-020C`.
+
+`GHU-020G` is the non-formal smallest correction record for those three live
+pointers and supersedes rejected F without recursive closeout, a formal ticket,
+or any change to formal counts or the accepted status of corrected formal
+`GHU-020E`. It preserves accepted R1/`GHU-016A`, accepted/integrated
+`GHU-020D` foundation evidence, and all rejected predecessor/E/F evidence.
+The reviewer/parent freezes final G diff and file hashes externally together
+with the exact commit/tree; self-referential final G hashes are not embedded
+here.
 `GHU-020A` precedes `GHU-021` and owns default-off connected-mode
 authentication/authorization, secure configured secrets and session
 expiry/rotation, CSRF, and the separate append-only UI operations/access-audit
