@@ -413,6 +413,86 @@ def test_capture_one_returns_immediate_busy_with_owner_and_phase(tmp_path: Path)
     assert not protocol.outstanding_request_ids()
 
 
+def test_capture_one_cli_emits_machine_only_busy_json(tmp_path: Path):
+    now = datetime.now().astimezone()
+    jump = now + timedelta(minutes=10)
+    db_path = tmp_path / "greyhound_racing_data.db"
+    db_path.write_bytes(b"")
+    lock_path = (
+        tmp_path
+        / "artifacts/full_evidence_orchestration_20260525/"
+        "shadow_autopilot_daemon_runtime/shadow_autopilot.lock"
+    )
+    lock_path.parent.mkdir(parents=True)
+    lock_path.write_bytes(
+        canonical_bytes(
+            {
+                "schema_version": "shadow_autopilot_daemon_lock_v1",
+                "run_id": "scheduled_fixture",
+                "pid": 123,
+                "hostname": "fixture",
+                "started_at": now.isoformat(),
+                "output_dir": str(tmp_path / "scheduled"),
+                "phase": "odds_capture",
+            }
+        )
+    )
+    evidence_root = tmp_path / "evidence"
+    protocol = ManualPredictionCollectorProtocol(
+        evidence_root / "manual_prediction_collector_requests_v1"
+    )
+    request = protocol.publish_request(
+        race={
+            "race_id": f"Race 1 - QOT - {now.date().isoformat()}",
+            "url": (
+                "https://www.thedogs.com.au/racing/ladbrokes-q1-lakeside/"
+                f"{now.date().isoformat()}/1/fixture?trial=false"
+            ),
+            "venue": "QOT",
+            "race_number": 1,
+            "race_date": now.date().isoformat(),
+            "jump_timestamp": jump.isoformat(),
+        },
+        expected_runners=[],
+        created_at=now,
+        expires_at=jump,
+    )
+
+    result = invoke_capture_one(
+        command=[
+            sys.executable,
+            str(Path("scripts/shadow_autopilot_daemon.py").resolve()),
+            "capture-one",
+            "--evidence-root",
+            str(evidence_root),
+            "--protocol-root",
+            str(protocol.root),
+            "--request-id",
+            str(request["request_id"]),
+            "--db",
+            str(db_path),
+            "--lock-path",
+            str(lock_path),
+            "--output-dir",
+            str(evidence_root / "capture-one"),
+            "--minimum-margin-seconds",
+            "114",
+            "--minimum-post-lock-margin-seconds",
+            "113",
+            "--minimum-fetch-margin-seconds",
+            "98",
+            "--fetch-timeout-seconds",
+            "45",
+        ],
+        timeout_seconds=10,
+    )
+
+    assert result["status"] == "BUSY"
+    assert result["busy"]["lock_owner_run_id"] == "scheduled_fixture"
+    assert result["busy"]["lock_owner_phase"] == "odds_capture"
+    assert not protocol.outstanding_request_ids()
+
+
 def test_capture_failure_terminalizes_request_and_releases_lock(tmp_path: Path):
     failed = successful_report()
     failed["final_status"] = "AUTONOMOUS_LIVE_ODDS_CAPTURE_BLOCKED"

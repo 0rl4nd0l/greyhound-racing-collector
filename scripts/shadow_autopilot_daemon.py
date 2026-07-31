@@ -13,6 +13,7 @@ official-result evidence rows.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -12948,30 +12949,31 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     if args.command == "capture-one":
-        from race_collection.synchronous_manual_capture import (
-            install_cancellation_handlers,
-            restore_signal_handlers,
-            run_capture_one,
-        )
-
-        previous = install_cancellation_handlers()
-        try:
-            result = run_capture_one(
-                protocol_root=args.protocol_root,
-                evidence_root=args.evidence_root,
-                request_id=args.request_id,
-                db_path=args.db,
-                lock_path=args.lock_path,
-                output_dir=args.output_dir,
-                minimum_margin_seconds=args.minimum_margin_seconds,
-                minimum_post_lock_margin_seconds=(
-                    args.minimum_post_lock_margin_seconds
-                ),
-                minimum_fetch_margin_seconds=args.minimum_fetch_margin_seconds,
-                fetch_timeout_seconds=args.fetch_timeout_seconds,
+        with contextlib.redirect_stdout(sys.stderr):
+            from race_collection.synchronous_manual_capture import (
+                install_cancellation_handlers,
+                restore_signal_handlers,
+                run_capture_one,
             )
-        finally:
-            restore_signal_handlers(previous)
+
+            previous = install_cancellation_handlers()
+            try:
+                result = run_capture_one(
+                    protocol_root=args.protocol_root,
+                    evidence_root=args.evidence_root,
+                    request_id=args.request_id,
+                    db_path=args.db,
+                    lock_path=args.lock_path,
+                    output_dir=args.output_dir,
+                    minimum_margin_seconds=args.minimum_margin_seconds,
+                    minimum_post_lock_margin_seconds=(
+                        args.minimum_post_lock_margin_seconds
+                    ),
+                    minimum_fetch_margin_seconds=args.minimum_fetch_margin_seconds,
+                    fetch_timeout_seconds=args.fetch_timeout_seconds,
+                )
+            finally:
+                restore_signal_handlers(previous)
         print(json.dumps(result, sort_keys=True))
         return 0 if result.get("status") == "RECEIPT_READY" else 2
     if args.command == "run-odds-capture-once":
