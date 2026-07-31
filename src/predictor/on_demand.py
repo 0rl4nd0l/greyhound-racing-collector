@@ -140,6 +140,7 @@ class VerifiedPredictionBundle:
     index_entry: dict[str, Any]
     result: dict[str, Any]
     manifest: dict[str, Any]
+    request: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -445,7 +446,7 @@ def validate_prediction_result_v2(value: Any) -> dict[str, Any]:
     return dict(result)
 
 
-def _validate_request_binding(raw: bytes, result: Mapping[str, Any]) -> None:
+def _validate_request_binding(raw: bytes, result: Mapping[str, Any]) -> dict[str, Any]:
     request = _exact_fields(
         _canonical_json(raw, max_bytes=BUNDLE_CONTROL_MAX_BYTES, label="request"),
         {
@@ -497,6 +498,7 @@ def _validate_request_binding(raw: bytes, result: Mapping[str, Any]) -> None:
         or request["research_only"] is not True
     ):
         raise _blocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH", field="request")
+    return dict(request)
 
 
 class PredictionBlocked(RuntimeError):
@@ -1405,7 +1407,7 @@ def verify_indexed_prediction_bundle(
             raise _blocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH", field="evidence")
         if sha256_bytes(contents["config.json"]) != result["config"]["sha256"]:
             raise _blocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH", field="config")
-        _validate_request_binding(contents["request.json"], result)
+        request = _validate_request_binding(contents["request.json"], result)
         if sha256_bytes(contents[result["evidence"]["model_schema"]]) != result["model"]["schema_sha256"]:
             raise _blocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH", field="model_schema")
         for key, hash_key in (("model_artifact", "artifact_sha256"), ("model_manifest", "artifact_manifest_sha256")):
@@ -1445,7 +1447,7 @@ def verify_indexed_prediction_bundle(
         )
         _same_root_identity(root, root_fd, root_identity)
         _deadline(start, 5.0, monotonic)
-        return VerifiedPredictionBundle(str(entry["directory"]), dict(entry), result, manifest)
+        return VerifiedPredictionBundle(str(entry["directory"]), dict(entry), result, manifest, request)
     finally:
         for descriptor in reversed(descriptors):
             os.close(descriptor)

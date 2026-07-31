@@ -869,3 +869,4 @@ footer strong {
 #job-timeline li { margin-block:.5rem; overflow-wrap:anywhere; }
 #job-status:focus { outline:2px solid currentColor; outline-offset:.25rem; }
 @media (max-width: 600px) { #prediction-form { grid-template-columns:minmax(0,1fr); } }
+#manual-prediction:not(.capability-available) { display: none; }

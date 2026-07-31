@@ -37,7 +37,8 @@ def application(tmp_path, *, level=2, resolver=None, result=lambda _job: None, r
             raise R3Rejected("SELECTION_NOT_ALLOWLISTED")
         runners = ({"box": 1, "name": "ALPHA", "identity": "ALPHA"},)
         return ResolvedSubmission(JobInput(RACE, "2026-08-01T01:00:00Z", H, "latest-research", "model-v1", H, H, H, "manual-default", H, "auto", runners), runners)
-    install_r3_api(app, R3Services(store, resolve, launch or launched.append, result, clock=lambda: NOW, rate_limit=rate))
+    dispatcher = launch or (lambda job_id, _confirm: launched.append(job_id))
+    install_r3_api(app, R3Services(store, resolve, dispatcher, result, clock=lambda: NOW, rate_limit=rate))
     return app, store, launched
 
 
@@ -78,6 +79,19 @@ def test_level1_cannot_submit_or_read_and_resolution_blockers_disclose_no_job(tm
     assert launched == []
 
 
+def test_capability_is_authenticated_exact_level2_and_server_owned(tmp_path):
+    app, _, _ = application(tmp_path)
+    client = app.test_client()
+    assert client.get("/operator-ui/api/v1/r3-capability", base_url="https://localhost").status_code == 401
+    login(client)
+    response = client.get("/operator-ui/api/v1/r3-capability", base_url="https://localhost")
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "schema": "operator_ui_r3_capability_v1", "authorized": True,
+        "runtime_configured": True, "level": 2,
+    }
+
+
 def test_server_reresolution_failure_and_idempotency_conflict_are_stable(tmp_path):
     def stale(_selected, _now): raise R3Rejected("CURRENT_INDEX_STALE")
     app, _, launched = application(tmp_path / "stale", resolver=stale)
@@ -92,7 +106,7 @@ def test_server_reresolution_failure_and_idempotency_conflict_are_stable(tmp_pat
 
 
 def test_dispatch_failure_is_terminal_and_same_key_recovers_same_job(tmp_path):
-    def fail(_job_id):
+    def fail(_job_id, _confirm):
         raise OSError("dispatcher unavailable")
     app, store, _ = application(tmp_path, launch=fail)
     client = app.test_client(); token = login(client)
@@ -104,6 +118,41 @@ def test_dispatch_failure_is_terminal_and_same_key_recovers_same_job(tmp_path):
     assert recovered.status_code == 200
     assert recovered.get_json()["job_id"] == first.get_json()["job_id"]
     assert store.verify()
+
+
+def test_restart_observation_redispatches_an_unclaimed_waiting_job(tmp_path):
+    app, store, launched = application(tmp_path)
+    client = app.test_client(); token = login(client)
+    first = client.post("/operator-ui/api/v1/prediction-jobs", base_url="https://localhost", json=body(), headers={"X-CSRF-Token": token})
+    job_id = first.get_json()["job_id"]
+    app, restarted_store, launched = application(tmp_path)
+    client = app.test_client(); token = login(client)
+    again = client.post("/operator-ui/api/v1/prediction-jobs", base_url="https://localhost", json=body(), headers={"X-CSRF-Token": token})
+    assert again.status_code == 200
+    assert again.get_json()["job_id"] == job_id
+    assert launched == [job_id]
+    assert restarted_store.get(job_id).phase.value == "WAITING_FOR_CLAIM"
+    assert restarted_store.verify()
+
+
+def test_restart_get_alone_dispatches_and_claims_waiting_job_once(tmp_path):
+    app, store, _ = application(tmp_path)
+    client = app.test_client(); token = login(client)
+    created = client.post("/operator-ui/api/v1/prediction-jobs", base_url="https://localhost", json=body(), headers={"X-CSRF-Token": token})
+    job_id = created.get_json()["job_id"]
+    holder = {}; calls = []
+    def claim(job, confirm):
+        calls.append(job)
+        holder["store"].claim_attempt(job, now=NOW, confirm_audit=confirm)
+    app, restarted, _ = application(tmp_path, launch=claim)
+    holder["store"] = restarted
+    client = app.test_client(); login(client)
+    first = client.get(f"/operator-ui/api/v1/prediction-jobs/{job_id}", base_url="https://localhost")
+    second = client.get(f"/operator-ui/api/v1/prediction-jobs/{job_id}", base_url="https://localhost")
+    assert first.status_code == second.status_code == 200
+    assert calls == [job_id]
+    assert restarted.get(job_id).phase.value == "CLAIMED"
+    assert restarted.verify()
 
 
 def test_exact_ordered_runners_are_persisted_with_job_input(tmp_path):

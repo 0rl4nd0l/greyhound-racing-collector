@@ -879,7 +879,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 
 - Release: `R3`
 - Priority: `P3`
-- Status: `review`
+- Status: `blocked`
 - Dependencies: `GHU-030`, `GHU-031`
 - Model routing: GPT-5.6 Sol; fallback GPT-5.6 Terra
 - Session role: Fresh Codex X implementation session
@@ -893,14 +893,14 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Level 2 only after all R3 gates; deployment/live proof require separate Level 4/explicit authority.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Independently review this uncommitted coupled `GHU-032 + GHU-033 + GHU-034` candidate; parent retains acceptance and integration authority.
+- Next safe action: Preserve rejected history; correction authority is `GHU-032C2` through `GHU-034C2`.
 - Closeout evidence: At exact accepted base `dee082e954038c9ac4bf48d48bbe3901879310b8`, tree `302e144765d9bfd7ea3a7a1ef8a25e4fd3ab2c41`, the dependency was verified and this ticket transitioned `planned -> ready -> active -> review` in the fresh bounded implementation candidate. Focused and final validation identities are recorded in `STATUS.md`. Independent review, parent acceptance/integration, publication, deployment, runtime proof, and live prediction: `NOT_OCCURRED`.
 
 ## GHU-033 — Prediction progress stream and reconnect
 
 - Release: `R3`
 - Priority: `P3`
-- Status: `review`
+- Status: `blocked`
 - Dependencies: `GHU-030`, `GHU-032`
 - Model routing: GPT-5.6 Terra; fallback GPT-5.6 Luna
 - Session role: Fresh Codex X implementation session
@@ -914,14 +914,14 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Level 2 only after all R3 gates; deployment/live proof require separate Level 4/explicit authority.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Independently review this uncommitted coupled `GHU-032 + GHU-033 + GHU-034` candidate; parent retains acceptance and integration authority.
+- Next safe action: Preserve rejected history; correction authority is `GHU-032C2` through `GHU-034C2`.
 - Closeout evidence: At exact accepted base `dee082e954038c9ac4bf48d48bbe3901879310b8`, tree `302e144765d9bfd7ea3a7a1ef8a25e4fd3ab2c41`, the dependency was verified and this ticket transitioned `planned -> ready -> active -> review` in the fresh bounded implementation candidate. Polling was selected because no SSE infrastructure exists. Focused and final validation identities are recorded in `STATUS.md`. Independent review, parent acceptance/integration, publication, deployment, runtime proof, and live prediction: `NOT_OCCURRED`.
 
 ## GHU-034 — Live prediction result, evidence and offline replay controls
 
 - Release: `R3`
 - Priority: `P3`
-- Status: `review`
+- Status: `blocked`
 - Dependencies: `GHU-023`, `GHU-033`
 - Model routing: GPT-5.6 Terra; fallback GPT-5.6 Luna
 - Session role: Fresh Codex X implementation session
@@ -935,7 +935,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Level 2 only after all R3 gates; deployment/live proof require separate Level 4/explicit authority.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Independently review this uncommitted coupled `GHU-032 + GHU-033 + GHU-034` candidate; parent retains acceptance and integration authority.
+- Next safe action: Preserve rejected history; correction authority is `GHU-032C2` through `GHU-034C2`.
 - Closeout evidence: At exact accepted base `dee082e954038c9ac4bf48d48bbe3901879310b8`, tree `302e144765d9bfd7ea3a7a1ef8a25e4fd3ab2c41`, the dependency was verified and this ticket transitioned `planned -> ready -> active -> review` in the fresh bounded implementation candidate. Focused and final validation identities are recorded in `STATUS.md`. No offline command is displayed because no safe fixed command was established in this tranche. Independent review, parent acceptance/integration, publication, deployment, runtime proof, and live prediction: `NOT_OCCURRED`.
 
 ## GHU-035 — End-to-end manual prediction safety suite
@@ -943,7 +943,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Release: `R3`
 - Priority: `P3`
 - Status: `planned`
-- Dependencies: `GHU-031`, `GHU-032`, `GHU-033`, `GHU-034`
+- Dependencies: accepted `GHU-032C2` through `GHU-034C2`
 - Model routing: Pro (GPT-5.6 Sol Pro); fallback Extra High
 - Session role: Fresh independent review and adversarial test session
 - Outcome: Proves the UI cannot bypass the collector, duplicate an attempt, mutate protected data or overstate a result.
@@ -959,19 +959,31 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Next safe action: Wait until every listed prerequisite is accepted/integrated, then parent may mark ready and assign one fresh bounded implementer.
 - Closeout evidence: PENDING: exact base/head/tree/path/diff identities, commands/exits, focused tests, reviewer identity/verdict, parent decision, and applicable commit/PR/merge/deploy/proof fields.
 
-## GHU-032C1 through GHU-034C1 — Correct rejected coupled R3 candidate
+## GHU-032C1 through GHU-034C1 — Rejected first correction candidate
 
 - Release: `R3`
 - Priority: `P0`
-- Status: `review`
+- Status: `blocked`
 - Dependencies: accepted/integrated `GHU-030`, `GHU-031`
 - Outcome: Correct only the seven independently reviewed defects in the rejected `GHU-032`/`033`/`034` candidate.
 - Scope: Durable pre-POST request intent and same-key recovery; one accepted attempt claim with audited dispatch closure; exact runner and sealed-result bindings; authenticated server-owned capability; per-model dependent catalogs; typed default-off startup composition; bounded non-overlapping same-job reconnect.
 - Non-goals: No deployment, live prediction, collector/browser, retry, canonical DB/history write, training, promotion, EV, staking, betting, service/lock change, or external mutation.
-- Rejected predecessor: commit `8262553eafc1dc3513efebe6f0f1d68cc58e044b`; tree `c2a31048fa043e28f1deeccfaa55b8dde9e0fd59`; reviewer `019fba4a-d4de-7152-820e-504a013f7a85`; findings are the seven items recorded in `DECISIONS.md` and `STATUS.md`.
-- Claims supported: Bounded implementation candidate ready for independent review only.
+- Rejected predecessor base: commit `8262553eafc1dc3513efebe6f0f1d68cc58e044b`; tree `c2a31048fa043e28f1deeccfaa55b8dde9e0fd59`.
+- Rejected C1 evidence: commit `6a4e193a6677210b0dc8d406bb8c64df72230f86`; tree `7d5fd4da39963a01d82263fb2fbe2fb393c17744`; binary diff SHA-256 `e43fcdfc3c5b32026de241b18d07669d6599be5537390a64c123669f58508806`; implementer session `019fba50-88d9-7ad2-b727-b0067f0481dc`; independent reviewer session `019fba5e-ac63-7c21-b109-af800153b461`, verdict `REJECT/CORRECTION_REQUIRED`. The seven findings were unresolved submission intent replacement, non-recoverable dispatch ownership, injectable/non-concrete runtime composition, invented result-wrapper trust, incomplete capability-loss state, non-behavioral reconnect proof, and incorrect ledger truth. Focused validation passed `330`; Operator UI passed `807`; static gates passed. The broader `tests/race_collection` run was interrupted after at least one observed failure and produced no final count or pass.
+- Claims supported: Rejected C1 history only; no current implementation or acceptance claim.
 - Claims unsupported: Acceptance, integration, publication, deployment, runtime proof, live outcome access, or operational mutation.
-- Next safe action: Parent inspects the uncommitted delta, provisions/runs any unavailable required gates, and assigns independent review.
+- Next safe action: Preserve rejected C1; continue only through the bounded C2 correction authority.
+
+## GHU-032C2 through GHU-034C2 — Correct the seven findings against rejected C1
+
+- Release: `R3`
+- Priority: `P0`
+- Status: `review`
+- Dependencies: accepted/integrated `GHU-030`, `GHU-031`; rejected history `GHU-032C1` through `GHU-034C1`
+- Outcome: Correct only the seven independently proven C1 findings while preserving one click/request identity, one durable job, and at most one accepted worker attempt/process.
+- Claims supported: Uncommitted bounded C2 implementation candidate ready for independent review only; no acceptance or integration claim.
+- Claims unsupported: Acceptance, integration, publication, deployment, runtime proof, live prediction, outcome access, training, promotion, EV, staking, or betting.
+- Next safe action: Freeze the intended delta and assign a fresh independent exact-delta review; parent retains acceptance and integration authority.
 
 ## GHU-036 — Feature-flagged generated deployment package
 

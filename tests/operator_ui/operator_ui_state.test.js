@@ -1,0 +1,122 @@
+"use strict";
+
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const { createOperatorState } = require("../../static/js/operator-ui-state.js");
+
+function storage(initial = {}) {
+  const values = new Map(Object.entries(initial));
+  return {
+    getItem: key => values.has(key) ? values.get(key) : null,
+    setItem: (key, value) => values.set(key, String(value)),
+    removeItem: key => values.delete(key),
+  };
+}
+
+const A = { race_id: "race-a", model_id: "model-a", config_id: "config-a", odds_source_id: "auto" };
+const B = { ...A, race_id: "race-b" };
+
+test("lost response freezes selection and retransmits exactly the persisted key", () => {
+  const store = storage();
+  const state = createOperatorState({ storage: store, randomUUID: () => "key-1" });
+  state.setCapability({ authorized: true, runtime_configured: true, level: 2 });
+  assert.deepEqual(state.beginSubmission(A), { selection: A, idempotency_key: "key-1" });
+  state.responseLost();
+  assert.equal(state.canSubmit(B), false);
+  assert.throws(() => state.beginSubmission(B), /UNRESOLVED_INTENT/);
+  assert.deepEqual(state.retransmission(), { selection: A, idempotency_key: "key-1" });
+
+  const refreshed = createOperatorState({ storage: store, randomUUID: () => "key-2" });
+  refreshed.setCapability({ authorized: true, runtime_configured: true, level: 2 });
+  assert.equal(refreshed.canSubmit(B), false);
+  assert.deepEqual(refreshed.retransmission(), { selection: A, idempotency_key: "key-1" });
+});
+
+test("job association and stable rejection are the only intent release points", () => {
+  const store = storage();
+  const state = createOperatorState({ storage: store, randomUUID: () => "key-1" });
+  state.setCapability({ authorized: true, runtime_configured: true, level: 2 });
+  state.beginSubmission(A);
+  state.associateJob("job_0123456789abcdef0123456789abcdef");
+  assert.equal(state.intent(), null);
+  assert.equal(state.jobId(), "job_0123456789abcdef0123456789abcdef");
+
+  state.clearTerminalJob();
+  state.beginSubmission(B);
+  state.stableRejection("SELECTION_NOT_ALLOWLISTED");
+  assert.equal(state.intent(), null);
+  assert.equal(state.canSubmit(A), true);
+});
+
+test("reconnect owns one non-overlapping timer and never posts", async () => {
+  const timers = [];
+  const requests = [];
+  const state = createOperatorState({
+    storage: storage({ operatorUiJobV1: "job_0123456789abcdef0123456789abcdef" }),
+    randomUUID: () => "unused",
+    setTimer: (fn, delay) => (timers.push({ fn, delay }), timers.length),
+    clearTimer: () => {},
+    getJob: async id => (requests.push(id), { job_id: id, terminal: false }),
+  });
+  state.setCapability({ authorized: true, runtime_configured: true, level: 2 });
+  state.reconnect();
+  state.reconnect();
+  assert.equal(timers.length, 1);
+  await timers.shift().fn();
+  assert.equal(requests.length, 1);
+  assert.equal(timers.length, 1);
+  assert.equal(state.transportAttempts(), 0);
+});
+
+test("capability loss cancels reconnect and blocks every submission", () => {
+  let cancelled = 0;
+  const state = createOperatorState({
+    storage: storage(), randomUUID: () => "key-1",
+    setTimer: () => 7, clearTimer: () => { cancelled += 1; },
+  });
+  state.setCapability({ authorized: true, runtime_configured: true, level: 2 });
+  assert.equal(state.canSubmit(A), true);
+  state.reconnect("job_0123456789abcdef0123456789abcdef");
+  state.loseCapability("SESSION_EXPIRED");
+  assert.equal(cancelled, 1);
+  assert.equal(state.canSubmit(A), false);
+  assert.throws(() => state.beginSubmission(A), /CAPABILITY_UNAVAILABLE/);
+});
+
+test("transport backoff is bounded and exhausts after six exact-job reads", async () => {
+  const timers = [], delays = [], reads = [];
+  const job = "job_0123456789abcdef0123456789abcdef";
+  const state = createOperatorState({ storage: storage({ operatorUiJobV1: job }), randomUUID: () => "unused",
+    setTimer: (fn, delay) => (timers.push(fn), delays.push(delay), timers.length), clearTimer: () => {},
+    getJob: async id => { reads.push(id); throw new Error("offline"); } });
+  state.setCapability({ authorized: true, runtime_configured: true, level: 2 }); state.reconnect();
+  while (timers.length) await timers.shift()();
+  assert.deepEqual(delays, [0, 1500, 3000, 6000, 12000, 12000]);
+  assert.deepEqual(reads, Array(6).fill(job));
+  assert.equal(state.transportAttempts(), 6);
+});
+
+test("successful recovery resets only transport backoff and terminal cleanup removes the exact job", async () => {
+  const timers = []; let reads = 0;
+  const job = "job_0123456789abcdef0123456789abcdef"; const store = storage({ operatorUiJobV1: job });
+  const state = createOperatorState({ storage: store, randomUUID: () => "unused",
+    setTimer: fn => (timers.push(fn), timers.length), clearTimer: () => {},
+    getJob: async id => { assert.equal(id, job); reads += 1; if (reads === 1) throw new Error("offline"); return { job_id: id, terminal: reads === 3 }; } });
+  state.setCapability({ authorized: true, runtime_configured: true, level: 2 }); state.reconnect();
+  await timers.shift()(); await timers.shift()();
+  assert.equal(state.transportAttempts(), 0); assert.equal(state.jobId(), job);
+  await timers.shift()();
+  assert.equal(state.jobId(), null); assert.equal(timers.length, 0);
+});
+
+test("stable auth or not-found response stops timers and disables without substituting a job", async () => {
+  for (const code of ["AUTHENTICATION_REQUIRED", "JOB_NOT_FOUND"]) {
+    const timers = []; const job = "job_0123456789abcdef0123456789abcdef";
+    const state = createOperatorState({ storage: storage({ operatorUiJobV1: job }), randomUUID: () => "unused",
+      setTimer: fn => (timers.push(fn), timers.length), clearTimer: () => {},
+      getJob: async id => { assert.equal(id, job); throw Object.assign(new Error(code), { stable: true }); } });
+    state.setCapability({ authorized: true, runtime_configured: true, level: 2 }); state.reconnect();
+    await timers.shift()();
+    assert.equal(timers.length, 0); assert.equal(state.canSubmit(A), false); assert.equal(state.jobId(), job);
+  }
+});

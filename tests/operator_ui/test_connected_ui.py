@@ -22,7 +22,8 @@ def test_connected_client_uses_only_fixed_get_api_and_bounded_returned_ids():
     assert "method:'GET'" in source
     assert "safeId.test(id)" in source and "encodeURIComponent(id)" in source
     assert "method:'POST'" in source and "X-CSRF-Token" in source
-    assert "setTimeout" in source and "EventSource" not in source
+    state_source = (ROOT / "static/js/operator-ui-state.js").read_text(encoding="utf-8")
+    assert "setTimeout" in state_source and "EventSource" not in source + state_source
     for prohibited in ("URLSearchParams", "FormData", "XMLHttpRequest", "WebSocket"):
         assert prohibited not in source
 
@@ -43,12 +44,12 @@ def test_connected_client_has_explicit_isolated_truthful_accessible_states():
 
 def test_prediction_intent_and_reconnect_are_durable_and_bounded():
     source = SCRIPT.read_text(encoding="utf-8")
-    assert "operatorUiPredictionIntentV1" in source
-    assert "localStorage.setItem(INTENT_KEY" in source
-    assert "maxReconnectAttempts" in source
-    assert "pollTimer" in source and "pollInFlight" in source
-    assert "r3-capability" in source
+    state = (ROOT / "static/js/operator-ui-state.js").read_text(encoding="utf-8")
+    assert "createOperatorState" in source and "r3-capability" in source
+    assert "operatorUiPredictionIntentV1" in state and "maximum = 6" in state
     assert "modelCatalog" in source
+    assert "prediction-retransmit" in source and "retransmitButton.type='button'" in source
+    assert "retransmitButton.addEventListener('click'" in source
 
 
 def test_connected_template_default_off_and_prototype_are_distinct():

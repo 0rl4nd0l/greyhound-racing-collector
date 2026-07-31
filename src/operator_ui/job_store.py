@@ -314,11 +314,14 @@ class JobInput:
         if not isinstance(self.ordered_runners,tuple) or not self.ordered_runners: raise ValueError("ordered runners required")
         normalized=[]; identities=set()
         for runner in self.ordered_runners:
-            row=_exact_mapping(runner,{"box","name","identity"},"ordered runner")
+            if not isinstance(runner,Mapping) or set(runner) not in ({"box","name","identity"},{"box","name","identity","source_native_runner_id"}): raise ValueError("invalid ordered runner")
+            row=dict(runner)
             if type(row["box"]) is not int or not 1<=row["box"]<=32: raise ValueError("invalid runner box")
             name=_identifier(row["name"],"runner name"); identity=_identifier(row["identity"],"runner identity")
             if identity in identities: raise ValueError("duplicate runner identity")
-            identities.add(identity); normalized.append({"box":row["box"],"name":name,"identity":identity})
+            normalized_row={"box":row["box"],"name":name,"identity":identity}
+            if "source_native_runner_id" in row: normalized_row["source_native_runner_id"]=_identifier(row["source_native_runner_id"],"source native runner id")
+            identities.add(identity); normalized.append(normalized_row)
         values["ordered_runners"]=normalized
         parsed=datetime.fromisoformat(self.jump_timestamp.replace("Z","+00:00"))
         if parsed.tzinfo is None or parsed.utcoffset() is None: raise ValueError("jump_timestamp must be timezone aware")

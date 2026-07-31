@@ -3,8 +3,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
-import re
 import threading
 import time
 import uuid
@@ -27,6 +25,8 @@ from .job_store import (
     resolve_audit_confirmation,
 )
 from .security import AuditUnavailable, OperationAuditEvent
+from pathlib import Path
+from src.predictor.on_demand import PredictionBlocked, VerifiedPredictionBundle, VerifiedPredictionBundleIndex, verify_indexed_prediction_bundle, verify_prediction_bundle_index
 
 API_PREFIX = "/operator-ui/api/v1"
 SUBMISSION_FIELDS = frozenset(
@@ -60,7 +60,7 @@ class ResolvedSubmission:
 class R3Services:
     job_store: JobStore
     resolve_submission: Callable[[Mapping[str, str], datetime], ResolvedSubmission]
-    launch_once: Callable[[str], None]
+    launch_once: Callable[[str, Callable[[Mapping[str, Any]], Any]], None]
     read_verified_result: Callable[[Job], Mapping[str, Any] | None]
     clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc)
     rate_limit: int = 5
@@ -86,6 +86,25 @@ class _ActorRateLimit:
             return True
 
 
+def build_verified_bundle_reader(root: Path, store: JobStore) -> Callable[[Job], VerifiedPredictionBundle | None]:
+    """Read exactly one producer-sealed bundle selected by persisted producer facts."""
+    fixed_root=Path(root)
+    def read(job: Job) -> VerifiedPredictionBundle | None:
+        try:
+            facts=[event["facts"] for event in store.events(job.job_id) if event["phase"] in {Phase.PRODUCER_COMPLETED.value,Phase.PREDICTION_READY.value}]
+            prediction_ids={fact.get("prediction_id") for fact in facts if fact.get("prediction_id") is not None}
+            if len(prediction_ids)!=1: return None
+            prediction_id=next(iter(prediction_ids))
+            view=verify_prediction_bundle_index(fixed_root,return_verified_view=True)
+            if not isinstance(view,VerifiedPredictionBundleIndex): return None
+            matches=[entry for entry in view.entries if entry.get("job_id")==job.job_id and entry.get("prediction_id")==prediction_id and entry.get("status")=="PREDICTION_READY" and entry.get("blocker_stage") is None]
+            if len(matches)!=1: return None
+            return verify_indexed_prediction_bundle(fixed_root,matches[0])
+        except (OSError,ValueError,TypeError,JobStoreError,PredictionBlocked):
+            return None
+    return read
+
+
 def _bounded(value: Any, name: str, maximum: int = 256) -> str:
     if not isinstance(value, str) or not value or len(value.encode()) > maximum or any(ord(c) < 32 or ord(c) == 127 for c in value):
         raise R3Rejected(f"INVALID_{name.upper()}", 400)
@@ -97,62 +116,40 @@ def _public_facts(value: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _verified_result(job: Job, value: Any) -> dict[str, Any] | None:
-    if not isinstance(value, Mapping) or set(value) != {"schema", "verification_status", "probabilities", "evidence"}:
+    if not isinstance(value, VerifiedPredictionBundle):
         return None
-    if value.get("schema") != "operator_ui_verified_prediction_result_v1" or value.get("verification_status") != "VERIFIED":
+    result=value.result; entry=value.index_entry; manifest=value.manifest
+    request_value=value.request
+    if not isinstance(request_value,Mapping):
         return None
-    evidence = value.get("evidence")
-    evidence_fields = {
-        "job_id", "race_id", "jump_timestamp", "runner_set_sha256", "prediction_id",
-        "request_id", "claim_id", "attempt_id", "response_id", "receipt_id", "consume_id",
-        "source_hashes", "temporal_cutoff", "bundle_manifest", "model_sha256",
-        "config_sha256", "input_sha256", "terminal_classification", "protocol",
-        "model_selector", "resolved_model_identity", "config_id", "odds_source",
-        "ordered_runners", "result_manifest", "evidence_manifest", "provenance_chain",
-    }
-    if not isinstance(evidence, Mapping) or set(evidence) != evidence_fields:
+    if result.get("status") != "PREDICTION_READY" or entry.get("status") != "PREDICTION_READY":
         return None
-    expected = (job.job_id, job.input.race_id, job.input.jump_timestamp, job.input.runner_set_sha256,
-                job.input.model_sha256, job.input.config_sha256, job.input.identity_sha256, "PREDICTION_READY")
-    actual = tuple(evidence[name] for name in ("job_id", "race_id", "jump_timestamp", "runner_set_sha256",
-                                               "model_sha256", "config_sha256", "input_sha256", "terminal_classification"))
-    if actual != expected or not isinstance(evidence["source_hashes"], Mapping) or not evidence["source_hashes"] or not isinstance(evidence["bundle_manifest"], Mapping) or not evidence["bundle_manifest"]:
+    if (entry.get("job_id"),result.get("job_id"),manifest.get("job_id")) != (job.job_id,job.job_id,job.job_id):
         return None
-    if (evidence["protocol"], evidence["model_selector"], evidence["resolved_model_identity"], evidence["config_id"], evidence["odds_source"]) != ("sealed_prediction_v2", job.input.model_selector, job.input.resolved_model_identity, job.input.config_id, job.input.odds_source):
+    if (entry.get("prediction_id"),manifest.get("prediction_id")) != (result.get("prediction_id"),result.get("prediction_id")):
         return None
-    if evidence["ordered_runners"] != job.input.fields()["ordered_runners"]:
+    race=result.get("race",{}); model=result.get("model",{}); config=result.get("config",{}); evidence=result.get("evidence",{})
+    if (race.get("race_id"),race.get("jump_timestamp"),evidence.get("runner_set_sha256")) != (job.input.race_id,job.input.jump_timestamp,job.input.runner_set_sha256):
         return None
-    identifiers=("prediction_id","request_id","claim_id","attempt_id","response_id","receipt_id","consume_id")
-    if any(not isinstance(evidence[name],str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}",evidence[name]) for name in identifiers):
+    if (model.get("requested"),model.get("resolved"),model.get("artifact_sha256"),model.get("artifact_manifest_sha256"),model.get("schema_sha256"),config.get("sha256")) != (job.input.model_selector,job.input.resolved_model_identity,job.input.model_sha256,job.input.model_manifest_sha256,job.input.model_schema_sha256,job.input.config_sha256):
         return None
-    cutoff=evidence["temporal_cutoff"]
-    if not isinstance(cutoff,Mapping) or set(cutoff)!={"capture_cutoff","scoring_cutoff","post_cutoff_evidence"} or cutoff["post_cutoff_evidence"] is not False or cutoff["capture_cutoff"]!=job.input.jump_timestamp or cutoff["scoring_cutoff"]!=job.input.jump_timestamp:
+    request_model=request_value.get("model",{})
+    if (request_value.get("job_id"),request_value.get("race_id"),request_value.get("jump_timestamp"),request_value.get("runner_set_sha256"),request_value.get("odds_source"),request_value.get("config_sha256")) != (job.job_id,job.input.race_id,job.input.jump_timestamp,job.input.runner_set_sha256,job.input.odds_source,job.input.config_sha256):
         return None
-    manifests=(evidence["bundle_manifest"],evidence["result_manifest"],evidence["evidence_manifest"])
-    if any(not isinstance(manifest,Mapping) or not manifest for manifest in manifests):
+    if (request_model.get("requested"),request_model.get("resolved"),request_model.get("model_sha256"),request_model.get("manifest_sha256"),request_model.get("schema_sha256")) != (job.input.model_selector,job.input.resolved_model_identity,job.input.model_sha256,job.input.model_manifest_sha256,job.input.model_schema_sha256):
         return None
-    for manifest in manifests:
-        if any(not isinstance(path,str) or path.startswith(("/","~")) or ".." in path.split("/") or "\\" in path for path in manifest): return None
-    chain=evidence["provenance_chain"]
-    if not isinstance(chain,Mapping) or set(chain)!=set(identifiers) or any(chain[name]!=evidence[name] for name in identifiers): return None
-    digests=[*evidence["source_hashes"].values(),*[digest for manifest in manifests for digest in manifest.values()]]
-    for digest in digests:
-        if not isinstance(digest, str) or len(digest) != 64 or set(digest) - set("0123456789abcdef"):
-            return None
-    probabilities = value.get("probabilities")
-    if not isinstance(probabilities, list) or not probabilities:
+    rows=result.get("prediction",{}).get("predictions") if isinstance(result.get("prediction"),Mapping) else None
+    if not isinstance(rows,list):
         return None
-    total = 0.0; runner_ids = set(); expected_runner_ids=[runner["identity"] for runner in job.input.ordered_runners]
-    for index, row in enumerate(probabilities, 1):
-        if not isinstance(row, Mapping) or set(row) != {"rank", "runner_id", "probability"} or row["rank"] != index:
-            return None
-        probability = row["probability"]
-        if isinstance(probability, bool) or not isinstance(probability, (int, float)) or not math.isfinite(probability) or not 0 <= probability <= 1 or not isinstance(row["runner_id"], str) or not row["runner_id"] or row["runner_id"] in runner_ids:
-            return None
-        runner_ids.add(row["runner_id"]); total += probability
-    if not math.isclose(total, 1.0, abs_tol=1e-9) or [row["runner_id"] for row in probabilities] != expected_runner_ids:
+    expected={(r["box"],r["name"],r["identity"],r.get("source_native_runner_id")) for r in job.input.fields()["ordered_runners"]}
+    actual={(r.get("box_number"),r.get("dog_name"),r.get("identity"),r.get("source_native_runner_id")) for r in rows}
+    if actual != expected or len(actual)!=len(rows):
         return None
-    return {"schema": value["schema"], "verification_status": "VERIFIED", "probabilities": [dict(row) for row in probabilities], "evidence": dict(evidence)}
+    request_runners=request_value.get("runners")
+    if not isinstance(request_runners,list) or {(r.get("box_number"),r.get("display_name"),r.get("identity"),r.get("source_native_runner_id")) for r in request_runners} != expected or len(request_runners)!=len(expected):
+        return None
+    probabilities=[{"rank":r["rank"],"runner_id":r["identity"],"box":r["box_number"],"name":r["dog_name"],"probability":r["probability"]} for r in rows]
+    return {"schema":"operator_ui_verified_prediction_result_v1","verification_status":"VERIFIED","probabilities":probabilities,"evidence":{"prediction_id":result["prediction_id"],"job_id":job.job_id,"bundle_locator":value.directory,"manifest":dict(manifest),"index_entry":dict(entry)}}
 
 
 def _job_payload(store: JobStore, job: Job, result_reader: Callable[[Job], Mapping[str, Any] | None]) -> dict[str, Any]:
@@ -192,7 +189,10 @@ def install_r3_api(app: Flask, services: R3Services | None = None) -> bool:
     audit = app.extensions.get("operator_ui_audit")
     if not callable(authenticate) or not callable(csrf) or audit is None:
         raise RuntimeError("R3 requires the installed connected security boundary")
+    app.extensions["operator_ui_r3_services"] = services
     limiter = _ActorRateLimit(services.rate_limit, services.rate_window_seconds)
+    dispatched: set[str] = set()
+    dispatch_lock = threading.Lock()
 
     def authority() -> tuple[str, int] | None:
         actor = authenticate()
@@ -211,16 +211,16 @@ def install_r3_api(app: Flask, services: R3Services | None = None) -> bool:
         _identity, level = actor
         if level != 2:
             return response_error("NON_OPERATIONAL/LEVEL_2_REQUIRED", 403)
-        return jsonify(schema="operator_ui_r3_capability_v1", authorized=True, runtime_configured=True)
+        return jsonify(schema="operator_ui_r3_capability_v1", authorized=True, runtime_configured=True, level=2)
 
-    def confirm(intent: Mapping[str, Any]):
+    def confirm(intent: Mapping[str, Any], session_identifier: str):
         operation = str(intent["operation"])
         proposed = intent["proposed_event"]
         input_value = intent["input"]
         event = OperationAuditEvent(
             event_id=str(uuid.uuid4()), event_time_utc=services.clock().astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z"),
             actor_identity=str(intent["actor_identity"]), actor_level=2,
-            session_identifier=str(session["operator_session_id"]), request_identifier=str(uuid.uuid4()),
+            session_identifier=session_identifier, request_identifier=str(uuid.uuid4()),
             client_identity="same-origin-authenticated-session", operation=f"manual_prediction_{operation}",
             idempotency_key_sha256=str(intent["idempotency_key_sha256"]), job_id=str(intent["job_id"]),
             race_id=str(input_value["race_id"]), runner_set_sha256=str(input_value["runner_set_sha256"]),
@@ -232,6 +232,21 @@ def install_r3_api(app: Flask, services: R3Services | None = None) -> bool:
         )
         audit_hash = audit.append_operation_and_confirm(event)
         return resolve_audit_confirmation(intent, audit_hash)
+
+    def dispatch_waiting(job: Job, confirm_audit) -> Job:
+        if job.phase is not Phase.WAITING_FOR_CLAIM or job.attempt_claimed:
+            return job
+        try:
+            with dispatch_lock:
+                if job.job_id not in dispatched:
+                    services.launch_once(job.job_id, confirm_audit)
+                    dispatched.add(job.job_id)
+        except Exception as exc:
+            current = services.job_store.get(job.job_id)
+            if current.phase is Phase.WAITING_FOR_CLAIM and not current.attempt_claimed:
+                return services.job_store.transition(current.job_id, Phase.FAILED, now=services.clock(), status="FAILED", reason="DISPATCH_FAILED", facts={"error": type(exc).__name__}, confirm_audit=confirm_audit)
+            return current
+        return services.job_store.get(job.job_id)
 
     @app.post(f"{API_PREFIX}/prediction-jobs", endpoint="operator_ui_r3_submit")
     @csrf
@@ -254,6 +269,8 @@ def install_r3_api(app: Flask, services: R3Services | None = None) -> bool:
         if not limiter.admit(identity, time.monotonic()):
             return response_error("RATE_LIMITED", 429)
         now = services.clock()
+        session_identifier = str(session["operator_session_id"])
+        confirm_audit = lambda intent: confirm(intent, session_identifier)
         try:
             resolved = services.resolve_submission(selected, now)
             if type(resolved) is not ResolvedSubmission or type(resolved.job_input) is not JobInput or not resolved.ordered_runners:
@@ -266,31 +283,27 @@ def install_r3_api(app: Flask, services: R3Services | None = None) -> bool:
             else:
                 job_input = replace(resolved.job_input, ordered_runners=ordered_runners)
             job = services.job_store.create(actor_identity=identity, actor_level=2, operation="manual_prediction",
-                idempotency_key=selected["idempotency_key"], job_input=job_input, now=now, confirm_audit=confirm)
+                idempotency_key=selected["idempotency_key"], job_input=job_input, now=now, confirm_audit=confirm_audit)
             newly_observed = job.phase is Phase.SUBMITTED
             launch_eligible = False
             if job.phase is Phase.SUBMITTED:
                 try:
-                    job = services.job_store.transition(job.job_id, Phase.VALIDATED, now=services.clock(), status="VALID", reason="validated", confirm_audit=confirm)
+                    job = services.job_store.transition(job.job_id, Phase.VALIDATED, now=services.clock(), status="VALID", reason="validated", confirm_audit=confirm_audit)
                 except IllegalTransition:
                     job = services.job_store.get(job.job_id)
             if job.phase is Phase.VALIDATED:
                 try:
-                    job = services.job_store.transition(job.job_id, Phase.WAITING_FOR_CLAIM, now=services.clock(), status="WAITING", reason="ready", confirm_audit=confirm)
+                    job = services.job_store.transition(job.job_id, Phase.WAITING_FOR_CLAIM, now=services.clock(), status="WAITING", reason="ready", confirm_audit=confirm_audit)
                     launch_eligible = True
                 except IllegalTransition:
                     job = services.job_store.get(job.job_id)
+            # WAITING is the durable dispatch queue.  Every observation may
+            # notify the fixed dispatcher; claim_attempt remains the sole,
+            # atomic owner of the one permitted worker attempt/process.
+            if job.phase is Phase.WAITING_FOR_CLAIM and not job.attempt_claimed:
+                launch_eligible = True
             if launch_eligible:
-                try:
-                    services.launch_once(job.job_id)
-                except Exception as exc:
-                    current = services.job_store.get(job.job_id)
-                    if current.phase is Phase.WAITING_FOR_CLAIM and not current.attempt_claimed:
-                        job = services.job_store.transition(job.job_id, Phase.FAILED, now=services.clock(), status="FAILED", reason="DISPATCH_FAILED", facts={"error": type(exc).__name__}, confirm_audit=confirm)
-                    else:
-                        job = current
-                else:
-                    job = services.job_store.get(job.job_id)
+                job = dispatch_waiting(job, confirm_audit)
             return jsonify(_job_payload(services.job_store, job, services.read_verified_result)), 202 if newly_observed else 200
         except IdempotencyConflict:
             return response_error("IDEMPOTENCY_CONFLICT", 409)
@@ -311,6 +324,8 @@ def install_r3_api(app: Flask, services: R3Services | None = None) -> bool:
             job = services.job_store.get(_bounded(job_id, "job_id", 64))
             if job.actor_identity != identity:
                 return response_error("JOB_NOT_FOUND", 404)
+            session_identifier = str(session["operator_session_id"])
+            job = dispatch_waiting(job, lambda intent: confirm(intent, session_identifier))
             return jsonify(_job_payload(services.job_store, job, services.read_verified_result))
         except (R3Rejected, JobStoreError):
             return response_error("JOB_NOT_FOUND", 404)

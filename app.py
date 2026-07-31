@@ -730,8 +730,14 @@ if not app.config.get("SECRET_KEY"):
 # absent unless the server explicitly enables and fully configures this gate.
 from src.operator_ui.security import install_connected_mode, load_connected_environment
 from src.operator_ui.api import install_level_1_api
-from src.operator_ui.bootstrap import bind_configured_live_evidence, bind_configured_r3
+from src.operator_ui.bootstrap import bind_configured_live_evidence, bind_configured_r3, configure_r3_startup
 
+# The only R3 startup input is a finite profile selector.  All commands,
+# paths, stores, clocks, model/config artifacts and retry bounds are derived
+# inside the repository-owned factory; the authoritative default is disabled.
+app.config["OPERATOR_UI_R3_PROFILE"] = os.environ.get("OPERATOR_UI_R3_PROFILE", "disabled")
+
+configure_r3_startup(app)
 load_connected_environment(app)
 install_connected_mode(app)
 install_level_1_api(app)

@@ -468,3 +468,17 @@ supersession.
 - Evidence: commit `8262553eafc1dc3513efebe6f0f1d68cc58e044b`, tree `c2a31048fa043e28f1deeccfaa55b8dde9e0fd59`, reviewer session `019fba4a-d4de-7152-820e-504a013f7a85`.
 - Consequences: Seven unresolved findings require correction: durable pre-POST intent; atomic launch and failure closure; full sealed-result binding; server-owned R3 capability; model-specific catalogs; default-off repository startup factory; and bounded non-overlapping reconnect.
 - Supersession: Does not alter accepted `GHU-030`/`GHU-031` evidence. The correction remains unaccepted pending independent review and parent decision.
+
+## 2026-08-01 — DEC-GHU-032C1-034C1-REJECTED
+
+- Context: Independent review of C1 against the original rejected coupled R3 candidate.
+- Decision: C1 is rejected/blocked and the correction proceeds only as `GHU-032C2` through `GHU-034C2`.
+- Evidence: C1 commit `6a4e193a6677210b0dc8d406bb8c64df72230f86`, tree `7d5fd4da39963a01d82263fb2fbe2fb393c17744`, binary diff SHA-256 `e43fcdfc3c5b32026de241b18d07669d6599be5537390a64c123669f58508806`; implementer `019fba50-88d9-7ad2-b727-b0067f0481dc`; reviewer `019fba5e-ac63-7c21-b109-af800153b461`, verdict `REJECT/CORRECTION_REQUIRED`; focused `330 passed`, Operator UI `807 passed`, static gates passed; broader race-collection validation interrupted after an observed failure without a terminal count/pass.
+- Consequences: Preserve accepted `GHU-030`/`GHU-031` evidence and both rejected predecessor deltas. `GHU-035` depends on accepted C2, not the blocked originals. No acceptance, integration, publication, deployment, or runtime proof is claimed.
+
+## 2026-08-01 — DEC-GHU-032C2-PARENT-PRE-REVIEW-RETURN
+
+- Context: Parent inspection returned C2 for five narrow repairs before independent review.
+- Decision: Repair only GET-observed WAITING recovery, authenticated sealed-request binding, executable reconnect/accessibility coverage, fixed job-store object safety, and cleanup/ledger truth. Preserve the single terminal broad result as environment/path-gate evidence on rejected bytes; it is not an owner blocker and is not rerun.
+- Evidence: Focused Python `564 passed`; executable Node state machine `7 passed`; updated full Operator UI `814 passed in 88.84s`; Python/Node syntax and `git diff --check` passed. The preserved broad invocation exited 2 after `1 failed, 389 passed in 650.55s` when the race-collection operator rejected the run-worktree basetemp, then ended with `KeyboardInterrupt`.
+- Consequences: C2 may enter `REVIEW` only as an unaccepted candidate. Independent review and parent acceptance/integration remain pending; no deployment, runtime proof, live action, training, promotion, EV, staking, or betting is authorized or claimed.

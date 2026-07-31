@@ -1,11 +1,20 @@
 import pytest
+import shutil
+import hashlib
+import time
+from datetime import datetime, timezone
+from pathlib import Path
 from flask import Flask
 from werkzeug.security import generate_password_hash
 
 from src.operator_ui.api import install_level_1_api, register_level_1_provider
-from src.operator_ui.bootstrap import CONFIG_KEY, bind_configured_live_evidence
+from src.operator_ui.bootstrap import CONFIG_KEY, R3_PROFILE_KEY, bind_configured_live_evidence, bind_configured_r3
 from src.operator_ui.live_adapters import LiveEvidenceAdapters
 from src.operator_ui.security import install_connected_mode
+import src.operator_ui.bootstrap as bootstrap_module
+from src.predictor.on_demand import resolve_model
+from race_collection.synchronous_manual_capture import VerifiedCurrentRaceIndex
+from src.operator_ui.job_store import Phase
 
 
 def installed_app(tmp_path):
@@ -68,3 +77,83 @@ def test_binding_occurs_only_when_called_never_during_requests(tmp_path):
     client = app.test_client()
     client.get("/operator-ui/api/v1/overview")
     assert app.extensions["operator_ui_level_1_api_providers"] == {}
+
+
+def test_r3_startup_is_default_off_and_has_no_service_callback_or_path_injection(tmp_path):
+    app = installed_app(tmp_path)
+    assert bind_configured_r3(app) is False
+    assert not any(key in app.config for key in ("OPERATOR_UI_R3_SERVICES", "OPERATOR_UI_R3_RUNTIME"))
+    app.config[R3_PROFILE_KEY] = "../../arbitrary"
+    with pytest.raises(ValueError, match="finite R3 profile"):
+        bind_configured_r3(app)
+
+
+def test_finite_testing_fixture_profile_builds_real_repository_composition(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    source_root = Path(__file__).parents[2]
+    model = resolve_model("latest-research")
+    copies = {
+        source_root / "configs/prediction/manual-default.json": repo / "configs/prediction/manual-default.json",
+        source_root / "scripts/predict_race_now.py": repo / "scripts/predict_race_now.py",
+        model.model_path: repo / model.model_path.relative_to(source_root),
+        model.manifest_path: repo / model.manifest_path.relative_to(source_root),
+        model.schema_path: repo / model.schema_path.relative_to(source_root),
+    }
+    for source, target in copies.items():
+        target.parent.mkdir(parents=True, exist_ok=True); shutil.copy2(source, target)
+    base = repo / "tests/operator_ui/fixtures/r3_runtime"; base.mkdir(parents=True); base.chmod(0o700)
+    for directory in ("current_evidence","prediction_bundles","collector_requests","capture_evidence_a","capture_evidence_b"):
+        (base / directory).mkdir(mode=0o700)
+    for filename in ("canonical.sqlite3","current_index.json"):(base / filename).write_bytes(b"{}")
+    monkeypatch.setattr(bootstrap_module, "_REPOSITORY_ROOT", repo)
+    digest=hashlib.sha256(b"fixture-runners").hexdigest()
+    race={"race_id":"race-fixture","jump_datetime":"2026-08-01T01:00:00+00:00","runner_set_sha256":digest,
+          "runners":[{"box_number":1,"display_name":"ALPHA","identity":"alpha","source_native_runner_id":"dog-1"}]}
+    view=VerifiedCurrentRaceIndex("collector_current_race_index_v2","run","2026-08-01T00:00:00Z",digest,b"{}",(race,),"source.json",digest,digest,digest,digest)
+    monkeypatch.setattr(bootstrap_module,"bounded_current_race_index",lambda **_:view)
+    def terminal_runner(store,job_id,_worker,*,now,confirm_audit):
+        job,attempt=store.claim_attempt(job_id,now=now(),confirm_audit=confirm_audit)
+        store.transition(job_id,Phase.ATTEMPT_STARTED,now=now(),status="RUNNING",reason="predictor_started",facts={"attempt_id":attempt,"pid":123},confirm_audit=confirm_audit)
+        empty=hashlib.sha256(b"").hexdigest()
+        facts={"attempt_id":attempt,"pid":123,"exit_code":-1,"stdout_complete":False,"stdout_prefix_length":0,"stdout_prefix_sha256":empty,"stderr_complete":False,"stderr_prefix_length":0,"stderr_prefix_sha256":empty}
+        return store.transition(job_id,Phase.FAILED,now=now(),status="FAILED",reason="POST_SPAWN_FAILURE",facts=facts,confirm_audit=confirm_audit)
+    monkeypatch.setattr(bootstrap_module,"run_once",terminal_runner)
+    app = Flask(__name__)
+    app.config.update(TESTING=True, OPERATOR_UI_CONNECTED_MODE=True,
+        OPERATOR_UI_SECRET_KEY="fixture-secret-"+"x"*40, OPERATOR_UI_USERNAME="viewer",
+        OPERATOR_UI_PASSWORD_HASH=generate_password_hash("correct horse"), OPERATOR_UI_LEVEL=2,
+        OPERATOR_UI_AUDIT_DB_PATH=str(base/"audit.sqlite3"), DATABASE_PATH=str(base/"canonical.sqlite3"),
+        OPERATOR_UI_DEPLOYED_COMMIT="c"*40, OPERATOR_UI_DEPLOYED_TREE="d"*40,
+        OPERATOR_UI_DEPLOYED_VERSION="fixture")
+    app.config[R3_PROFILE_KEY]="fixture-v1"
+    install_connected_mode(app)
+    assert bind_configured_r3(app) is True
+    assert "operator_ui_r3_submit" in app.view_functions
+    services = app.extensions["operator_ui_r3_services"]
+    assert services.job_store.path == (base/"jobs.sqlite3").absolute()
+    client=app.test_client()
+    token=client.get("/operator-ui/login",base_url="https://localhost").get_json()["csrf_token"]
+    token=client.post("/operator-ui/login",base_url="https://localhost",data={"username":"viewer","password":"correct horse","csrf_token":token}).get_json()["csrf_token"]
+    response=client.post("/operator-ui/api/v1/prediction-jobs",base_url="https://localhost",headers={"X-CSRF-Token":token},json={"race_id":"race-fixture","model_id":"latest-research","config_id":"manual-default","odds_source_id":"auto","idempotency_key":"12345678-1234-4123-8123-123456789abc"})
+    assert response.status_code==202 and response.get_json()["phase"]=="WAITING_FOR_CLAIM",response.get_json()
+    job_id=response.get_json()["job_id"]
+    deadline=time.monotonic()+2
+    while services.job_store.get(job_id).phase is not Phase.FAILED and time.monotonic()<deadline:time.sleep(.01)
+    job=services.job_store.get(job_id)
+    assert job.attempt_claimed and job.phase is Phase.FAILED
+    assert [event["phase"] for event in services.job_store.events(job_id)][-3:]==["CLAIMED","ATTEMPT_STARTED","FAILED"]
+
+
+@pytest.mark.parametrize("unsafe_kind", ["symlink", "directory"])
+def test_finite_profile_rejects_unsafe_preexisting_job_store(tmp_path, monkeypatch, unsafe_kind):
+    repo=tmp_path/"repo"; source_root=Path(__file__).parents[2]; model=resolve_model("latest-research")
+    for source,relative in ((source_root/"configs/prediction/manual-default.json","configs/prediction/manual-default.json"),(source_root/"scripts/predict_race_now.py","scripts/predict_race_now.py"),(model.model_path,str(model.model_path.relative_to(source_root))),(model.manifest_path,str(model.manifest_path.relative_to(source_root))),(model.schema_path,str(model.schema_path.relative_to(source_root)))):
+        target=repo/relative; target.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(source,target)
+    base=repo/"tests/operator_ui/fixtures/r3_runtime"; base.mkdir(parents=True); base.chmod(0o700)
+    for directory in ("current_evidence","prediction_bundles","collector_requests","capture_evidence_a","capture_evidence_b"):(base/directory).mkdir(mode=0o700)
+    for filename in ("audit.sqlite3","canonical.sqlite3","current_index.json"):(base/filename).write_bytes(b"{}")
+    if unsafe_kind=="symlink":(base/"jobs.sqlite3").symlink_to(base/"canonical.sqlite3")
+    else:(base/"jobs.sqlite3").mkdir()
+    monkeypatch.setattr(bootstrap_module,"_REPOSITORY_ROOT",repo)
+    app=installed_app(tmp_path/"app"); app.config.update(TESTING=True,OPERATOR_UI_AUDIT_DB_PATH=str(base/"audit.sqlite3"),DATABASE_PATH=str(base/"canonical.sqlite3")); app.config[R3_PROFILE_KEY]="fixture-v1"
+    with pytest.raises(RuntimeError,match="job store unsafe"):bind_configured_r3(app)
