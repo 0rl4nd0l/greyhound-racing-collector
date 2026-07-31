@@ -44,6 +44,10 @@ KNOWN_STATES = {
     *TERMINAL_STATES,
 }
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+OFFICIAL_RESULT_REQUEST_HEADERS = {
+    **THEDOGS_PUBLIC_HEADERS,
+    "Accept-Encoding": "identity",
+}
 
 
 def _aware_now(clock: Callable[[], datetime]) -> datetime:
@@ -277,7 +281,7 @@ def observe_once(
                     def transport(url: str) -> dict[str, Any]:
                         response = session.get(
                             url,
-                            headers=dict(THEDOGS_PUBLIC_HEADERS),
+                            headers=dict(OFFICIAL_RESULT_REQUEST_HEADERS),
                             timeout=timeout_seconds,
                             allow_redirects=False,
                             stream=True,
