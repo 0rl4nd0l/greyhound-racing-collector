@@ -302,6 +302,35 @@ def test_result_requires_prejump_and_strict_after_jump_order(tmp_path):
         _capture(corpus, "request-1", Transport(_html()))
 
 
+def test_result_strips_only_established_terminal_nbt_non_name_badge(tmp_path):
+    corpus = ForwardSealedCorpus(
+        tmp_path / "accepted",
+        clock=Clock(_dt("09:45"), _dt("10:06"), _dt("10:06"), _dt("10:06")),
+    )
+    corpus.capture_prejump(**fixture())
+    receipt = _capture(
+        corpus,
+        "request-1",
+        Transport(_html().replace(b"Dog 1 B", b"Dog 1 B NBT")),
+    )
+    normalized = json.loads(
+        corpus._read_artifact(receipt["normalized_result_checksum"], "normalized result")
+    )
+    assert normalized["runners"][1]["name"] == "Dog 1 B"
+
+    rejected = ForwardSealedCorpus(
+        tmp_path / "rejected",
+        clock=Clock(_dt("09:45"), _dt("10:06"), _dt("10:06"), _dt("10:06")),
+    )
+    rejected.capture_prejump(**fixture())
+    with pytest.raises(ForwardCorpusRejected, match="name identity mismatch"):
+        _capture(
+            rejected,
+            "request-1",
+            Transport(_html().replace(b"Dog 1 B", b"Dog 1 B NBTX")),
+        )
+
+
 def test_unknown_or_naive_result_timestamps_fail_closed(tmp_path):
     corpus = ForwardSealedCorpus(tmp_path, clock=lambda: datetime(2026, 7, 29, 10, 6))
     corpus._clock = lambda: _dt("09:45")

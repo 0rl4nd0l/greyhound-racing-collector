@@ -260,7 +260,10 @@ def _normalize_official_result(
     positions = []
     for runner in sorted(frozen_runners, key=lambda item: item["box_number"]):
         parsed_row = by_box[runner["box_number"]]
-        if parsed_row.get("dog_name") != runner["name"]:
+        official_name = parsed_row.get("dog_name")
+        if type(official_name) is str and official_name.endswith(" NBT"):
+            official_name = official_name[:-4]
+        if official_name != runner["name"]:
             raise ForwardCorpusRejected("official result runner name identity mismatch")
         position = parsed_row.get("finish_position")
         status = parsed_row.get("status")
