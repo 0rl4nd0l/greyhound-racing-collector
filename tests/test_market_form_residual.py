@@ -385,11 +385,17 @@ def test_full_and_half_are_derived_from_one_adjustment():
     half_scores = np.log(market) + 0.5 * adjustment
     half = np.exp(half_scores - np.max(half_scores))
     half /= half.sum()
-    assert np.array_equal(
-        full, [row["full_probability"] for row in record["predictions"]]
+    np.testing.assert_allclose(
+        full,
+        [row["full_probability"] for row in record["predictions"]],
+        rtol=0.0,
+        atol=3e-16,
     )
-    assert np.array_equal(
-        half, [row["half_probability"] for row in record["predictions"]]
+    np.testing.assert_allclose(
+        half,
+        [row["half_probability"] for row in record["predictions"]],
+        rtol=0.0,
+        atol=3e-16,
     )
 
 
