@@ -390,7 +390,7 @@ def _safe_files_bytes(
                 remaining -= len(chunk)
             raw = b"".join(chunks)
             after = os.fstat(file_fd)
-            if not raw or len(raw) > MAX_CURRENT_INDEX_BYTES or len(raw) != opened.st_size or (after.st_dev, after.st_ino, after.st_size) != (opened.st_dev, opened.st_ino, opened.st_size) or not stat.S_ISREG(after.st_mode):
+            if not raw or len(raw) > MAX_CURRENT_INDEX_BYTES or len(raw) != opened.st_size or _retained_read_identity(after) != _retained_read_identity(opened) or not stat.S_ISREG(after.st_mode):
                 raise CaptureOneRejected("CURRENT_INDEX_SIZE_INVALID", path=str(path), size_bytes=len(raw), max_bytes=MAX_CURRENT_INDEX_BYTES)
             payloads.append(raw)
 
@@ -413,7 +413,7 @@ def _safe_files_bytes(
         for path, parent_key, name, file_fd, opened in file_records:
             named = os.stat(name, dir_fd=directory_fds[parent_key], follow_symlinks=False)
             current = os.fstat(file_fd)
-            if not stat.S_ISREG(named.st_mode) or not stat.S_ISREG(current.st_mode) or (named.st_dev, named.st_ino, named.st_size) != (opened.st_dev, opened.st_ino, opened.st_size) or (current.st_dev, current.st_ino, current.st_size) != (opened.st_dev, opened.st_ino, opened.st_size):
+            if not stat.S_ISREG(named.st_mode) or not stat.S_ISREG(current.st_mode) or _retained_read_identity(named) != _retained_read_identity(opened) or _retained_read_identity(current) != _retained_read_identity(opened):
                 raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path), reason="path_replaced")
         return payloads
     except CaptureOneRejected:
@@ -434,6 +434,9 @@ def _retained_read_identity(value: os.stat_result) -> tuple[int, ...]:
         value.st_mode,
         value.st_dev,
         value.st_ino,
+        value.st_nlink,
+        value.st_uid,
+        value.st_gid,
         value.st_size,
         value.st_mtime_ns,
         value.st_ctime_ns,
@@ -715,14 +718,20 @@ def _atomic_replace_canonical(
     if not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
         raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path))
     flags_dir = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
-    root_named = os.stat(root, follow_symlinks=False)
+    root_parent = root.parent
+    root_name = root.name
+    root_parent_fd = os.open(root_parent, flags_dir)
+    root_parent_identity = os.fstat(root_parent_fd)
+    root_named = os.stat(root_name, dir_fd=root_parent_fd, follow_symlinks=False)
     if not stat.S_ISDIR(root_named.st_mode):
+        os.close(root_parent_fd)
         raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(root))
     root_fd = os.open(root, flags_dir)
     descriptors = [root_fd]
     identities = [os.fstat(root_fd)]
     if (identities[0].st_dev, identities[0].st_ino) != (root_named.st_dev, root_named.st_ino):
         os.close(root_fd)
+        os.close(root_parent_fd)
         raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(root), reason="root_replaced")
     try:
         for component in relative.parts[:-1]:
@@ -739,6 +748,7 @@ def _atomic_replace_canonical(
                 raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path), reason="publish_component_replaced")
             descriptors.append(child_fd)
             identities.append(opened)
+        identities[:] = [os.fstat(retained) for retained in descriptors]
         parent_fd = descriptors[-1]
         parent_identity = identities[-1]
         temporary = f".{relative.parts[-1]}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
@@ -746,21 +756,41 @@ def _atomic_replace_canonical(
         flags |= getattr(os, "O_NOFOLLOW", 0)
         descriptor = os.open(temporary, flags, 0o600, dir_fd=parent_fd)
         try:
-            with os.fdopen(descriptor, "wb") as handle:
-                handle.write(canonical_bytes(payload))
-                handle.flush()
-                os.fsync(handle.fileno())
+            raw = canonical_bytes(payload)
+            written = 0
+            while written < len(raw):
+                written += os.write(descriptor, raw[written:])
+            os.fsync(descriptor)
             temporary_stat = os.stat(temporary, dir_fd=parent_fd, follow_symlinks=False)
-            if not stat.S_ISREG(temporary_stat.st_mode):
+            temporary_opened = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(temporary_stat.st_mode)
+                or _retained_read_identity(temporary_stat)
+                != _retained_read_identity(temporary_opened)
+            ):
                 raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path), reason="publish_temp_invalid")
-            _recheck_directory_chain(root, relative.parts[:-1], descriptors, identities, path)
+            identities[-1] = os.fstat(parent_fd)
+            _recheck_directory_chain(root_parent_fd, root_name, relative.parts[:-1], descriptors, identities, root_parent_identity, path)
             os.replace(temporary, relative.parts[-1], src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+            identities[-1] = os.fstat(parent_fd)
             published = os.stat(relative.parts[-1], dir_fd=parent_fd, follow_symlinks=False)
-            if not stat.S_ISREG(published.st_mode) or (published.st_dev, published.st_ino, published.st_size) != (temporary_stat.st_dev, temporary_stat.st_ino, temporary_stat.st_size):
+            published_opened = os.fstat(descriptor)
+            if not stat.S_ISREG(published.st_mode) or _retained_read_identity(published) != _retained_read_identity(published_opened):
                 raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path), reason="publish_final_replaced")
-            _recheck_directory_chain(root, relative.parts[:-1], descriptors, identities, path)
+            published_identity = published_opened
+            _recheck_directory_chain(root_parent_fd, root_name, relative.parts[:-1], descriptors, identities, root_parent_identity, path)
+            os.fsync(descriptor)
+            published = os.stat(relative.parts[-1], dir_fd=parent_fd, follow_symlinks=False)
+            if _retained_read_identity(published) != _retained_read_identity(published_identity) or _retained_read_identity(os.fstat(descriptor)) != _retained_read_identity(published_identity):
+                raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path), reason="publish_final_mutated")
+            _recheck_directory_chain(root_parent_fd, root_name, relative.parts[:-1], descriptors, identities, root_parent_identity, path)
             os.fsync(parent_fd)
+            published = os.stat(relative.parts[-1], dir_fd=parent_fd, follow_symlinks=False)
+            if _retained_read_identity(published) != _retained_read_identity(published_identity) or _retained_read_identity(os.fstat(descriptor)) != _retained_read_identity(published_identity):
+                raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path), reason="publish_final_mutated")
+            _recheck_directory_chain(root_parent_fd, root_name, relative.parts[:-1], descriptors, identities, root_parent_identity, path)
         finally:
+            os.close(descriptor)
             try:
                 os.unlink(temporary, dir_fd=parent_fd)
             except FileNotFoundError:
@@ -768,25 +798,31 @@ def _atomic_replace_canonical(
     finally:
         for retained in reversed(descriptors):
             os.close(retained)
+        os.close(root_parent_fd)
 
 
 def _recheck_directory_chain(
-    root: Path,
+    root_parent_fd: int,
+    root_name: str,
     components: tuple[str, ...],
     descriptors: list[int],
     identities: list[os.stat_result],
+    root_parent_identity: os.stat_result,
     target: Path,
 ) -> None:
-    root_named = os.stat(root, follow_symlinks=False)
-    if not stat.S_ISDIR(root_named.st_mode) or (root_named.st_dev, root_named.st_ino) != (identities[0].st_dev, identities[0].st_ino):
+    parent_current = os.fstat(root_parent_fd)
+    root_named = os.stat(root_name, dir_fd=root_parent_fd, follow_symlinks=False)
+    if _retained_read_identity(parent_current) != _retained_read_identity(root_parent_identity):
+        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(target), reason="publish_root_parent_mutated")
+    if not stat.S_ISDIR(root_named.st_mode) or _retained_read_identity(root_named) != _retained_read_identity(identities[0]):
         raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(target), reason="publish_root_replaced")
     for index, identity in enumerate(identities):
         opened = os.fstat(descriptors[index])
-        if not stat.S_ISDIR(opened.st_mode) or (opened.st_dev, opened.st_ino) != (identity.st_dev, identity.st_ino):
+        if not stat.S_ISDIR(opened.st_mode) or _retained_read_identity(opened) != _retained_read_identity(identity):
             raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(target), reason="publish_component_replaced")
         if index:
             named = os.stat(components[index - 1], dir_fd=descriptors[index - 1], follow_symlinks=False)
-            if not stat.S_ISDIR(named.st_mode) or (named.st_dev, named.st_ino) != (identity.st_dev, identity.st_ino):
+            if not stat.S_ISDIR(named.st_mode) or _retained_read_identity(named) != _retained_read_identity(identity):
                 raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(target), reason="publish_component_replaced")
 
 

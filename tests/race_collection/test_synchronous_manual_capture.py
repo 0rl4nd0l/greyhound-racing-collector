@@ -540,6 +540,124 @@ def test_safe_file_bytes_rejects_replacement_after_open_before_read(
     assert rejected.value.details["reason"] == "path_replaced"
 
 
+def test_safe_file_bytes_rejects_same_inode_same_size_mutate_read_restore(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    evidence_root = tmp_path / "evidence"
+    evidence_root.mkdir()
+    source = evidence_root / "source"
+    source.write_bytes(b"original")
+    real_read = os.read
+    attacked = False
+
+    def mutate_read_restore(descriptor: int, size: int) -> bytes:
+        nonlocal attacked
+        raw = real_read(descriptor, size)
+        if not attacked and raw:
+            attacked = True
+            writable = os.open(source, os.O_RDWR)
+            try:
+                os.pwrite(writable, b"X", 0)
+                os.pwrite(writable, raw[:1], 0)
+            finally:
+                os.close(writable)
+            before = source.stat()
+            os.utime(
+                source,
+                ns=(before.st_atime_ns, before.st_mtime_ns + 1),
+            )
+        return raw
+
+    monkeypatch.setattr(capture.os, "read", mutate_read_restore)
+    with pytest.raises(CaptureOneRejected):
+        capture._safe_file_bytes(
+            source, evidence_root=evidence_root,
+            missing_code="CURRENT_INDEX_SOURCE_MISSING",
+        )
+
+
+def test_atomic_publish_rejects_replaced_temporary_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    root = tmp_path / "evidence"
+    root.mkdir()
+    target = root / "runtime/index.json"
+    real_replace = os.replace
+
+    def replace_temp(source: Any, destination: Any, *args: Any, **kwargs: Any) -> None:
+        source_path = root / "runtime" / str(source)
+        raw = source_path.read_bytes()
+        source_path.unlink()
+        source_path.write_bytes(raw)
+        real_replace(source, destination, *args, **kwargs)
+
+    monkeypatch.setattr(capture.os, "replace", replace_temp)
+    with pytest.raises(CaptureOneRejected) as rejected:
+        capture._atomic_replace_canonical(target, {"ok": True}, evidence_root=root)
+    assert rejected.value.details["reason"] == "publish_final_replaced"
+
+
+def test_atomic_publish_rejects_publication_root_swap_restore(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    root = tmp_path / "evidence"
+    root.mkdir()
+    target = root / "runtime/index.json"
+    real_replace = os.replace
+    swapped = False
+
+    def swap_root(source: Any, destination: Any, *args: Any, **kwargs: Any) -> None:
+        nonlocal swapped
+        if not swapped:
+            swapped = True
+            parked = tmp_path / "parked"
+            real_replace(root, parked)
+            real_replace(parked, root)
+        real_replace(source, destination, *args, **kwargs)
+
+    monkeypatch.setattr(capture.os, "replace", swap_root)
+    with pytest.raises(CaptureOneRejected) as rejected:
+        capture._atomic_replace_canonical(target, {"ok": True}, evidence_root=root)
+    assert rejected.value.details["reason"] == "publish_root_parent_mutated"
+
+
+@pytest.mark.parametrize("attack_at", ["after_rename", "after_final_fsync"])
+def test_atomic_publish_rejects_mutation_after_rename_and_fsync(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, attack_at: str,
+):
+    root = tmp_path / "evidence"
+    root.mkdir()
+    target = root / "runtime/index.json"
+    real_fsync = os.fsync
+    calls = 0
+
+    def mutate_restore(descriptor: int) -> None:
+        nonlocal calls
+        calls += 1
+        real_fsync(descriptor)
+        selected = calls == (2 if attack_at == "after_rename" else 3)
+        if selected:
+            published_fd = os.open(
+                target, os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+            )
+            try:
+                original = os.pread(published_fd, 1, 0)
+                os.pwrite(published_fd, b"X", 0)
+                os.pwrite(published_fd, original, 0)
+                published = target.stat()
+                os.utime(
+                    target,
+                    ns=(published.st_atime_ns, published.st_mtime_ns + 1),
+                )
+            finally:
+                os.close(published_fd)
+
+    monkeypatch.setattr(capture.os, "fsync", mutate_restore)
+    with pytest.raises(CaptureOneRejected) as rejected:
+        capture._atomic_replace_canonical(target, {"ok": True}, evidence_root=root)
+    assert rejected.value.details["reason"] == "publish_final_mutated"
+
+
 @pytest.mark.parametrize(
     "case",
     [
