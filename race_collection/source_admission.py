@@ -20,6 +20,9 @@ ADMITTED_MANIFEST_SCHEMA = "historical-source-admission-v1"
 LEGACY_ORIGIN = "legacy-historical-bootstrap-v1"
 SYNTHETIC_ORIGIN = "synthetic-validation-fixture-v1"
 FORWARD_SEALED_ORIGIN = "forward-sealed-corpus-v1"
+OFFICIAL_FIRST_ORIGIN = "official-result-first-observation-v1"
+OFFICIAL_RESULT_SOURCE = "thedogs-official"
+PREJUMP_SOURCE = "thedogs-race-card"
 
 _MANIFEST_FIELDS = {
     "schema_version",
@@ -48,6 +51,51 @@ _FORWARD_RACE_FIELDS = _RACE_FIELDS | {
     "raw_source_checksum",
     "raw_result_checksum",
     "source_observed_at",
+}
+_OFFICIAL_RACE_FIELDS = {
+    "training_example_id",
+    "race_id",
+    "racing_date",
+    "source_checksum",
+    "prejump_receipt_checksum",
+    "closure_receipt_checksum",
+    "source_capture_checksum",
+    "raw_source_checksum",
+    "feature_matrix_checksum",
+    "runner_ids",
+    "source_observed_at",
+    "feature_observed_at",
+    "scheduled_jump_at",
+    "first_observation_checksum",
+    "second_observation_checksum",
+    "first_raw_response_checksum",
+    "second_raw_response_checksum",
+    "response_stage_checksums",
+    "raw_response_checksums",
+    "observation_checksums",
+    "normalized_result_checksum",
+    "stability_checksum",
+    "stability_confirmed_at",
+    "closed_at",
+    "artifact_checksum",
+}
+_OFFICIAL_RESPONSE_STAGE_FIELDS = {
+    "schema_version",
+    "race_id",
+    "collector_id",
+    "session_id",
+    "run_id",
+    "request_id",
+    "source_name",
+    "request_url",
+    "final_url",
+    "http_status",
+    "content_type",
+    "source_document_last_modified",
+    "request_started_at",
+    "response_received_at",
+    "observed_at",
+    "raw_response_checksum",
 }
 _RESULT_DERIVED_KEYS = {
     "finish_order",
@@ -109,10 +157,12 @@ def _canonical_source_url(value: Any, name: str) -> str:
     url = _known_text(value, name)
     parsed = urlsplit(url)
     if (
-        parsed.scheme not in {"http", "https"}
+        parsed.scheme != "https"
         or not parsed.netloc
+        or parsed.hostname not in {"www.thedogs.com.au", "thedogs.com.au"}
         or parsed.username is not None
         or parsed.password is not None
+        or parsed.query
         or parsed.fragment
     ):
         raise SourceAdmissionRejected(f"{name} is not a canonical source URL")
@@ -134,9 +184,12 @@ def _normalized_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
     races = manifest.get("races")
     if type(races) is not list or not races or any(type(race) is not dict for race in races):
         raise SourceAdmissionRejected("source manifest requires race objects")
+    origin = manifest.get("corpus_origin")
     expected_fields = (
-        _FORWARD_RACE_FIELDS
-        if manifest.get("corpus_origin") == FORWARD_SEALED_ORIGIN
+        _OFFICIAL_RACE_FIELDS
+        if origin == OFFICIAL_FIRST_ORIGIN
+        else _FORWARD_RACE_FIELDS
+        if origin == FORWARD_SEALED_ORIGIN
         else _RACE_FIELDS
     )
     if any(set(race) != expected_fields for race in races):
@@ -578,6 +631,582 @@ def _training_example_document(
     return document
 
 
+def _admit_official_first(
+    package: Mapping[str, Any],
+    manifest_checksum: str,
+    artifacts: Mapping[str, bytes],
+) -> bytes:
+    """Purely reconstruct an official-first package from its immutable bytes."""
+    from .forward_sealed_corpus import (
+        ForwardCorpusRejected,
+        _normalization_identity,
+        _normalize_official_result,
+    )
+
+    manifest = package["manifest"]
+    races = manifest["races"]
+    scalar_fields = (
+        "source_checksum",
+        "prejump_receipt_checksum",
+        "closure_receipt_checksum",
+        "source_capture_checksum",
+        "raw_source_checksum",
+        "feature_matrix_checksum",
+        "normalized_result_checksum",
+        "stability_checksum",
+        "artifact_checksum",
+    )
+    declared = {
+        manifest["feature_schema_checksum"],
+        manifest["missingness_policy_checksum"],
+        *{race[field] for race in races for field in scalar_fields},
+        *{
+            checksum
+            for race in races
+            for field in (
+                "response_stage_checksums",
+                "raw_response_checksums",
+                "observation_checksums",
+            )
+            for checksum in race[field]
+        },
+    }
+    if set(artifacts) != declared:
+        raise SourceAdmissionRejected("official-first artifact inventory is incomplete")
+    schema = _object(
+        _artifact(artifacts, manifest["feature_schema_checksum"], "feature schema"),
+        "feature schema",
+    )
+    missingness = _object(
+        _artifact(
+            artifacts,
+            manifest["missingness_policy_checksum"],
+            "missingness policy",
+        ),
+        "missingness policy",
+    )
+    if (
+        schema.get("bundle_id") != manifest["target_bundle_id"]
+        or schema.get("contract_version") != SUPPORTED_FEATURE_CONTRACT
+        or missingness.get("bundle_id") != manifest["target_bundle_id"]
+        or missingness.get("feature_contract_version") != SUPPORTED_FEATURE_CONTRACT
+    ):
+        raise SourceAdmissionRejected("official-first feature contract is unsupported")
+    parser_hash, schema_hash, implementation_hash = _normalization_identity()
+    admitted_races = []
+    try:
+        for race in races:
+            if set(race) != _OFFICIAL_RACE_FIELDS:
+                raise SourceAdmissionRejected("official-first race envelope is invalid")
+            source = _object(
+                _artifact(artifacts, race["source_capture_checksum"], "source capture"),
+                "source capture",
+            )
+            frozen_runners = source.get("runners")
+            expected_source_fields = {
+                "schema_version", "race_id", "racing_date", "source_name",
+                "canonical_source_url", "source_native_race_id", "meeting_metadata",
+                "race_metadata", "scheduled_jump_at", "source_observed_at",
+                "feature_frozen_at", "raw_source_checksum", "sealed_evidence_checksum",
+                "runners", "identity_authority", "reconstructed",
+            }
+            if (
+                set(source) != expected_source_fields
+                or source.get("schema_version") != "forward-source-capture-v1"
+                or source.get("race_id") != race["race_id"]
+                or source.get("source_name") != PREJUMP_SOURCE
+                or source.get("racing_date") != race["racing_date"]
+                or source.get("scheduled_jump_at") != race["scheduled_jump_at"]
+                or source.get("source_observed_at") != race["source_observed_at"]
+                or source.get("feature_frozen_at") != race["feature_observed_at"]
+                or source.get("raw_source_checksum") != race["raw_source_checksum"]
+                or source.get("sealed_evidence_checksum") != race["source_checksum"]
+                or source.get("identity_authority") != "source-native"
+                or source.get("reconstructed") is not False
+                or type(source.get("meeting_metadata")) is not dict
+                or not source["meeting_metadata"]
+                or type(source.get("race_metadata")) is not dict
+                or not source["race_metadata"]
+                or type(frozen_runners) is not list
+                or [runner["source_native_runner_id"] for runner in frozen_runners]
+                != race["runner_ids"]
+            ):
+                raise SourceAdmissionRejected("official-first sealed source binding disagrees")
+            _canonical_source_url(source["canonical_source_url"], "forward source URL")
+            _known_text(source["source_native_race_id"], "source-native race identity")
+            _reject_result_derived(source["meeting_metadata"])
+            _reject_result_derived(source["race_metadata"])
+            source_at = _aware_timestamp(source["source_observed_at"], "source observed")
+            feature_at = _aware_timestamp(source["feature_frozen_at"], "feature frozen")
+            jump_at = _aware_timestamp(source["scheduled_jump_at"], "scheduled jump")
+            try:
+                race_day = date.fromisoformat(source["racing_date"])
+            except (TypeError, ValueError) as error:
+                raise SourceAdmissionRejected("racing date is invalid") from error
+            if not source_at <= feature_at < jump_at or race_day != jump_at.date():
+                raise SourceAdmissionRejected("official-first source timestamps are invalid")
+            if any(
+                type(runner) is not dict
+                or set(runner) != {"source_native_runner_id", "name", "box_number"}
+                for runner in frozen_runners
+            ):
+                raise SourceAdmissionRejected("source-native runner envelope is invalid")
+            runner_ids = _require_unique_normalized(
+                [runner["source_native_runner_id"] for runner in frozen_runners],
+                "source-native runner identity",
+            )
+            runner_names = _require_unique_normalized(
+                [runner["name"] for runner in frozen_runners], "runner name"
+            )
+            boxes = [runner["box_number"] for runner in frozen_runners]
+            if (
+                list(runner_ids) != race["runner_ids"]
+                or len(runner_names) != len(frozen_runners)
+                or any(type(box) is not int or not 1 <= box <= 20 for box in boxes)
+                or len(set(boxes)) != len(boxes)
+            ):
+                raise SourceAdmissionRejected("source-native runner identity is invalid")
+            _artifact(artifacts, race["raw_source_checksum"], "raw sealed source")
+            source_bytes = _artifact(artifacts, race["source_checksum"], "sealed evidence")
+            evidence = _object(source_bytes, "sealed evidence")
+            if (
+                set(evidence)
+                != {
+                    "schema_version", "normalization_version", "race_id", "fields",
+                    "field_provenance", "freeze",
+                }
+                or evidence.get("race_id") != race["race_id"]
+                or type(evidence.get("fields")) is not dict
+                or evidence["fields"].get("runner_set") != race["runner_ids"]
+                or evidence["fields"].get("runner_identity")
+                != dict.fromkeys(race["runner_ids"], "authoritative")
+            ):
+                raise SourceAdmissionRejected("sealed evidence identity is incomplete")
+            freeze = evidence.get("freeze")
+            if (
+                type(freeze) is not dict
+                or set(freeze) != {"at", "authority", "odds_checksum"}
+                or _aware_timestamp(freeze.get("at"), "sealed evidence freeze") != feature_at
+            ):
+                raise SourceAdmissionRejected("sealed evidence freeze provenance is incomplete")
+            _known_text(freeze.get("authority"), "sealed evidence freeze authority")
+            try:
+                ArtifactChecksum(freeze["odds_checksum"])
+            except (KeyError, ValueError) as error:
+                raise SourceAdmissionRejected(
+                    "sealed evidence freeze provenance is incomplete"
+                ) from error
+            provenance = evidence.get("field_provenance")
+            required = {"runner_set", "runner_identity", "runner_features"}
+            bound = set()
+            if type(provenance) is not list or not provenance:
+                raise SourceAdmissionRejected("sealed evidence provenance is incomplete")
+            for item in provenance:
+                if type(item) is not dict or set(item) != {
+                    "field", "authority", "critical", "value", "source",
+                    "artifact_checksum",
+                }:
+                    raise SourceAdmissionRejected("sealed evidence provenance is invalid")
+                _known_text(item.get("field"), "provenance field")
+                _known_text(item.get("authority"), "provenance authority")
+                if type(item.get("critical")) is not bool:
+                    raise SourceAdmissionRejected("provenance criticality is invalid")
+                if (
+                    item["field"] in required
+                    and item.get("source") == PREJUMP_SOURCE
+                    and item.get("artifact_checksum") == race["raw_source_checksum"]
+                    and item.get("value") == evidence["fields"].get(item["field"])
+                ):
+                    bound.add(item["field"])
+            if bound != required:
+                raise SourceAdmissionRejected("sealed evidence provenance is incomplete")
+            prejump = _object(
+                _artifact(artifacts, race["prejump_receipt_checksum"], "pre-jump receipt"),
+                "pre-jump receipt",
+            )
+            expected_prejump = {
+                "schema_version": "forward-prejump-receipt-v1",
+                "race_id": race["race_id"],
+                "racing_date": race["racing_date"],
+                "target_bundle_id": manifest["target_bundle_id"],
+                "source_native_race_id": source["source_native_race_id"],
+                "runner_ids": race["runner_ids"],
+                "source_observed_at": race["source_observed_at"],
+                "feature_frozen_at": race["feature_observed_at"],
+                "scheduled_jump_at": race["scheduled_jump_at"],
+                "raw_source_checksum": race["raw_source_checksum"],
+                "source_checksum": race["source_checksum"],
+                "source_capture_checksum": race["source_capture_checksum"],
+                "feature_schema_checksum": manifest["feature_schema_checksum"],
+                "missingness_policy_checksum": manifest["missingness_policy_checksum"],
+                "feature_matrix_checksum": race["feature_matrix_checksum"],
+            }
+            if prejump != expected_prejump:
+                raise SourceAdmissionRejected("pre-jump receipt binding disagrees")
+            feature_bytes = _artifact(
+                artifacts, race["feature_matrix_checksum"], "feature matrix"
+            )
+            inventory_fields = (
+                "response_stage_checksums",
+                "raw_response_checksums",
+                "observation_checksums",
+            )
+            if (
+                any(type(race.get(field)) is not list for field in inventory_fields)
+                or len(race["observation_checksums"]) < 2
+                or len(race["response_stage_checksums"])
+                != len(race["raw_response_checksums"])
+                or len(race["observation_checksums"])
+                > len(race["response_stage_checksums"])
+                or len(set(race["response_stage_checksums"]))
+                != len(race["response_stage_checksums"])
+                or len(set(race["observation_checksums"]))
+                != len(race["observation_checksums"])
+            ):
+                raise SourceAdmissionRejected(
+                    "official retained observation inventory is invalid"
+                )
+            observations = [
+                _object(_artifact(artifacts, checksum, "observation"), "observation")
+                for checksum in race["observation_checksums"]
+            ]
+            stages = [
+                _object(_artifact(artifacts, checksum, "response stage"), "response stage")
+                for checksum in race["response_stage_checksums"]
+            ]
+            request_order = [
+                hashlib.sha256(
+                    _known_text(stage.get("request_id"), "request_id").encode()
+                ).hexdigest()
+                for stage in stages
+            ]
+            if request_order != sorted(request_order) or len(request_order) != len(
+                set(request_order)
+            ):
+                raise SourceAdmissionRejected(
+                    "official retained response-stage order is not deterministic"
+                )
+            stages_by_request = {}
+            for stage, raw_checksum in zip(
+                stages, race["raw_response_checksums"], strict=True
+            ):
+                if (
+                    set(stage) != _OFFICIAL_RESPONSE_STAGE_FIELDS
+                    or stage.get("schema_version")
+                    != "official-result-response-stage-v1"
+                    or stage.get("race_id") != race["race_id"]
+                    or stage.get("source_name") != OFFICIAL_RESULT_SOURCE
+                    or type(stage.get("http_status")) is not int
+                    or not 200 <= stage["http_status"] < 300
+                    or stage.get("raw_response_checksum") != raw_checksum
+                ):
+                    raise SourceAdmissionRejected(
+                        "official response-stage envelope is invalid"
+                    )
+                for identifier in (
+                    "collector_id",
+                    "session_id",
+                    "run_id",
+                    "request_id",
+                    "source_name",
+                ):
+                    if len(_known_text(stage.get(identifier), identifier).encode()) > 128:
+                        raise SourceAdmissionRejected(
+                            "official response-stage identifier is too long"
+                        )
+                content_type = _known_text(
+                    stage.get("content_type"), "official content type"
+                )
+                media_type, separator, parameters = content_type.partition(";")
+                if media_type.strip().casefold() != "text/html" or (
+                    separator
+                    and parameters.strip().casefold().replace(" ", "") != "charset=utf-8"
+                ):
+                    raise SourceAdmissionRejected("official content type is unsupported")
+                if stage.get("source_document_last_modified") is not None:
+                    _known_text(
+                        stage["source_document_last_modified"],
+                        "source document Last-Modified",
+                    )
+                _canonical_source_url(stage.get("request_url"), "official request URL")
+                _canonical_source_url(stage.get("final_url"), "official final URL")
+                started = _aware_timestamp(stage.get("request_started_at"), "request started")
+                received = _aware_timestamp(
+                    stage.get("response_received_at"), "response received"
+                )
+                observed = _aware_timestamp(stage.get("observed_at"), "observed")
+                if not started <= received <= observed:
+                    raise SourceAdmissionRejected(
+                        "official response-stage timestamps are unordered"
+                    )
+                _artifact(artifacts, raw_checksum, "raw official response")
+                stages_by_request[stage["request_id"]] = stage
+            observation_request_ids = [
+                _known_text(observation.get("request_id"), "request_id")
+                for observation in observations
+            ]
+            completed_order = [
+                stage["request_id"]
+                for stage in stages
+                if stage["request_id"] in set(observation_request_ids)
+            ]
+            if (
+                observation_request_ids != completed_order
+                or len(observation_request_ids) != len(set(observation_request_ids))
+            ):
+                raise SourceAdmissionRejected(
+                    "official completed observation inventory is incomplete or reordered"
+                )
+            by_checksum = dict(zip(race["observation_checksums"], observations, strict=True))
+            try:
+                first = by_checksum[race["first_observation_checksum"]]
+                second = by_checksum[race["second_observation_checksum"]]
+            except KeyError as error:
+                raise SourceAdmissionRejected(
+                    "stability observations are absent from retained inventory"
+                ) from error
+            stability = _object(
+                _artifact(artifacts, race["stability_checksum"], "stability"),
+                "stability",
+            )
+            normalized = _artifact(
+                artifacts, race["normalized_result_checksum"], "normalized result"
+            )
+            for observation in observations:
+                try:
+                    stage = stages_by_request[observation["request_id"]]
+                except (KeyError, TypeError) as error:
+                    raise SourceAdmissionRejected(
+                        "official observation has no retained response stage"
+                    ) from error
+                raw_checksum = stage["raw_response_checksum"]
+                expected_observation_fields = {
+                    "schema_version",
+                    "race_id",
+                    "collector_id",
+                    "session_id",
+                    "run_id",
+                    "request_id",
+                    "source_name",
+                    "request_url",
+                    "final_url",
+                    "http_status",
+                    "content_type",
+                    "source_document_last_modified",
+                    "request_started_at",
+                    "response_received_at",
+                    "observed_at",
+                    "raw_response_checksum",
+                    "normalized_result_checksum",
+                    "runner_set_hash",
+                    "parser_hash",
+                    "schema_hash",
+                    "implementation_hash",
+                }
+                if (
+                    set(observation) != expected_observation_fields
+                    or observation.get("schema_version")
+                    != "official-result-observation-v1"
+                    or observation.get("source_name") != OFFICIAL_RESULT_SOURCE
+                    or type(observation.get("http_status")) is not int
+                    or not 200 <= observation["http_status"] < 300
+                ):
+                    raise SourceAdmissionRejected("official observation envelope is invalid")
+                for identifier in (
+                    "collector_id",
+                    "session_id",
+                    "run_id",
+                    "request_id",
+                    "source_name",
+                ):
+                    if len(_known_text(observation.get(identifier), identifier).encode()) > 128:
+                        raise SourceAdmissionRejected("official observation identifier is too long")
+                content_type = _known_text(
+                    observation.get("content_type"), "official content type"
+                )
+                media_type, separator, parameters = content_type.partition(";")
+                if media_type.strip().casefold() != "text/html" or (
+                    separator
+                    and parameters.strip().casefold().replace(" ", "") != "charset=utf-8"
+                ):
+                    raise SourceAdmissionRejected("official content type is unsupported")
+                if observation.get("source_document_last_modified") is not None:
+                    _known_text(
+                        observation["source_document_last_modified"],
+                        "source document Last-Modified",
+                    )
+                expected_stage = {
+                    key: value
+                    for key, value in observation.items()
+                    if key
+                    not in {
+                        "normalized_result_checksum",
+                        "runner_set_hash",
+                        "parser_hash",
+                        "schema_hash",
+                        "implementation_hash",
+                    }
+                }
+                expected_stage["schema_version"] = "official-result-response-stage-v1"
+                if stage != expected_stage or raw_checksum != observation.get(
+                    "raw_response_checksum"
+                ):
+                    raise SourceAdmissionRejected(
+                        "official response-stage/observation inventory binding disagrees"
+                    )
+                raw = _artifact(artifacts, raw_checksum, "raw official response")
+                rebuilt = _normalize_official_result(
+                    raw,
+                    race_id=race["race_id"],
+                    frozen_runners=frozen_runners,
+                )
+                if (
+                    observation.get("race_id") != race["race_id"]
+                    or observation.get("raw_response_checksum") != raw_checksum
+                    or observation.get("normalized_result_checksum")
+                    != race["normalized_result_checksum"]
+                    or observation.get("parser_hash") != parser_hash
+                    or observation.get("schema_hash") != schema_hash
+                    or observation.get("implementation_hash") != implementation_hash
+                    or rebuilt != normalized
+                    or observation.get("runner_set_hash")
+                    != _checksum(_canonical(frozen_runners))
+                ):
+                    raise SourceAdmissionRejected(
+                        "official-first response reconstruction disagrees"
+                    )
+                _canonical_source_url(observation.get("request_url"), "official request URL")
+                _canonical_source_url(observation.get("final_url"), "official final URL")
+                started = _aware_timestamp(
+                    observation.get("request_started_at"), "request started"
+                )
+                received = _aware_timestamp(
+                    observation.get("response_received_at"), "response received"
+                )
+                observed = _aware_timestamp(observation.get("observed_at"), "observed")
+                if not started <= received <= observed:
+                    raise SourceAdmissionRejected("official observation timestamps are unordered")
+            identities = {
+                (
+                    observation["normalized_result_checksum"],
+                    observation["runner_set_hash"],
+                    observation["parser_hash"],
+                    observation["schema_hash"],
+                    observation["implementation_hash"],
+                    observation["source_name"],
+                )
+                for observation in observations
+            }
+            if len(identities) != 1:
+                raise SourceAdmissionRejected("official retained result identity changed")
+            if (
+                first["raw_response_checksum"] != race["first_raw_response_checksum"]
+                or second["raw_response_checksum"] != race["second_raw_response_checksum"]
+            ):
+                raise SourceAdmissionRejected("stability raw response binding disagrees")
+            first_at = _aware_timestamp(first["observed_at"], "first observed")
+            second_at = _aware_timestamp(second["observed_at"], "second observed")
+            jump_at = _aware_timestamp(race["scheduled_jump_at"], "scheduled jump")
+            stable_at = _aware_timestamp(race["stability_confirmed_at"], "stability")
+            closed_at = _aware_timestamp(race["closed_at"], "closure")
+            if (first_at - jump_at).total_seconds() < 300 or (
+                second_at - first_at
+            ).total_seconds() < 900 or stable_at != second_at or closed_at < stable_at:
+                raise SourceAdmissionRejected("official stability/closure order is invalid")
+            if (
+                stability
+                != {
+                    "schema_version": "official-result-stability-v1",
+                    "race_id": race["race_id"],
+                    "first_observation_checksum": race["first_observation_checksum"],
+                    "second_observation_checksum": race["second_observation_checksum"],
+                    "normalized_result_checksum": race["normalized_result_checksum"],
+                    "confirmed_at": race["stability_confirmed_at"],
+                }
+            ):
+                raise SourceAdmissionRejected("official stability binding disagrees")
+            closure = _object(
+                _artifact(artifacts, race["closure_receipt_checksum"], "closure receipt"),
+                "closure receipt",
+            )
+            closure_race = {
+                key: value
+                for key, value in race.items()
+                if key != "closure_receipt_checksum"
+            }
+            if closure != {
+                "schema_version": "forward-race-closure-v1",
+                "race_id": race["race_id"],
+                "target_bundle_id": manifest["target_bundle_id"],
+                "feature_schema_checksum": manifest["feature_schema_checksum"],
+                "missingness_policy_checksum": manifest["missingness_policy_checksum"],
+                "closed_at": race["closed_at"],
+                "race": closure_race,
+            }:
+                raise SourceAdmissionRejected("closure receipt binding disagrees")
+            try:
+                derived = derive_features(
+                    source_bytes,
+                    expected_evidence_checksum=ArtifactChecksum(race["source_checksum"]),
+                    schema_bytes=_canonical(schema),
+                    expected_schema_checksum=ArtifactChecksum(
+                        manifest["feature_schema_checksum"]
+                    ),
+                    missingness_policy_bytes=_canonical(missingness),
+                    expected_missingness_checksum=ArtifactChecksum(
+                        manifest["missingness_policy_checksum"]
+                    ),
+                )
+            except (FeatureQuarantine, ValueError) as error:
+                raise SourceAdmissionRejected(str(error)) from error
+            expected_features = _canonical(
+                {
+                    "runner_ids": list(derived.matrix.runner_ids),
+                    "columns": list(derived.matrix.columns),
+                    "rows": [list(row) for row in derived.matrix.rows],
+                }
+            )
+            if feature_bytes != expected_features:
+                raise SourceAdmissionRejected("official-first feature matrix disagrees")
+            example = _artifact(
+                artifacts, race["artifact_checksum"], "training example"
+            )
+            expected_example = _canonical(
+                {
+                    "schema_version": "historical-training-example-v1",
+                    "origin": OFFICIAL_FIRST_ORIGIN,
+                    **{
+                        key: value
+                        for key, value in race.items()
+                        if key not in {"artifact_checksum", "closure_receipt_checksum"}
+                    },
+                }
+            )
+            if example != expected_example:
+                raise SourceAdmissionRejected("official-first training example disagrees")
+            admitted_races.append(dict(race))
+    except (ForwardCorpusRejected, KeyError, TypeError, ValueError) as error:
+        if isinstance(error, SourceAdmissionRejected):
+            raise
+        raise SourceAdmissionRejected("official-first package is malformed") from error
+    return _canonical(
+        {
+            "schema_version": ADMITTED_MANIFEST_SCHEMA,
+            "admission_decision": "TRAINING_ADMISSIBLE",
+            "corpus_origin": OFFICIAL_FIRST_ORIGIN,
+            "forward_sealed": True,
+            "promotion_evidence_eligible": False,
+            "production_readiness": False,
+            "target_bundle_id": manifest["target_bundle_id"],
+            "source_manifest_checksum": manifest_checksum,
+            "feature_schema_checksum": manifest["feature_schema_checksum"],
+            "missingness_policy_checksum": manifest["missingness_policy_checksum"],
+            "race_ids": [race["race_id"] for race in admitted_races],
+            "races": admitted_races,
+        }
+    )
+
+
 def admit_historical_source(
     package_bytes: bytes,
     *,
@@ -609,6 +1238,8 @@ def admit_historical_source(
         raise SourceAdmissionRejected("source manifest checksum is invalid") from error
     if _checksum(_canonical(normalized_manifest)) != manifest_checksum:
         raise SourceAdmissionRejected("source manifest checksum is unverifiable")
+    if manifest.get("corpus_origin") == OFFICIAL_FIRST_ORIGIN:
+        return _admit_official_first(package, manifest_checksum, artifacts)
 
     origin = manifest.get("corpus_origin")
     if origin not in {LEGACY_ORIGIN, SYNTHETIC_ORIGIN, FORWARD_SEALED_ORIGIN}:

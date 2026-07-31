@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import sys
 from collections.abc import Mapping, Sequence
@@ -15,16 +16,14 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from race_collection.forward_sealed_corpus import (
-    ForwardCorpusRejected,
-    ForwardSealedCorpus,
-    canonical_json,
-)
-from scripts.shadow_autopilot_daemon import (
-    LockBusy,
-    acquire_lock,
-    release_lock,
-)
+_corpus_module = importlib.import_module("race_collection.forward_sealed_corpus")
+ForwardCorpusRejected = _corpus_module.ForwardCorpusRejected
+ForwardSealedCorpus = _corpus_module.ForwardSealedCorpus
+canonical_json = _corpus_module.canonical_json
+_lock_module = importlib.import_module("scripts.shadow_autopilot_daemon")
+LockBusy = _lock_module.LockBusy
+acquire_lock = _lock_module.acquire_lock
+release_lock = _lock_module.release_lock
 
 _PREJUMP_KEYS = {
     "action",
@@ -48,15 +47,18 @@ _RESULT_KEYS = {
     "action",
     "race_id",
     "raw_result_path",
+    "collector_id",
+    "session_id",
+    "run_id",
+    "request_id",
     "source_name",
-    "canonical_source_url",
-    "source_native_race_id",
-    "runners",
-    "official_order",
-    "result_observed_at",
-    "result_published_at",
-    "publication_timestamp_status",
+    "request_url",
+    "final_url",
+    "http_status",
+    "content_type",
+    "source_document_last_modified",
 }
+_CLOSE_KEYS = {"action", "race_id"}
 
 
 def _object(path: Path) -> dict[str, Any]:
@@ -127,35 +129,50 @@ def run_iteration(
         }, 0
     if action == "result":
         _strict(value, _RESULT_KEYS, action)
+        raw_result = _input_bytes(iteration_path, value["raw_result_path"], "raw result")
+
+        def transport(_request_url: str) -> Mapping[str, Any]:
+            return {
+                "body": raw_result,
+                "status_code": value["http_status"],
+                "content_type": value["content_type"],
+                "final_url": value["final_url"],
+                "source_document_last_modified": value["source_document_last_modified"],
+            }
+
         receipt = corpus.capture_result(
             race_id=value["race_id"],
-            raw_result_bytes=_input_bytes(iteration_path, value["raw_result_path"], "raw result"),
+            collector_id=value["collector_id"],
+            session_id=value["session_id"],
+            run_id=value["run_id"],
+            request_id=value["request_id"],
             source_name=value["source_name"],
-            canonical_source_url=value["canonical_source_url"],
-            source_native_race_id=value["source_native_race_id"],
-            runners=value["runners"],
-            official_order=value["official_order"],
-            result_observed_at=value["result_observed_at"],
-            result_published_at=value["result_published_at"],
-            publication_timestamp_status=value["publication_timestamp_status"],
+            request_url=value["request_url"],
+            transport=transport,
         )
-        if receipt.get("closure_decision") == "BLOCKED_RESULT_PUBLICATION_TIMESTAMP":
-            return {
-                "action": action,
-                "decision": "BLOCKED_RESULT_PUBLICATION_TIMESTAMP",
-                "receipt": receipt,
-                "status": corpus.status(),
-            }, 2
+        status = corpus.status()
+        race_state = next(
+            row["state"] for row in status["races"] if row["race_id"] == value["race_id"]
+        )
+        return {
+            "action": action,
+            "decision": race_state,
+            "receipt": receipt,
+            "status": status,
+        }, 2 if race_state == "RESULT_CHANGED_BEFORE_CLOSURE" else 0
+    if action == "close":
+        _strict(value, _CLOSE_KEYS, action)
+        receipt = corpus.close(race_id=value["race_id"])
         package = corpus.build_package()
         return {
             "action": action,
-            "decision": "RACE_CLOSED",
+            "decision": "EXAMPLE_CLOSED",
             "receipt": receipt,
             "package_checksum": str(package.package_checksum),
             "manifest_checksum": str(package.manifest_checksum),
             "status": corpus.status(),
         }, 0
-    raise ForwardCorpusRejected("iteration action must be prejump or result")
+    raise ForwardCorpusRejected("iteration action must be prejump, result, or close")
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
