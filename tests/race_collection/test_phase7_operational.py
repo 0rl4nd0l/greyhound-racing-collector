@@ -4750,7 +4750,7 @@ class Phase7OperationalTests(unittest.TestCase):
         fixture = Phase7OperationalTests(methodName="runTest")
         fixture.store = store
         fixture.artifacts = artifacts
-        fixture.authority = OperationalAuthority(store, artifacts)
+        fixture.authority = OperationalAuthority(store, artifacts, clock=lambda: NOW)
         boundary = fixture.establish_cutover(50000, 400, date(2026, 8, 1))
         predecessor = boundary
         probation_days = []
