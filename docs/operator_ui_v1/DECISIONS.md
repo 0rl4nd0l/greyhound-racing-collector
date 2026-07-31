@@ -385,3 +385,35 @@ supersession.
   action, training, promotion, EV, staking, or betting is authorized.
 - Supersession: Additively refines only the current-index source contract for
   `GHU-022`; preserves v1 predictor behavior and all prior history.
+
+## 2026-07-31 — DEC-GHU-023P-PRODUCER-SEALED-BUNDLE-INDEX
+
+- Context: Accepted read-only audit verdict `PREREQUISITE_REQUIRED` found the
+  current on-demand v1 bundle and replay verifier insufficient as a bounded UI
+  catalogue/read contract. No further run or session identity is verified.
+- Decision: Insert ready `GHU-023P` inside R2 before `GHU-023`. The producer
+  owns one fixed-root atomic canonical index and strict v2 result/manifest/index
+  schemas; detail verification is bounded and descriptor-relative with held
+  identities. Seal stable prediction and nullable job identity, complete
+  terminal race/model/config/time/stage evidence, and a canonical aggregate
+  logical hash over manifest payload/entries without requiring a self-hash.
+- Evidence: Current bundles live beneath
+  `artifacts/on_demand_prediction_runs` in
+  `prediction_<timestamp>_<12hex>` directories. The producer emits
+  `on_demand_race_prediction_v1` and
+  `on_demand_prediction_bundle_manifest_v1`; its replay verifier detects
+  changed/missing/added/symlink content but recursively walks caller-selected
+  paths. The manifest excludes itself, results expose an absolute bundle path,
+  market-only can truthfully lack a model artifact, and blocked bundles do not
+  consistently seal exact identity, generated time or protocol/validation/
+  scoring stage.
+- Consequences: `GHU-023` depends on accepted/integrated `GHU-023P` and may
+  adapt only fixed-index, independently verified v2 bundles. Old/unindexed v1
+  bundles remain replay-compatible but UI catalog-ineligible and unchanged.
+  Listing freshness never makes historical content current. No replay,
+  outcome/result access, bundle rewrite, path input/scan, acquisition,
+  service/lock/browser/collector/runtime action, training, promotion, EV,
+  staking or betting is authorized. `GHU-021` remains accepted; its broad gate
+  is still `RUNNING`, not terminal.
+- Supersession: Additively refines only the prediction-bundle source contract
+  for `GHU-023`; preserves all accepted history and current v1 replay evidence.

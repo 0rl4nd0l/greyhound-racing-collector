@@ -700,16 +700,38 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Next safe action: Wait until every listed prerequisite is accepted/integrated, then parent may mark ready and assign one fresh bounded implementer.
 - Closeout evidence: PENDING: exact base/head/tree/path/diff identities, commands/exits, focused tests, reviewer identity/verdict, parent decision, and applicable commit/PR/merge/deploy/proof fields.
 
+## GHU-023P — Producer-sealed prediction bundle read-contract prerequisite
+
+- Release: `R2`
+- Priority: `P2`
+- Status: `ready`
+- Dependencies: `GHU-020E`, `GHU-020A`, `GHU-021`
+- Dependency state: Satisfied; every listed prerequisite is accepted/integrated.
+- Model routing: GPT-5.6 Sol; fallback GPT-5.6 Terra
+- Session role: Fresh bounded producer/index/verifier implementation session
+- Outcome: Gives later `GHU-023` a versioned producer-owned, bounded and descriptor-safe contract for cataloguing and verifying immutable prediction bundles without scanning or trusting paths.
+- Scope: Under the one server-configured private `artifacts/on_demand_prediction_runs` bundle root, add the sole producer-owned canonical atomic index `prediction_bundle_index_v1.json` and strict `on_demand_prediction_bundle_index_v1`, `on_demand_race_prediction_v2`, and `on_demand_prediction_bundle_manifest_v2` schemas defined by P-PREDICTION-BUNDLE-SEALED.; Seal stable `prediction_id`, explicit nullable `job_id`, every-terminal `generated_at`, exact race/config/model identity, terminal status and blocker stage, and a non-self-referential aggregate logical bundle SHA.; Add the bounded descriptor-relative verifier and producer publication needed to validate the fixed index and every selected detail independently.; Suggested implementation paths are limited to `scripts/predict_race_now.py`, `src/predictor/on_demand.py`, schema/config files strictly required by the producer-owned contract, and focused tests; unrelated paths are not pre-authorized.
+- Non-goals: No UI/read-model adapter; no replay execution, outcome join, result comparison, result access, bundle rewrite or legacy migration; no arbitrary scan/path input, service/lock/browser/collector/runtime action, canonical data write, training, persistence, registration, activation or promotion.; Existing unindexed v1 bundles remain replay-compatible and UI catalog-ineligible and MUST NOT be rewritten.
+- Acceptance: The sole fixed index is canonical, atomically replaced, newest-first by `generated_at` then `prediction_id`, contains at most 256 unique entries, and meets the exact byte/file/aggregate/deadline bounds in P-PREDICTION-BUNDLE-SEALED; neither browser nor API can supply a root, directory, filename or path.; Strict schemas reject unknown fields and noncanonical/nonfinite bytes; every terminal bundle binds its directory, index row, result, manifest, optional job, exact race, config and model evidence, with evidence-backed unavailable model artifact hashes allowed only for valid `market_only_v1`.; Every allowed regular file is enumerated once; missing, added, changed, symlink or special files fail closed; the aggregate logical SHA is computed over the defined manifest payload and entries without requiring a manifest self-hash.; Each detail open is descriptor-relative, no-follow, regular-file and fixed-root constrained, retains and rechecks root/component/file `fstat` identities through finite reads, and rejects component replacement/TOCTOU.; Only verified `PREDICTION_READY` exposes finite normalized probabilities; all other terminal records distinguish protocol, validation and scoring blockers without inventing a stage or outcome.; Index freshness is only listing freshness, while verified bundle bytes support only P-IMMUTABLE-HISTORICAL claims.
+- Validation: Focused schema and canonical-byte tests; index atomicity/order/uniqueness/count/size/deadline tests; descriptor-root/component/file replacement and symlink/special-file tests; added/missing/changed-file and logical-SHA tests; exact directory/index/result/manifest/job/race/model/config binding tests; market-only nullable-artifact tests; generated-time/status/stage/unknown-field/nonfinite/probability tests; legacy-v1 replay-compatibility and catalog-ineligibility tests; no scan/caller-path/result/outcome/replay/runtime-action audit.
+- Risks: Material risk: path trust, partial identity, invented blocker stages, impossible self-hashing, or migration of historical v1 bytes would weaken provenance and must fail closed.
+- Stop conditions: Stop if the bounded producer/index/verifier change cannot preserve current replay evidence, if a required identity cannot be producer-sealed truthfully, or if implementation would require UI, acquisition, outcome, service, runtime, training/promotion or historical-rewrite authority.
+- Authority: Producer-owned R2 prerequisite; parent review, acceptance and integration required before `GHU-023`.
+- Claims supported: After acceptance, only bounded discovery and immutable verification of producer-indexed v2 prediction bundles under the fixed private root.
+- Claims unsupported: `GHU-023` completion, current health or quality, replay equivalence, outcomes, UI release, live/runtime proof, prediction execution, training, promotion, EV, staking, betting, or public exposure.
+- Next safe action: Assign one fresh bounded implementer, then independently review and parent-integrate the exact producer/index/verifier delta before `GHU-023`.
+- Closeout evidence: PENDING: exact base/head/tree/path/diff identities, focused commands/exits, reviewer identity/verdict, parent decision, and applicable integration fields.
+
 ## GHU-023 — Prediction bundle and evidence read model
 
 - Release: `R2`
 - Priority: `P2`
 - Status: `planned`
-- Dependencies: `GHU-020E`, `GHU-020A`, `GHU-021`
+- Dependencies: `GHU-020E`, `GHU-020A`, `GHU-021`, `GHU-023P`
 - Model routing: GPT-5.6 Sol; fallback GPT-5.6 Terra
 - Session role: Fresh Codex X implementation session
 - Outcome: Lets the UI inspect prior manual prediction attempts and replay evidence without interpreting logs ad hoc.
-- Scope: Index isolated prediction bundles through their canonical result and manifest.; Expose exact race/model/config identities, terminal status, probabilities when present and evidence references.; Verify manifest/hash consistency before showing a run as sealed.; Reject added/missing/changed bundle bytes in the view model.
+- Scope: Adapt only the fixed producer-owned `prediction_bundle_index_v1.json` and independently verified v2 bundles from `GHU-023P`.; Expose exact race/model/config identities, terminal status and blocker stage, probabilities only for verified `PREDICTION_READY`, and fixed-root-relative evidence names.; Preserve unavailable, integrity-invalid, protocol-blocked, validation-blocked, scoring-blocked and verified-success states without interpreting logs or trusting paths.
 - Non-goals: No replay execution, outcome join, result comparison or bundle rewriting.
 - Acceptance: A run is either verified, blocked or unavailable—never partially trusted.; Protocol and later validation blockers remain distinct.; Raw private evidence remains access-controlled.
 - Validation: Bundle tamper, missing-file, unknown-status and happy-path tests.

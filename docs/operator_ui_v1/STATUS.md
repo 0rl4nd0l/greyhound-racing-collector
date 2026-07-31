@@ -10,10 +10,10 @@ product checkpoint remains preserved in the history below):
 | HEAD / tree | `4a24218379d186d951f47d3fcf0d17d396d7d066` / `af89578953145e5049bb9d2c70f3de150fad86ca` |
 | Baseline cleanliness | clean |
 | Historical/upstream source | Actual historical merge parent `51a5287d05c790e3855e5b74ce7117a29340135e`; later `origin/master` drift `f38a125f6364b8a60d17ae9c971b0ce172874eea`, tree `408a8adbfa2bd436132bc4d2c63e952aeb57c5a5`, parent `51a5287d05c790e3855e5b74ce7117a29340135e`; local merge `0b08966b31c15d8b459b9c6b60a48b19030a9ce4` |
-| Current release / ticket | R2 remains in progress. `GHU-020A` and `GHU-021` are parent-accepted/integrated; read-only audit requires ready prerequisite `GHU-022P` before `GHU-022`. R5 remains deferred. |
-| Counts | 19 accepted tickets, 1 ready, 0 active, 0 review, 13 blocked, 2 deferred, 17 planned (plus accepted audit milestone `GHU-000A`) |
-| Assignment | No active ticket; `GHU-022P` is next |
-| Next safe action | Preserve accepted/integrated `GHU-020A` and `GHU-021`; assign a fresh bounded collector implementer for ready `GHU-022P`, then independently review and parent-integrate it before `GHU-022`. |
+| Current release / ticket | R2 remains in progress. `GHU-020A` and `GHU-021` are parent-accepted/integrated; audits require ready `GHU-022P` before `GHU-022` and ready `GHU-023P` before `GHU-023`. R5 remains deferred. |
+| Counts | 19 accepted tickets, 2 ready, 0 active, 0 review, 13 blocked, 2 deferred, 17 planned (plus accepted audit milestone `GHU-000A`) |
+| Assignment | No active ticket; independent bounded `GHU-022P` and `GHU-023P` work may proceed in parallel |
+| Next safe action | Preserve accepted/integrated `GHU-020A` and `GHU-021`; assign fresh bounded implementers for ready `GHU-022P` and/or `GHU-023P`, then independently review and parent-integrate each before its dependent ticket. |
 | Validation | `GHU-021` parent focused gate passed `254 passed in 39.77s`; reviewer verdict `ACCEPT_GHU_021`. Classifier selected `full_forecasting`; the exact 551-test broad gate remains `RUNNING`, with no terminal result claimed. |
 
 `GHU-000B` audit run `20260730T172346Z-1bacc67937-3c5f6b`, session
@@ -572,3 +572,16 @@ and predictor bounded discovery strips runners even though downstream request
 construction can consume `participants`/`runners`. `GHU-022P` therefore owns
 the smallest collector current-index v2 evolution before `GHU-022`. It does
 not reopen `GHU-000` or `GHU-021`; R2 remains in progress and R5 deferred.
+
+Read-only audit verdict `PREREQUISITE_REQUIRED` also found that current
+`artifacts/on_demand_prediction_runs/prediction_<timestamp>_<12hex>` bundles
+cannot safely back `GHU-023`. The producer writes canonical v1 result and
+manifest files, and replay verification detects common changed/missing/added/
+symlink cases, but there is no producer-owned bounded index or ordering,
+strict unknown-field schemas, descriptor-safe fixed-root verifier, aggregate
+logical identity, stable prediction/job identity, or complete terminal
+race/model/config/time/stage contract. The result's absolute bundle path is
+not UI authority. `GHU-023P` owns only the smallest producer/index/verifier v2
+prerequisite. Legacy/unindexed v1 remains replay-compatible, catalog-ineligible
+and unchanged. This does not reopen `GHU-021`; its exact 551-test broad gate
+remains `RUNNING` with no terminal result claimed.

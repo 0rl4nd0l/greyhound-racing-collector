@@ -197,7 +197,86 @@ These policies are exhaustive; an adapter may not invent or defer a threshold:
 - **P-CATALOG-60:** repository configs/schemas and deployed/model manifests
   are observed within 60 seconds and every expected SHA-256 matches.
 - **P-BUNDLE-LIST-60:** a directory/index listing observation is fresh for 60
-  seconds. Each listed bundle must independently pass P-IMMUTABLE-HISTORICAL.
+  seconds. For prediction bundles this means only the fixed producer index in
+  P-PREDICTION-BUNDLE-SEALED, never a directory scan. Each listed bundle must
+  independently pass P-IMMUTABLE-HISTORICAL; index freshness never makes its
+  contents current health.
+- **P-PREDICTION-BUNDLE-SEALED:** `GHU-023P` owns the producer/index/verifier
+  prerequisite beneath the one server-configured private root
+  `artifacts/on_demand_prediction_runs`. The sole producer-owned listing is an
+  atomically replaced canonical `prediction_bundle_index_v1.json` with strict
+  schema `on_demand_prediction_bundle_index_v1`; the UI/browser supplies no
+  root, locator, directory, filename or path and no reader scans the root.
+  The index is at most 512 KiB and 256 unique entries, ordered newest-first by
+  timezone-aware `generated_at`, then ascending stable `prediction_id` as the
+  deterministic tie-breaker. Each entry names only a directory matching
+  `prediction_[0-9]{8}T[0-9]{12}[+-][0-9]{4}_[0-9a-f]{12}`, its stable
+  `prediction_id` (a lowercase canonical UUID minted once at bundle creation),
+  nullable `job_id` (null or the exact immutable UI operations-store job ID),
+  generated time, terminal status,
+  `blocker_stage`, manifest SHA-256 and aggregate logical bundle SHA-256.
+  Index validation has a 1-second monotonic deadline and rejects duplicate or
+  unknown fields/identities/statuses, noncanonical/nonfinite bytes, oversize,
+  truncation and unsafe file types. Atomic publication is canonical temporary
+  regular-file write, flush/fsync, same-directory replace and directory fsync;
+  only producer-sealed v2 bundles are indexed. Existing/unindexed
+  `on_demand_race_prediction_v1` and
+  `on_demand_prediction_bundle_manifest_v1` bundles remain replay-compatible
+  but catalog-ineligible and are never rewritten absent a separately
+  authorized future migration.
+
+  An indexed detail has strict schemas `on_demand_race_prediction_v2` and
+  `on_demand_prediction_bundle_manifest_v2`, rejecting unknown fields. It has
+  at most 32 manifest entries, 64 MiB per regular file, 256 MiB aggregate
+  logical bytes, 1 MiB each for result and manifest, and a 5-second monotonic
+  verification deadline. These conservative bounds cover the current finite
+  output shape (canonical JSON/CSV evidence, model/config files and one sealed
+  history database) while bounding the former recursive verifier.
+  `bundle_manifest.json` is enumerated once as the schema-fixed control file;
+  every other allowed regular file is enumerated exactly once in `files` by a
+  validated single-component or slash-separated relative name. Names
+  prohibit empty/dot/dot-dot components, absolute paths and platform
+  separators. No unenumerated, missing, changed, symlink, device, FIFO, socket
+  or other special entry is allowed. The manifest itself is not self-hashed.
+  `logical_bundle_sha256` is SHA-256 of canonical JSON bytes of exactly
+  `{schema_version, prediction_id, job_id, files}`, where `files` is the
+  lexicographically keyed manifest mapping of relative name to exact byte
+  length and SHA-256. The index records the manifest file SHA-256 and this
+  logical hash, avoiding an impossible self-hash while sealing all logical
+  bundle content.
+
+  Verification opens the configured root, indexed directory and every named
+  object descriptor-relatively with no-follow semantics; each must be a
+  regular file/directory on the retained root chain as applicable. It holds
+  descriptors through finite reads, compares construction/open identities,
+  rechecks `fstat` device/inode/type/size and root/component identities after
+  reading, and fails on replacement or mutation. It independently binds the
+  exact directory name, index row, result, manifest, nullable UI job identity,
+  race identity (stable ID, canonical TheDogs URL, date, venue, race number
+  and timezone-aware jump), config identity and canonical byte SHA-256, and
+  model resolved identity/schema/manifest/artifact hashes. A valid
+  `market_only_v1` model explicitly records artifact and artifact-manifest
+  identity as `UNAVAILABLE_NOT_APPLICABLE` with null hashes; no other mode may
+  omit required model evidence. No absolute bundle/source path is exposed or
+  trusted; evidence references are validated names relative to the fixed root.
+
+  Every terminal result has stable `prediction_id`, explicit nullable
+  `job_id`, timezone-aware `generated_at`, exact terminal `status`, and
+  `blocker_stage`. Status is exactly `PREDICTION_READY` or
+  `PREDICTION_BLOCKED`; stage is null only for ready and otherwise exactly
+  `PROTOCOL`, `VALIDATION`, or `SCORING`. A blocked result has one non-empty
+  producer-owned blocker code and no probabilities. Producer-owned
+  deterministic code maps known failures at the boundary where they occur;
+  an unknown status, blocker code, or stage is integrity-invalid and MUST NOT
+  be guessed. `PREDICTION_READY`
+  alone may contain ranked finite probabilities, with unique runner/box
+  identities, contiguous ranks, each probability in `[0,1]`, and canonical
+  absolute sum error no greater than `1e-12`; blockers contain none.
+  The read model distinguishes fixed index/root unavailable, invalid/integrity
+  failure, verified protocol blocker, verified validation blocker, verified
+  scoring blocker and verified success. Verified bytes receive only
+  P-IMMUTABLE-HISTORICAL semantics: age is displayed and never proves current
+  health, present model quality, promotion readiness or replay equivalence.
 - **P-JOB-5-DEADLINE:** persisted UI job and protocol directories are scanned
   in one observation no older than 5 seconds. The checked-in deterministic
   fields are `discovery_seconds=12`, `lock_seconds=1`,
@@ -237,7 +316,7 @@ only supported claim.
 | Collector — aggregate | The two lane envelopes above plus matching installed/deployed source identities. | P-COLLECTOR-AGGREGATE. Show both lanes separately and preserve the unavailable/degraded state of either. Never compare their run IDs for equality. | Whether all plan-required collector lanes are individually fresh/integrity-valid under a consistent deployment identity. |
 | Upcoming races | Collector-owned fixed packet `shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json` at schema `collector_current_race_index_v2`; matching v2 `current_race_index_publish`; sealed refresh-report and runner-source locators/hashes; exact packet and runner-set hashes; fixed server-owned locator and evidence root. | Validate P-CURRENT-INDEX-1200 and P-CURRENT-INDEX-V2-RUNNER-SEALED, then apply stricter P-UPCOMING-300-PREJUMP. Legacy v1 is predictor-compatible but catalog-ineligible. Read/adapt only the verified packet/publication/source chain. Browser/UI never supplies, derives, enumerates, or displays as input `--current-race-index`, evidence root, filesystem path, lock/browser/current-time argument; it never independently interprets a refresh report, browses, scans, fetches, scrapes, locks, or starts a browser. | Exact pre-jump race and ordered validated final active runner set from one verified collector v2 publication chain. |
 | Model/config catalog | Finite checked-in configs and schemas resolved by `scripts/predict_race_now.py --list-configs`, plus matching frozen model/deployed manifest hashes. | P-CATALOG-60. Hash the exact observed files and normalized finite catalog; all repository, deployed, model, schema, and config identities must agree. Missing is `DATA_MISSING`; mismatch is `DIVERGENT`; invalid schema is `INVALID`. | Finite server-allowlisted model/config choices with exact byte identities. |
-| Bundle list/detail | Private isolated bundle `result.json` and `bundle_manifest.json` produced by `scripts/predict_race_now.py`, with every manifest entry rehashed and exact job/race binding verified. | Listing uses P-BUNDLE-LIST-60; verified detail uses P-IMMUTABLE-HISTORICAL. Tamper/missing bytes are `INVALID`/`UNAVAILABLE`. Historical bundle age never makes it a current prediction. | The verified result of one named historical prediction run. |
+| Bundle list/detail | Fixed private bundle root and producer-owned `prediction_bundle_index_v1.json`; indexed strict-v2 `result.json` and `bundle_manifest.json`; exact logical, job/race/model/config and descriptor identities. | P-PREDICTION-BUNDLE-SEALED and P-BUNDLE-LIST-60; every detail independently passes the bounded descriptor-safe verifier and then only P-IMMUTABLE-HISTORICAL. Unavailable, integrity-invalid, protocol/validation/scoring blocker and verified success remain distinct. Never scan, trust/expose an absolute path, or catalog legacy/unindexed v1. | The verified terminal evidence of one producer-indexed historical prediction attempt, never current health or quality. |
 | Prediction progress | Durable UI job/process identity; protocol and capture records; fixed current-index packet hash; `current_race_index_publish` status/hash; sealed source refresh-report path/SHA-256; runner-set, source, receipt, and bundle hashes; one fixed server-owned packet locator and evidence root. | P-CURRENT-INDEX-1200 and P-JOB-5-DEADLINE. Validate the complete source-to-screen chain and exact race/runner/model/config/job/process binding. Browser/UI never supplies, derives, enumerates, or displays packet/root/path/lock/browser/current-time arguments. No independent refresh-report interpretation, browsing, scan, fetch, scrape, lock, browser, or raw collector control. Probabilities require verified `PREDICTION_READY`. | Last persisted UI phase and exact packet/publication/source, protocol, capture, and scoring evidence. |
 | Corpus readiness | Current matching report-only inventory and scorecard chain built by `scripts/build_race_evidence_inventory_packet.py`, including input population/source identity, exclusions, closure evidence, generated time, and chain hashes. | P-REPORT-24H. Exact input/source identities and all referenced report hashes must match. Missing/stale/mismatch blocks readiness. Raw DB counts never substitute. | Report-defined readiness and exclusions for the exact named population. |
 | Model lineage/evaluation | Immutable model/config/manifest plus the matching named evaluation, rolling comparison, promotion-distance, and refinement-chain hashes and slice identities. | Artifacts use P-IMMUTABLE-HISTORICAL; a “current evaluation” listing uses P-REPORT-24H and must bind the exact model/config/source slice. Missing or mismatch is unavailable/divergent. A historical slice never becomes present quality or promotion evidence because bytes remain available. | Identity and reported evaluation for one explicitly named historical slice. |
