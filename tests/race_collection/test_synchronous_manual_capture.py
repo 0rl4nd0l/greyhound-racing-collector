@@ -27,6 +27,7 @@ from race_collection.synchronous_manual_capture import (
     LatencyBudget,
     invoke_capture_one,
     publish_current_race_index,
+    publish_scheduled_capture_receipts,
     run_capture_one,
 )
 from src.predictor.on_demand import canonical_bytes, sha256_bytes
@@ -386,6 +387,89 @@ def test_capture_one_success_is_one_capture_one_receipt_and_one_consumption(
     with pytest.raises(ProtocolRejected, match="RESPONSE_ALREADY_CONSUMED"):
         protocol.consume_response(result["request_id"], now=NOW + timedelta(seconds=4))
     assert not protocol.outstanding_request_ids()
+
+
+def test_scheduled_capture_publishes_bounded_alias_receipts_for_reuse(
+    tmp_path: Path,
+):
+    source_race_id = "Race 2 - LADBROKES-Q1-LAKESIDE - 2026-07-30"
+    alias_race_id = "Race 2 - QOT - 2026-07-30"
+    race_url = "https://www.thedogs.com.au/racing/q-straight/2026-07-30/2"
+    evidence_root = tmp_path / "evidence"
+    protocol = ManualPredictionCollectorProtocol(
+        evidence_root / "manual_prediction_collector_requests_v1"
+    )
+    output_dir = evidence_root / "scheduled-capture"
+    output_dir.mkdir(parents=True)
+    form = output_dir / "Race 1 - WARRNAMBOOL - 2026-07-30.csv"
+    form.write_text("dog_name,box_number\nAlpha,1\nBeta,2\n", encoding="utf-8")
+    sidecar = form.with_name(form.name + ".metadata.json")
+    sidecar.write_bytes(canonical_bytes({"race_id": RACE_ID}))
+    item = {
+        **plan_item(form),
+        "race_id": source_race_id,
+        "race_id_aliases": [
+            alias_race_id,
+            "Race 2 - Q STRAIGHT - 2026-07-30",
+        ],
+        "venue": "LADBROKES-Q1-LAKESIDE",
+        "race_number": 2,
+        "thedogs_source_url": race_url,
+    }
+    attempt = {
+        **successful_report()["attempts"][0],
+        "race_id": source_race_id,
+    }
+    attempt["append_report"] = {
+        **attempt["append_report"],
+        "race_id": source_race_id,
+    }
+
+    result = publish_scheduled_capture_receipts(
+        protocol=protocol,
+        evidence_root=evidence_root,
+        collector_run_id="20260730T165500+1000_odds_capture",
+        plan_item=item,
+        attempt=attempt,
+        output_dir=output_dir,
+        emitted_at=NOW + timedelta(seconds=3),
+    )
+
+    assert result["status"] == "PUBLISHED"
+    assert result["receipt_count"] >= 2
+    reused = protocol.discover_collector_exact_handoff(
+        race_id=alias_race_id,
+        current_time=NOW + timedelta(seconds=4),
+        max_age_seconds=900,
+    )
+    assert reused is not None
+    assert reused["race_id"] == alias_race_id
+    assert reused["race"]["url"] == race_url
+    assert reused["append_timestamp"] == (NOW + timedelta(seconds=2)).isoformat()
+    assert reused["_form_bytes"] == form.read_bytes()
+    assert not protocol.outstanding_request_ids()
+    receipt_path = protocol.collector_exact_receipt_path(
+        alias_race_id,
+        reused["capture_attempt_sha256"],
+    )
+    receipt_raw = receipt_path.read_bytes()
+    receipt_value = json.loads(receipt_raw)
+    receipt_value["sealed_handoff"]["append_report_sha256"] = "f" * 64
+    receipt_path.write_bytes(canonical_bytes(receipt_value))
+    with pytest.raises(ProtocolRejected, match="HASH_DRIFT"):
+        protocol.discover_collector_exact_handoff(
+            race_id=alias_race_id,
+            current_time=NOW + timedelta(seconds=5),
+            max_age_seconds=900,
+        )
+    receipt_path.write_bytes(receipt_raw)
+    form.write_bytes(form.read_bytes() + b"tampered")
+    with pytest.raises(ProtocolRejected, match="HASH_DRIFT"):
+        protocol.discover_collector_exact_handoff(
+            race_id=alias_race_id,
+            current_time=NOW + timedelta(seconds=5),
+            max_age_seconds=900,
+        )
 
 
 def test_capture_one_returns_immediate_busy_with_owner_and_phase(tmp_path: Path):

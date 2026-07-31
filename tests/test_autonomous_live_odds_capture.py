@@ -332,6 +332,53 @@ def test_build_capture_plan_discovers_nested_daemon_eligible_inputs(tmp_path):
     )
 
 
+def test_primary_capture_plan_preserves_bounded_index_aliases_through_refresh(
+    tmp_path,
+):
+    run_dir = tmp_path / "shadow_autopilot_v1_unit"
+    input_dir = run_dir / "odds_capture_refreshed_upcoming"
+    csv_path = _write_capture_input(
+        input_dir,
+        venue="LADBROKES-Q1-LAKESIDE",
+        race_number=2,
+    )
+    sidecar_path = capture.sidecar_path_for(csv_path)
+    sidecar = json.loads(sidecar_path.read_bytes())
+    race_url = "https://www.thedogs.com.au/racing/q-straight/2026-06-10/2/example"
+    sidecar["prejump_shadow_metadata"]["source_url"] = race_url
+    capture.write_json(sidecar_path, sidecar)
+    qot_race_id = "Race 2 - QOT - 2026-06-10"
+    capture.write_json(
+        run_dir / "odds_capture_refresh_report.json",
+        {
+            "selected_races": [
+                {
+                    "race_url": race_url,
+                    "race_id": qot_race_id,
+                    "race_id_aliases": [
+                        qot_race_id,
+                        "Race 2 - Q STRAIGHT - 2026-06-10",
+                        "Race 2 - Q1 LAKESIDE - 2026-06-10",
+                    ],
+                    "venue": "QOT",
+                    "race_number": 2,
+                    "date": "2026-06-10",
+                    "jump_datetime": "2026-06-10T15:00:00+10:00",
+                }
+            ]
+        },
+    )
+
+    item = _plan(input_dir)["races"][0]
+    refreshed = capture.refresh_plan_item_for_time(
+        item,
+        datetime.fromisoformat("2026-06-10T14:41:00+10:00"),
+    )
+
+    assert qot_race_id in item["race_id_aliases"]
+    assert refreshed["race_id_aliases"] == item["race_id_aliases"]
+
+
 def test_build_capture_plan_uses_refresh_report_fallback_when_form_csv_quarantined(
     tmp_path,
 ):
@@ -988,6 +1035,7 @@ def test_execute_capture_plan_appends_after_exact_sportsbet_validation(
     input_dir = tmp_path / "upcoming"
     _write_capture_input(input_dir)
     appended = {}
+    published = []
 
     def fake_fetch(db_path, venue, race_number, race_date, allow_auto_scrape_odds):
         win_rows = [
@@ -1039,6 +1087,20 @@ def test_execute_capture_plan_appends_after_exact_sportsbet_validation(
     monkeypatch.setattr(capture, "fetch_odds_for_target_race", fake_fetch)
     monkeypatch.setattr(capture, "append_validated_capture", fake_append)
 
+    def publish_receipt(*, plan_item, attempt, emitted_at):
+        published.append(
+            {
+                "race_id": plan_item["race_id"],
+                "status": attempt["status"],
+                "emitted_at": emitted_at.isoformat(),
+            }
+        )
+        return {
+            "schema_version": "collector_exact_capture_receipt_publish_v1",
+            "status": "PUBLISHED",
+            "receipt_count": 2,
+        }
+
     report = capture.execute_capture_plan(
         _plan(input_dir),
         db_path=tmp_path / "odds.db",
@@ -1046,6 +1108,7 @@ def test_execute_capture_plan_appends_after_exact_sportsbet_validation(
         execute=True,
         allow_auto_scrape_odds=True,
         current_time_provider=lambda: datetime.fromisoformat("2026-06-10T14:40:00+10:00"),
+        receipt_publisher=publish_receipt,
     )
 
     assert report["final_status"] == "AUTONOMOUS_LIVE_ODDS_CAPTURE_APPENDED"
@@ -1055,6 +1118,18 @@ def test_execute_capture_plan_appends_after_exact_sportsbet_validation(
     assert report["skipped_already_captured_count"] == 0
     assert report["validation_pass_count"] == 1
     assert report["inserted_live_odds_rows"] == 4
+    assert report["collector_exact_receipt_publish_count"] == 2
+    assert report["collector_exact_receipt_publish_failure_count"] == 0
+    assert report["attempts"][0]["collector_exact_receipt_publish"]["status"] == (
+        "PUBLISHED"
+    )
+    assert published == [
+        {
+            "race_id": "Race 1 - WPK - 2026-06-10",
+            "status": "APPENDED",
+            "emitted_at": "2026-06-10T14:40:00+10:00",
+        }
+    ]
     assert appended["capture_mode"] == "autonomous_prejump_t30m"
     assert [row["box_number"] for row in appended["rows"]] == [1, 2]
     assert [row["box_number"] for row in appended["place_rows"]] == [1, 2]

@@ -605,10 +605,30 @@ def _acquire_or_reuse(
     if odds_source not in {"auto", "capture", "receipt"}:
         raise PredictionBlocked("ODDS_SOURCE_UNSUPPORTED", odds_source=odds_source)
     try:
-        handoff = protocol.discover_exact_handoff(
+        manual_handoff = protocol.discover_exact_handoff(
             race_id=race_id,
             current_time=current_time,
             max_age_seconds=receipt_max_age_seconds,
+        )
+        collector_handoff = protocol.discover_collector_exact_handoff(
+            race_id=race_id,
+            current_time=current_time,
+            max_age_seconds=receipt_max_age_seconds,
+        )
+        available_handoffs = [
+            value
+            for value in (manual_handoff, collector_handoff)
+            if value is not None
+        ]
+        handoff = (
+            max(
+                available_handoffs,
+                key=lambda value: datetime.fromisoformat(
+                    str(value["append_timestamp"])
+                ),
+            )
+            if available_handoffs
+            else None
         )
         if handoff is not None:
             if (jump - current_time).total_seconds() <= latency_budget.reuse_margin_seconds:
@@ -875,6 +895,16 @@ def _run_prediction(
             current_time=receipt_validation_time,
             max_age_seconds=int(config["bundle"]["receipt_max_age_seconds"]),
         )
+        if (
+            receipt.get("race_id") != race_id
+            or (
+                handoff.get("schema_version")
+                == "on_demand_verified_collector_capture_v2"
+                and receipt.get("runner_set_sha256")
+                != handoff.get("runner_set_sha256")
+            )
+        ):
+            raise PredictionBlocked("RECEIPT_INVALID")
         form_name = str(handoff.get("_form_name") or "form.csv")
         if Path(form_name).name != form_name:
             raise PredictionBlocked("RECEIPT_INVALID")

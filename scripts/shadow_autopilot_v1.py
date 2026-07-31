@@ -621,6 +621,7 @@ def autonomous_live_odds_capture_command(
     allow_auto_scrape_odds: bool,
     manual_request_root: Path | None = None,
     manual_request_id: str | None = None,
+    collector_receipt_root: Path | None = None,
     collector_run_id: str | None = None,
     command_prefix: Sequence[str] | None = None,
 ) -> list[str]:
@@ -646,6 +647,19 @@ def autonomous_live_odds_capture_command(
         command.append("--execute")
     if allow_auto_scrape_odds:
         command.append("--allow-auto-scrape-odds")
+    if collector_receipt_root is not None:
+        if (
+            collector_run_id is None
+            or not execute
+            or not allow_auto_scrape_odds
+        ):
+            raise ValueError("collector_receipt_authority_missing")
+        command.extend(
+            [
+                "--collector-receipt-root",
+                str(collector_receipt_root),
+            ]
+        )
     if manual_request_id is not None:
         if manual_request_root is None or collector_run_id is None:
             raise ValueError("manual_request_collector_authority_missing")
@@ -655,10 +669,12 @@ def autonomous_live_odds_capture_command(
                 str(manual_request_root),
                 "--manual-request-id",
                 manual_request_id,
-                "--collector-run-id",
-                collector_run_id,
             ]
         )
+    if collector_run_id is not None and (
+        collector_receipt_root is not None or manual_request_id is not None
+    ):
+        command.extend(["--collector-run-id", collector_run_id])
     return command
 
 
@@ -6629,13 +6645,17 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         evidence_root,
         lock_path=args.collector_lock_path,
     )
+    collector_run_id = (
+        str(collector_authority["run_id"])
+        if collector_authority is not None
+        else None
+    )
     if (
         args.enable_autonomous_odds_capture
         and args.execute_autonomous_odds_capture
         and args.allow_auto_scrape_odds
         and collector_authority is not None
     ):
-        collector_run_id = str(collector_authority["run_id"])
         try:
             manual_protocol, manual_request = prepare_manual_collector_request(
                 evidence_root=evidence_root,
@@ -6817,6 +6837,15 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             collector_run_id=(
                 str(manual_request.claim["collector_run_id"])
                 if manual_request is not None
+                else collector_run_id
+            ),
+            collector_receipt_root=(
+                evidence_root / PROTOCOL_DIRECTORY
+                if (
+                    collector_run_id is not None
+                    and args.execute_autonomous_odds_capture
+                    and args.allow_auto_scrape_odds
+                )
                 else None
             ),
         )

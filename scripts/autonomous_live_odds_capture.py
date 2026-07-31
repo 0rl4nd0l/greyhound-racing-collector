@@ -823,6 +823,50 @@ def selected_races_by_key(report: Mapping[str, Any]) -> dict[tuple[str, str], di
     return output
 
 
+def refresh_report_for_input_dir(input_dir: Path) -> dict[str, Any]:
+    candidates = [
+        input_dir / "odds_capture_refresh_report.json",
+        input_dir / "refresh_prejump_report.json",
+        input_dir.parent / "odds_capture_refresh_report.json",
+        input_dir.parent / "refresh_prejump_report.json",
+    ]
+    return next((load_json_object(path) for path in candidates if path.exists()), {})
+
+
+def add_selected_race_aliases(
+    plan_item: Mapping[str, Any],
+    report: Mapping[str, Any],
+) -> dict[str, Any]:
+    enriched = dict(plan_item)
+    source_url = str(plan_item.get("thedogs_source_url") or "").strip()
+    race_number = parse_int_value(plan_item.get("race_number"))
+    race_date = str(plan_item.get("race_date") or "")
+    selected = report.get("selected_races")
+    if not source_url or not isinstance(selected, list):
+        return enriched
+    matches = [
+        row
+        for row in selected
+        if isinstance(row, Mapping)
+        and str(row.get("race_url") or row.get("url") or "").strip() == source_url
+        and race_number_from_selected(row) == race_number
+        and race_date_from_selected(row) == race_date
+    ]
+    if len(matches) != 1:
+        return enriched
+    aliases = {
+        str(value)
+        for value in [
+            matches[0].get("race_id"),
+            *(matches[0].get("race_id_aliases") or []),
+        ]
+        if isinstance(value, str) and value
+    }
+    if len(aliases) <= 16:
+        enriched["race_id_aliases"] = sorted(aliases)
+    return enriched
+
+
 def race_number_from_selected(row: Mapping[str, Any]) -> int | None:
     return parse_int_value(row.get("race_number"))
 
@@ -1116,13 +1160,7 @@ def fallback_plan_items_from_refresh_report(
     *,
     current_time: datetime,
 ) -> list[dict[str, Any]]:
-    candidates = [
-        input_dir / "odds_capture_refresh_report.json",
-        input_dir / "refresh_prejump_report.json",
-        input_dir.parent / "odds_capture_refresh_report.json",
-        input_dir.parent / "refresh_prejump_report.json",
-    ]
-    report = next((load_json_object(path) for path in candidates if path.exists()), {})
+    report = refresh_report_for_input_dir(input_dir)
     if not report:
         return []
     selected_by_key = selected_races_by_key(report)
@@ -1168,6 +1206,7 @@ def build_capture_plan(
     rows: list[dict[str, Any]] = []
     seen_csv_paths: set[Path] = set()
     for input_dir in input_dirs:
+        refresh_report = refresh_report_for_input_dir(Path(input_dir))
         input_dir_row_start = len(rows)
         for csv_path in sorted(Path(input_dir).rglob("*.csv")):
             if {"raw_exports", "quarantine"}.intersection(csv_path.parts):
@@ -1176,7 +1215,12 @@ def build_capture_plan(
             if logical_path in seen_csv_paths:
                 continue
             seen_csv_paths.add(logical_path)
-            rows.append(build_plan_item(csv_path, current_time))
+            rows.append(
+                add_selected_race_aliases(
+                    build_plan_item(csv_path, current_time),
+                    refresh_report,
+                )
+            )
         input_dir_rows = rows[input_dir_row_start:]
         if not any(row.get("status") == "READY_TO_CAPTURE" for row in input_dir_rows):
             rows.extend(
@@ -1247,7 +1291,11 @@ def refresh_plan_item_for_time(
 ) -> dict[str, Any]:
     csv_path = plan_item_csv_path(plan_item)
     if plan_item_should_rebuild_from_csv(plan_item, csv_path):
-        return build_plan_item(csv_path, current_time)
+        rebuilt = build_plan_item(csv_path, current_time)
+        aliases = plan_item.get("race_id_aliases")
+        if isinstance(aliases, list):
+            rebuilt["race_id_aliases"] = list(aliases)
+        return rebuilt
 
     refreshed = dict(plan_item)
     time_blockers = {
@@ -2539,6 +2587,7 @@ def execute_capture_plan(
     current_time_provider: Callable[[], datetime] | None = None,
     fetch_timeout_seconds: float = DEFAULT_FETCH_TIMEOUT_SECONDS,
     progress_dir: Path | None = None,
+    receipt_publisher: Callable[..., Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     time_provider = current_time_provider or (lambda: datetime.now().astimezone())
     attempts: list[dict[str, Any]] = []
@@ -2693,6 +2742,21 @@ def execute_capture_plan(
             if append_report.get("status") == "SUCCESS" and attempt["inserted_rows"] > 0
             else "APPEND_FAILED"
         )
+        if attempt["status"] == "APPENDED" and receipt_publisher is not None:
+            try:
+                attempt["collector_exact_receipt_publish"] = dict(
+                    receipt_publisher(
+                        plan_item=item,
+                        attempt=dict(attempt),
+                        emitted_at=time_provider(),
+                    )
+                )
+            except Exception as exc:
+                attempt["collector_exact_receipt_publish"] = {
+                    "schema_version": "collector_exact_capture_receipt_publish_v1",
+                    "status": "REJECTED",
+                    "reason": type(exc).__name__,
+                }
         attempts.append(attempt)
         flush_attempt_progress(progress_dir, attempts=attempts)
 
@@ -2714,6 +2778,19 @@ def execute_capture_plan(
     ready_count = int(plan.get("ready_count") or 0)
     candidate_count = len([item for item in plan.get("races") or [] if isinstance(item, Mapping)])
     completed_count = len(attempts)
+    receipt_publish_results = [
+        attempt["collector_exact_receipt_publish"]
+        for attempt in attempts
+        if isinstance(attempt.get("collector_exact_receipt_publish"), Mapping)
+    ]
+    receipt_publish_count = sum(
+        int(result.get("receipt_count") or 0)
+        for result in receipt_publish_results
+        if result.get("status") == "PUBLISHED"
+    )
+    receipt_publish_failure_count = sum(
+        1 for result in receipt_publish_results if result.get("status") != "PUBLISHED"
+    )
     ready_race_ids = [
         str(item.get("race_id"))
         for item in plan.get("races") or []
@@ -2757,6 +2834,10 @@ def execute_capture_plan(
         "ready_race_ids": ready_race_ids,
         "validation_pass_count": validation_pass_count,
         "inserted_live_odds_rows": inserted_rows,
+        "collector_exact_receipt_publish_count": receipt_publish_count,
+        "collector_exact_receipt_publish_failure_count": (
+            receipt_publish_failure_count
+        ),
         "fetch_timeout_seconds": fetch_timeout_seconds,
         **next_action,
         "capture_window_coverage": window_coverage,
@@ -2864,6 +2945,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--manual-request-root", type=Path)
     parser.add_argument("--manual-request-id")
+    parser.add_argument("--collector-receipt-root", type=Path)
     parser.add_argument("--collector-run-id")
     return parser.parse_args(argv)
 
@@ -2898,6 +2980,31 @@ def main(argv: Sequence[str] | None = None) -> int:
             execute=args.execute,
             allow_auto_scrape_odds=args.allow_auto_scrape_odds,
         )
+    receipt_publisher = None
+    if args.collector_receipt_root is not None:
+        if (
+            not args.collector_run_id
+            or not args.execute
+            or not args.allow_auto_scrape_odds
+        ):
+            raise ValueError("collector_receipt_authority_missing")
+        from race_collection.synchronous_manual_capture import (
+            publish_scheduled_capture_receipts,
+        )
+
+        receipt_protocol = ManualPredictionCollectorProtocol(
+            args.collector_receipt_root
+        )
+
+        def receipt_publisher(**values: Any) -> Mapping[str, Any]:
+            return publish_scheduled_capture_receipts(
+                protocol=receipt_protocol,
+                evidence_root=evidence_root,
+                collector_run_id=args.collector_run_id,
+                output_dir=output_dir,
+                **values,
+            )
+
     report = execute_capture_plan(
         plan,
         db_path=args.db,
@@ -2906,6 +3013,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         allow_auto_scrape_odds=args.allow_auto_scrape_odds,
         fetch_timeout_seconds=args.fetch_timeout_seconds,
         progress_dir=output_dir,
+        receipt_publisher=receipt_publisher,
     )
     report = {
         **capture_report_identity_fields(output_dir),
