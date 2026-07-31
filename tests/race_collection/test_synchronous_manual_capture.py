@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 
 import race_collection.synchronous_manual_capture as capture
+from scripts import shadow_autopilot_daemon as daemon
 from race_collection.manual_prediction_collector_request import (
     ManualPredictionCollectorProtocol,
     ProtocolRejected,
@@ -68,12 +69,22 @@ def _runner_coverage(evidence_root: Path, race_url: str, observed_at: datetime |
 def _write_publication_evidence(
     evidence_root: Path, state: Path, published: Mapping[str, Any]
 ) -> None:
-    # Publication is collector-owned at the fixed runtime locator.  Caller and
-    # daemon state locators are deliberately irrelevant.
+    output_locator = "daemon_publication"
+    output_dir = evidence_root / output_locator
+    output_dir.mkdir(parents=True, exist_ok=True)
     state.parent.mkdir(parents=True, exist_ok=True)
     state.write_bytes(canonical_bytes({
-        "run_id": published["run_id"], "output_dir": "/arbitrary/untrusted"
+        "schema_version": "shadow_autopilot_odds_capture_only_state_v1",
+        "run_id": published["run_id"], "output_dir": output_locator,
     }))
+    (output_dir / capture.ODDS_CAPTURE_ONLY_REPORT_FILENAME).write_bytes(
+        canonical_bytes({
+            "schema_version": "shadow_autopilot_odds_capture_only_daemon_report_v1",
+            "run_id": published["run_id"],
+            "output_dir": output_locator,
+            "current_race_index_publish": dict(published),
+        })
+    )
 
 NOW = datetime.fromisoformat("2026-07-30T16:55:00+10:00")
 JUMP = NOW + timedelta(minutes=20)
@@ -289,7 +300,7 @@ def test_latency_budget_declares_and_computes_enforced_margin():
 
 
 def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ):
     evidence_root = tmp_path / "evidence"
     state = evidence_root / "shadow_autopilot_daemon_runtime/odds_capture_state.json"
@@ -333,6 +344,24 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
     index_path = current_race_index_path(state)
     original = index_path.read_bytes()
     _write_publication_evidence(evidence_root, state, published)
+    producer_root = evidence_root.parent
+    monkeypatch.setattr(capture, "ROOT", producer_root)
+    monkeypatch.setattr(daemon, "ROOT", producer_root)
+    producer_output_dir = evidence_root / "daemon_publication"
+    producer_output_locator = daemon.relpath(producer_output_dir)
+    daemon.write_json(state, {
+        "schema_version": "shadow_autopilot_odds_capture_only_state_v1",
+        "run_id": published["run_id"], "output_dir": producer_output_locator,
+    })
+    daemon.write_json(
+        producer_output_dir / capture.ODDS_CAPTURE_ONLY_REPORT_FILENAME,
+        {
+            "schema_version": "shadow_autopilot_odds_capture_only_daemon_report_v1",
+            "run_id": published["run_id"],
+            "output_dir": producer_output_locator,
+            "current_race_index_publish": dict(published),
+        },
+    )
 
     assert published["status"] == "PUBLISHED"
     assert json.loads(original)["source_refresh_report_sha256"] == sha256_bytes(
@@ -345,6 +374,77 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
         evidence_root=evidence_root,
         max_age_seconds=900,
     )[0]["race_id"] == "Race 5 - GUNN - 2026-07-19"
+
+    state_bytes = state.read_bytes()
+    state_payload = json.loads(state_bytes)
+    report_path = (
+        producer_root / state_payload["output_dir"]
+        / capture.ODDS_CAPTURE_ONLY_REPORT_FILENAME
+    )
+    report_bytes = report_path.read_bytes()
+    report_payload = json.loads(report_bytes)
+
+    report_path.unlink()
+    with pytest.raises(CaptureOneRejected) as missing_report:
+        bounded_current_race_index(
+            current_time=index_now, timeout_seconds=1, index_path=index_path,
+            evidence_root=evidence_root, max_age_seconds=900,
+        )
+    assert missing_report.value.code == "CURRENT_INDEX_REPORT_MISSING"
+    report_path.write_bytes(report_bytes)
+
+    malformed_report = dict(report_payload, schema_version="wrong_schema")
+    report_path.write_bytes(canonical_bytes(malformed_report))
+    with pytest.raises(CaptureOneRejected) as malformed:
+        bounded_current_race_index(
+            current_time=index_now, timeout_seconds=1, index_path=index_path,
+            evidence_root=evidence_root, max_age_seconds=900,
+        )
+    assert malformed.value.code == "CURRENT_INDEX_REPORT_INVALID"
+    report_path.write_bytes(report_bytes)
+
+    for unsafe_output in ("../outside", str(evidence_root / "outside")):
+        unsafe_state = dict(state_payload, output_dir=unsafe_output)
+        state.write_bytes(canonical_bytes(unsafe_state))
+        with pytest.raises(CaptureOneRejected) as unsafe:
+            bounded_current_race_index(
+                current_time=index_now, timeout_seconds=1, index_path=index_path,
+                evidence_root=evidence_root, max_age_seconds=900,
+            )
+        assert unsafe.value.code == "CURRENT_INDEX_REPORT_INVALID"
+    state.write_bytes(state_bytes)
+
+    stale_state = dict(state_payload, run_id="stale-run")
+    state.write_bytes(canonical_bytes(stale_state))
+    with pytest.raises(CaptureOneRejected) as stale_run:
+        bounded_current_race_index(
+            current_time=index_now, timeout_seconds=1, index_path=index_path,
+            evidence_root=evidence_root, max_age_seconds=900,
+        )
+    assert stale_run.value.code == "CURRENT_INDEX_REPORT_INVALID"
+    state.write_bytes(state_bytes)
+
+    for field, value in (
+        ("run_id", "wrong-run"),
+        ("publish_status", "SKIPPED"),
+        ("publish_status", "REJECTED"),
+        ("packet_sha256", "0" * 64),
+    ):
+        changed_report = json.loads(report_bytes)
+        if field == "publish_status":
+            changed_report["current_race_index_publish"]["status"] = value
+        elif field == "packet_sha256":
+            changed_report["current_race_index_publish"][field] = value
+        else:
+            changed_report[field] = value
+        report_path.write_bytes(canonical_bytes(changed_report))
+        with pytest.raises(CaptureOneRejected) as divergent:
+            bounded_current_race_index(
+                current_time=index_now, timeout_seconds=1, index_path=index_path,
+                evidence_root=evidence_root, max_age_seconds=900,
+            )
+        assert divergent.value.code == "CURRENT_INDEX_REPORT_INVALID"
+    report_path.write_bytes(report_bytes)
 
     source.write_bytes(
         canonical_bytes(

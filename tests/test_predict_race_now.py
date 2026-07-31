@@ -516,14 +516,20 @@ def test_default_schedule_reads_only_collector_owned_bounded_index(
         source_refresh_report_path=source,
         run_id="fixture",
     )
-    publication_dir = evidence_root / "daemon_publication"
+    publication_locator = "daemon_publication"
+    publication_dir = evidence_root / publication_locator
     publication_dir.mkdir()
     state.parent.mkdir(parents=True, exist_ok=True)
     state.write_bytes(canonical_bytes({
-        "run_id": "fixture", "output_dir": str(publication_dir)
+        "schema_version": "shadow_autopilot_odds_capture_only_state_v1",
+        "run_id": "fixture", "output_dir": publication_locator,
     }))
     (publication_dir / "odds_capture_only_daemon_report.json").write_bytes(
-        canonical_bytes({"current_race_index_publish": published})
+        canonical_bytes({
+            "schema_version": "shadow_autopilot_odds_capture_only_daemon_report_v1",
+            "run_id": "fixture", "output_dir": publication_locator,
+            "current_race_index_publish": published,
+        })
     )
     browser_sentinel = object()
     monkeypatch.setitem(sys.modules, "upcoming_race_browser", browser_sentinel)

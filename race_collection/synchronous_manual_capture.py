@@ -42,6 +42,8 @@ CURRENT_RACE_INDEX_FILENAME = "manual_prediction_current_race_index.json"
 CURRENT_RACE_INDEX_PUBLICATION_FILENAME = (
     "manual_prediction_current_race_index.publication.json"
 )
+ODDS_CAPTURE_ONLY_STATE_FILENAME = "odds_capture_state.json"
+ODDS_CAPTURE_ONLY_REPORT_FILENAME = "odds_capture_only_daemon_report.json"
 MAX_CURRENT_INDEX_RACES = 32
 MAX_CURRENT_INDEX_BYTES = 2 * 1024 * 1024
 CANONICAL_LOCK_RELATIVE_PATH = Path(
@@ -281,6 +283,32 @@ def current_race_index_path(state_path: Path) -> Path:
     """Return the fixed collector-owned current-index path for one runtime."""
 
     return Path(state_path).parent / CURRENT_RACE_INDEX_FILENAME
+
+
+def _evidence_locator_path(locator: object, *, evidence_root: Path) -> Path:
+    """Resolve one producer locator without searching or accepting absolutes."""
+
+    if not isinstance(locator, str) or not locator:
+        raise CaptureOneRejected("CURRENT_INDEX_REPORT_INVALID")
+    relative = Path(locator)
+    if relative.is_absolute() or any(
+        part in {"", ".", ".."} for part in relative.parts
+    ):
+        raise CaptureOneRejected("CURRENT_INDEX_REPORT_INVALID")
+    root = evidence_root.absolute()
+    try:
+        root_from_repo = root.relative_to(ROOT.absolute())
+    except ValueError:
+        root_from_repo = None
+    if root_from_repo is not None and relative.parts[: len(root_from_repo.parts)] == root_from_repo.parts:
+        resolved = ROOT.absolute() / relative
+    else:
+        resolved = root / relative
+    try:
+        resolved.absolute().relative_to(root)
+    except ValueError as exc:
+        raise CaptureOneRejected("CURRENT_INDEX_REPORT_INVALID") from exc
+    return resolved
 
 
 def _safe_file_bytes(
@@ -1149,6 +1177,54 @@ def bounded_current_race_index(
                 or publication != expected_publication
             ):
                 raise CaptureOneRejected("CURRENT_INDEX_PUBLICATION_INVALID")
+            state_path = index_path.parent / ODDS_CAPTURE_ONLY_STATE_FILENAME
+            state_raw = _safe_file_bytes(
+                state_path,
+                evidence_root=evidence_root,
+                missing_code="CURRENT_INDEX_REPORT_MISSING",
+            )
+            state = json.loads(state_raw)
+            if (
+                not isinstance(state, Mapping)
+                or state.get("schema_version")
+                != "shadow_autopilot_odds_capture_only_state_v1"
+                or state.get("run_id") != packet["run_id"]
+            ):
+                raise CaptureOneRejected("CURRENT_INDEX_REPORT_INVALID")
+            output_dir = _evidence_locator_path(
+                state.get("output_dir"), evidence_root=evidence_root
+            )
+            report_raw = _safe_file_bytes(
+                output_dir / ODDS_CAPTURE_ONLY_REPORT_FILENAME,
+                evidence_root=evidence_root,
+                missing_code="CURRENT_INDEX_REPORT_MISSING",
+            )
+            report = json.loads(report_raw)
+            expected_publish = {
+                "schema_version": "collector_current_race_index_publish_v2",
+                "status": "PUBLISHED",
+                "index_path": str(index_path),
+                "source_refresh_report_path": str(source_path),
+                "packet_schema_version": publication["packet_schema_version"],
+                "packet_sha256": publication["packet_sha256"],
+                "run_id": publication["run_id"],
+                "source_refresh_report_sha256": publication[
+                    "source_refresh_report_sha256"
+                ],
+                "source_generated_at": publication["source_generated_at"],
+                "race_count": publication["race_count"],
+                "runner_set_sha256": publication["runner_set_sha256"],
+                "runner_sources": publication["runner_sources"],
+            }
+            if (
+                not isinstance(report, Mapping)
+                or report.get("schema_version")
+                != "shadow_autopilot_odds_capture_only_daemon_report_v1"
+                or report.get("run_id") != packet["run_id"]
+                or report.get("output_dir") != state.get("output_dir")
+                or report.get("current_race_index_publish") != expected_publish
+            ):
+                raise CaptureOneRejected("CURRENT_INDEX_REPORT_INVALID")
     except _DiscoveryTimedOut as exc:
         raise CaptureOneRejected(
             "DISCOVERY_TIMEOUT", budget_seconds=timeout_seconds
