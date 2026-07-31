@@ -508,6 +508,58 @@ def test_live_meeting_card_grade_requires_one_exact_race_scope():
     assert race["target_grade_source_sha256"] == MEETING_CARD_SHA256
 
 
+def test_live_meeting_card_grade_inside_exact_race_link_is_proven():
+    browser = UpcomingRaceBrowser()
+    soup = BeautifulSoup(
+        """
+        <a class="race-card" href="/racing/mandurah/2026-07-17/10/owls-bentley">
+          <span>R10</span>
+          <span class="grade">Grade 5</span>
+        </a>
+        """,
+        "html.parser",
+    )
+    link = soup.find("a")
+
+    race = browser.extract_race_info_from_link(
+        link,
+        link["href"],
+        "2026-07-17",
+        meeting_card_sha256=MEETING_CARD_SHA256,
+    )
+
+    assert race["target_grade"] == "Grade 5"
+    assert race["target_grade_context_schema"] == (
+        "thedogs_meeting_card_exact_race_v1"
+    )
+    assert race["target_grade_race_url"] == (
+        "https://www.thedogs.com.au/racing/mandurah/2026-07-17/10/owls-bentley"
+    )
+
+
+def test_live_meeting_card_does_not_treat_unmarked_race_name_as_grade():
+    browser = UpcomingRaceBrowser()
+    soup = BeautifulSoup(
+        """
+        <a class="race-card" href="/racing/mandurah/2026-07-17/10/open">
+          <span>R10</span>
+          <span class="race-name">Open</span>
+        </a>
+        """,
+        "html.parser",
+    )
+    link = soup.find("a")
+
+    race = browser.extract_race_info_from_link(
+        link,
+        link["href"],
+        "2026-07-17",
+        meeting_card_sha256=MEETING_CARD_SHA256,
+    )
+
+    assert "target_grade_context_schema" not in race
+
+
 def test_live_meeting_card_does_not_borrow_grade_from_multi_race_parent():
     browser = UpcomingRaceBrowser()
     soup = BeautifulSoup(
