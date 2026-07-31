@@ -40,6 +40,13 @@ def _runner_coverage(evidence_root: Path, race_url: str, observed_at: datetime |
     csv_path.write_bytes(b"box|dog_name\n1|Alpha\n2|Beta\n")
     sidecar = csv_path.with_name(csv_path.name + ".metadata.json")
     sidecar.write_bytes(canonical_bytes({
+        "runner_completeness_after_canonical_alignment": {
+            "status": "COMPLETE", "runner_count": 2,
+            "participants": [
+                {"box_number": 1, "dog_name": "Alpha"},
+                {"box_number": 2, "dog_name": "Beta"},
+            ],
+        },
         "prejump_shadow_metadata": {
             "status": "PASS", "metadata_is_leakage_safe": True,
             "race_date": "2026-07-19", "venue": "GUNN", "race_number": 5,
@@ -56,6 +63,20 @@ def _runner_coverage(evidence_root: Path, race_url: str, observed_at: datetime |
     return {"schema_version": "prejump_sidecar_metadata_coverage_v1", "races": [{
         "race_url": race_url, "csv_path": str(csv_path), "sidecar_path": str(sidecar)
     }]}
+
+
+def _write_publication_evidence(
+    evidence_root: Path, state: Path, published: Mapping[str, Any]
+) -> None:
+    report_dir = evidence_root / "daemon_publication"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    state.parent.mkdir(parents=True, exist_ok=True)
+    state.write_bytes(canonical_bytes({
+        "run_id": published["run_id"], "output_dir": str(report_dir)
+    }))
+    (report_dir / "odds_capture_only_daemon_report.json").write_bytes(
+        canonical_bytes({"current_race_index_publish": dict(published)})
+    )
 
 NOW = datetime.fromisoformat("2026-07-30T16:55:00+10:00")
 JUMP = NOW + timedelta(minutes=20)
@@ -314,6 +335,7 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
     )
     index_path = current_race_index_path(state)
     original = index_path.read_bytes()
+    _write_publication_evidence(evidence_root, state, published)
 
     assert published["status"] == "PUBLISHED"
     assert json.loads(original)["source_refresh_report_sha256"] == sha256_bytes(
@@ -380,12 +402,13 @@ def test_current_race_index_rejects_stale_or_changed_source(tmp_path: Path):
             }
         )
     )
-    publish_current_race_index(
+    published = publish_current_race_index(
         state_path=state,
         evidence_root=evidence_root,
         source_refresh_report_path=source,
         run_id="fixture",
     )
+    _write_publication_evidence(evidence_root, state, published)
     index_path = current_race_index_path(state)
 
     with pytest.raises(CaptureOneRejected) as stale:
@@ -518,6 +541,121 @@ def test_safe_file_bytes_rejects_replacement_after_open_before_read(
 
     assert rejected.value.code == "CURRENT_INDEX_PATH_UNSAFE"
     assert rejected.value.details["reason"] == "path_replaced"
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "csv_sidecar_mismatch",
+        "csv_malformed_encoding",
+        "accepted_status_fail",
+        "active_status_missing",
+        "future_observation",
+        "post_jump_generation",
+    ],
+)
+def test_v2_runner_seal_rejects_untrusted_runner_sources(
+    tmp_path: Path, case: str
+):
+    evidence_root = tmp_path / "evidence"
+    race_url = "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
+    observed = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
+    coverage = _runner_coverage(evidence_root, race_url, observed)
+    record = coverage["races"][0]
+    csv_path = Path(record["csv_path"])
+    sidecar_path = Path(record["sidecar_path"])
+    sidecar = json.loads(sidecar_path.read_bytes())
+    generated = observed
+    if case == "csv_sidecar_mismatch":
+        csv_path.write_bytes(b"box|dog_name\n1|Alpha\n2|Gamma\n")
+    elif case == "csv_malformed_encoding":
+        csv_path.write_bytes(b"box|dog_name\n1|\xff\n")
+    elif case == "accepted_status_fail":
+        sidecar["prejump_shadow_metadata"]["status"] = "FAIL"
+    elif case == "active_status_missing":
+        sidecar["runner_completeness_after_canonical_alignment"].pop("status")
+    elif case == "future_observation":
+        sidecar["prejump_shadow_metadata"]["metadata_captured_at"] = (
+            observed + timedelta(seconds=1)
+        ).isoformat()
+    else:
+        generated = datetime.fromisoformat("2026-07-19T13:00:00+10:00")
+    sidecar_path.write_bytes(canonical_bytes(sidecar))
+    race = {
+        "date": "2026-07-19",
+        "jump_datetime": "2026-07-19T13:00:00+10:00",
+        "race_number": 5,
+        "race_url": race_url,
+        "venue": "GUNN",
+    }
+    source = {
+        "generated_at": generated.isoformat(),
+        "sidecar_metadata_coverage": coverage,
+    }
+
+    with pytest.raises(CaptureOneRejected) as rejected:
+        capture._v2_runner_rows(race, source, evidence_root=evidence_root)
+
+    assert rejected.value.code == "CURRENT_INDEX_SOURCE_INVALID"
+
+
+def test_v2_requires_matching_successful_retained_publication(tmp_path: Path):
+    evidence_root = tmp_path / "evidence"
+    state = evidence_root / "shadow_autopilot_daemon_runtime/odds_capture_state.json"
+    source = evidence_root / "run/odds_capture_refresh_report.json"
+    source.parent.mkdir(parents=True)
+    race_url = "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
+    now = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
+    source.write_bytes(canonical_bytes({
+        "status": "SUCCESS", "generated_at": now.isoformat(),
+        "sidecar_metadata_coverage": _runner_coverage(evidence_root, race_url, now),
+        "selected_count": 1,
+        "selected_races": [{
+            "date": "2026-07-19", "jump_datetime": "2026-07-19T13:00:00+10:00",
+            "race_id": "Race 5 - GUNN - 2026-07-19", "race_id_aliases": [],
+            "race_number": 5, "race_time": "13:00", "race_url": race_url,
+            "venue": "GUNN",
+        }],
+    }))
+    published = publish_current_race_index(
+        state_path=state, evidence_root=evidence_root,
+        source_refresh_report_path=source, run_id="fixture",
+    )
+    with pytest.raises(CaptureOneRejected) as absent:
+        bounded_current_race_index(
+            current_time=now, timeout_seconds=1,
+            index_path=current_race_index_path(state), evidence_root=evidence_root,
+            max_age_seconds=900,
+        )
+    assert absent.value.code == "CURRENT_INDEX_PUBLICATION_MISSING"
+
+    _write_publication_evidence(evidence_root, state, published)
+    report_path = evidence_root / "daemon_publication/odds_capture_only_daemon_report.json"
+    report = json.loads(report_path.read_bytes())
+    report["current_race_index_publish"]["packet_sha256"] = "0" * 64
+    report_path.write_bytes(canonical_bytes(report))
+    with pytest.raises(CaptureOneRejected) as mismatched:
+        bounded_current_race_index(
+            current_time=now, timeout_seconds=1,
+            index_path=current_race_index_path(state), evidence_root=evidence_root,
+            max_age_seconds=900,
+        )
+    assert mismatched.value.code == "CURRENT_INDEX_PUBLICATION_INVALID"
+
+    index_path = current_race_index_path(state)
+    legacy = json.loads(index_path.read_bytes())
+    legacy["schema_version"] = capture.CURRENT_RACE_INDEX_V1_SCHEMA
+    legacy["races"] = [
+        {key: value for key, value in row.items() if key not in {
+            "runners", "runner_set_sha256", "runner_source"
+        }}
+        for row in legacy["races"]
+    ]
+    index_path.write_bytes(canonical_bytes(legacy))
+    assert bounded_current_race_index(
+        current_time=now, timeout_seconds=1, index_path=index_path,
+        evidence_root=evidence_root, max_age_seconds=900,
+    )[0]["race_id"] == "Race 5 - GUNN - 2026-07-19"
 
 
 def test_capture_one_success_is_one_capture_one_receipt_and_one_consumption(

@@ -58,7 +58,12 @@ def _current_index_runner_coverage(evidence_root: Path, race_url: str) -> dict[s
     form.parent.mkdir(parents=True, exist_ok=True)
     form.write_bytes(b"box|dog_name\n1|Alpha\n2|Beta\n")
     sidecar = form.with_name(form.name + ".metadata.json")
-    sidecar.write_bytes(canonical_bytes({"prejump_shadow_metadata": {
+    sidecar.write_bytes(canonical_bytes({
+        "runner_completeness_after_canonical_alignment": {
+            "status": "COMPLETE", "runner_count": 2,
+            "participants": [{"box_number": 1, "dog_name": "Alpha"}, {"box_number": 2, "dog_name": "Beta"}],
+        },
+        "prejump_shadow_metadata": {
         "status": "PASS", "metadata_is_leakage_safe": True,
         "race_date": "2026-07-19", "venue": "GUNN", "race_number": 5,
         "source_url": race_url, "metadata_captured_at": NOW.isoformat(),
@@ -510,6 +515,15 @@ def test_default_schedule_reads_only_collector_owned_bounded_index(
         evidence_root=evidence_root,
         source_refresh_report_path=source,
         run_id="fixture",
+    )
+    publication_dir = evidence_root / "daemon_publication"
+    publication_dir.mkdir()
+    state.parent.mkdir(parents=True, exist_ok=True)
+    state.write_bytes(canonical_bytes({
+        "run_id": "fixture", "output_dir": str(publication_dir)
+    }))
+    (publication_dir / "odds_capture_only_daemon_report.json").write_bytes(
+        canonical_bytes({"current_race_index_publish": published})
     )
     browser_sentinel = object()
     monkeypatch.setitem(sys.modules, "upcoming_race_browser", browser_sentinel)

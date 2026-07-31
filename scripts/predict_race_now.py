@@ -775,7 +775,7 @@ def _run_prediction(
         )
     )
     primary_evidence_root = evidence_roots[0]
-    current_index_path = getattr(args, "current_race_index", None) or (
+    current_index_path = (
         primary_evidence_root
         / "shadow_autopilot_daemon_runtime"
         / "manual_prediction_current_race_index.json"
@@ -1241,14 +1241,6 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         type=Path,
         default=None,
-    )
-    parser.add_argument(
-        "--current-race-index",
-        type=Path,
-        help=(
-            "Collector-owned current-index packet; defaults beneath the first "
-            "--capture-evidence-root"
-        ),
     )
     parser.add_argument("--lock-path", type=Path, default=DEFAULT_LOCK)
     parser.add_argument(

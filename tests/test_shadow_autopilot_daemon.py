@@ -15,7 +15,12 @@ def _write_current_index_runner_sources(evidence_root: Path, race_url: str) -> d
     form.parent.mkdir(parents=True, exist_ok=True)
     form.write_bytes(b"box|dog_name\n1|Alpha\n2|Beta\n")
     sidecar = form.with_name(form.name + ".metadata.json")
-    sidecar.write_bytes(canonical_bytes({"prejump_shadow_metadata": {
+    sidecar.write_bytes(canonical_bytes({
+        "runner_completeness_after_canonical_alignment": {
+            "status": "COMPLETE", "runner_count": 2,
+            "participants": [{"box_number": 1, "dog_name": "Alpha"}, {"box_number": 2, "dog_name": "Beta"}],
+        },
+        "prejump_shadow_metadata": {
         "status": "PASS", "metadata_is_leakage_safe": True,
         "race_date": "2026-06-12", "venue": "HEA", "race_number": 1,
         "source_url": race_url, "metadata_captured_at": "2026-06-12T00:01:01+10:00",

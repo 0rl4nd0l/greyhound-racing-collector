@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import contextlib
+import csv
+import io
 import json
 import os
 import signal
@@ -284,7 +286,13 @@ def _safe_file_bytes(
     evidence_root: Path,
     missing_code: str,
 ) -> bytes:
-    root = evidence_root.resolve(strict=True)
+    root = evidence_root.absolute()
+    try:
+        root_named = os.stat(root, follow_symlinks=False)
+    except OSError as exc:
+        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(root)) from exc
+    if not stat.S_ISDIR(root_named.st_mode):
+        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(root))
     logical = path.absolute()
     try:
         relative = logical.relative_to(root)
@@ -296,8 +304,16 @@ def _safe_file_bytes(
     directory_flags |= getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
     descriptor = os.open(root, directory_flags)
     try:
+        root_opened = os.fstat(descriptor)
+        if (root_opened.st_dev, root_opened.st_ino) != (root_named.st_dev, root_named.st_ino):
+            raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(root), reason="root_replaced")
         for component in relative.parts[:-1]:
             child = os.open(component, directory_flags, dir_fd=descriptor)
+            child_stat = os.fstat(child)
+            named_stat = os.stat(component, dir_fd=descriptor, follow_symlinks=False)
+            if not stat.S_ISDIR(child_stat.st_mode) or (child_stat.st_dev, child_stat.st_ino) != (named_stat.st_dev, named_stat.st_ino):
+                os.close(child)
+                raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path), reason="directory_replaced")
             os.close(descriptor)
             descriptor = child
         flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
@@ -332,6 +348,8 @@ def _safe_file_bytes(
             if (
                 (named.st_dev, named.st_ino) != (opened.st_dev, opened.st_ino)
                 or not descriptor_path.is_relative_to(root)
+                or (os.stat(root, follow_symlinks=False).st_dev, os.stat(root, follow_symlinks=False).st_ino)
+                != (root_opened.st_dev, root_opened.st_ino)
             ):
                 raise CaptureOneRejected(
                     "CURRENT_INDEX_PATH_UNSAFE",
@@ -460,8 +478,33 @@ def _v2_runner_rows(
     sidecar_path = Path(str(record.get("sidecar_path") or ""))
     if sidecar_path != csv_path.with_name(csv_path.name + ".metadata.json"):
         raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", reason="sidecar_not_adjacent")
+    root_path = evidence_root.absolute()
+    try:
+        relative_parent = csv_path.absolute().parent.relative_to(root_path)
+        chain_paths = [root_path]
+        current = root_path
+        for component in relative_parent.parts:
+            current = current / component
+            chain_paths.append(current)
+        chain_before = []
+        for item in chain_paths:
+            identity = os.stat(item, follow_symlinks=False)
+            if not stat.S_ISDIR(identity.st_mode):
+                raise OSError("source_chain_not_directory")
+            chain_before.append((identity.st_dev, identity.st_ino))
+    except (OSError, ValueError) as exc:
+        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", reason="source_chain_invalid") from exc
     csv_raw = _safe_file_bytes(csv_path, evidence_root=evidence_root, missing_code="CURRENT_INDEX_SOURCE_MISSING")
     sidecar_raw = _safe_file_bytes(sidecar_path, evidence_root=evidence_root, missing_code="CURRENT_INDEX_SOURCE_MISSING")
+    try:
+        chain_after = [
+            (value.st_dev, value.st_ino)
+            for value in (os.stat(item, follow_symlinks=False) for item in chain_paths)
+        ]
+    except OSError as exc:
+        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", reason="source_chain_replaced") from exc
+    if chain_after != chain_before:
+        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", reason="source_chain_replaced")
     try:
         sidecar = json.loads(sidecar_raw)
     except json.JSONDecodeError as exc:
@@ -481,25 +524,45 @@ def _v2_runner_rows(
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_observation_invalid")
     generated = datetime.fromisoformat(str(source.get("generated_at") or ""))
     jump = datetime.fromisoformat(str(race["jump_datetime"]))
+    if generated.tzinfo is None or generated.utcoffset() is None:
+        raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="source_generated_at_invalid")
     source_age = (generated - observed).total_seconds()
-    if source_age < -60 or source_age > 1200 or observed >= jump:
+    if source_age < 0 or source_age > 1200 or generated >= jump or observed >= jump:
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_source_stale_or_postjump")
     participants = shadow.get("runner_box_name_list")
     if not isinstance(participants, list) or not participants:
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_set_empty")
     aligned_details = sidecar.get("runner_completeness_after_canonical_alignment")
-    detailed_participants = (
-        aligned_details.get("participants")
-        if isinstance(aligned_details, Mapping)
-        and isinstance(aligned_details.get("participants"), list)
-        else []
-    )
+    if (
+        not isinstance(aligned_details, Mapping)
+        or aligned_details.get("status") != "COMPLETE"
+        or not isinstance(aligned_details.get("participants"), list)
+    ):
+        raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_status_missing_or_inactive")
+    detailed_participants = aligned_details["participants"]
     native_ids = {
         (item.get("box_number"), str(item.get("dog_name") or "").strip()):
         item.get("source_native_runner_id", item.get("runner_id"))
         for item in detailed_participants
         if isinstance(item, Mapping)
     }
+    # The accepted canonical alignment is the source of scratch status.  Its
+    # available/aligned contract means these exact participants are active;
+    # scratched/reserve rows are deliberately absent.  Never infer activity
+    # from the CSV alone.
+    canonical_active = [
+        {"box_number": item.get("box_number"), "dog_name": item.get("dog_name")}
+        for item in detailed_participants if isinstance(item, Mapping)
+    ]
+    for item in detailed_participants:
+        declared_status = item.get("scratch_state", item.get("status"))
+        if declared_status is not None and str(declared_status).upper() != "ACTIVE":
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_SOURCE_INVALID", reason="runner_not_active"
+            )
+    if canonical_active != participants or len(canonical_active) != len(detailed_participants):
+        raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_status_ambiguous")
+
     rows: list[dict[str, Any]] = []
     boxes: set[int] = set()
     identities: set[str] = set()
@@ -530,45 +593,108 @@ def _v2_runner_rows(
         rows.append({"box": box, "display_name": name, "identity": identity, "scratch_state": "ACTIVE", "source_native_runner_id": str(native_id).strip() if native_id is not None else None})
     if rows != sorted(rows, key=lambda item: (item["box"], item["identity"])):
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_order_noncanonical")
-    from src.predictor.on_demand import runner_set_sha256
-    protocol_rows = [{"box_number": item["box"], "identity": item["identity"]} for item in rows]
-    runner_hash = runner_set_sha256(protocol_rows)
-    root = evidence_root.resolve(strict=True)
+
+    # Parse the accepted bytes, strictly.  The repository supports comma,
+    # pipe, semicolon and tab form exports; malformed UTF-8 and mixed/partial
+    # records are not recoverable publication evidence.
+    try:
+        csv_text = csv_raw.decode("utf-8-sig", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="csv_encoding_invalid") from exc
+    first = next((line for line in csv_text.splitlines() if line.strip()), "")
+    delimiter_counts = {value: first.count(value) for value in (",", "|", ";", "\t")}
+    best = max(delimiter_counts.values(), default=0)
+    delimiters = [value for value, count in delimiter_counts.items() if count == best and count > 0]
+    if len(delimiters) != 1:
+        raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="csv_format_unsupported_or_ambiguous")
+    try:
+        reader = csv.DictReader(io.StringIO(csv_text, newline=""), delimiter=delimiters[0], strict=True)
+        headers = [str(value or "").lstrip("\ufeff").strip() for value in (reader.fieldnames or [])]
+        lowered = {value.lower(): value for value in headers}
+        name_header = next((lowered[value] for value in ("dog_name", "dog name", "runner", "name") if value in lowered), None)
+        box_header = next((lowered[value] for value in ("box", "box_number") if value in lowered), None)
+        if name_header is None:
+            raise ValueError("name_header_missing")
+        csv_runners: list[tuple[int, str]] = []
+        for record in reader:
+            if None in record or any(value is None for value in record.values()):
+                raise ValueError("partial_row")
+            name_cell = str(record[name_header] or "").strip()
+            if not name_cell:
+                continue
+            if box_header is None:
+                import re
+                match = re.match(r"^([0-9]{1,2})\s*[\.\):-]\s*(.+)$", name_cell)
+                if match is None:
+                    raise ValueError("target_runner_missing_box_prefix")
+                box, name = int(match.group(1)), match.group(2).strip()
+            else:
+                box_text = str(record[box_header] or "").strip()
+                if not box_text:
+                    raise ValueError("runner_box_missing")
+                box, name = int(box_text), name_cell
+            csv_runners.append((box, " ".join(name.split()).upper()))
+    except (csv.Error, TypeError, ValueError) as exc:
+        raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="csv_runner_rows_invalid") from exc
+    accepted = [(item["box"], item["identity"]) for item in rows]
+    if csv_runners != accepted or len(csv_runners) != len(set(csv_runners)):
+        raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="csv_sidecar_runner_mismatch")
+
+    root = evidence_root.absolute()
     provenance = {
         "source_url": str(shadow["source_url"]),
         "observed_at": observed.isoformat(),
-        "csv_path": csv_path.resolve(strict=True).relative_to(root).as_posix(),
+        "csv_path": csv_path.absolute().relative_to(root).as_posix(),
         "csv_sha256": sha256_bytes(csv_raw),
-        "sidecar_path": sidecar_path.resolve(strict=True).relative_to(root).as_posix(),
+        "sidecar_path": sidecar_path.absolute().relative_to(root).as_posix(),
         "sidecar_sha256": sha256_bytes(sidecar_raw),
     }
+    runner_hash = sha256_bytes(canonical_bytes({
+        "protocol": "collector_current_race_runner_set_sha256_v2",
+        "race": {
+            "race_url": race["race_url"], "date": race["date"],
+            "venue": race["venue"], "race_number": race["race_number"],
+            "jump_datetime": race["jump_datetime"],
+        },
+        "observed_at": provenance["observed_at"],
+        "sources": [
+            {"locator": provenance["csv_path"], "sha256": provenance["csv_sha256"]},
+            {"locator": provenance["sidecar_path"], "sha256": provenance["sidecar_sha256"]},
+        ],
+        "active_runners": rows,
+    }))
     return rows, provenance, runner_hash
 
 
 def _atomic_replace_canonical(path: Path, payload: Mapping[str, Any]) -> None:
-    if path.is_symlink():
-        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path))
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    parent = path.parent.absolute()
+    parent.mkdir(parents=True, exist_ok=True)
+    flags_dir = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    parent_fd = os.open(parent, flags_dir)
+    parent_identity = os.fstat(parent_fd)
+    temporary = f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(temporary, flags, 0o600)
+    descriptor = os.open(temporary, flags, 0o600, dir_fd=parent_fd)
     try:
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(canonical_bytes(payload))
             handle.flush()
             os.fsync(handle.fileno())
-        os.replace(temporary, path)
-        directory = os.open(path.parent, os.O_RDONLY)
-        try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
+        named_parent = os.stat(parent, follow_symlinks=False)
+        if (named_parent.st_dev, named_parent.st_ino) != (parent_identity.st_dev, parent_identity.st_ino):
+            raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path), reason="publish_parent_replaced")
+        os.replace(temporary, path.name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+        named_parent = os.stat(parent, follow_symlinks=False)
+        if (named_parent.st_dev, named_parent.st_ino) != (parent_identity.st_dev, parent_identity.st_ino):
+            raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path), reason="publish_parent_replaced")
+        os.fsync(parent_fd)
     finally:
         try:
-            temporary.unlink()
+            os.unlink(temporary, dir_fd=parent_fd)
         except FileNotFoundError:
             pass
+        os.close(parent_fd)
 
 
 def publish_current_race_index(
@@ -726,7 +852,7 @@ def bounded_current_race_index(
         ):
             raise CaptureOneRejected("CURRENT_INDEX_INVALID")
         age_seconds = (current_time - source_generated_at).total_seconds()
-        if age_seconds < -60 or age_seconds > max_age_seconds:
+        if age_seconds < 0 or age_seconds > max_age_seconds:
             raise CaptureOneRejected(
                 "CURRENT_INDEX_STALE",
                 age_seconds=age_seconds,
@@ -759,6 +885,40 @@ def bounded_current_race_index(
             expected_races = sealed
         if packet.get("race_count") != len(expected_races) or packet.get("races") != expected_races:
             raise CaptureOneRejected("CURRENT_INDEX_INVALID")
+        if packet.get("schema_version") == CURRENT_RACE_INDEX_SCHEMA:
+            # The daemon state is the fixed, collector-owned locator for its
+            # already-existing publication report.  A v2 packet is never
+            # catalog eligible merely because an index file happens to exist.
+            state_path = index_path.parent / "odds_capture_state.json"
+            state_raw = _safe_file_bytes(
+                state_path,
+                evidence_root=evidence_root,
+                missing_code="CURRENT_INDEX_PUBLICATION_MISSING",
+            )
+            state = json.loads(state_raw)
+            if not isinstance(state, Mapping) or state.get("run_id") != packet.get("run_id"):
+                raise CaptureOneRejected("CURRENT_INDEX_PUBLICATION_INVALID")
+            report_locator = state.get("output_dir")
+            if not isinstance(report_locator, str) or not report_locator:
+                raise CaptureOneRejected("CURRENT_INDEX_PUBLICATION_INVALID")
+            report_dir = Path(report_locator)
+            if not report_dir.is_absolute():
+                report_dir = ROOT / report_dir
+            publication_raw = _safe_file_bytes(
+                report_dir / "odds_capture_only_daemon_report.json",
+                evidence_root=evidence_root,
+                missing_code="CURRENT_INDEX_PUBLICATION_MISSING",
+            )
+            publication = json.loads(publication_raw)
+            evidence = publication.get("current_race_index_publish") if isinstance(publication, Mapping) else None
+            if (
+                not isinstance(evidence, Mapping)
+                or evidence.get("schema_version") != "collector_current_race_index_publish_v2"
+                or evidence.get("status") != "PUBLISHED"
+                or evidence.get("run_id") != packet.get("run_id")
+                or evidence.get("packet_sha256") != sha256_bytes(packet_raw)
+            ):
+                raise CaptureOneRejected("CURRENT_INDEX_PUBLICATION_INVALID")
     except _DiscoveryTimedOut as exc:
         raise CaptureOneRejected(
             "DISCOVERY_TIMEOUT", budget_seconds=timeout_seconds
