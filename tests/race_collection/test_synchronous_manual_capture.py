@@ -43,8 +43,8 @@ def _runner_coverage(evidence_root: Path, race_url: str, observed_at: datetime |
         "runner_completeness_after_canonical_alignment": {
             "status": "COMPLETE", "runner_count": 2,
             "participants": [
-                {"box_number": 1, "dog_name": "Alpha"},
-                {"box_number": 2, "dog_name": "Beta"},
+                {"box_number": 1, "dog_name": "Alpha", "scratch_state": "ACTIVE"},
+                {"box_number": 2, "dog_name": "Beta", "scratch_state": "ACTIVE"},
             ],
         },
         "prejump_shadow_metadata": {
@@ -68,15 +68,12 @@ def _runner_coverage(evidence_root: Path, race_url: str, observed_at: datetime |
 def _write_publication_evidence(
     evidence_root: Path, state: Path, published: Mapping[str, Any]
 ) -> None:
-    report_dir = evidence_root / "daemon_publication"
-    report_dir.mkdir(parents=True, exist_ok=True)
+    # Publication is collector-owned at the fixed runtime locator.  Caller and
+    # daemon state locators are deliberately irrelevant.
     state.parent.mkdir(parents=True, exist_ok=True)
     state.write_bytes(canonical_bytes({
-        "run_id": published["run_id"], "output_dir": str(report_dir)
+        "run_id": published["run_id"], "output_dir": "/arbitrary/untrusted"
     }))
-    (report_dir / "odds_capture_only_daemon_report.json").write_bytes(
-        canonical_bytes({"current_race_index_publish": dict(published)})
-    )
 
 NOW = datetime.fromisoformat("2026-07-30T16:55:00+10:00")
 JUMP = NOW + timedelta(minutes=20)
@@ -599,6 +596,67 @@ def test_v2_runner_seal_rejects_untrusted_runner_sources(
     assert rejected.value.code == "CURRENT_INDEX_SOURCE_INVALID"
 
 
+@pytest.mark.parametrize(
+    "state",
+    [pytest.param(None, id="missing"), pytest.param("NULL", id="null"),
+     "active", "UNKNOWN", "PARTIAL", "RESERVE", "SCRATCHED", "INACTIVE"],
+)
+def test_v2_runner_seal_requires_explicit_exact_active_state(
+    tmp_path: Path, state: str | None
+):
+    evidence_root = tmp_path / "evidence"
+    race_url = "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
+    observed = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
+    coverage = _runner_coverage(evidence_root, race_url, observed)
+    sidecar_path = Path(coverage["races"][0]["sidecar_path"])
+    sidecar = json.loads(sidecar_path.read_bytes())
+    participant = sidecar["runner_completeness_after_canonical_alignment"]["participants"][0]
+    if state is None:
+        participant.pop("scratch_state")
+    elif state == "NULL":
+        participant["scratch_state"] = None
+    else:
+        participant["scratch_state"] = state
+    sidecar_path.write_bytes(canonical_bytes(sidecar))
+
+    with pytest.raises(CaptureOneRejected) as rejected:
+        capture._v2_runner_rows(
+            {
+                "date": "2026-07-19", "jump_datetime": "2026-07-19T13:00:00+10:00",
+                "race_number": 5, "race_url": race_url, "venue": "GUNN",
+            },
+            {"generated_at": observed.isoformat(), "sidecar_metadata_coverage": coverage},
+            evidence_root=evidence_root,
+        )
+
+    assert rejected.value.code == "CURRENT_INDEX_SOURCE_INVALID"
+
+
+def test_v2_runner_hash_binds_source_generated_at(tmp_path: Path):
+    evidence_root = tmp_path / "evidence"
+    race_url = "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
+    observed = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
+    coverage = _runner_coverage(evidence_root, race_url, observed)
+    race = {
+        "date": "2026-07-19", "jump_datetime": "2026-07-19T13:00:00+10:00",
+        "race_number": 5, "race_url": race_url, "venue": "GUNN",
+    }
+    first = capture._v2_runner_rows(
+        race, {"generated_at": observed.isoformat(), "sidecar_metadata_coverage": coverage},
+        evidence_root=evidence_root,
+    )
+    changed_at = observed + timedelta(seconds=1)
+    second = capture._v2_runner_rows(
+        race,
+        {"generated_at": changed_at.isoformat(), "sidecar_metadata_coverage": coverage},
+        evidence_root=evidence_root,
+    )
+
+    assert first[1]["source_generated_at"] == observed.isoformat()
+    assert second[1]["source_generated_at"] == changed_at.isoformat()
+    assert first[2] != second[2]
+
+
 def test_v2_requires_matching_successful_retained_publication(tmp_path: Path):
     evidence_root = tmp_path / "evidence"
     state = evidence_root / "shadow_autopilot_daemon_runtime/odds_capture_state.json"
@@ -621,6 +679,9 @@ def test_v2_requires_matching_successful_retained_publication(tmp_path: Path):
         state_path=state, evidence_root=evidence_root,
         source_refresh_report_path=source, run_id="fixture",
     )
+    publication_path = state.parent / capture.CURRENT_RACE_INDEX_PUBLICATION_FILENAME
+    publication_bytes = publication_path.read_bytes()
+    publication_path.unlink()
     with pytest.raises(CaptureOneRejected) as absent:
         bounded_current_race_index(
             current_time=now, timeout_seconds=1,
@@ -629,11 +690,10 @@ def test_v2_requires_matching_successful_retained_publication(tmp_path: Path):
         )
     assert absent.value.code == "CURRENT_INDEX_PUBLICATION_MISSING"
 
-    _write_publication_evidence(evidence_root, state, published)
-    report_path = evidence_root / "daemon_publication/odds_capture_only_daemon_report.json"
-    report = json.loads(report_path.read_bytes())
-    report["current_race_index_publish"]["packet_sha256"] = "0" * 64
-    report_path.write_bytes(canonical_bytes(report))
+    publication_path.write_bytes(publication_bytes)
+    report = json.loads(publication_bytes)
+    report["packet_sha256"] = "0" * 64
+    publication_path.write_bytes(canonical_bytes(report))
     with pytest.raises(CaptureOneRejected) as mismatched:
         bounded_current_race_index(
             current_time=now, timeout_seconds=1,
@@ -645,6 +705,7 @@ def test_v2_requires_matching_successful_retained_publication(tmp_path: Path):
     index_path = current_race_index_path(state)
     legacy = json.loads(index_path.read_bytes())
     legacy["schema_version"] = capture.CURRENT_RACE_INDEX_V1_SCHEMA
+    legacy["source_refresh_report_path"] = str(source)
     legacy["races"] = [
         {key: value for key, value in row.items() if key not in {
             "runners", "runner_set_sha256", "runner_source"

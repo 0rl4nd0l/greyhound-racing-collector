@@ -18,7 +18,7 @@ def _write_current_index_runner_sources(evidence_root: Path, race_url: str) -> d
     sidecar.write_bytes(canonical_bytes({
         "runner_completeness_after_canonical_alignment": {
             "status": "COMPLETE", "runner_count": 2,
-            "participants": [{"box_number": 1, "dog_name": "Alpha"}, {"box_number": 2, "dog_name": "Beta"}],
+            "participants": [{"box_number": 1, "dog_name": "Alpha", "scratch_state": "ACTIVE"}, {"box_number": 2, "dog_name": "Beta", "scratch_state": "ACTIVE"}],
         },
         "prejump_shadow_metadata": {
         "status": "PASS", "metadata_is_leakage_safe": True,

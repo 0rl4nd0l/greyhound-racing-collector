@@ -39,6 +39,9 @@ HANDOFF_SCHEMA = "on_demand_verified_collector_capture_v2"
 CURRENT_RACE_INDEX_V1_SCHEMA = "collector_current_race_index_v1"
 CURRENT_RACE_INDEX_SCHEMA = "collector_current_race_index_v2"
 CURRENT_RACE_INDEX_FILENAME = "manual_prediction_current_race_index.json"
+CURRENT_RACE_INDEX_PUBLICATION_FILENAME = (
+    "manual_prediction_current_race_index.publication.json"
+)
 MAX_CURRENT_INDEX_RACES = 32
 MAX_CURRENT_INDEX_BYTES = 2 * 1024 * 1024
 CANONICAL_LOCK_RELATIVE_PATH = Path(
@@ -286,6 +289,19 @@ def _safe_file_bytes(
     evidence_root: Path,
     missing_code: str,
 ) -> bytes:
+    return _safe_files_bytes(
+        [path], evidence_root=evidence_root, missing_code=missing_code
+    )[0]
+
+
+def _safe_files_bytes(
+    paths: list[Path],
+    *,
+    evidence_root: Path,
+    missing_code: str,
+) -> list[bytes]:
+    """Read finite regular files while retaining and revalidating their chain."""
+
     root = evidence_root.absolute()
     try:
         root_named = os.stat(root, follow_symlinks=False)
@@ -293,96 +309,135 @@ def _safe_file_bytes(
         raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(root)) from exc
     if not stat.S_ISDIR(root_named.st_mode):
         raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(root))
-    logical = path.absolute()
-    try:
-        relative = logical.relative_to(root)
-    except ValueError as exc:
-        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path))
-    if not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
-        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path))
+    relatives: list[Path] = []
+    for path in paths:
+        logical = path.absolute()
+        try:
+            relative = logical.relative_to(root)
+        except ValueError as exc:
+            raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path)) from exc
+        if not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
+            raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path))
+        relatives.append(relative)
     directory_flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
     directory_flags |= getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(root, directory_flags)
+    root_fd = os.open(root, directory_flags)
+    directory_fds: dict[tuple[str, ...], int] = {(): root_fd}
+    directory_stats: dict[tuple[str, ...], os.stat_result] = {}
+    file_records: list[tuple[Path, tuple[str, ...], str, int, os.stat_result]] = []
     try:
-        root_opened = os.fstat(descriptor)
+        root_opened = os.fstat(root_fd)
         if (root_opened.st_dev, root_opened.st_ino) != (root_named.st_dev, root_named.st_ino):
             raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(root), reason="root_replaced")
-        for component in relative.parts[:-1]:
-            child = os.open(component, directory_flags, dir_fd=descriptor)
-            child_stat = os.fstat(child)
-            named_stat = os.stat(component, dir_fd=descriptor, follow_symlinks=False)
-            if not stat.S_ISDIR(child_stat.st_mode) or (child_stat.st_dev, child_stat.st_ino) != (named_stat.st_dev, named_stat.st_ino):
-                os.close(child)
-                raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path), reason="directory_replaced")
-            os.close(descriptor)
-            descriptor = child
-        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
-        file_descriptor = os.open(relative.parts[-1], flags, dir_fd=descriptor)
-    except OSError as exc:
-        os.close(descriptor)
-        raise CaptureOneRejected(missing_code, path=str(path)) from exc
-    os.close(descriptor)
-    descriptor = file_descriptor
-    try:
-        opened = os.fstat(descriptor)
-        if not stat.S_ISREG(opened.st_mode):
-            raise CaptureOneRejected(missing_code, path=str(path))
-        if opened.st_size <= 0 or opened.st_size > MAX_CURRENT_INDEX_BYTES:
-            raise CaptureOneRejected(
-                "CURRENT_INDEX_SIZE_INVALID",
-                path=str(path),
-                size_bytes=opened.st_size,
-                max_bytes=MAX_CURRENT_INDEX_BYTES,
-            )
-
-        def reject_replaced_path() -> None:
-            try:
-                descriptor_path = Path(f"/proc/self/fd/{descriptor}").resolve(strict=True)
-                named = os.stat(logical, follow_symlinks=False)
-            except OSError as exc:
-                raise CaptureOneRejected(
-                    "CURRENT_INDEX_PATH_UNSAFE",
-                    path=str(path),
-                    reason="path_replaced",
-                ) from exc
+        directory_stats[()] = root_opened
+        for path, relative in zip(paths, relatives):
+            parent_key: tuple[str, ...] = ()
+            for component in relative.parts[:-1]:
+                child_key = (*parent_key, component)
+                if child_key not in directory_fds:
+                    parent_fd = directory_fds[parent_key]
+                    named = os.stat(component, dir_fd=parent_fd, follow_symlinks=False)
+                    child_fd = os.open(component, directory_flags, dir_fd=parent_fd)
+                    opened = os.fstat(child_fd)
+                    if (
+                        not stat.S_ISDIR(named.st_mode)
+                        or not stat.S_ISDIR(opened.st_mode)
+                        or (named.st_dev, named.st_ino) != (opened.st_dev, opened.st_ino)
+                    ):
+                        os.close(child_fd)
+                        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path), reason="directory_replaced")
+                    directory_fds[child_key] = child_fd
+                    directory_stats[child_key] = opened
+                parent_key = child_key
+            parent_fd = directory_fds[parent_key]
+            name = relative.parts[-1]
+            named = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+            flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+            file_fd = os.open(name, flags, dir_fd=parent_fd)
+            opened = os.fstat(file_fd)
             if (
-                (named.st_dev, named.st_ino) != (opened.st_dev, opened.st_ino)
-                or not descriptor_path.is_relative_to(root)
-                or (os.stat(root, follow_symlinks=False).st_dev, os.stat(root, follow_symlinks=False).st_ino)
-                != (root_opened.st_dev, root_opened.st_ino)
+                not stat.S_ISREG(named.st_mode)
+                or not stat.S_ISREG(opened.st_mode)
+                or (named.st_dev, named.st_ino) != (opened.st_dev, opened.st_ino)
             ):
-                raise CaptureOneRejected(
-                    "CURRENT_INDEX_PATH_UNSAFE",
-                    path=str(path),
-                    reason="path_replaced",
-                )
+                os.close(file_fd)
+                raise CaptureOneRejected(missing_code, path=str(path))
+            file_records.append((path, parent_key, name, file_fd, opened))
+    except CaptureOneRejected:
+        for _, _, _, file_fd, _ in file_records:
+            os.close(file_fd)
+        for directory_fd in reversed(list(directory_fds.values())):
+            os.close(directory_fd)
+        raise
+    except OSError as exc:
+        for _, _, _, file_fd, _ in file_records:
+            os.close(file_fd)
+        for directory_fd in reversed(list(directory_fds.values())):
+            os.close(directory_fd)
+        raise CaptureOneRejected(missing_code, path=str(paths[0] if paths else root)) from exc
+    try:
+        payloads: list[bytes] = []
+        for path, _, _, file_fd, opened in file_records:
+            if opened.st_size <= 0 or opened.st_size > MAX_CURRENT_INDEX_BYTES:
+                raise CaptureOneRejected("CURRENT_INDEX_SIZE_INVALID", path=str(path), size_bytes=opened.st_size, max_bytes=MAX_CURRENT_INDEX_BYTES)
+            chunks: list[bytes] = []
+            remaining = MAX_CURRENT_INDEX_BYTES + 1
+            while remaining:
+                chunk = os.read(file_fd, min(64 * 1024, remaining))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            raw = b"".join(chunks)
+            after = os.fstat(file_fd)
+            if not raw or len(raw) > MAX_CURRENT_INDEX_BYTES or len(raw) != opened.st_size or (after.st_dev, after.st_ino, after.st_size) != (opened.st_dev, opened.st_ino, opened.st_size) or not stat.S_ISREG(after.st_mode):
+                raise CaptureOneRejected("CURRENT_INDEX_SIZE_INVALID", path=str(path), size_bytes=len(raw), max_bytes=MAX_CURRENT_INDEX_BYTES)
+            payloads.append(raw)
 
-        reject_replaced_path()
-        chunks: list[bytes] = []
-        remaining = MAX_CURRENT_INDEX_BYTES + 1
-        while remaining:
-            chunk = os.read(descriptor, min(64 * 1024, remaining))
-            if not chunk:
-                break
-            chunks.append(chunk)
-            remaining -= len(chunk)
-        raw = b"".join(chunks)
-        if not raw or len(raw) > MAX_CURRENT_INDEX_BYTES:
-            raise CaptureOneRejected(
-                "CURRENT_INDEX_SIZE_INVALID",
-                path=str(path),
-                size_bytes=len(raw),
-                max_bytes=MAX_CURRENT_INDEX_BYTES,
-            )
-
-        reject_replaced_path()
-        return raw
+        root_after = os.stat(root, follow_symlinks=False)
+        root_current = os.fstat(root_fd)
+        if (
+            not stat.S_ISDIR(root_after.st_mode)
+            or _retained_read_identity(root_after) != _retained_read_identity(root_opened)
+            or _retained_read_identity(root_current) != _retained_read_identity(root_opened)
+        ):
+            raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(root), reason="root_replaced")
+        for key, opened in directory_stats.items():
+            current = os.fstat(directory_fds[key])
+            if not stat.S_ISDIR(current.st_mode) or _retained_read_identity(current) != _retained_read_identity(opened):
+                raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", reason="directory_replaced")
+            if key:
+                named = os.stat(key[-1], dir_fd=directory_fds[key[:-1]], follow_symlinks=False)
+                if not stat.S_ISDIR(named.st_mode) or _retained_read_identity(named) != _retained_read_identity(opened):
+                    raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", reason="directory_replaced")
+        for path, parent_key, name, file_fd, opened in file_records:
+            named = os.stat(name, dir_fd=directory_fds[parent_key], follow_symlinks=False)
+            current = os.fstat(file_fd)
+            if not stat.S_ISREG(named.st_mode) or not stat.S_ISREG(current.st_mode) or (named.st_dev, named.st_ino, named.st_size) != (opened.st_dev, opened.st_ino, opened.st_size) or (current.st_dev, current.st_ino, current.st_size) != (opened.st_dev, opened.st_ino, opened.st_size):
+                raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path), reason="path_replaced")
+        return payloads
     except CaptureOneRejected:
         raise
     except OSError as exc:
         raise CaptureOneRejected(missing_code, path=str(path)) from exc
     finally:
-        os.close(descriptor)
+        for _, _, _, file_fd, _ in file_records:
+            os.close(file_fd)
+        for directory_fd in reversed(list(directory_fds.values())):
+            os.close(directory_fd)
+
+
+def _retained_read_identity(value: os.stat_result) -> tuple[int, ...]:
+    """Identity plus mutation witnesses used to reject swap-and-restore reads."""
+
+    return (
+        value.st_mode,
+        value.st_dev,
+        value.st_ino,
+        value.st_size,
+        value.st_mtime_ns,
+        value.st_ctime_ns,
+    )
 
 
 def _normalize_current_index_rows(
@@ -478,33 +533,11 @@ def _v2_runner_rows(
     sidecar_path = Path(str(record.get("sidecar_path") or ""))
     if sidecar_path != csv_path.with_name(csv_path.name + ".metadata.json"):
         raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", reason="sidecar_not_adjacent")
-    root_path = evidence_root.absolute()
-    try:
-        relative_parent = csv_path.absolute().parent.relative_to(root_path)
-        chain_paths = [root_path]
-        current = root_path
-        for component in relative_parent.parts:
-            current = current / component
-            chain_paths.append(current)
-        chain_before = []
-        for item in chain_paths:
-            identity = os.stat(item, follow_symlinks=False)
-            if not stat.S_ISDIR(identity.st_mode):
-                raise OSError("source_chain_not_directory")
-            chain_before.append((identity.st_dev, identity.st_ino))
-    except (OSError, ValueError) as exc:
-        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", reason="source_chain_invalid") from exc
-    csv_raw = _safe_file_bytes(csv_path, evidence_root=evidence_root, missing_code="CURRENT_INDEX_SOURCE_MISSING")
-    sidecar_raw = _safe_file_bytes(sidecar_path, evidence_root=evidence_root, missing_code="CURRENT_INDEX_SOURCE_MISSING")
-    try:
-        chain_after = [
-            (value.st_dev, value.st_ino)
-            for value in (os.stat(item, follow_symlinks=False) for item in chain_paths)
-        ]
-    except OSError as exc:
-        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", reason="source_chain_replaced") from exc
-    if chain_after != chain_before:
-        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", reason="source_chain_replaced")
+    csv_raw, sidecar_raw = _safe_files_bytes(
+        [csv_path, sidecar_path],
+        evidence_root=evidence_root,
+        missing_code="CURRENT_INDEX_SOURCE_MISSING",
+    )
     try:
         sidecar = json.loads(sidecar_raw)
     except json.JSONDecodeError as exc:
@@ -546,20 +579,22 @@ def _v2_runner_rows(
         for item in detailed_participants
         if isinstance(item, Mapping)
     }
-    # The accepted canonical alignment is the source of scratch status.  Its
-    # available/aligned contract means these exact participants are active;
-    # scratched/reserve rows are deliberately absent.  Never infer activity
-    # from the CSV alone.
-    canonical_active = [
-        {"box_number": item.get("box_number"), "dog_name": item.get("dog_name")}
-        for item in detailed_participants if isinstance(item, Mapping)
-    ]
+    canonical_active = []
     for item in detailed_participants:
-        declared_status = item.get("scratch_state", item.get("status"))
-        if declared_status is not None and str(declared_status).upper() != "ACTIVE":
+        if not isinstance(item, Mapping):
+            raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_status_missing_or_inactive")
+        declared = [
+            item[key]
+            for key in ("scratch_state", "activity_state", "status")
+            if key in item
+        ]
+        if not declared or any(value != "ACTIVE" for value in declared):
             raise CaptureOneRejected(
-                "CURRENT_INDEX_SOURCE_INVALID", reason="runner_not_active"
+                "CURRENT_INDEX_SOURCE_INVALID", reason="runner_status_missing_or_inactive"
             )
+        canonical_active.append(
+            {"box_number": item.get("box_number"), "dog_name": item.get("dog_name")}
+        )
     if canonical_active != participants or len(canonical_active) != len(detailed_participants):
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_status_ambiguous")
 
@@ -644,6 +679,7 @@ def _v2_runner_rows(
     provenance = {
         "source_url": str(shadow["source_url"]),
         "observed_at": observed.isoformat(),
+        "source_generated_at": generated.isoformat(),
         "csv_path": csv_path.absolute().relative_to(root).as_posix(),
         "csv_sha256": sha256_bytes(csv_raw),
         "sidecar_path": sidecar_path.absolute().relative_to(root).as_posix(),
@@ -657,6 +693,7 @@ def _v2_runner_rows(
             "jump_datetime": race["jump_datetime"],
         },
         "observed_at": provenance["observed_at"],
+        "source_generated_at": provenance["source_generated_at"],
         "sources": [
             {"locator": provenance["csv_path"], "sha256": provenance["csv_sha256"]},
             {"locator": provenance["sidecar_path"], "sha256": provenance["sidecar_sha256"]},
@@ -666,35 +703,91 @@ def _v2_runner_rows(
     return rows, provenance, runner_hash
 
 
-def _atomic_replace_canonical(path: Path, payload: Mapping[str, Any]) -> None:
-    parent = path.parent.absolute()
-    parent.mkdir(parents=True, exist_ok=True)
-    flags_dir = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
-    parent_fd = os.open(parent, flags_dir)
-    parent_identity = os.fstat(parent_fd)
-    temporary = f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
-    flags |= getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(temporary, flags, 0o600, dir_fd=parent_fd)
+def _atomic_replace_canonical(
+    path: Path, payload: Mapping[str, Any], *, evidence_root: Path
+) -> None:
+    root = evidence_root.absolute()
+    target = path.absolute()
     try:
-        with os.fdopen(descriptor, "wb") as handle:
-            handle.write(canonical_bytes(payload))
-            handle.flush()
-            os.fsync(handle.fileno())
-        named_parent = os.stat(parent, follow_symlinks=False)
-        if (named_parent.st_dev, named_parent.st_ino) != (parent_identity.st_dev, parent_identity.st_ino):
-            raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path), reason="publish_parent_replaced")
-        os.replace(temporary, path.name, src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
-        named_parent = os.stat(parent, follow_symlinks=False)
-        if (named_parent.st_dev, named_parent.st_ino) != (parent_identity.st_dev, parent_identity.st_ino):
-            raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path), reason="publish_parent_replaced")
-        os.fsync(parent_fd)
-    finally:
+        relative = target.relative_to(root)
+    except ValueError as exc:
+        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path)) from exc
+    if not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
+        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path))
+    flags_dir = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    root_named = os.stat(root, follow_symlinks=False)
+    if not stat.S_ISDIR(root_named.st_mode):
+        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(root))
+    root_fd = os.open(root, flags_dir)
+    descriptors = [root_fd]
+    identities = [os.fstat(root_fd)]
+    if (identities[0].st_dev, identities[0].st_ino) != (root_named.st_dev, root_named.st_ino):
+        os.close(root_fd)
+        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(root), reason="root_replaced")
+    try:
+        for component in relative.parts[:-1]:
+            parent_fd = descriptors[-1]
+            try:
+                named = os.stat(component, dir_fd=parent_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                os.mkdir(component, mode=0o700, dir_fd=parent_fd)
+                named = os.stat(component, dir_fd=parent_fd, follow_symlinks=False)
+            child_fd = os.open(component, flags_dir, dir_fd=parent_fd)
+            opened = os.fstat(child_fd)
+            if not stat.S_ISDIR(named.st_mode) or not stat.S_ISDIR(opened.st_mode) or (named.st_dev, named.st_ino) != (opened.st_dev, opened.st_ino):
+                os.close(child_fd)
+                raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path), reason="publish_component_replaced")
+            descriptors.append(child_fd)
+            identities.append(opened)
+        parent_fd = descriptors[-1]
+        parent_identity = identities[-1]
+        temporary = f".{relative.parts[-1]}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_NOFOLLOW", 0)
+        descriptor = os.open(temporary, flags, 0o600, dir_fd=parent_fd)
         try:
-            os.unlink(temporary, dir_fd=parent_fd)
-        except FileNotFoundError:
-            pass
-        os.close(parent_fd)
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(canonical_bytes(payload))
+                handle.flush()
+                os.fsync(handle.fileno())
+            temporary_stat = os.stat(temporary, dir_fd=parent_fd, follow_symlinks=False)
+            if not stat.S_ISREG(temporary_stat.st_mode):
+                raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path), reason="publish_temp_invalid")
+            _recheck_directory_chain(root, relative.parts[:-1], descriptors, identities, path)
+            os.replace(temporary, relative.parts[-1], src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+            published = os.stat(relative.parts[-1], dir_fd=parent_fd, follow_symlinks=False)
+            if not stat.S_ISREG(published.st_mode) or (published.st_dev, published.st_ino, published.st_size) != (temporary_stat.st_dev, temporary_stat.st_ino, temporary_stat.st_size):
+                raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path), reason="publish_final_replaced")
+            _recheck_directory_chain(root, relative.parts[:-1], descriptors, identities, path)
+            os.fsync(parent_fd)
+        finally:
+            try:
+                os.unlink(temporary, dir_fd=parent_fd)
+            except FileNotFoundError:
+                pass
+    finally:
+        for retained in reversed(descriptors):
+            os.close(retained)
+
+
+def _recheck_directory_chain(
+    root: Path,
+    components: tuple[str, ...],
+    descriptors: list[int],
+    identities: list[os.stat_result],
+    target: Path,
+) -> None:
+    root_named = os.stat(root, follow_symlinks=False)
+    if not stat.S_ISDIR(root_named.st_mode) or (root_named.st_dev, root_named.st_ino) != (identities[0].st_dev, identities[0].st_ino):
+        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(target), reason="publish_root_replaced")
+    for index, identity in enumerate(identities):
+        opened = os.fstat(descriptors[index])
+        if not stat.S_ISDIR(opened.st_mode) or (opened.st_dev, opened.st_ino) != (identity.st_dev, identity.st_ino):
+            raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(target), reason="publish_component_replaced")
+        if index:
+            named = os.stat(components[index - 1], dir_fd=descriptors[index - 1], follow_symlinks=False)
+            if not stat.S_ISDIR(named.st_mode) or (named.st_dev, named.st_ino) != (identity.st_dev, identity.st_ino):
+                raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(target), reason="publish_component_replaced")
 
 
 def publish_current_race_index(
@@ -746,23 +839,49 @@ def publish_current_race_index(
                     "runner_source": runner_source,
                 }
             )
+        root = evidence_root.absolute()
+        refresh_locator = source_refresh_report_path.absolute().relative_to(root).as_posix()
         packet = {
             "schema_version": CURRENT_RACE_INDEX_SCHEMA,
             "run_id": run_id,
             "source_generated_at": source_generated_at.isoformat(),
-            "source_refresh_report_path": str(source_refresh_report_path.resolve()),
+            "source_refresh_report_path": refresh_locator,
             "source_refresh_report_sha256": sha256_bytes(source_raw),
             "race_count": len(races),
             "max_races": max_races,
             "races": sealed_races,
         }
-        root = evidence_root.resolve()
-        if not index_path.absolute().parent.resolve().is_relative_to(root):
-            raise CaptureOneRejected(
-                "CURRENT_INDEX_PATH_UNSAFE", path=str(index_path)
-            )
-        _atomic_replace_canonical(index_path, packet)
+        _atomic_replace_canonical(index_path, packet, evidence_root=evidence_root)
         packet_raw = canonical_bytes(packet)
+        publication = {
+            "schema_version": "collector_current_race_index_publication_v1",
+            "status": "PUBLISHED",
+            "packet_schema_version": CURRENT_RACE_INDEX_SCHEMA,
+            "packet_sha256": sha256_bytes(packet_raw),
+            "run_id": run_id,
+            "source_refresh_report_path": refresh_locator,
+            "source_refresh_report_sha256": packet["source_refresh_report_sha256"],
+            "source_generated_at": source_generated_at.isoformat(),
+            "race_count": len(sealed_races),
+            "race_identities": [
+                {
+                    "race_id": race["race_id"],
+                    "race_url": race["race_url"],
+                    "date": race["date"],
+                    "venue": race["venue"],
+                    "race_number": race["race_number"],
+                    "jump_datetime": race["jump_datetime"],
+                }
+                for race in sealed_races
+            ],
+            "runner_set_sha256": [race["runner_set_sha256"] for race in sealed_races],
+            "runner_sources": [race["runner_source"] for race in sealed_races],
+        }
+        _atomic_replace_canonical(
+            index_path.parent / CURRENT_RACE_INDEX_PUBLICATION_FILENAME,
+            publication,
+            evidence_root=evidence_root,
+        )
     except (
         CaptureOneRejected,
         KeyError,
@@ -858,7 +977,14 @@ def bounded_current_race_index(
                 age_seconds=age_seconds,
                 max_age_seconds=max_age_seconds,
             )
-        source_path = Path(str(packet["source_refresh_report_path"]))
+        source_locator = str(packet["source_refresh_report_path"])
+        source_path = Path(source_locator)
+        if packet.get("schema_version") == CURRENT_RACE_INDEX_SCHEMA:
+            if source_path.is_absolute() or not source_locator or any(
+                part in {"", ".", ".."} for part in source_path.parts
+            ):
+                raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
+            source_path = evidence_root.absolute() / source_path
         source_raw = _safe_file_bytes(
             source_path,
             evidence_root=evidence_root,
@@ -886,37 +1012,38 @@ def bounded_current_race_index(
         if packet.get("race_count") != len(expected_races) or packet.get("races") != expected_races:
             raise CaptureOneRejected("CURRENT_INDEX_INVALID")
         if packet.get("schema_version") == CURRENT_RACE_INDEX_SCHEMA:
-            # The daemon state is the fixed, collector-owned locator for its
-            # already-existing publication report.  A v2 packet is never
-            # catalog eligible merely because an index file happens to exist.
-            state_path = index_path.parent / "odds_capture_state.json"
-            state_raw = _safe_file_bytes(
-                state_path,
-                evidence_root=evidence_root,
-                missing_code="CURRENT_INDEX_PUBLICATION_MISSING",
-            )
-            state = json.loads(state_raw)
-            if not isinstance(state, Mapping) or state.get("run_id") != packet.get("run_id"):
-                raise CaptureOneRejected("CURRENT_INDEX_PUBLICATION_INVALID")
-            report_locator = state.get("output_dir")
-            if not isinstance(report_locator, str) or not report_locator:
-                raise CaptureOneRejected("CURRENT_INDEX_PUBLICATION_INVALID")
-            report_dir = Path(report_locator)
-            if not report_dir.is_absolute():
-                report_dir = ROOT / report_dir
             publication_raw = _safe_file_bytes(
-                report_dir / "odds_capture_only_daemon_report.json",
+                index_path.parent / CURRENT_RACE_INDEX_PUBLICATION_FILENAME,
                 evidence_root=evidence_root,
                 missing_code="CURRENT_INDEX_PUBLICATION_MISSING",
             )
             publication = json.loads(publication_raw)
-            evidence = publication.get("current_race_index_publish") if isinstance(publication, Mapping) else None
+            expected_publication = {
+                "schema_version": "collector_current_race_index_publication_v1",
+                "status": "PUBLISHED",
+                "packet_schema_version": packet["schema_version"],
+                "packet_sha256": sha256_bytes(packet_raw),
+                "run_id": packet["run_id"],
+                "source_refresh_report_path": packet["source_refresh_report_path"],
+                "source_refresh_report_sha256": packet["source_refresh_report_sha256"],
+                "source_generated_at": packet["source_generated_at"],
+                "race_count": packet["race_count"],
+                "race_identities": [
+                    {
+                        "race_id": race["race_id"], "race_url": race["race_url"],
+                        "date": race["date"], "venue": race["venue"],
+                        "race_number": race["race_number"],
+                        "jump_datetime": race["jump_datetime"],
+                    }
+                    for race in packet["races"]
+                ],
+                "runner_set_sha256": [race["runner_set_sha256"] for race in packet["races"]],
+                "runner_sources": [race["runner_source"] for race in packet["races"]],
+            }
             if (
-                not isinstance(evidence, Mapping)
-                or evidence.get("schema_version") != "collector_current_race_index_publish_v2"
-                or evidence.get("status") != "PUBLISHED"
-                or evidence.get("run_id") != packet.get("run_id")
-                or evidence.get("packet_sha256") != sha256_bytes(packet_raw)
+                not isinstance(publication, Mapping)
+                or canonical_bytes(publication) != publication_raw
+                or publication != expected_publication
             ):
                 raise CaptureOneRejected("CURRENT_INDEX_PUBLICATION_INVALID")
     except _DiscoveryTimedOut as exc:
