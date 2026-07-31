@@ -113,7 +113,12 @@ def _timestamp(value: Any, name: str) -> tuple[datetime, str]:
     return parsed, parsed.isoformat(timespec="microseconds")
 
 
-def _source_url(value: Any, name: str) -> str:
+def _source_url(
+    value: Any,
+    name: str,
+    *,
+    allow_official_result_query: bool = False,
+) -> str:
     url = _known_text(value, name)
     parsed = urlsplit(url)
     if (
@@ -122,7 +127,14 @@ def _source_url(value: Any, name: str) -> str:
         or parsed.hostname not in {"www.thedogs.com.au", "thedogs.com.au"}
         or parsed.username is not None
         or parsed.password is not None
-        or parsed.query
+        or (
+            parsed.query
+            and not (
+                allow_official_result_query
+                and parsed.query == "trial=false"
+                and parsed.path.endswith("/results")
+            )
+        )
         or parsed.fragment
     ):
         raise ForwardCorpusRejected(f"{name} is not a canonical source URL")
@@ -1095,8 +1107,16 @@ class ForwardSealedCorpus:
             _bounded_id(stage.get(field), field)
         if stage.get("source_name") != OFFICIAL_RESULT_SOURCE:
             raise ForwardCorpusRejected("official result source name is not canonical")
-        _source_url(stage.get("request_url"), "official request URL")
-        _source_url(stage.get("final_url"), "official final URL")
+        _source_url(
+            stage.get("request_url"),
+            "official request URL",
+            allow_official_result_query=True,
+        )
+        _source_url(
+            stage.get("final_url"),
+            "official final URL",
+            allow_official_result_query=True,
+        )
         if type(stage.get("http_status")) is not int or not 200 <= stage["http_status"] < 300:
             raise ForwardCorpusRejected("official response HTTP status is unsupported")
         content_type = _known_text(stage.get("content_type"), "official content type")
@@ -1152,8 +1172,16 @@ class ForwardSealedCorpus:
             _bounded_id(observation.get(field), field)
         if observation.get("source_name") != OFFICIAL_RESULT_SOURCE:
             raise ForwardCorpusRejected("official result source name is not canonical")
-        _source_url(observation.get("request_url"), "official request URL")
-        _source_url(observation.get("final_url"), "official final URL")
+        _source_url(
+            observation.get("request_url"),
+            "official request URL",
+            allow_official_result_query=True,
+        )
+        _source_url(
+            observation.get("final_url"),
+            "official final URL",
+            allow_official_result_query=True,
+        )
         if type(observation.get("http_status")) is not int or not (
             200 <= observation["http_status"] < 300
         ):
@@ -1227,7 +1255,11 @@ class ForwardSealedCorpus:
             (source_name, "source_name"),
         ):
             _bounded_id(value, name)
-        request_url = _source_url(request_url, "official request URL")
+        request_url = _source_url(
+            request_url,
+            "official request URL",
+            allow_official_result_query=True,
+        )
         request_directory = self._request_directory(self.root, race_id, request_id)
         observation_path = request_directory / "observation.json"
         response_stage_path = request_directory / "response-stage.json"
@@ -1288,7 +1320,11 @@ class ForwardSealedCorpus:
                 "request_id": request_id,
                 "source_name": source_name,
                 "request_url": request_url,
-                "final_url": _source_url(response["final_url"], "official final URL"),
+                "final_url": _source_url(
+                    response["final_url"],
+                    "official final URL",
+                    allow_official_result_query=True,
+                ),
                 "http_status": response["status_code"],
                 "content_type": _known_text(response["content_type"], "official content type"),
                 "source_document_last_modified": response.get("source_document_last_modified"),

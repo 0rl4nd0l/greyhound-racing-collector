@@ -6,6 +6,8 @@ from datetime import datetime
 
 import pytest
 
+from race_collection import forward_sealed_corpus as corpus_module
+from race_collection import source_admission as admission_module
 from race_collection.forward_sealed_corpus import (
     ForwardCorpusRejected,
     ForwardSealedCorpus,
@@ -15,6 +17,55 @@ from race_collection.source_admission import (
     SourceAdmissionRejected,
     admit_historical_source,
 )
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.thedogs.com.au/racing/test/results?trial=true",
+        "https://www.thedogs.com.au/racing/test/results?trial=false&other=1",
+        "https://www.thedogs.com.au/racing/test/results?trial%3Dfalse",
+        "https://www.thedogs.com.au/racing/test/results?trial=false%26other=1",
+        "https://www.thedogs.com.au/racing/test?trial=false",
+    ],
+)
+def test_official_result_query_exception_rejects_every_other_query(url):
+    with pytest.raises(ForwardCorpusRejected):
+        corpus_module._source_url(
+            url,
+            "official request URL",
+            allow_official_result_query=True,
+        )
+    with pytest.raises(SourceAdmissionRejected):
+        admission_module._canonical_source_url(
+            url,
+            "official request URL",
+            allow_official_result_query=True,
+        )
+
+
+def test_official_result_query_exception_is_not_a_generic_source_exception():
+    url = "https://www.thedogs.com.au/racing/test/results?trial=false"
+    assert (
+        corpus_module._source_url(
+            url,
+            "official request URL",
+            allow_official_result_query=True,
+        )
+        == url
+    )
+    assert (
+        admission_module._canonical_source_url(
+            url,
+            "official request URL",
+            allow_official_result_query=True,
+        )
+        == url
+    )
+    with pytest.raises(ForwardCorpusRejected):
+        corpus_module._source_url(url, "canonical source URL")
+    with pytest.raises(SourceAdmissionRejected):
+        admission_module._canonical_source_url(url, "forward source URL")
 
 
 class Clock:

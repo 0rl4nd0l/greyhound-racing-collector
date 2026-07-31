@@ -107,7 +107,7 @@ def _run(root, cycle, times, responses):
 
 def test_first_then_second_identical_closes_and_packages(tmp_path):
     _seed(tmp_path)
-    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/results"
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/results?trial=false"
     first, session = _run(
         tmp_path,
         "cycle-1",
@@ -154,7 +154,7 @@ def test_first_then_second_identical_closes_and_packages(tmp_path):
 
 def test_changed_second_is_terminal_and_retains_receipts(tmp_path):
     _seed(tmp_path)
-    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/results"
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/results?trial=false"
     _run(tmp_path, "one", [_dt("10:06")] * 4, [Response(T1._html(), url)])
     changed = T1._html().replace(b"1st", b"2nd").replace(b"2nd", b"1st", 1)
     report, _ = _run(tmp_path, "two", [_dt("10:21")] * 4, [Response(changed, url)])
@@ -169,7 +169,7 @@ def test_pre_boundary_skip_malformed_retention_and_terminal_skip(tmp_path):
     assert skipped["races"][0]["decision"] == "SKIPPED_PRE_BOUNDARY"
     assert session.calls == []
 
-    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/results"
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/results?trial=false"
     malformed, _ = _run(
         tmp_path,
         "malformed",
@@ -195,9 +195,16 @@ def test_url_derivation_rejects_unsafe_or_ambiguous_identity(url):
         observer.canonical_result_url(url)
 
 
+def test_url_derivation_uses_established_non_trial_result_route():
+    race_url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-name"
+    assert observer.canonical_result_url(race_url) == race_url + "/results?trial=false"
+
+
 def test_final_url_rejection_empty_response_and_lock_contention(tmp_path):
     _seed(tmp_path)
-    expected = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/results"
+    expected = (
+        "https://www.thedogs.com.au/racing/venue/2026-07-29/1/results?trial=false"
+    )
     redirected, _ = _run(
         tmp_path,
         "redirected",
@@ -231,7 +238,7 @@ def test_ids_and_report_are_deterministic_and_legacy_material_is_excluded(tmp_pa
     _seed(tmp_path)
     (tmp_path / "races" / "legacy").mkdir()
     (tmp_path / "races" / "legacy" / "legacy.json").write_text("{}")
-    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/results"
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/results?trial=false"
     report, _ = _run(
         tmp_path,
         "deterministic",
@@ -248,7 +255,7 @@ def test_ids_and_report_are_deterministic_and_legacy_material_is_excluded(tmp_pa
 
 def test_redirect_is_not_followed_and_response_is_closed(tmp_path):
     _seed(tmp_path)
-    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/results"
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/results?trial=false"
     response = Response(b"redirect", url, status=302, headers={"Location": url + "/other"})
     report, session = _run(tmp_path, "redirect", [_dt("10:06")] * 2, [response])
     assert report["status"] == "COMPLETED_WITH_ERRORS"
@@ -265,7 +272,7 @@ def test_redirect_is_not_followed_and_response_is_closed(tmp_path):
 
 def test_wire_exact_body_encoding_and_bound_are_enforced(tmp_path, monkeypatch):
     _seed(tmp_path)
-    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/results"
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/results?trial=false"
     encoded = Response(T1._html(), url, headers={"Content-Encoding": "gzip"})
     report, _ = _run(tmp_path, "encoded", [_dt("10:06")] * 2, [encoded])
     assert report["status"] == "COMPLETED_WITH_ERRORS"
