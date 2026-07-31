@@ -569,11 +569,14 @@ def test_safe_file_bytes_rejects_same_inode_same_size_mutate_read_restore(
         return raw
 
     monkeypatch.setattr(capture.os, "read", mutate_read_restore)
-    with pytest.raises(CaptureOneRejected):
+    with pytest.raises(CaptureOneRejected) as rejected:
         capture._safe_file_bytes(
             source, evidence_root=evidence_root,
             missing_code="CURRENT_INDEX_SOURCE_MISSING",
         )
+
+    assert rejected.value.code == "CURRENT_INDEX_PATH_UNSAFE"
+    assert rejected.value.details["reason"] == "file_mutated"
 
 
 def test_atomic_publish_rejects_replaced_temporary_path(

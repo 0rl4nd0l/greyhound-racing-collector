@@ -390,7 +390,21 @@ def _safe_files_bytes(
                 remaining -= len(chunk)
             raw = b"".join(chunks)
             after = os.fstat(file_fd)
-            if not raw or len(raw) > MAX_CURRENT_INDEX_BYTES or len(raw) != opened.st_size or _retained_read_identity(after) != _retained_read_identity(opened) or not stat.S_ISREG(after.st_mode):
+            if (
+                not stat.S_ISREG(after.st_mode)
+                or _retained_read_identity(after)
+                != _retained_read_identity(opened)
+            ):
+                raise CaptureOneRejected(
+                    "CURRENT_INDEX_PATH_UNSAFE",
+                    path=str(path),
+                    reason="file_mutated",
+                )
+            if (
+                not raw
+                or len(raw) > MAX_CURRENT_INDEX_BYTES
+                or len(raw) != opened.st_size
+            ):
                 raise CaptureOneRejected("CURRENT_INDEX_SIZE_INVALID", path=str(path), size_bytes=len(raw), max_bytes=MAX_CURRENT_INDEX_BYTES)
             payloads.append(raw)
 
@@ -596,7 +610,11 @@ def _v2_runner_rows(
                 "CURRENT_INDEX_SOURCE_INVALID", reason="runner_status_missing_or_inactive"
             )
         canonical_active.append(
-            {"box_number": item.get("box_number"), "dog_name": item.get("dog_name")}
+            {
+                "box_number": item.get("box_number"),
+                "dog_name": item.get("dog_name"),
+                "scratch_state": "ACTIVE",
+            }
         )
     if canonical_active != participants or len(canonical_active) != len(detailed_participants):
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_status_ambiguous")
