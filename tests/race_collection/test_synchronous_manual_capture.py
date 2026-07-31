@@ -75,13 +75,19 @@ def _write_publication_evidence(
     state.parent.mkdir(parents=True, exist_ok=True)
     state.write_bytes(canonical_bytes({
         "schema_version": "shadow_autopilot_odds_capture_only_state_v1",
+        "updated_at": published["source_generated_at"],
         "run_id": published["run_id"], "output_dir": output_locator,
+        "autopilot_output_dir": output_locator,
+        "final_status": "ODDS_CAPTURE_ONLY_READY", "status": "READY",
     }))
     (output_dir / capture.ODDS_CAPTURE_ONLY_REPORT_FILENAME).write_bytes(
         canonical_bytes({
             "schema_version": "shadow_autopilot_odds_capture_only_daemon_report_v1",
+            "generated_at": published["source_generated_at"],
             "run_id": published["run_id"],
             "output_dir": output_locator,
+            "autopilot_output_dir": output_locator,
+            "final_status": "ODDS_CAPTURE_ONLY_READY", "status": "READY",
             "current_race_index_publish": dict(published),
         })
     )
@@ -322,7 +328,7 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
                         "date": "2026-07-19",
                         "jump_datetime": "2026-07-19T13:00:00+10:00",
                         "race_id": "Race 5 - GUNN - 2026-07-19",
-                        "race_id_aliases": ["Race 5 - GUNN - 2026-07-19"],
+                        "race_id_aliases": ["GUNN-R5-20260719"],
                         "race_number": 5,
                         "race_time": "13:00",
                         "race_url": (
@@ -351,14 +357,20 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
     producer_output_locator = daemon.relpath(producer_output_dir)
     daemon.write_json(state, {
         "schema_version": "shadow_autopilot_odds_capture_only_state_v1",
+        "updated_at": published["source_generated_at"],
         "run_id": published["run_id"], "output_dir": producer_output_locator,
+        "autopilot_output_dir": producer_output_locator,
+        "final_status": "ODDS_CAPTURE_ONLY_READY", "status": "READY",
     })
     daemon.write_json(
         producer_output_dir / capture.ODDS_CAPTURE_ONLY_REPORT_FILENAME,
         {
             "schema_version": "shadow_autopilot_odds_capture_only_daemon_report_v1",
+            "generated_at": published["source_generated_at"],
             "run_id": published["run_id"],
             "output_dir": producer_output_locator,
+            "autopilot_output_dir": producer_output_locator,
+            "final_status": "ODDS_CAPTURE_ONLY_READY", "status": "READY",
             "current_race_index_publish": dict(published),
         },
     )
@@ -374,6 +386,25 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
         evidence_root=evidence_root,
         max_age_seconds=900,
     )[0]["race_id"] == "Race 5 - GUNN - 2026-07-19"
+
+    real_validate = capture._RetainedSafeFiles.validate
+
+    def replace_early_packet(snapshot: Any) -> None:
+        replacement = index_path.with_name("replacement.json")
+        replacement.write_bytes(index_path.read_bytes())
+        os.replace(replacement, index_path)
+        real_validate(snapshot)
+
+    with monkeypatch.context() as attack:
+        attack.setattr(capture._RetainedSafeFiles, "validate", replace_early_packet)
+        with pytest.raises(CaptureOneRejected) as replaced:
+            bounded_current_race_index(
+                current_time=index_now, timeout_seconds=1,
+                index_path=index_path, evidence_root=evidence_root,
+                max_age_seconds=900,
+            )
+    assert replaced.value.code == "CURRENT_INDEX_PATH_UNSAFE"
+    assert replaced.value.details["reason"] == "path_replaced"
 
     state_bytes = state.read_bytes()
     state_payload = json.loads(state_bytes)
@@ -392,6 +423,27 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
         )
     assert missing_report.value.code == "CURRENT_INDEX_REPORT_MISSING"
     report_path.write_bytes(report_bytes)
+
+    for target, field, value in (
+        (state, "updated_at", (index_now + timedelta(seconds=1)).isoformat()),
+        (state, "final_status", "SKIPPED_LOCK_HELD"),
+        (report_path, "generated_at", (index_now - timedelta(seconds=901)).isoformat()),
+        (report_path, "generated_at", (index_now + timedelta(seconds=1)).isoformat()),
+        (report_path, "final_status", "ODDS_CAPTURE_ONLY_FAILED"),
+        (report_path, "status", "SKIPPED"),
+    ):
+        original_target = target.read_bytes()
+        changed = json.loads(original_target)
+        changed[field] = value
+        target.write_bytes(canonical_bytes(changed))
+        with pytest.raises(CaptureOneRejected) as invalid_lifecycle:
+            bounded_current_race_index(
+                current_time=index_now, timeout_seconds=1,
+                index_path=index_path, evidence_root=evidence_root,
+                max_age_seconds=900,
+            )
+        assert invalid_lifecycle.value.code == "CURRENT_INDEX_REPORT_INVALID"
+        target.write_bytes(original_target)
 
     malformed_report = dict(report_payload, schema_version="wrong_schema")
     report_path.write_bytes(canonical_bytes(malformed_report))
@@ -528,6 +580,58 @@ def test_current_race_index_rejects_stale_or_changed_source(tmp_path: Path):
             max_age_seconds=900,
         )
     assert changed.value.code == "CURRENT_INDEX_SOURCE_CHANGED"
+
+
+@pytest.mark.parametrize(
+    ("first_aliases", "second_aliases", "second_id"),
+    [
+        (["ALIAS"], ["ALIAS"], "Race 6 - GUNN - 2026-07-19"),
+        (["Race 5 - GUNN - 2026-07-19"], [], "Race 6 - GUNN - 2026-07-19"),
+        (["Race 6 - GUNN - 2026-07-19"], [], "Race 6 - GUNN - 2026-07-19"),
+    ],
+)
+def test_current_index_rejects_alias_collisions(
+    first_aliases: list[str], second_aliases: list[str], second_id: str
+):
+    rows = [
+        {
+            "date": "2026-07-19", "jump_datetime": "2026-07-19T13:00:00+10:00",
+            "race_id": "Race 5 - GUNN - 2026-07-19", "race_id_aliases": first_aliases,
+            "race_number": 5, "race_time": "1:00 PM",
+            "race_url": "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5",
+            "venue": "GUNN",
+        },
+        {
+            "date": "2026-07-19", "jump_datetime": "2026-07-19T13:30:00+10:00",
+            "race_id": second_id, "race_id_aliases": second_aliases,
+            "race_number": 6, "race_time": "13:30",
+            "race_url": "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/6",
+            "venue": "GUNN",
+        },
+    ]
+    with pytest.raises(CaptureOneRejected) as rejected:
+        capture._normalize_current_index_rows(
+            {"selected_count": 2, "selected_races": rows}, max_races=32
+        )
+    assert rejected.value.code == "CURRENT_INDEX_INVALID"
+
+
+def test_current_index_requires_time_and_normalizes_producer_time():
+    row = {
+        "date": "2026-07-19", "jump_datetime": "2026-07-19T13:00:00+10:00",
+        "race_id": "Race 5 - GUNN - 2026-07-19", "race_id_aliases": [],
+        "race_number": 5, "race_time": "1:00 PM",
+        "race_url": "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5",
+        "venue": "GUNN",
+    }
+    assert capture._normalize_current_index_rows(
+        {"selected_count": 1, "selected_races": [row]}, max_races=32
+    )[0]["race_time"] == "13:00"
+    row["race_time"] = ""
+    with pytest.raises(CaptureOneRejected):
+        capture._normalize_current_index_rows(
+            {"selected_count": 1, "selected_races": [row]}, max_races=32
+        )
 
 
 def test_safe_file_bytes_reads_one_stable_descriptor(tmp_path: Path):

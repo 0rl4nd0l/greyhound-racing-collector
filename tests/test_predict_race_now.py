@@ -498,7 +498,7 @@ def test_default_schedule_reads_only_collector_owned_bounded_index(
                         "date": "2026-07-19",
                         "jump_datetime": "2026-07-19T13:00:00+10:00",
                         "race_id": RACE_ID,
-                        "race_id_aliases": [RACE_ID],
+                        "race_id_aliases": ["GUNN-R5-20260719"],
                         "race_number": 5,
                         "race_time": "13:00",
                         "race_url": (
@@ -522,12 +522,18 @@ def test_default_schedule_reads_only_collector_owned_bounded_index(
     state.parent.mkdir(parents=True, exist_ok=True)
     state.write_bytes(canonical_bytes({
         "schema_version": "shadow_autopilot_odds_capture_only_state_v1",
+        "updated_at": NOW.isoformat(),
         "run_id": "fixture", "output_dir": publication_locator,
+        "autopilot_output_dir": publication_locator,
+        "final_status": "ODDS_CAPTURE_ONLY_READY", "status": "READY",
     }))
     (publication_dir / "odds_capture_only_daemon_report.json").write_bytes(
         canonical_bytes({
             "schema_version": "shadow_autopilot_odds_capture_only_daemon_report_v1",
+            "generated_at": NOW.isoformat(),
             "run_id": "fixture", "output_dir": publication_locator,
+            "autopilot_output_dir": publication_locator,
+            "final_status": "ODDS_CAPTURE_ONLY_READY", "status": "READY",
             "current_race_index_publish": published,
         })
     )
@@ -549,7 +555,7 @@ def test_default_schedule_reads_only_collector_owned_bounded_index(
             "date": "2026-07-19",
             "jump_datetime": "2026-07-19T13:00:00+10:00",
             "race_id": RACE_ID,
-            "race_id_aliases": [RACE_ID],
+            "race_id_aliases": ["GUNN-R5-20260719"],
             "race_number": 5,
             "race_time": "13:00",
             "race_url": "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5",

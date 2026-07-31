@@ -318,7 +318,7 @@ def _safe_file_bytes(
     missing_code: str,
 ) -> bytes:
     return _safe_files_bytes(
-        [path], evidence_root=evidence_root, missing_code=missing_code
+        [path], evidence_root=evidence_root, missing_code=missing_code,
     )[0]
 
 
@@ -507,6 +507,147 @@ def _retained_read_identity(value: os.stat_result) -> tuple[int, ...]:
     )
 
 
+class _RetainedSafeFiles:
+    """One bounded no-follow snapshot whose descriptors live through validation."""
+
+    def __init__(self, evidence_root: Path) -> None:
+        self.root = evidence_root.absolute()
+        self.directory_fds: dict[tuple[str, ...], int] = {}
+        self.directory_stats: dict[tuple[str, ...], os.stat_result] = {}
+        self.files: list[tuple[Path, tuple[str, ...], str, int, os.stat_result]] = []
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+        flags |= getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+        try:
+            named = os.stat(self.root, follow_symlinks=False)
+            root_fd = os.open(self.root, flags)
+            opened = os.fstat(root_fd)
+        except OSError as exc:
+            raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(self.root)) from exc
+        if (
+            not stat.S_ISDIR(named.st_mode)
+            or not stat.S_ISDIR(opened.st_mode)
+            or _retained_read_identity(named) != _retained_read_identity(opened)
+        ):
+            os.close(root_fd)
+            raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(self.root))
+        self.directory_fds[()] = root_fd
+        self.directory_stats[()] = opened
+        self._directory_flags = flags
+
+    def __enter__(self) -> _RetainedSafeFiles:
+        return self
+
+    def __exit__(self, *ignored: object) -> None:
+        del ignored
+        for _, _, _, descriptor, _ in self.files:
+            os.close(descriptor)
+        for descriptor in reversed(list(self.directory_fds.values())):
+            os.close(descriptor)
+
+    def read(self, path: Path, *, missing_code: str) -> bytes:
+        logical = path.absolute()
+        try:
+            relative = logical.relative_to(self.root)
+        except ValueError as exc:
+            raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path)) from exc
+        if not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
+            raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path))
+        parent_key: tuple[str, ...] = ()
+        try:
+            for component in relative.parts[:-1]:
+                child_key = (*parent_key, component)
+                if child_key not in self.directory_fds:
+                    parent_fd = self.directory_fds[parent_key]
+                    named = os.stat(component, dir_fd=parent_fd, follow_symlinks=False)
+                    child_fd = os.open(component, self._directory_flags, dir_fd=parent_fd)
+                    opened = os.fstat(child_fd)
+                    if (
+                        not stat.S_ISDIR(named.st_mode)
+                        or not stat.S_ISDIR(opened.st_mode)
+                        or _retained_read_identity(named) != _retained_read_identity(opened)
+                    ):
+                        os.close(child_fd)
+                        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path))
+                    self.directory_fds[child_key] = child_fd
+                    self.directory_stats[child_key] = opened
+                parent_key = child_key
+            name = relative.parts[-1]
+            parent_fd = self.directory_fds[parent_key]
+            named = os.stat(name, dir_fd=parent_fd, follow_symlinks=False)
+            flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+            descriptor = os.open(name, flags, dir_fd=parent_fd)
+            opened = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(named.st_mode)
+                or not stat.S_ISREG(opened.st_mode)
+                or _retained_read_identity(named) != _retained_read_identity(opened)
+            ):
+                os.close(descriptor)
+                raise CaptureOneRejected(missing_code, path=str(path))
+            self.files.append((path, parent_key, name, descriptor, opened))
+            if opened.st_size <= 0 or opened.st_size > MAX_CURRENT_INDEX_BYTES:
+                raise CaptureOneRejected("CURRENT_INDEX_SIZE_INVALID", path=str(path))
+            chunks: list[bytes] = []
+            remaining = MAX_CURRENT_INDEX_BYTES + 1
+            while remaining:
+                chunk = os.read(descriptor, min(64 * 1024, remaining))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            raw = b"".join(chunks)
+            after = os.fstat(descriptor)
+            if _retained_read_identity(after) != _retained_read_identity(opened):
+                raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path), reason="file_mutated")
+            if not raw or len(raw) != opened.st_size or len(raw) > MAX_CURRENT_INDEX_BYTES:
+                raise CaptureOneRejected("CURRENT_INDEX_SIZE_INVALID", path=str(path))
+            return raw
+        except CaptureOneRejected:
+            raise
+        except OSError as exc:
+            raise CaptureOneRejected(missing_code, path=str(path)) from exc
+
+    def validate(self) -> None:
+        try:
+            root_named = os.stat(self.root, follow_symlinks=False)
+        except OSError as exc:
+            raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(self.root), reason="root_replaced") from exc
+        for path, parent_key, name, descriptor, opened in self.files:
+            try:
+                named = os.stat(name, dir_fd=self.directory_fds[parent_key], follow_symlinks=False)
+            except OSError as exc:
+                raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path), reason="path_replaced") from exc
+            current = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(named.st_mode)
+                or not stat.S_ISREG(current.st_mode)
+                or _retained_read_identity(named) != _retained_read_identity(opened)
+                or _retained_read_identity(current) != _retained_read_identity(opened)
+            ):
+                raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path), reason="path_replaced")
+        for key, opened in self.directory_stats.items():
+            current = os.fstat(self.directory_fds[key])
+            if _retained_read_identity(current) != _retained_read_identity(opened):
+                raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", reason="directory_replaced")
+            if key:
+                try:
+                    named = os.stat(key[-1], dir_fd=self.directory_fds[key[:-1]], follow_symlinks=False)
+                except OSError as exc:
+                    raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", reason="directory_replaced") from exc
+            else:
+                named = root_named
+            if not stat.S_ISDIR(named.st_mode) or _retained_read_identity(named) != _retained_read_identity(opened):
+                raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", reason="directory_replaced")
+
+
+def _time_matches(value: str, pattern: str) -> bool:
+    try:
+        datetime.strptime(value, pattern)
+    except ValueError:
+        return False
+    return True
+
+
 def _normalize_current_index_rows(
     source: Mapping[str, Any],
     *,
@@ -532,6 +673,7 @@ def _normalize_current_index_rows(
 
     normalized: list[dict[str, Any]] = []
     identities: set[str] = set()
+    aliases_seen: set[str] = set()
     for raw in selected:
         if not isinstance(raw, Mapping):
             raise CaptureOneRejected("CURRENT_INDEX_INVALID", reason="race_not_mapping")
@@ -547,7 +689,17 @@ def _normalize_current_index_rows(
         race_date = str(raw.get("date") or "")
         venue = str(raw.get("venue") or "")
         race_id = str(raw.get("race_id") or "")
-        aliases = raw.get("race_id_aliases") or []
+        aliases = raw.get("race_id_aliases")
+        race_time = jump.strftime("%H:%M")
+        supplied_race_time = str(raw.get("race_time") or "").strip()
+        try:
+            parsed_race_time = next(
+                datetime.strptime(supplied_race_time, pattern).time()
+                for pattern in ("%H:%M", "%I:%M %p")
+                if _time_matches(supplied_race_time, pattern)
+            )
+        except StopIteration:
+            parsed_race_time = None
         if (
             identity is None
             or identity["race_date"] != race_date
@@ -559,7 +711,15 @@ def _normalize_current_index_rows(
             or not race_id
             or not isinstance(aliases, list)
             or len(aliases) > 16
-            or any(not isinstance(value, str) or not value for value in aliases)
+            or any(
+                not isinstance(value, str)
+                or not value
+                or value != value.strip()
+                for value in aliases
+            )
+            or parsed_race_time is None
+            or (parsed_race_time.hour, parsed_race_time.minute)
+            != (jump.hour, jump.minute)
         ):
             raise CaptureOneRejected(
                 "CURRENT_INDEX_INVALID", reason="race_identity_invalid"
@@ -570,21 +730,32 @@ def _normalize_current_index_rows(
             "race_id": race_id,
             "race_id_aliases": list(aliases),
             "race_number": race_number,
-            "race_time": str(raw.get("race_time") or ""),
+            "race_time": race_time,
             "race_url": race_url,
             "venue": venue,
         }
-        if stable_race_id(row) != race_id or race_id in identities:
+        alias_set = set(aliases)
+        if (
+            stable_race_id(row) != race_id
+            or race_id in identities
+            or len(alias_set) != len(aliases)
+            or race_id in alias_set
+            or alias_set & identities
+            or race_id in aliases_seen
+            or alias_set & aliases_seen
+        ):
             raise CaptureOneRejected(
                 "CURRENT_INDEX_INVALID", reason="race_id_mismatch_or_duplicate"
             )
         identities.add(race_id)
+        aliases_seen.update(alias_set)
         normalized.append(row)
     return normalized
 
 
 def _v2_runner_rows(
-    race: Mapping[str, Any], source: Mapping[str, Any], *, evidence_root: Path
+    race: Mapping[str, Any], source: Mapping[str, Any], *, evidence_root: Path,
+    snapshot: _RetainedSafeFiles | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any], str]:
     coverage = source.get("sidecar_metadata_coverage")
     if not isinstance(coverage, Mapping) or coverage.get("schema_version") != "prejump_sidecar_metadata_coverage_v1":
@@ -600,11 +771,14 @@ def _v2_runner_rows(
     sidecar_path = Path(str(record.get("sidecar_path") or ""))
     if sidecar_path != csv_path.with_name(csv_path.name + ".metadata.json"):
         raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", reason="sidecar_not_adjacent")
-    csv_raw, sidecar_raw = _safe_files_bytes(
-        [csv_path, sidecar_path],
-        evidence_root=evidence_root,
-        missing_code="CURRENT_INDEX_SOURCE_MISSING",
-    )
+    if snapshot is None:
+        csv_raw, sidecar_raw = _safe_files_bytes(
+            [csv_path, sidecar_path], evidence_root=evidence_root,
+            missing_code="CURRENT_INDEX_SOURCE_MISSING",
+        )
+    else:
+        csv_raw = snapshot.read(csv_path, missing_code="CURRENT_INDEX_SOURCE_MISSING")
+        sidecar_raw = snapshot.read(sidecar_path, missing_code="CURRENT_INDEX_SOURCE_MISSING")
     try:
         sidecar = json.loads(sidecar_raw)
     except json.JSONDecodeError as exc:
@@ -1043,6 +1217,58 @@ def publish_current_race_index(
     return report
 
 
+def _aware_datetime(value: object) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed
+
+
+def _validate_current_odds_evidence(
+    *,
+    state: Mapping[str, Any],
+    report: Mapping[str, Any],
+    packet: Mapping[str, Any],
+    publication: Mapping[str, Any],
+    current_time: datetime,
+    max_age_seconds: int,
+) -> None:
+    """Bind the producer's current state/report lifecycle to this publication."""
+
+    state_time = _aware_datetime(state.get("updated_at"))
+    report_time = _aware_datetime(report.get("generated_at"))
+    source_time = _aware_datetime(packet.get("source_generated_at"))
+    allowed = {
+        "ODDS_CAPTURE_ONLY_READY": {"READY", "READY_WITH_BLOCKED_ATTEMPTS"},
+        "ODDS_CAPTURE_ONLY_HANDLED_NO_WRITE": {"HANDLED_NO_WRITE"},
+    }
+    final_status = report.get("final_status")
+    if (
+        set(publication).isdisjoint({"packet_sha256"})
+        or state_time is None
+        or report_time is None
+        or source_time is None
+        or final_status not in allowed
+        or report.get("status") not in allowed[final_status]
+        or state.get("final_status") != final_status
+        or state.get("status") != report.get("status")
+        or state.get("output_dir") != report.get("output_dir")
+        or state.get("autopilot_output_dir") != report.get("autopilot_output_dir")
+        or state.get("run_id") != report.get("run_id")
+        or report.get("run_id") != packet.get("run_id")
+        or state_time != report_time
+        or any(
+            (current_time - moment).total_seconds() < 0
+            or (current_time - moment).total_seconds() > max_age_seconds
+            for moment in (state_time, report_time, source_time)
+        )
+    ):
+        raise CaptureOneRejected("CURRENT_INDEX_REPORT_INVALID")
+
+
 def bounded_current_race_index(
     *,
     current_time: datetime,
@@ -1071,14 +1297,12 @@ def bounded_current_race_index(
         del signum, frame
         raise _DiscoveryTimedOut
 
+    snapshot: _RetainedSafeFiles | None = None
     try:
         signal.signal(signal.SIGALRM, timed_out)
         signal.setitimer(signal.ITIMER_REAL, timeout_seconds)
-        packet_raw = _safe_file_bytes(
-            index_path,
-            evidence_root=evidence_root,
-            missing_code="CURRENT_INDEX_UNAVAILABLE",
-        )
+        snapshot = _RetainedSafeFiles(evidence_root)
+        packet_raw = snapshot.read(index_path, missing_code="CURRENT_INDEX_UNAVAILABLE")
         packet = json.loads(packet_raw)
         packet_keys = {
             "schema_version", "run_id", "source_generated_at",
@@ -1116,11 +1340,7 @@ def bounded_current_race_index(
             ):
                 raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
             source_path = evidence_root.absolute() / source_path
-        source_raw = _safe_file_bytes(
-            source_path,
-            evidence_root=evidence_root,
-            missing_code="CURRENT_INDEX_SOURCE_MISSING",
-        )
+        source_raw = snapshot.read(source_path, missing_code="CURRENT_INDEX_SOURCE_MISSING")
         if sha256_bytes(source_raw) != packet.get("source_refresh_report_sha256"):
             raise CaptureOneRejected("CURRENT_INDEX_SOURCE_CHANGED")
         source = json.loads(source_raw)
@@ -1136,16 +1356,16 @@ def bounded_current_race_index(
             sealed = []
             for race in races:
                 runners, runner_source, runner_hash = _v2_runner_rows(
-                    race, source, evidence_root=evidence_root
+                    race, source, evidence_root=evidence_root,
+                    snapshot=snapshot,
                 )
                 sealed.append({**race, "runners": runners, "runner_set_sha256": runner_hash, "runner_source": runner_source})
             expected_races = sealed
         if packet.get("race_count") != len(expected_races) or packet.get("races") != expected_races:
             raise CaptureOneRejected("CURRENT_INDEX_INVALID")
         if packet.get("schema_version") == CURRENT_RACE_INDEX_SCHEMA:
-            publication_raw = _safe_file_bytes(
+            publication_raw = snapshot.read(
                 index_path.parent / CURRENT_RACE_INDEX_PUBLICATION_FILENAME,
-                evidence_root=evidence_root,
                 missing_code="CURRENT_INDEX_PUBLICATION_MISSING",
             )
             publication = json.loads(publication_raw)
@@ -1178,11 +1398,7 @@ def bounded_current_race_index(
             ):
                 raise CaptureOneRejected("CURRENT_INDEX_PUBLICATION_INVALID")
             state_path = index_path.parent / ODDS_CAPTURE_ONLY_STATE_FILENAME
-            state_raw = _safe_file_bytes(
-                state_path,
-                evidence_root=evidence_root,
-                missing_code="CURRENT_INDEX_REPORT_MISSING",
-            )
+            state_raw = snapshot.read(state_path, missing_code="CURRENT_INDEX_REPORT_MISSING")
             state = json.loads(state_raw)
             if (
                 not isinstance(state, Mapping)
@@ -1194,9 +1410,8 @@ def bounded_current_race_index(
             output_dir = _evidence_locator_path(
                 state.get("output_dir"), evidence_root=evidence_root
             )
-            report_raw = _safe_file_bytes(
+            report_raw = snapshot.read(
                 output_dir / ODDS_CAPTURE_ONLY_REPORT_FILENAME,
-                evidence_root=evidence_root,
                 missing_code="CURRENT_INDEX_REPORT_MISSING",
             )
             report = json.loads(report_raw)
@@ -1225,6 +1440,16 @@ def bounded_current_race_index(
                 or report.get("current_race_index_publish") != expected_publish
             ):
                 raise CaptureOneRejected("CURRENT_INDEX_REPORT_INVALID")
+            _validate_current_odds_evidence(
+                state=state,
+                report=report,
+                packet=packet,
+                publication=publication,
+                current_time=current_time,
+                max_age_seconds=max_age_seconds,
+            )
+        snapshot.validate()
+        return expected_races
     except _DiscoveryTimedOut as exc:
         raise CaptureOneRejected(
             "DISCOVERY_TIMEOUT", budget_seconds=timeout_seconds
@@ -1232,9 +1457,10 @@ def bounded_current_race_index(
     except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
         raise CaptureOneRejected("CURRENT_INDEX_INVALID") from exc
     finally:
+        if snapshot is not None:
+            snapshot.__exit__()
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous_handler)
-    return expected_races
 
 
 def release_owned_collector_lock(lock: Any) -> None:
