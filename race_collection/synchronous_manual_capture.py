@@ -739,7 +739,6 @@ def _normalize_current_index_rows(
             stable_race_id(row) != race_id
             or race_id in identities
             or len(alias_set) != len(aliases)
-            or race_id in alias_set
             or alias_set & identities
             or race_id in aliases_seen
             or alias_set & aliases_seen

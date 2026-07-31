@@ -15,6 +15,7 @@ import pytest
 
 import race_collection.synchronous_manual_capture as capture
 from scripts import shadow_autopilot_daemon as daemon
+from scripts.refresh_prejump_upcoming import race_window_record
 from race_collection.manual_prediction_collector_request import (
     ManualPredictionCollectorProtocol,
     ProtocolRejected,
@@ -328,7 +329,10 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
                         "date": "2026-07-19",
                         "jump_datetime": "2026-07-19T13:00:00+10:00",
                         "race_id": "Race 5 - GUNN - 2026-07-19",
-                        "race_id_aliases": ["GUNN-R5-20260719"],
+                        "race_id_aliases": [
+                            "Race 5 - GUNN - 2026-07-19",
+                            "Race 5 - GUNNEDAH - 2026-07-19",
+                        ],
                         "race_number": 5,
                         "race_time": "13:00",
                         "race_url": (
@@ -539,7 +543,10 @@ def test_current_race_index_rejects_stale_or_changed_source(tmp_path: Path):
                         "date": "2026-07-19",
                         "jump_datetime": "2026-07-19T13:00:00+10:00",
                         "race_id": "Race 5 - GUNN - 2026-07-19",
-                        "race_id_aliases": [],
+                        "race_id_aliases": [
+                            "Race 5 - GUNN - 2026-07-19",
+                            "Race 5 - GUNNEDAH - 2026-07-19",
+                        ],
                         "race_number": 5,
                         "race_time": "13:00",
                         "race_url": (
@@ -585,8 +592,8 @@ def test_current_race_index_rejects_stale_or_changed_source(tmp_path: Path):
 @pytest.mark.parametrize(
     ("first_aliases", "second_aliases", "second_id"),
     [
+        (["ALIAS", "ALIAS"], [], "Race 6 - GUNN - 2026-07-19"),
         (["ALIAS"], ["ALIAS"], "Race 6 - GUNN - 2026-07-19"),
-        (["Race 5 - GUNN - 2026-07-19"], [], "Race 6 - GUNN - 2026-07-19"),
         (["Race 6 - GUNN - 2026-07-19"], [], "Race 6 - GUNN - 2026-07-19"),
     ],
 )
@@ -617,16 +624,23 @@ def test_current_index_rejects_alias_collisions(
 
 
 def test_current_index_requires_time_and_normalizes_producer_time():
-    row = {
-        "date": "2026-07-19", "jump_datetime": "2026-07-19T13:00:00+10:00",
-        "race_id": "Race 5 - GUNN - 2026-07-19", "race_id_aliases": [],
-        "race_number": 5, "race_time": "1:00 PM",
-        "race_url": "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5",
-        "venue": "GUNN",
-    }
-    assert capture._normalize_current_index_rows(
+    row = race_window_record(
+        {
+            "date": "2026-07-19",
+            "race_number": 5,
+            "race_time": "1:00 PM",
+            "url": "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5",
+            "venue": "GUNN",
+        },
+        now=datetime.fromisoformat("2026-07-19T12:00:00+10:00"),
+    )
+    normalized = capture._normalize_current_index_rows(
         {"selected_count": 1, "selected_races": [row]}, max_races=32
-    )[0]["race_time"] == "13:00"
+    )[0]
+    assert row["race_id"] in row["race_id_aliases"]
+    assert normalized["race_id"] == "Race 5 - GUNN - 2026-07-19"
+    assert normalized["jump_datetime"] == "2026-07-19T13:00:00+10:00"
+    assert normalized["race_time"] == "13:00"
     row["race_time"] = ""
     with pytest.raises(CaptureOneRejected):
         capture._normalize_current_index_rows(
@@ -1041,7 +1055,11 @@ def test_v2_requires_matching_successful_retained_publication(tmp_path: Path):
         "selected_count": 1,
         "selected_races": [{
             "date": "2026-07-19", "jump_datetime": "2026-07-19T13:00:00+10:00",
-            "race_id": "Race 5 - GUNN - 2026-07-19", "race_id_aliases": [],
+            "race_id": "Race 5 - GUNN - 2026-07-19",
+            "race_id_aliases": [
+                "Race 5 - GUNN - 2026-07-19",
+                "Race 5 - GUNNEDAH - 2026-07-19",
+            ],
             "race_number": 5, "race_time": "13:00", "race_url": race_url,
             "venue": "GUNN",
         }],
