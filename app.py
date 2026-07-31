@@ -730,10 +730,12 @@ if not app.config.get("SECRET_KEY"):
 # absent unless the server explicitly enables and fully configures this gate.
 from src.operator_ui.security import install_connected_mode, load_connected_environment
 from src.operator_ui.api import install_level_1_api
+from src.operator_ui.bootstrap import bind_configured_live_evidence
 
 load_connected_environment(app)
 install_connected_mode(app)
 install_level_1_api(app)
+bind_configured_live_evidence(app)
 
 # Initialize asset management system
 if ASSET_MANAGEMENT_AVAILABLE and AssetManager:
@@ -9360,11 +9362,17 @@ def index():
     )
 
 
-@app.route("/operator-ui")
 @app.route("/operator-ui/prototype")
 def operator_ui_prototype():
     """Render the isolated, fixture-only Level 1 operator prototype."""
     return render_template("operator_ui.html")
+
+
+@app.route("/operator-ui")
+def operator_ui_connected():
+    """Render chrome only; Level-1 APIs provide any operational evidence."""
+    connected = bool(app.extensions.get("operator_ui_level_1_api_installed"))
+    return render_template("operator_ui_connected.jinja", connected=connected)
 
 
 @app.route("/races")

@@ -42,13 +42,13 @@ def _unexpected_call(*_args, **_kwargs):
     raise AssertionError("prototype route called an operational collaborator")
 
 
-def _html(path="/operator-ui"):
+def _html(path="/operator-ui/prototype"):
     response = dashboard_app.app.test_client().get(path)
     assert response.status_code == 200
     return response.get_data(as_text=True)
 
 
-def test_operator_ui_get_is_fixture_only_and_has_persistent_boundaries():
+def test_operator_ui_prototype_is_fixture_only_and_has_persistent_boundaries():
     with (
         patch.object(dashboard_app.sqlite3, "connect", side_effect=_unexpected_call),
         patch.object(dashboard_app.subprocess, "run", side_effect=_unexpected_call),
@@ -59,8 +59,7 @@ def test_operator_ui_get_is_fixture_only_and_has_persistent_boundaries():
             module_monitor, "log_request_modules", side_effect=_unexpected_call
         ) as monitor_log,
     ):
-        html = _html("/operator-ui")
-        _html("/operator-ui/prototype")
+        html = _html("/operator-ui/prototype")
         monitor_log.assert_not_called()
 
     document = _PrototypeMarkerParser()
@@ -149,4 +148,6 @@ def test_route_is_pure_render_template_and_root_remains_distinct():
     }
     assert calls == {"render_template"}
     assert dashboard_app.app.view_functions["index"] is not dashboard_app.app.view_functions["operator_ui_prototype"]
-    assert _html("/operator-ui/prototype") == _html("/operator-ui")
+    assert _html("/operator-ui/prototype") != _html("/operator-ui")
+    assert "PROTOTYPE DATA" not in _html("/operator-ui")
+    assert "CONNECTED MODE" in _html("/operator-ui")
