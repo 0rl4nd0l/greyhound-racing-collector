@@ -9,11 +9,11 @@ Observed 2026-07-31 at the frozen accepted R1 product checkpoint:
 | HEAD / tree | `51fe070ba2a0778bca0b0334c00cae9d75561952` / `0c2b82a391b8dd0a1dcc525cf4203edc910843c1` |
 | Baseline cleanliness | clean |
 | Historical/upstream source | Actual historical merge parent `51a5287d05c790e3855e5b74ce7117a29340135e`; later `origin/master` drift `f38a125f6364b8a60d17ae9c971b0ce172874eea`, tree `408a8adbfa2bd436132bc4d2c63e952aeb57c5a5`, parent `51a5287d05c790e3855e5b74ce7117a29340135e`; local merge `0b08966b31c15d8b459b9c6b60a48b19030a9ce4` |
-| Current release / ticket | R1 accepted: `GHU-012`–`GHU-016` are accepted at the integrated checkpoint; `GHU-016A` is the current in-review ledger-only closeout candidate |
-| Counts | 14 accepted tickets, 1 ready, 1 review, 10 blocked, 2 deferred, 19 planned (plus accepted audit milestone `GHU-000A`) |
-| Assignment | `GHU-016A` documentation correction is assigned to this fresh bounded implementer |
-| Next safe action | Independently review this four-file closeout candidate; parent then decides acceptance/integration. `GHU-020` is ready only after that closeout is parent-integrated. |
-| Validation | Documentation-only exact base/path/scans/count/dependency/cross-reference validation and `git diff --check`; no tests or product/runtime actions |
+| Current release / ticket | R1 and its `GHU-016A` corrected closeout are parent-accepted; `GHU-020B` and `GHU-020C` are blocked at preserved rejected review evidence and `GHU-020D` is the current local correction candidate in review |
+| Counts | 15 accepted tickets, 0 ready, 1 review, 13 blocked, 2 deferred, 19 planned (plus accepted audit milestone `GHU-000A`) |
+| Assignment | `GHU-020D` retained-identity verification/open-gap correction candidate is assigned to this fresh bounded implementer |
+| Next safe action | Independently review the frozen local `GHU-020D` correction; parent then decides acceptance/integration. `GHU-020A` remains planned and untouched. |
+| Validation | Exact supplied-interpreter focused pytest passed `62 passed in 0.27s`; no-pycache compilation, `git diff --check`, allowlist/status/count/cross-reference checks, and repository classifier passed. The classifier selected `full_forecasting`; the broad suite was not run. The prior broad candidate run was deliberately interrupted after rejection and has no pass claim. Independent review and parent acceptance remain pending. |
 
 `GHU-000B` audit run `20260730T172346Z-1bacc67937-3c5f6b`, session
 `019fb40d-e8ed-7d40-8ab2-8ad2b156552c`, child
@@ -387,18 +387,20 @@ Parent accepted the exact product checkpoint at the head/integration identity
 above. Publication, push, PR, default-branch merge, deploy, runtime mutation,
 and live proof are all `NOT_OCCURRED`.
 
-The R1 gate is closed. `GHU-012`, `GHU-013`, `GHU-014`, `GHU-015`, and `GHU-016`
-are accepted at the integrated checkpoint above; `GHU-016A` is the current
-ledger-only correction in review. Supported claims are limited to accepted R0
+The R1 gate is closed. `GHU-012`, `GHU-013`, `GHU-014`, `GHU-015`, `GHU-016`,
+and the corrected `GHU-016A` closeout are parent-accepted. The corrected
+closeout is integrated at commit
+`3505efb299d25320fd86a0bf76aef5bf953fb5a7`, tree
+`567c913b7be46c4d5747c8bf74d2fb4df5d8f664`. Supported claims are limited to accepted R0
 contracts, the fixed collector-owned current-race index, and the accepted R1
 fixture dashboard. No push, PR, default-branch merge, deployment, runtime
 mutation, live proof, deployed/live/authenticated dashboard, R2+ behavior,
 prediction/runtime/deployment proof, training, promotion, EV, staking, betting,
 or public claim occurred.
 
-`GHU-016A` is the ledger-only R1 closeout correction. This candidate records
-`planned -> ready -> active -> review`; parent acceptance/integration is not
-claimed. It records accepted `GHU-012`–`GHU-016` at product checkpoint
+`GHU-016A` is the parent-accepted ledger-only R1 closeout correction. Its
+corrected closeout is integrated at the commit/tree stated above and records
+accepted `GHU-012`–`GHU-016` at product checkpoint
 `51fe070ba2a0778bca0b0334c00cae9d75561952`, tree
 `0c2b82a391b8dd0a1dcc525cf4203edc910843c1`, and seven-path binary diff
 SHA-256 `3f74ec86de1ab68b0fbb1a13125efa6fa416e3cc1fdc9bfc658f97118d3dc135`.
@@ -425,9 +427,9 @@ is preserved. Independent reviewer run
 REJECT`. Its two blocking findings were stale current-action pointers in three
 accepted tickets and a `GHU-020` title/outcome/acceptance/validation contract
 that still claimed broad source adapters and display fields despite its
-foundational-primitives-only scope. This two-file correction candidate repairs
-only those findings and does not preclaim independent-review or parent
-acceptance/integration.
+foundational-primitives-only scope. The corrected two-file closeout repaired
+only those findings and was subsequently parent-accepted/integrated at
+`3505efb299d25320fd86a0bf76aef5bf953fb5a7`.
 
 The frozen UX contract is **RESEARCH ONLY — NOT FOR BETTING** and
 **PROTOTYPE DATA**; navigation is Dashboard, Race, Lifecycle, Result,
@@ -439,7 +441,35 @@ governance tables while preserving exact identities. OPTIONAL: narrow the
 operator path predicate to exact supported routes and replace positional
 fixture tuples with named fields.
 
-`GHU-020` is ready only effective after parent integration of this closeout.
+`GHU-020` and its rejected checkpoints remain preserved evidence, not accepted
+history. `GHU-020B` is blocked at preserved HEAD
+`182fc11dc995d114363e903e5e679aa78edd9602`, tree
+`9fa01491c2d0f210c989fcc3166e1e6f75e65a4e`. Main reviewer session
+`019fb65c-03ac-7720-b63c-88e18acca58d`, run
+`20260731T040821Z-182fc11dc9-4738ef`, returned `REJECT_GHU_020B` for exactly
+two blocking findings: no construction-to-observation/connect inode identity
+for configured roots/components/files/databases, and arbitrary historical
+supported-claim prose under `AVAILABLE/FRESH`.
+
+`GHU-020C` owned only those two corrections and transitioned `planned -> ready
+-> active -> review` from that exact clean preserved base. Candidate checkpoint
+commit `1e436a461e51923d97b44929bcb198bc20535e0b`, tree
+`1425b9d11a3ab192a31f63426f1145b7ea00759e`, exists. Main reviewer session
+`019fb682-d853-76e2-9d6d-20835750d7bd`, run
+`20260731T045046Z-1e436a461e-70062d`, returned `REJECT_GHU_020C` for one exact
+blocker: the construction identities were checked only before fresh
+`lstat`/open, so replacement in that gap could become a new internally
+consistent accepted identity. `GHU-020C` is blocked preserved evidence.
+
+`GHU-020D` owns only that verification/open-gap correction and transitioned
+`planned -> ready -> active -> review` from the exact clean rejected
+`GHU-020C` checkpoint. It opens the configured root and each nested component
+by descriptor, compares every opened descriptor to the retained construction
+identity, holds the complete descriptor chain, and rechecks it through file
+observation or SQLite connect. Independent review and parent
+acceptance/integration remain pending. The `GHU-020C` checkpoint commit exists,
+but parent integration commit, push, merge, deploy, publication, runtime/data
+mutation, and canonical database/history access remain `NOT_OCCURRED`.
 `GHU-020A` precedes `GHU-021` and owns default-off connected-mode
 authentication/authorization, secure configured secrets and session
 expiry/rotation, CSRF, and the separate append-only UI operations/access-audit

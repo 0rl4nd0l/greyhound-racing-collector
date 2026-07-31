@@ -510,25 +510,25 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 
 - Release: `R1`
 - Priority: `P1`
-- Status: `review`
+- Status: `accepted`
 - Dependencies: `GHU-012`, `GHU-013`, `GHU-014`, `GHU-015`, `GHU-016`
 - Session role: Fresh bounded Codex X documentation correction implementer
 - Outcome: Closes the accepted R1 evidence pair and frozen UX ledger without changing product/test bytes.
 - Scope: Update only the four programme ledgers; preserve rejected history; record exact accepted R1 evidence and the narrow R2 dependency refinement.
-- Non-goals: No product/test/runtime/service/database/network/Git remote action; no parent acceptance or integration claim.
+- Non-goals: No product/test/runtime/service/database/network/Git remote action.
 - Acceptance: Candidate records `planned -> ready -> active -> review`; GHU-012–016 are accepted with exact evidence and parent integration identity; GHU-020A is between GHU-020 and GHU-021; dependencies and current pointers are consistent.
 - Validation: Exact base/head/tree, four-path allowlist, `git diff --check`, ticket/status/dependency/current-pointer/cross-reference consistency, stale-pointer scan, and repository classifier only.
-- Authority: Ledger-only correction; parent owns review, acceptance, and integration.
-- Claims supported: Candidate documentation closeout and recorded accepted R1 evidence.
-- Claims unsupported: Parent acceptance/integration of GHU-016A, deployment, runtime proof, prediction, training, promotion, betting, or public exposure.
-- Next safe action: Independent review of this four-file candidate; parent then decides acceptance/integration.
-- Closeout evidence: Candidate transition `planned -> ready -> active -> review` in this run; no parent decision preclaimed.
+- Authority: Ledger-only correction; parent review, acceptance, and integration are complete at the recorded identity.
+- Claims supported: Parent-accepted corrected documentation closeout and recorded accepted R1 evidence.
+- Claims unsupported: Deployment, runtime proof, prediction, training, promotion, betting, or public exposure.
+- Next safe action: Preserve the parent-accepted R1 ledger closeout and independently review the `GHU-020` implementation candidate.
+- Closeout evidence: Parent-accepted and integrated corrected closeout at commit `3505efb299d25320fd86a0bf76aef5bf953fb5a7`, tree `567c913b7be46c4d5747c8bf74d2fb4df5d8f664`; this supersedes the rejected `978c4c92514701453f7c8a3252ca33880352764b` candidate while preserving its history.
 
 ## GHU-020 — Finite evidence and read-only foundations
 
 - Release: `R2`
 - Priority: `P2`
-- Status: `ready`
+- Status: `blocked`
 - Dependencies: `GHU-016`, `GHU-016A` (effective only after parent integration of the closeout)
 - Model routing: GPT-5.6 Sol; fallback GPT-5.6 Terra
 - Session role: Fresh Codex X implementation session
@@ -542,15 +542,69 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Authenticated Level 1 GET/read-only authority with mandatory access audit.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: After parent integrates `GHU-016A`, assign one fresh bounded implementer for the foundational envelope.
-- Closeout evidence: PENDING: exact base/head/tree/path/diff identities, commands/exits, focused tests, reviewer identity/verdict, parent decision, and applicable commit/PR/merge/deploy/proof fields.
+- Next safe action: Preserve the rejected `GHU-020`/`GHU-020B`/`GHU-020C` checkpoints as evidence and independently review `GHU-020D`; parent then decides acceptance/integration. `GHU-020A` remains planned and untouched.
+- Closeout evidence: Local candidate transition `ready -> active -> review` from exact clean base `3505efb299d25320fd86a0bf76aef5bf953fb5a7`, tree `567c913b7be46c4d5747c8bf74d2fb4df5d8f664`. Candidate paths are `src/operator_ui/__init__.py`, `src/operator_ui/foundation.py`, `tests/operator_ui/test_foundation.py`, this ticket ledger, and `docs/operator_ui_v1/STATUS.md`. Its worker lacked pytest, so the worker's focused invocation exited before collection. Preserved rejected checkpoint `57256bc7f15b7311e3cffbcd1b5887e10084bfb6`, tree `ef2284ccef699477de55f6581572391335059bac`, subsequently received parent focused result `2 failed, 39 passed`; it is evidence, not accepted history. `GHU-020B` and `GHU-020C` are preserved rejected review evidence; `GHU-020D` owns only the remaining verification/open identity-gap correction. Parent decision, commit/PR/merge/deploy/runtime proof remain pending.
+
+## GHU-020B — Correct finite evidence and read-only path binding
+
+- Release: `R2`
+- Priority: `P1`
+- Status: `blocked`
+- Dependencies: `GHU-016`, `GHU-016A`, and preserved `GHU-020` rejected-checkpoint evidence
+- Session role: Fresh bounded Codex X correction implementation session
+- Outcome: Corrects integrity-state precedence, descriptor-bound allowlisted file/SQLite reads, SQLite attach/detach denial, and immutable-historical freshness semantics only.
+- Scope: Repair only `src/operator_ui/foundation.py`, its focused test, and these precise correction ledgers; `src/operator_ui/__init__.py` only if required.
+- Non-goals: No `GHU-020A` auth/audit, adapters, API/routes/UI/jobs/runtime/service/generator work, legacy changes, dependencies, arbitrary locator input, writes, browser, collector, locks, or product subprocess execution.
+- Acceptance: Integrity failures deterministically map to `INVALID/INTEGRITY_FAILED`; file and SQLite opens remain bound to the canonical configured root/path across parent replacement; SQLite `ATTACH`/`DETACH` are denied; verified historical claims do not expire solely with age and cannot claim current health or present quality.
+- Validation: Exact supplied interpreter focused pytest; in-memory compilation without pycache; `git diff --check`; exact allowlist/status checks; repository classifier.
+- Authority: Bounded local implementation and validation only.
+- Claims supported: Local correction evidence only until independent review and parent acceptance.
+- Claims unsupported: Parent acceptance, accepted history, authentication/audit, current-health proof from historical evidence, deployment, runtime/data mutation, prediction, training, promotion, betting, or public exposure.
+- Next safe action: Preserve this rejected checkpoint and review evidence; independently review `GHU-020C`, after which parent decides acceptance/integration.
+- Closeout evidence: Preserved rejected checkpoint HEAD `182fc11dc995d114363e903e5e679aa78edd9602`, tree `9fa01491c2d0f210c989fcc3166e1e6f75e65a4e`, is evidence, not accepted history. Main reviewer session `019fb65c-03ac-7720-b63c-88e18acca58d`, run `20260731T040821Z-182fc11dc9-4738ef`, returned `REJECT_GHU_020B` for exactly two blocking findings: construction retained no root/component/file/database inode identity against later same-path ordinary replacement; and immutable-historical policy accepted arbitrary supported-claim prose while returning `AVAILABLE/FRESH`. `GHU-020C` owns only these two corrections. Parent acceptance/integration, commit/PR/push/merge/deploy/publication/runtime mutation remain pending or `NOT_OCCURRED`.
+
+## GHU-020C — Bind configured identities and finite historical claims
+
+- Release: `R2`
+- Priority: `P1`
+- Status: `blocked`
+- Dependencies: `GHU-016`, `GHU-016A`, plus preserved `GHU-020` and `GHU-020B` rejected-checkpoint/review evidence
+- Session role: Fresh bounded Codex X correction implementation session
+- Outcome: Retains configured root, component, file, and database identity from construction through observation/connect; replaces historical free prose with finite run- or slice-bound claims and fixed narrow rendering.
+- Scope: Only `src/operator_ui/foundation.py`, `tests/operator_ui/test_foundation.py`, `docs/operator_ui_v1/STATUS.md`, and this ticket ledger; `src/operator_ui/__init__.py` only if a structured export is strictly required.
+- Non-goals: No authentication, adapters, API, UI, jobs, services, dependencies, browser/collector use, locks, runtime/data mutation, arbitrary locators, merge, push, deploy, or publication.
+- Acceptance: Same-path ordinary or symlink replacement of a configured root, nested component, file, or database fails closed after reader/helper construction; unchanged reads/connects pass; missing/unreadable evidence remains truthful and deterministic. Historical policy accepts only an explicit structured historical run or slice claim, renders only the contract-defined fixed narrow claim with displayed age, and rejects arbitrary/current-health/promotion-ready/representative-present-quality claims; future timestamps still fail closed.
+- Validation: Exact focused pytest with an available interpreter; compilation without pycache; `git diff --check`; exact allowlist/status/count/cross-reference checks; repository classifier. The broad suite is parent-owned after freeze and is not run here.
+- Authority: Bounded local implementation and validation only.
+- Claims supported: Frozen local correction evidence only until independent review and parent acceptance.
+- Claims unsupported: Acceptance or accepted history; authentication/adapters/API/UI/jobs/service work; current health, promotion readiness, representative present quality, deployment, runtime/data mutation, prediction, training, betting, or public exposure.
+- Next safe action: Preserve this rejected checkpoint and exact review evidence; independently review `GHU-020D`, after which parent decides acceptance/integration.
+- Closeout evidence: Transitioned `planned -> ready -> active -> review` from exact clean preserved rejected base HEAD `182fc11dc995d114363e903e5e679aa78edd9602`, tree `9fa01491c2d0f210c989fcc3166e1e6f75e65a4e`. Focused pytest was attempted with the available `/usr/bin/python3` but pytest is unavailable (`No module named pytest`); no dependency was added. No-pycache compilation and direct focused JSON/SQLite smoke scenarios passed. Candidate checkpoint commit HEAD `1e436a461e51923d97b44929bcb198bc20535e0b`, tree `1425b9d11a3ab192a31f63426f1145b7ea00759e`, exists. Main reviewer session `019fb682-d853-76e2-9d6d-20835750d7bd`, run `20260731T045046Z-1e436a461e-70062d`, returned `REJECT_GHU_020C` for one exact blocker: retained construction identities were verified only before fresh `lstat`/open, allowing a root/component/file/database replacement in that gap to become a new internally consistent accepted identity. Parent integration commit, push, merge, deploy, publication, and runtime/data mutation remain `NOT_OCCURRED`.
+
+## GHU-020D — Close retained-identity verification/open gap
+
+- Release: `R2`
+- Priority: `P1`
+- Status: `review`
+- Dependencies: `GHU-016`, `GHU-016A`, plus preserved `GHU-020`, `GHU-020B`, and `GHU-020C` rejected-checkpoint/review evidence
+- Session role: Fresh bounded Codex X correction implementation session
+- Outcome: Binds every opened root, nested component, source file, and SQLite database descriptor to its retained construction identity through observation/connect.
+- Scope: Only `src/operator_ui/foundation.py`, `tests/operator_ui/test_foundation.py`, `docs/operator_ui_v1/STATUS.md`, and this ticket ledger.
+- Non-goals: No authentication, adapters, API, UI, jobs, services, dependencies, browser/collector use, locks, runtime/data mutation, canonical database/history access, arbitrary locators, commit, merge, push, deploy, or publication.
+- Acceptance: Deterministic replacement of an ordinary same-path root, nested component, source file, or SQLite database after initial construction-binding verification but before or during open/connect fails closed; unchanged reads/connects pass. Opened descriptors for every retained component compare directly with retained construction identities and remain verified through observation/connect.
+- Validation: Exact supplied-interpreter focused pytest with external TMPDIR; no-pycache compilation; `git diff --check`; exact allowlist/status/count/cross-reference checks; repository classifier. The rejected candidate broad run remains interrupted with no pass claim and is not rerun.
+- Authority: Bounded local implementation and validation only.
+- Claims supported: Frozen local correction evidence only until independent review and parent acceptance.
+- Claims unsupported: Acceptance or accepted history; authentication/adapters/API/UI/jobs/service work; deployment, runtime/data mutation, canonical database/history access, prediction, training, promotion, betting, or public exposure.
+- Next safe action: Independently review this frozen bounded delta; parent decides acceptance/integration.
+- Closeout evidence: Transitioned `planned -> ready -> active -> review` from exact clean preserved rejected `GHU-020C` candidate HEAD `1e436a461e51923d97b44929bcb198bc20535e0b`, tree `1425b9d11a3ab192a31f63426f1145b7ea00759e`. Exact supplied-interpreter focused pytest passed `62 passed in 0.27s`; no-pycache compilation, `git diff --check`, exact allowlist/status/count/cross-reference checks, and repository classifier passed. The classifier selected `full_forecasting`; the broad suite was not run, and the prior rejected-candidate broad interruption has no pass claim. Final frozen diff and file hashes are reported by this implementer. Independent review and parent acceptance/integration remain pending; commit, push, merge, deploy, publication, runtime/data mutation, and canonical database/history access are `NOT_OCCURRED`.
 
 ## GHU-020A — Connected-mode authentication, session and UI audit prerequisite
 
 - Release: `R2`
 - Priority: `P1`
 - Status: `planned`
-- Dependencies: `GHU-020`
+- Dependencies: `GHU-020D`, `GHU-016A`
 - Session role: Fresh bounded Codex X security implementation session
 - Outcome: Establishes the default-off connected-mode security and append-only UI operations audit boundary before any operational read disclosure.
 - Scope: Add server-side Level-1 authentication/authorization; secure configured secrets and session expiry/rotation; CSRF for authentication forms and reusable CSRF enforcement for later mutation; a separate append-only UI operations/access-audit store. Every authenticated operational GET must append and confirm its audit event before disclosure; append failure returns a deterministic non-operational error with no evidence content. Keep the store separate from the canonical racing DB and future prediction-job DB.
@@ -560,7 +614,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Authenticated Level-1 security boundary; parent owns acceptance and integration.
 - Claims supported: Only the accepted security prerequisite after independent review and parent integration.
 - Claims unsupported: Public exposure, mutation, runtime proof, prediction, training, promotion, betting, or canonical DB writes.
-- Next safe action: Wait for accepted `GHU-020` and parent-integrated `GHU-016A`, then assign a fresh bounded implementer.
+- Next safe action: Wait for parent-accepted/integrated `GHU-020D` and preserve parent-accepted/integrated `GHU-016A`, then assign a fresh bounded implementer.
 - Closeout evidence: PENDING.
 
 ## GHU-021 — Versioned read-only operator API
@@ -568,7 +622,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Release: `R2`
 - Priority: `P2`
 - Status: `planned`
-- Dependencies: `GHU-020`, `GHU-020A`
+- Dependencies: `GHU-020D`, `GHU-020A`
 - Model routing: GPT-5.6 Terra; fallback GPT-5.6 Luna
 - Session role: Fresh Codex X implementation session
 - Outcome: Exposes narrow versioned endpoints for the prototype without allowing operational mutation.
@@ -581,7 +635,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Authenticated Level 1 GET/read-only authority with mandatory access audit.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Wait until every listed prerequisite is accepted/integrated, then parent may mark ready and assign one fresh bounded implementer.
+- Next safe action: Wait for parent-accepted/integrated `GHU-020D` and `GHU-020A`, then parent may mark ready and assign one fresh bounded implementer.
 - Closeout evidence: PENDING: exact base/head/tree/path/diff identities, commands/exits, focused tests, reviewer identity/verdict, parent decision, and applicable commit/PR/merge/deploy/proof fields.
 
 ## GHU-022 — Exact upcoming-race live catalog
