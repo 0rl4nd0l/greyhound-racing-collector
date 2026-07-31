@@ -1,20 +1,20 @@
 # Greyhound Operator UI V1 status
 
-Observed 2026-07-31 at the current clean programme integration base (the R1
+Observed 2026-08-01 at the current clean programme integration base (the R1
 product checkpoint remains preserved in the history below):
 
 | Field | State |
 |---|---|
 | Repository | `0rl4nd0l/greyhound-racing-collector` |
 | Branch | No current branch claim; ledger state is durable independently of delivery mechanics |
-| HEAD / tree | `4a24218379d186d951f47d3fcf0d17d396d7d066` / `af89578953145e5049bb9d2c70f3de150fad86ca` |
+| HEAD / tree | `d5dcb1f84690c0c0bd68b2d472f89189fc4ad404` / `f5789dc66c8ebe35029ebdc5c570b4ab53cb6f14` |
 | Baseline cleanliness | clean |
 | Historical/upstream source | Actual historical merge parent `51a5287d05c790e3855e5b74ce7117a29340135e`; later `origin/master` drift `f38a125f6364b8a60d17ae9c971b0ce172874eea`, tree `408a8adbfa2bd436132bc4d2c63e952aeb57c5a5`, parent `51a5287d05c790e3855e5b74ce7117a29340135e`; local merge `0b08966b31c15d8b459b9c6b60a48b19030a9ce4` |
-| Current release / ticket | R2 remains in progress. `GHU-020A` and `GHU-021` are parent-accepted/integrated; audits require ready `GHU-022P` before `GHU-022` and ready `GHU-023P` before `GHU-023`. R5 remains deferred. |
-| Counts | 19 accepted tickets, 2 ready, 0 active, 0 review, 13 blocked, 2 deferred, 17 planned (plus accepted audit milestone `GHU-000A`) |
-| Assignment | No active ticket; independent bounded `GHU-022P` and `GHU-023P` work may proceed in parallel |
-| Next safe action | Preserve accepted/integrated `GHU-020A` and `GHU-021`; assign fresh bounded implementers for ready `GHU-022P` and/or `GHU-023P`, then independently review and parent-integrate each before its dependent ticket. |
-| Validation | `GHU-021` parent focused gate passed `254 passed in 39.77s`; reviewer verdict `ACCEPT_GHU_021`. The classifier-selected `full_forecasting` exact 551-test broad gate passed `551 passed in 1653.94s (0:27:33)`, exit 0. |
+| Current release / ticket | R2 remains in progress. `GHU-022`, `GHU-023`, `GHU-024`, and `GHU-025` and their prerequisites are accepted/integrated; `GHU-026` is ready and `GHU-027` remains planned. R5 remains deferred. |
+| Counts | 25 accepted tickets, 1 ready, 0 active, 0 review, 13 blocked, 2 deferred, 12 planned (plus accepted audit milestone `GHU-000A`) |
+| Assignment | No active ticket; `GHU-026` is objectively ready for one fresh bounded implementer |
+| Next safe action | Preserve all accepted/integrated prerequisites and assign one fresh bounded implementer to `GHU-026`; R2 remains in progress through `GHU-026` and `GHU-027`. |
+| Validation | `GHU-022C3/GHU-023C3`: parent focused four-file suite `640 passed in 42.54s`, `tests/operator_ui` `528 passed in 48.19s`, shared prediction regression `62 passed in 2.90s`, and `git diff --check` exit 0. |
 
 `GHU-000B` audit run `20260730T172346Z-1bacc67937-3c5f6b`, session
 `019fb40d-e8ed-7d40-8ab2-8ad2b156552c`, child
