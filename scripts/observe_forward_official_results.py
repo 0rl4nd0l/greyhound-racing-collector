@@ -63,7 +63,7 @@ def _identity(prefix: str, *parts: str) -> str:
 
 
 def canonical_result_url(race_url: str) -> str:
-    """Derive the sole safe non-trial official-result URL accepted by T1."""
+    """Derive the sealed non-trial race URL used by the installed resolver."""
     parsed = urlsplit(race_url)
     if (
         parsed.scheme != "https"
@@ -77,7 +77,7 @@ def canonical_result_url(race_url: str) -> str:
         or parsed.path.rstrip("/").endswith("/results")
     ):
         raise ForwardCorpusRejected("sealed race-card URL has unsafe or ambiguous identity")
-    expected = race_url.rstrip("/") + "/results?trial=false"
+    expected = race_url.rstrip("/") + "?trial=false"
     matches = [
         candidate
         for candidate in thedogs_result_urls_from_race_url(race_url)
