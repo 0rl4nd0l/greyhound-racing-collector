@@ -333,6 +333,13 @@ def _set_exact_sidecar_grade(sidecar: dict, grade: str) -> None:
         proof_scope["target_grade_equivalence_key"] = proof_key
 
 
+def _set_exact_race_page_grade_source(sidecar: dict) -> None:
+    for proof_scope in (sidecar, sidecar["race_info"]):
+        proof_scope["target_grade_source"] = "thedogs_exact_race_page"
+        proof_scope["target_grade_context_schema"] = "thedogs_exact_race_page_v1"
+        proof_scope["target_grade_source_url"] = SOURCE_URL
+
+
 def _reseal(paths: dict[str, Path], mutate) -> None:
     rows = _json(paths["feature_rows"])
     manifest = _json(paths["feature_manifest"])
@@ -432,6 +439,37 @@ def test_scores_exact_packet_deterministically(tmp_path):
     assert len(first["predictions"]) == 3
     for key in ("market", "half", "full"):
         assert first["probability_sums"][key] == pytest.approx(1.0)
+
+
+def test_scores_hash_bound_exact_race_page_grade(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    _set_exact_race_page_grade_source(sidecar)
+    _write_json(paths["sidecar"], sidecar)
+
+    prediction = _score_paths(paths)
+
+    assert prediction["target_grade_proof_key"] == "GRADE:5"
+    assert prediction["target_grade_source_sha256"] == MEETING_CARD_SHA256
+    assert prediction["activation"] is False
+    assert prediction["persisted"] is False
+
+
+def test_rejects_exact_race_page_grade_bound_to_other_race(
+    tmp_path, monkeypatch
+):
+    paths = _write_fixture(tmp_path)
+    sidecar = _json(paths["sidecar"])
+    _set_exact_race_page_grade_source(sidecar)
+    for proof_scope in (sidecar, sidecar["race_info"]):
+        proof_scope["target_grade_source_url"] = (
+            "https://www.thedogs.com.au/racing/sandown/2026-07-16/3/other"
+        )
+    _write_json(paths["sidecar"], sidecar)
+
+    _assert_score_rejected_without_side_effects(
+        paths, monkeypatch, "target_grade_proof_mismatch"
+    )
 
 
 def test_scores_when_strict_odds_capture_precedes_feature_generation(tmp_path):

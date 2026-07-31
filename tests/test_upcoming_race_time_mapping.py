@@ -216,6 +216,48 @@ def test_canonical_pre_race_page_distance_and_grade_are_safe_metadata():
     assert metadata["metadata_is_leakage_safe"] is True
 
 
+def test_exact_race_page_grade_carries_hash_bound_identity_proof():
+    browser = UpcomingRaceBrowser()
+    race_url = (
+        "https://www.thedogs.com.au/racing/the-meadows/2026-05-21/7/example"
+    )
+    source_sha256 = "c" * 64
+    soup = BeautifulSoup(
+        """
+        <html>
+          <body>
+            <section class="race-card">
+              <dl>
+                <dt>Race Distance</dt><dd>520m</dd>
+                <dt>Race Grade</dt><dd>Grade 5</dd>
+              </dl>
+            </section>
+          </body>
+        </html>
+        """,
+        "html.parser",
+    )
+
+    metadata = browser._extract_safe_target_metadata_from_page(
+        soup,
+        race_url,
+        source_sha256=source_sha256,
+    )
+
+    assert metadata["target_grade"] == "Grade 5"
+    assert metadata["target_grade_source"] == "thedogs_exact_race_page"
+    assert metadata["target_grade_context_schema"] == "thedogs_exact_race_page_v1"
+    assert metadata["target_grade_equivalence_key"] == "GRADE:5"
+    assert metadata["target_grade_exact_value"] == "Grade 5"
+    assert metadata["target_grade_race_date"] == "2026-05-21"
+    assert metadata["target_grade_race_number"] == 7
+    assert metadata["target_grade_race_url"] == race_url
+    assert metadata["target_grade_source_url"] == race_url
+    assert metadata["target_grade_source_sha256"] == source_sha256
+    assert metadata["target_grade_venue"] == "MEA"
+    assert metadata["metadata_is_leakage_safe"] is True
+
+
 def test_current_race_header_distance_and_grade_are_safe_metadata():
     browser = UpcomingRaceBrowser()
     soup = BeautifulSoup(

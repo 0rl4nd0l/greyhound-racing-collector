@@ -46,6 +46,7 @@ from src.predictor.market_form_residual import (  # noqa: E402
 )
 from config.venue_mapping import normalize_venue  # noqa: E402
 from utils.csv_metadata import (  # noqa: E402
+    THEDOGS_EXACT_RACE_PAGE_GRADE_SOURCE,
     THEDOGS_MEETING_CARD_GRADE_SOURCE,
     canonical_thedogs_meeting_card_url,
     canonical_thedogs_race_identity,
@@ -1288,10 +1289,31 @@ def _sidecar_context(sidecar: Mapping[str, Any]) -> dict[str, Any]:
     )
     grade_venue = _agreed_sidecar_value(sidecar, "target_grade_venue")
     grade_identity = canonical_thedogs_race_identity(grade_race_url)
+    grade_source_identity = canonical_thedogs_race_identity(grade_source_url)
     normalized_exact_grade = normalize_exact_target_grade(grade_exact_value)
+    expected_grade_schema = {
+        THEDOGS_MEETING_CARD_GRADE_SOURCE: "thedogs_meeting_card_exact_race_v1",
+        THEDOGS_EXACT_RACE_PAGE_GRADE_SOURCE: "thedogs_exact_race_page_v1",
+    }.get(grade_source)
+    grade_source_url_valid = bool(
+        (
+            grade_source == THEDOGS_MEETING_CARD_GRADE_SOURCE
+            and canonical_thedogs_meeting_card_url(
+                grade_source_url,
+                race_date=source_identity["race_date"],
+            )
+            is not None
+        )
+        or (
+            grade_source == THEDOGS_EXACT_RACE_PAGE_GRADE_SOURCE
+            and grade_source_identity is not None
+            and grade_source_identity["canonical_url"]
+            == source_identity["canonical_url"]
+        )
+    )
     if (
-        grade_source != THEDOGS_MEETING_CARD_GRADE_SOURCE
-        or grade_schema != "thedogs_meeting_card_exact_race_v1"
+        expected_grade_schema is None
+        or grade_schema != expected_grade_schema
         or grade_identity is None
         or grade_identity["canonical_url"] != source_identity["canonical_url"]
         or target_date.isoformat() != source_identity["race_date"]
@@ -1305,11 +1327,7 @@ def _sidecar_context(sidecar: Mapping[str, Any]) -> dict[str, Any]:
         or normalized_exact_grade is None
         or target_grade_equivalence_key(grade_exact_value) != grade_proof_key
         or target_grade_equivalence_key(target_grade_value) != grade_proof_key
-        or canonical_thedogs_meeting_card_url(
-            grade_source_url,
-            race_date=source_identity["race_date"],
-        )
-        is None
+        or not grade_source_url_valid
         or not re.fullmatch(r"[0-9a-f]{64}", grade_source_sha256)
     ):
         raise ManualPredictionError("target_grade_proof_mismatch")
