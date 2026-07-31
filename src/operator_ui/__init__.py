@@ -11,6 +11,7 @@ from .foundation import (
     JsonSource,
     OperatorEvidenceReader,
     ReadOnlyDatabase,
+    RawSourceConfig,
     ReadOnlySqlite,
     ReferenceHash,
     SourceConfig,
@@ -27,6 +28,7 @@ from .security import (
     load_connected_environment,
 )
 from .api import API_PREFIX, API_SCHEMA, API_VERSION, install_level_1_api
+from .live_adapters import InstalledUnits, LiveEvidenceAdapters
 
 __all__ = [
     "Availability",
@@ -39,6 +41,7 @@ __all__ = [
     "JsonSource",
     "OperatorEvidenceReader",
     "ReadOnlyDatabase",
+    "RawSourceConfig",
     "ReadOnlySqlite",
     "ReferenceHash",
     "SourceConfig",
@@ -55,4 +58,6 @@ __all__ = [
     "API_SCHEMA",
     "API_VERSION",
     "install_level_1_api",
+    "LiveEvidenceAdapters",
+    "InstalledUnits",
 ]

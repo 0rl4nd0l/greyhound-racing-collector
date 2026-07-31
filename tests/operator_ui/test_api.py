@@ -4,7 +4,8 @@ import hashlib
 import json
 import sqlite3
 from copy import deepcopy
-from datetime import datetime, timezone
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from flask import Flask
@@ -449,13 +450,34 @@ def collector_lane():
         "lane": "FULL_DAEMON",
         "status": "ACTIVE",
         "run_id": "run-1",
-        "phase": "capture",
+        "phase": "DAEMON_RUNNING",
+        "cycle_state": "ACTIVE",
         "deadline_utc": "2026-07-31T01:03:00Z",
         "state_age_seconds": 3,
-        "next_action": "await-receipt",
         "component_identity": {"service": "shadow-autopilot.service"},
         "reference_hashes": {"state": HASH},
+        "operational_context": {
+            "final_status": None,
+            "final_verdict": "DAEMON_RUNNING",
+            "status": "RUNNING",
+            "next_meaningful_action": None,
+            "next_meaningful_action_at": None,
+            "lock_owner": None,
+            "recent_capture": {
+                "inserted_live_odds_rows": None,
+                "ready_count": None,
+                "status_counts": None,
+                "blocked_attempt_count": None,
+            },
+        },
     }
+
+
+def collector_lanes():
+    full = collector_lane()
+    odds = deepcopy(full)
+    odds.update(lane="ODDS_ONLY", run_id="run-2")
+    return [full, odds]
 
 
 def corpus_report():
@@ -468,6 +490,7 @@ def corpus_report():
         "chain_hashes": {"population": HASH, "report": HASH},
         "generated_at": "2026-07-31T01:02:00Z",
         "status": "ADMISSIBLE",
+        "admission_gap": "none; approved admission contract passed",
     }
 
 
@@ -498,7 +521,411 @@ def component():
         "observed_at": "2026-07-31T01:02:00Z",
         "age_seconds": 3,
         "reference_hashes": {"manifest": HASH},
+        "service_status": {
+            "full": {
+                "active_state": "inactive",
+                "sub_state": "dead",
+                "exec_main_pid": 0,
+            },
+            "odds": {
+                "active_state": "active",
+                "sub_state": "waiting",
+                "exec_main_pid": 0,
+            },
+        },
     }
+
+
+@pytest.mark.parametrize(
+    ("status", "lane_status"),
+    [
+        ("STALE", "STALE"),
+        ("UNAVAILABLE/DATA_MISSING", "DATA_MISSING"),
+        ("DIVERGENT", "DIVERGENT"),
+    ],
+)
+def test_collector_non_healthy_discloses_bounded_lane_states(
+    tmp_path, status, lane_status
+):
+    lane = collector_lane()
+    lane["status"] = lane_status
+    lane["deadline_utc"] = None
+    lane["state_age_seconds"] = None
+    if lane_status == "DATA_MISSING":
+        lane["reference_hashes"] = {}
+    envelope = evidence("P-COLLECTOR-AGGREGATE", status=status)
+    if status == "UNAVAILABLE/DATA_MISSING":
+        envelope = evidence(
+            "P-COLLECTOR-AGGREGATE",
+            status=status,
+            content_sha256=HASH,
+            source_at="2026-07-31T01:02:00Z",
+            age_seconds=3,
+            availability="present",
+            schema_integrity="valid",
+            reference_hashes=(("state", HASH),),
+            evidence_identity=(("lane", "aggregate"),),
+        )
+    other_lane = deepcopy(collector_lane())
+    other_lane.update(lane="ODDS_ONLY", run_id="run-2")
+    app = app_for(tmp_path)
+    register_level_1_provider(
+        app,
+        "collector",
+        lambda _now: APIObservation(envelope, {"lanes": [lane, other_lane]}),
+    )
+    client = app.test_client()
+    login(client)
+    payload = client.get(ROUTES["collector"]).get_json()
+    assert payload["classification"] == status
+    assert [(item["lane"], item["status"]) for item in payload["data"]["lanes"]] == [
+        ("FULL_DAEMON", lane_status),
+        ("ODDS_ONLY", "ACTIVE"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("classification", "component_status"),
+    [
+        ("UNAVAILABLE/DATA_MISSING", "DEGRADED"),
+        ("STALE", "STALE"),
+        ("DIVERGENT", "DIVERGENT"),
+    ],
+)
+def test_system_non_healthy_discloses_bounded_component_context(
+    tmp_path, classification, component_status
+):
+    item = component()
+    item["status"] = component_status
+    envelope_changes = {}
+    if component_status == "STALE":
+        item.update(observed_at="2026-07-31T01:01:02Z", age_seconds=61)
+        envelope_changes.update(source_at="2026-07-31T01:01:02Z", age_seconds=61)
+    elif component_status == "DIVERGENT":
+        item["deployed_tree"] = "d" * 40
+    elif component_status == "DEGRADED":
+        envelope_changes.update(
+            content_sha256=HASH,
+            source_at="2026-07-31T01:02:00Z",
+            age_seconds=3,
+            availability="present",
+            schema_integrity="valid",
+            reference_hashes=(("manifest", HASH),),
+            evidence_identity=(("component", "operator-ui"),),
+        )
+    envelope = evidence("P-DEPLOY-60", status=classification, **envelope_changes)
+    app = app_for(tmp_path)
+    register_level_1_provider(
+        app,
+        "system",
+        lambda _now: APIObservation(envelope, {"components": [item]}),
+    )
+    client = app.test_client()
+    login(client)
+    payload = client.get(ROUTES["system"]).get_json()
+    assert payload["classification"] == classification
+    assert payload["data"]["components"][0]["status"] == component_status
+    assert payload["data"]["components"][0]["service_status"]["odds"] == {
+        "active_state": "active",
+        "exec_main_pid": 0,
+        "sub_state": "waiting",
+    }
+
+
+def test_live_system_unavailable_projection_reaches_registered_level_1_api(tmp_path):
+    from tests.operator_ui.test_live_adapters import NOW as LIVE_NOW, actual_payloads, make_live
+
+    values = actual_payloads()
+    values["deployment_manifest"]["deployed_tree"] = None
+    live = make_live(tmp_path / "evidence", values)
+    app = app_for(tmp_path, clock=lambda: LIVE_NOW)
+    register_level_1_provider(app, "system", live.system)
+    client = app.test_client()
+    login(client)
+
+    payload = client.get(ROUTES["system"]).get_json()
+
+    assert payload["classification"] == "UNAVAILABLE/DATA_MISSING"
+    assert payload["data"]["components"][0]["status"] == "DEGRADED"
+    assert payload["data"]["components"][0]["deployed_tree"] is None
+    assert payload["data"]["components"][0]["reference_hashes"] is None
+
+
+@pytest.mark.parametrize("lane", ["full", "odds"])
+@pytest.mark.parametrize("field", ["active_state", "sub_state", "exec_main_pid"])
+@pytest.mark.parametrize(
+    ("age", "classification", "component_status"),
+    [
+        (timedelta(seconds=60), "UNAVAILABLE/DATA_MISSING", "DEGRADED"),
+        (timedelta(seconds=60, microseconds=1), "STALE", "STALE"),
+    ],
+)
+def test_registered_level_1_accepts_nullable_service_at_deployment_boundary(
+    tmp_path, lane, field, age, classification, component_status
+):
+    from tests.operator_ui.test_live_adapters import NOW as LIVE_NOW, actual_payloads, make_live
+
+    observed = LIVE_NOW - age
+    live = make_live(
+        tmp_path / "evidence",
+        actual_payloads(at=observed),
+        units_observed_at=observed,
+    )
+    live._units = replace(live._units, **{f"{lane}_{field}": None})
+    app = app_for(tmp_path, clock=lambda: LIVE_NOW)
+    register_level_1_provider(app, "system", live.system)
+    client = app.test_client()
+    login(client)
+
+    payload = client.get(ROUTES["system"]).get_json()
+
+    assert payload["classification"] == classification
+    component = payload["data"]["components"][0]
+    assert component["status"] == component_status
+    assert component["service_status"][lane][field] is None
+
+
+@pytest.mark.parametrize("lane", ["full", "odds"])
+@pytest.mark.parametrize("field", ["active_state", "sub_state", "exec_main_pid"])
+def test_registered_level_1_preserves_divergence_over_stale_incomplete_service(
+    tmp_path, lane, field
+):
+    from tests.operator_ui.test_live_adapters import (
+        NOW as LIVE_NOW,
+        _set_deployment_divergence,
+        actual_payloads,
+        make_live,
+    )
+
+    observed = LIVE_NOW - timedelta(seconds=60, microseconds=1)
+    root = tmp_path / "evidence"
+    live = make_live(root, actual_payloads(at=observed), units_observed_at=observed)
+    live._units = replace(live._units, **{f"{lane}_{field}": None})
+    _set_deployment_divergence(live, root, "source_commit")
+    app = app_for(tmp_path, clock=lambda: LIVE_NOW)
+    register_level_1_provider(app, "system", live.system)
+    client = app.test_client()
+    login(client)
+
+    payload = client.get(ROUTES["system"]).get_json()
+
+    assert payload["classification"] == "DIVERGENT"
+    component = payload["data"]["components"][0]
+    assert component["status"] == "DIVERGENT"
+    assert component["service_status"][lane][field] is None
+
+
+def test_level_1_preserves_zero_and_nullable_unknown_lane_freshness(tmp_path):
+    missing = collector_lane()
+    missing.update(
+        status="DATA_MISSING", deadline_utc=None, state_age_seconds=None,
+        reference_hashes={},
+    )
+    zero = collector_lane()
+    zero.update(lane="ODDS_ONLY", run_id="run-2", state_age_seconds=0)
+    envelope = evidence(
+        "P-COLLECTOR-AGGREGATE", status="UNAVAILABLE/DATA_MISSING",
+        content_sha256=HASH, source_at="2026-07-31T01:02:00Z", age_seconds=3,
+        availability="present", schema_integrity="valid",
+        reference_hashes=(("state", HASH),),
+        evidence_identity=(("lane", "aggregate"),),
+    )
+    app = app_for(tmp_path)
+    register_level_1_provider(
+        app, "collector", lambda _now: APIObservation(envelope, {"lanes": [missing, zero]})
+    )
+    client = app.test_client()
+    login(client)
+
+    lanes = client.get(ROUTES["collector"]).get_json()["data"]["lanes"]
+
+    assert lanes[0]["deadline_utc"] is None
+    assert lanes[0]["state_age_seconds"] is None
+    assert lanes[1]["state_age_seconds"] == 0
+
+
+def test_live_system_malformed_projection_is_suppressed_by_registered_api(tmp_path):
+    from tests.operator_ui.test_live_adapters import NOW as LIVE_NOW, actual_payloads, make_live
+
+    values = actual_payloads()
+    values["deployment_manifest"]["deployed_tree"] = "malformed"
+    live = make_live(tmp_path / "evidence", values)
+    app = app_for(tmp_path, clock=lambda: LIVE_NOW)
+    register_level_1_provider(app, "system", live.system)
+    client = app.test_client()
+    login(client)
+
+    payload = client.get(ROUTES["system"]).get_json()
+
+    assert payload["classification"] == "INVALID/INTEGRITY_FAILED"
+    assert payload["data"] == {}
+
+
+def test_invalid_collector_payload_remains_suppressed(tmp_path):
+    app = app_for(tmp_path)
+    register_level_1_provider(
+        app,
+        "collector",
+        lambda _now: APIObservation(
+            evidence(
+                "P-COLLECTOR-AGGREGATE",
+                status="INVALID/INTEGRITY_FAILED",
+                source_at=None,
+                age_seconds=None,
+                schema_integrity="failed",
+                evidence_identity=None,
+            ),
+            {"lanes": [collector_lane()]},
+        ),
+    )
+    client = app.test_client()
+    login(client)
+    audited_provider_error(tmp_path, client.get(ROUTES["collector"]))
+
+
+@pytest.mark.parametrize(
+    "lanes",
+    [
+        [],
+        [collector_lane()],
+        [dict(collector_lane(), lane="ODDS_ONLY")],
+        [collector_lane(), dict(collector_lane(), run_id="run-2")],
+        [
+            dict(collector_lane(), lane="ODDS_ONLY"),
+            dict(collector_lane(), lane="ODDS_ONLY", run_id="run-2"),
+        ],
+        [collector_lane(), dict(collector_lane(), lane="OTHER", run_id="run-2")],
+    ],
+    ids=[
+        "missing-both",
+        "single-full",
+        "single-odds",
+        "duplicate-full",
+        "duplicate-odds",
+        "unknown-lane",
+    ],
+)
+def test_collector_requires_exact_two_lane_aggregate(tmp_path, lanes):
+    app = app_for(tmp_path)
+    register_level_1_provider(
+        app,
+        "collector",
+        lambda _now: APIObservation(
+            evidence("P-COLLECTOR-AGGREGATE"), {"lanes": lanes}
+        ),
+    )
+    client = app.test_client()
+    login(client)
+
+    audited_provider_error(tmp_path, client.get(ROUTES["collector"]))
+
+
+@pytest.mark.parametrize("lane_status", ["ACTIVE"])
+def test_collector_current_lane_rejects_passed_deadline(tmp_path, lane_status):
+    lanes = collector_lanes()
+    lanes[0].update(
+        status=lane_status,
+        deadline_utc=(NOW - timedelta(microseconds=1)).isoformat().replace(
+            "+00:00", "Z"
+        ),
+    )
+    app = app_for(tmp_path)
+    register_level_1_provider(
+        app,
+        "collector",
+        lambda _now: APIObservation(
+            evidence("P-COLLECTOR-AGGREGATE"), {"lanes": lanes}
+        ),
+    )
+    client = app.test_client()
+    login(client)
+
+    audited_provider_error(tmp_path, client.get(ROUTES["collector"]))
+
+
+@pytest.mark.parametrize(
+    "lane_status",
+    [
+        "RECEIPT_READY",
+        "REQUEST_EXPIRED",
+        "RACE_NOT_FOUND",
+        "CAPTURE_WINDOW_CLOSED",
+        "IDENTITY_MISMATCH",
+        "CAPTURE_FAILED",
+    ],
+)
+@pytest.mark.parametrize("lane_kind", ["FULL_DAEMON", "ODDS_ONLY"])
+def test_collector_terminal_lane_accepts_deadline_equality(
+    tmp_path, lane_status, lane_kind
+):
+    lanes = collector_lanes()
+    lane = next(lane for lane in lanes if lane["lane"] == lane_kind)
+    equality_deadline = NOW.isoformat().replace("+00:00", "Z")
+    lane.update(
+        status=lane_status,
+        deadline_utc=equality_deadline,
+    )
+    app = app_for(tmp_path)
+    register_level_1_provider(
+        app,
+        "collector",
+        lambda _now: APIObservation(
+            evidence("P-COLLECTOR-AGGREGATE"), {"lanes": lanes}
+        ),
+    )
+    client = app.test_client()
+    login(client)
+
+    response = client.get(ROUTES["collector"])
+
+    assert response.status_code == 200
+    response_lanes = response.get_json()["data"]["lanes"]
+    assert len(response_lanes) == 2
+    assert [lane["lane"] for lane in response_lanes].count("FULL_DAEMON") == 1
+    assert [lane["lane"] for lane in response_lanes].count("ODDS_ONLY") == 1
+    run_ids = [lane["run_id"] for lane in response_lanes]
+    assert all(run_ids)
+    assert run_ids[0] != run_ids[1]
+    selected_lane = next(lane for lane in response_lanes if lane["lane"] == lane_kind)
+    assert selected_lane["status"] == lane_status
+    assert selected_lane["deadline_utc"] == equality_deadline
+
+
+@pytest.mark.parametrize(
+    "lane_status",
+    [
+        "RECEIPT_READY",
+        "REQUEST_EXPIRED",
+        "RACE_NOT_FOUND",
+        "CAPTURE_WINDOW_CLOSED",
+        "IDENTITY_MISMATCH",
+        "CAPTURE_FAILED",
+    ],
+)
+@pytest.mark.parametrize("lane_kind", ["FULL_DAEMON", "ODDS_ONLY"])
+def test_collector_terminal_lane_rejects_one_microsecond_past_deadline(
+    tmp_path, lane_status, lane_kind
+):
+    lanes = collector_lanes()
+    lane = next(lane for lane in lanes if lane["lane"] == lane_kind)
+    lane.update(
+        status=lane_status,
+        deadline_utc=(NOW - timedelta(microseconds=1)).isoformat().replace(
+            "+00:00", "Z"
+        ),
+    )
+    app = app_for(tmp_path)
+    register_level_1_provider(
+        app,
+        "collector",
+        lambda _now: APIObservation(
+            evidence("P-COLLECTOR-AGGREGATE"), {"lanes": lanes}
+        ),
+    )
+    client = app.test_client()
+    login(client)
+
+    audited_provider_error(tmp_path, client.get(ROUTES["collector"]))
 
 
 def audit_event():
@@ -522,7 +949,7 @@ HAPPY_CASES = [
         "P-IMMUTABLE-HISTORICAL",
         {"prediction": prediction()},
     ),
-    ("collector", "P-COLLECTOR-AGGREGATE", {"lanes": [collector_lane()]}),
+    ("collector", "P-COLLECTOR-AGGREGATE", {"lanes": collector_lanes()}),
     ("corpus", "P-REPORT-24H", {"reports": [corpus_report()]}),
     ("models", "P-CATALOG-60", {"models": [model()]}),
     ("system", "P-DEPLOY-60", {"components": [component()]}),

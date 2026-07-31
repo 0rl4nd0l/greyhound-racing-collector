@@ -11,11 +11,12 @@ import hashlib
 import json
 import math
 import os
+import re
 import sqlite3
 import stat
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from pathlib import Path
 from types import MappingProxyType
@@ -58,6 +59,11 @@ class HistoricalClaim(str, Enum):
 class JsonSerializationPolicy(str, Enum):
     COMPACT_CANONICAL = "compact_canonical"
     PRODUCER_PRETTY_SORTED = "producer_pretty_sorted"
+
+
+class TimestampSyntax(str, Enum):
+    CANONICAL_TERMINAL_Z = "canonical_terminal_z"
+    AWARE_ISO8601 = "aware_iso8601"
 
 
 _HISTORICAL_CLAIMS: Mapping[HistoricalClaim, str] = MappingProxyType(
@@ -132,10 +138,10 @@ class ReferenceHash:
 
 @dataclass(frozen=True)
 class JsonSource:
-    schema_field: str
-    schema_value: str
+    schema_field: str | None
+    schema_value: str | None
     top_level_fields: tuple[str, ...]
-    time_field: str
+    time_field: str | None
     time_role: str = "generated_at"
     reference_hashes: tuple[ReferenceHash, ...] = ()
     identity_fields: tuple[str, ...] = ()
@@ -145,6 +151,7 @@ class JsonSource:
     serialization_policy: JsonSerializationPolicy = (
         JsonSerializationPolicy.COMPACT_CANONICAL
     )
+    timestamp_syntax: TimestampSyntax = TimestampSyntax.CANONICAL_TERMINAL_Z
 
     def __post_init__(self) -> None:
         try:
@@ -152,6 +159,11 @@ class JsonSource:
         except (TypeError, ValueError) as exc:
             raise ValueError("unsupported JSON serialization policy") from exc
         object.__setattr__(self, "serialization_policy", policy)
+        try:
+            timestamp_syntax = TimestampSyntax(self.timestamp_syntax)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("unsupported timestamp syntax") from exc
+        object.__setattr__(self, "timestamp_syntax", timestamp_syntax)
 
 
 @dataclass(frozen=True)
@@ -165,6 +177,22 @@ class SourceConfig:
     supported_claim: str | HistoricalClaim
     json: JsonSource
     max_bytes: int = 1_048_576
+    max_envelope_bytes: int = 32_768
+    expected_sha256: str | None = None
+
+
+@dataclass(frozen=True)
+class RawSourceConfig:
+    """One fixed, bounded non-JSON file observed by symbolic server key."""
+
+    locator: Path
+    allowlisted_root: Path
+    source_kind: str
+    source_identity: str
+    source_locator: str
+    policy: str
+    supported_claim: str
+    max_bytes: int = 16_777_216
     max_envelope_bytes: int = 32_768
     expected_sha256: str | None = None
 
@@ -419,10 +447,20 @@ def _validate_source(config: SourceConfig) -> SourceConfig:
     schema = config.json
     if schema.time_role not in {"source_at", "generated_at", "observed_at"}:
         raise ValueError("unsupported time role")
+    if (schema.schema_field is None) != (schema.schema_value is None):
+        raise ValueError("schema field and value must both be present or absent")
+    observed_without_producer_time = (
+        schema.time_field is None
+        and schema.schema_value in {
+            "race_evidence_inventory_output_manifest_v1",
+            "on_demand_prediction_config_catalog_v1",
+        }
+    )
+    if (schema.schema_field is None or schema.time_field is None) and policy.mode != "adapter" and not observed_without_producer_time:
+        raise ValueError("only adapter-owned or approved observation-bound evidence may omit producer time")
     for value in (
-        schema.schema_field,
-        schema.schema_value,
-        schema.time_field,
+        *((schema.schema_field, schema.schema_value) if schema.schema_field else ()),
+        *((schema.time_field,) if schema.time_field else ()),
         *schema.top_level_fields,
         *schema.identity_fields,
     ):
@@ -446,8 +484,8 @@ def _validate_source(config: SourceConfig) -> SourceConfig:
         or len({item.json_field for item in schema.reference_hashes})
         != len(schema.reference_hashes)
         or len(set(schema.identity_fields)) != len(schema.identity_fields)
-        or schema.schema_field not in schema.top_level_fields
-        or schema.time_field not in schema.top_level_fields
+        or (schema.schema_field is not None and schema.schema_field not in schema.top_level_fields)
+        or (schema.time_field is not None and schema.time_field not in schema.top_level_fields)
         or not set(schema.identity_fields).issubset(schema.top_level_fields)
     ):
         raise ValueError("top-level schema is not exact")
@@ -510,16 +548,35 @@ def _bound_json(
         raise _InvalidEvidence("non-finite JSON number")
 
 
-def _parse_utc(value: Any) -> datetime:
-    if not isinstance(value, str) or not value.endswith("Z"):
+_AWARE_ISO8601 = re.compile(
+    r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})\Z"
+)
+_MAX_TIMESTAMP_BYTES = 40
+
+
+def _parse_utc(
+    value: Any,
+    syntax: TimestampSyntax = TimestampSyntax.CANONICAL_TERMINAL_Z,
+) -> datetime:
+    if not isinstance(value, str):
         raise _InvalidEvidence("timestamp must be an explicit UTC string")
+    if len(value.encode("utf-8")) > _MAX_TIMESTAMP_BYTES:
+        raise _InvalidEvidence("timestamp is unbounded")
+    if syntax is TimestampSyntax.CANONICAL_TERMINAL_Z and not value.endswith("Z"):
+        raise _InvalidEvidence("timestamp must use the canonical terminal-Z UTC form")
+    if syntax is TimestampSyntax.AWARE_ISO8601 and _AWARE_ISO8601.fullmatch(value) is None:
+        raise _InvalidEvidence("timestamp must be a timezone-aware ISO-8601 instant")
     try:
-        parsed = datetime.fromisoformat(value[:-1] + "+00:00")
+        parsed = datetime.fromisoformat(
+            f"{value[:-1]}+00:00" if value.endswith("Z") else value
+        )
     except ValueError as exc:
         raise _InvalidEvidence("timestamp is malformed") from exc
-    if parsed.tzinfo != timezone.utc:
+    if parsed.tzinfo is None:
+        raise _InvalidEvidence("timestamp must include a timezone")
+    if syntax is TimestampSyntax.CANONICAL_TERMINAL_Z and parsed.utcoffset() != timedelta(0):
         raise _InvalidEvidence("timestamp must be UTC")
-    return parsed
+    return parsed.astimezone(timezone.utc)
 
 
 def _utc_text(value: datetime) -> str:
@@ -675,6 +732,7 @@ class OperatorEvidenceReader:
         self,
         sources: Mapping[str, SourceConfig],
         *,
+        raw_sources: Mapping[str, RawSourceConfig] | None = None,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         if not sources:
@@ -689,6 +747,41 @@ class OperatorEvidenceReader:
             )
         self._sources = MappingProxyType(validated)
         self._bindings = MappingProxyType(bindings)
+        raw_validated: dict[str, RawSourceConfig] = {}
+        raw_bindings: dict[str, _BoundPath] = {}
+        for key, config in (raw_sources or {}).items():
+            _require_bounded_string(key, "raw source key", 128)
+            if key in validated:
+                raise ValueError("source keys must be unique")
+            root = _canonical_root(config.allowlisted_root)
+            locator = _canonical_locator(config.locator, root)
+            for value, name in (
+                (config.source_kind, "source_kind"),
+                (config.source_identity, "source_identity"),
+                (config.source_locator, "source_locator"),
+                (config.supported_claim, "supported_claim"),
+            ):
+                _require_bounded_string(value, name)
+            if config.source_locator.startswith("/") or "://" in config.source_locator:
+                raise ValueError("source_locator must be symbolic")
+            if config.policy not in POLICIES:
+                raise ValueError("unsupported freshness policy")
+            if type(config.max_bytes) is not int or config.max_bytes <= 0:
+                raise ValueError("raw source limit must be positive")
+            if config.expected_sha256 is not None:
+                _validate_hash(config.expected_sha256, "expected_sha256")
+            normalized = RawSourceConfig(
+                locator=locator, allowlisted_root=root,
+                source_kind=config.source_kind, source_identity=config.source_identity,
+                source_locator=config.source_locator, policy=config.policy,
+                supported_claim=config.supported_claim, max_bytes=config.max_bytes,
+                max_envelope_bytes=config.max_envelope_bytes,
+                expected_sha256=config.expected_sha256,
+            )
+            raw_validated[key] = normalized
+            raw_bindings[key] = _bind_path(locator, root)
+        self._raw_sources = MappingProxyType(raw_validated)
+        self._raw_bindings = MappingProxyType(raw_bindings)
         self._clock = clock or (lambda: datetime.now(timezone.utc))
 
     @property
@@ -696,6 +789,18 @@ class OperatorEvidenceReader:
         return POLICIES
 
     def read(self, source_key: str) -> EvidenceEnvelope:
+        envelope, _ = self.read_payload(source_key)
+        return envelope
+
+    def read_payload(
+        self, source_key: str
+    ) -> tuple[EvidenceEnvelope, Mapping[str, Any] | None]:
+        """Observe one configured source and return verified JSON when usable.
+
+        The symbolic-key-only boundary is identical to :meth:`read`.  Payload
+        bytes are returned only after the complete bounded canonical read; a
+        failed observation never leaks partially parsed data.
+        """
         try:
             config = self._sources[source_key]
         except (KeyError, TypeError) as exc:
@@ -710,19 +815,19 @@ class OperatorEvidenceReader:
         except FileNotFoundError:
             return self._failure(
                 config, observed_text, Availability.MISSING, Integrity.UNKNOWN
-            )
+            ), None
         except PermissionError:
             return self._failure(
                 config, observed_text, Availability.UNREADABLE, Integrity.UNKNOWN
-            )
+            ), None
         except _InvalidEvidence:
             return self._failure(
                 config, observed_text, Availability.PRESENT, Integrity.FAILED
-            )
+            ), None
         except OSError:
             return self._failure(
                 config, observed_text, Availability.ERROR, Integrity.FAILED
-            )
+            ), None
 
         digest = hashlib.sha256(raw).hexdigest()
         conflict = (
@@ -740,7 +845,10 @@ class OperatorEvidenceReader:
             _bound_json(payload, depth=1, schema=config.json, count=[0])
             if set(payload) != set(config.json.top_level_fields):
                 raise _InvalidEvidence("unexpected top-level schema")
-            if payload.get(config.json.schema_field) != config.json.schema_value:
+            if (
+                config.json.schema_field is not None
+                and payload.get(config.json.schema_field) != config.json.schema_value
+            ):
                 raise _InvalidEvidence("schema identity mismatch")
             if (
                 config.json.serialization_policy
@@ -760,9 +868,15 @@ class OperatorEvidenceReader:
                 ).encode("utf-8")
             if canonical != raw:
                 raise _InvalidEvidence("JSON bytes are not canonical")
-            evidence_time = _parse_utc(payload[config.json.time_field])
-            age = (observed.astimezone(timezone.utc) - evidence_time).total_seconds()
-            freshness = _freshness(POLICIES[config.policy], age)
+            if config.json.time_field is None:
+                age = math.nan
+                freshness = Freshness.UNKNOWN
+            else:
+                evidence_time = _parse_utc(
+                    payload[config.json.time_field], config.json.timestamp_syntax
+                )
+                age = (observed.astimezone(timezone.utc) - evidence_time).total_seconds()
+                freshness = _freshness(POLICIES[config.policy], age)
             references: list[tuple[str, str]] = []
             for reference in config.json.reference_hashes:
                 actual = payload.get(reference.json_field)
@@ -791,14 +905,15 @@ class OperatorEvidenceReader:
                 Availability.PRESENT,
                 Integrity.FAILED,
                 content_hash=digest,
-            )
+            ), None
 
         role_times: dict[str, str | None] = {
             "source_at": None,
             "generated_at": None,
             "observed_at": None,
         }
-        role_times[config.json.time_role] = payload[config.json.time_field]
+        if config.json.time_field is not None:
+            role_times[config.json.time_role] = payload[config.json.time_field]
         integrity = Integrity.VALID
         status = status_for(
             Availability.PRESENT, integrity, freshness, conflict=conflict
@@ -822,7 +937,75 @@ class OperatorEvidenceReader:
             supported_claim=config.supported_claim,
         )
         self._check_envelope_size(envelope, config.max_envelope_bytes)
-        return envelope
+        return envelope, MappingProxyType(payload)
+
+    def read_raw(self, source_key: str) -> tuple[EvidenceEnvelope, bytes | None]:
+        """Read one configured regular file without interpreting its bytes."""
+        try:
+            config = self._raw_sources[source_key]
+            binding = self._raw_bindings[source_key]
+        except (KeyError, TypeError) as exc:
+            raise KeyError("unknown raw evidence source key") from exc
+        observed = self._clock()
+        observed_text = _utc_text(observed)
+        try:
+            raw = _read_regular_file(binding, config.max_bytes)
+        except FileNotFoundError:
+            return self._failure(config, observed_text, Availability.MISSING, Integrity.UNKNOWN), None
+        except PermissionError:
+            return self._failure(config, observed_text, Availability.UNREADABLE, Integrity.UNKNOWN), None
+        except (_InvalidEvidence, OSError):
+            return self._failure(config, observed_text, Availability.ERROR, Integrity.FAILED), None
+        digest = hashlib.sha256(raw).hexdigest()
+        conflict = config.expected_sha256 is not None and digest != config.expected_sha256
+        envelope = _new_envelope(
+            source_kind=config.source_kind, source_identity=config.source_identity,
+            content_sha256=digest, source_locator=config.source_locator,
+            source_at=None, generated_at=None, observed_at=observed_text,
+            server_observed_at=observed_text, age_seconds=0.0,
+            freshness_policy=config.policy, availability=Availability.PRESENT.value,
+            schema_integrity=Integrity.VALID.value, reference_hashes=(),
+            evidence_identity=None,
+            status=(EvidenceStatus.DIVERGENT if conflict else EvidenceStatus.AVAILABLE_FRESH).value,
+            supported_claim=config.supported_claim,
+        )
+        self._check_envelope_size(envelope, config.max_envelope_bytes)
+        return envelope, raw
+
+    def read_verified_payload(
+        self, source_key: str, expected_source_locator: str
+    ) -> tuple[EvidenceEnvelope, Mapping[str, Any] | None]:
+        """Read a fixed server source only when its public locator is expected.
+
+        The expected locator is a producer-authored safe relative identity,
+        compared only to the server-owned configured path relative to its
+        fixed root.  The public symbolic ``source_locator`` remains unchanged.
+        """
+        try:
+            config = self._sources[source_key]
+        except (KeyError, TypeError) as exc:
+            raise KeyError("unknown evidence source key") from exc
+        _require_bounded_string(
+            expected_source_locator, "expected source locator", 4096
+        )
+        if (
+            expected_source_locator.startswith("/")
+            or "\\" in expected_source_locator
+            or any(
+                part in {"", ".", ".."}
+                for part in expected_source_locator.split("/")
+            )
+        ):
+            raise _PathChanged("expected producer locator is unsafe")
+        try:
+            configured_relative = config.locator.relative_to(
+                config.allowlisted_root
+            ).as_posix()
+        except ValueError as exc:
+            raise _PathChanged("configured source is outside its fixed root") from exc
+        if configured_relative != expected_source_locator:
+            raise _PathChanged("configured source locator does not match producer identity")
+        return self.read_payload(source_key)
 
     @staticmethod
     def _check_envelope_size(

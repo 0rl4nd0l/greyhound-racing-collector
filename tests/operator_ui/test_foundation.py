@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import hashlib
 import json
 import os
 import sqlite3
@@ -12,6 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
+from scripts.shadow_autopilot_daemon import write_json as producer_write_json
 
 from src.operator_ui import HistoricalClaim
 from src.operator_ui import foundation
@@ -28,6 +30,7 @@ from src.operator_ui.foundation import (
     ReadOnlySqlite,
     ReferenceHash,
     SourceConfig,
+    TimestampSyntax,
     status_for,
 )
 
@@ -218,6 +221,121 @@ def test_fixed_freshness_boundary_stale_and_future_fail_closed(tmp_path):
     )
 
 
+@pytest.mark.parametrize(
+    "generated_at",
+    (
+        "2026-07-31T01:59:00+00:00",
+        "2026-07-31T01:59:00+0000",
+        "2026-07-31T01:59:00z",
+    ),
+)
+def test_reader_rejects_utc_timestamp_without_canonical_terminal_z(
+    tmp_path, generated_at
+):
+    path = tmp_path / "fixture.json"
+    write_payload(path, valid_payload(generated_at=generated_at))
+
+    observed = reader(source_config(tmp_path, path)).read("fixture")
+
+    assert observed.status == "INVALID/INTEGRITY_FAILED"
+    assert observed.age_seconds is None
+
+
+@pytest.mark.parametrize(
+    ("generated_at", "expected_age"),
+    (
+        ("2026-07-31T01:59:00+00:00", 60),
+        ("2026-07-31T11:59:00+10:00", 60),
+    ),
+)
+def test_native_producer_timestamp_normalizes_aware_offsets(
+    tmp_path, generated_at, expected_age
+):
+    path = tmp_path / "fixture.json"
+    write_payload(path, valid_payload(generated_at=generated_at))
+    configured = source_config(tmp_path, path)
+    configured = replace(
+        configured,
+        json=replace(
+            configured.json, timestamp_syntax=TimestampSyntax.AWARE_ISO8601
+        ),
+    )
+
+    observed = reader(configured).read("fixture")
+
+    assert observed.status == "AVAILABLE/FRESH"
+    assert observed.age_seconds == expected_age
+    assert observed.content_sha256 == hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+@pytest.mark.parametrize(
+    "generated_at",
+    (
+        "2026-07-31T01:59:00",
+        "2026-07-31T01:59:00+0000",
+        "2026-07-31T01:59:00z",
+        "2026-07-31T01:59:00+00:00junk",
+        "x" * 129,
+        True,
+        None,
+    ),
+)
+def test_native_producer_timestamp_rejects_invalid_or_unbounded_values(
+    tmp_path, generated_at
+):
+    path = tmp_path / "fixture.json"
+    write_payload(path, valid_payload(generated_at=generated_at))
+    configured = source_config(tmp_path, path)
+    configured = replace(
+        configured,
+        json=replace(
+            configured.json, timestamp_syntax=TimestampSyntax.AWARE_ISO8601
+        ),
+    )
+
+    observed = reader(configured).read("fixture")
+
+    assert observed.status == "INVALID/INTEGRITY_FAILED"
+    assert observed.age_seconds is None
+
+
+def test_adapter_owned_exact_payload_may_omit_producer_schema_identity(tmp_path):
+    payload = {
+        "generated_at": "2026-07-31T01:59:00Z",
+        "status": "SUCCESS",
+    }
+    path = tmp_path / "producer-policy.json"
+    path.write_bytes(canonical_bytes(payload))
+    configured = SourceConfig(
+        locator=path,
+        allowlisted_root=tmp_path,
+        source_kind="producer_policy_observation",
+        source_identity="shadow_autopilot_refresh_report",
+        source_locator="collector.odds_refresh",
+        policy="P-COLLECTOR-ODDS-DYNAMIC",
+        supported_claim="Exact bounded adapter-owned policy observation.",
+        json=JsonSource(
+            schema_field=None,
+            schema_value=None,
+            top_level_fields=("generated_at", "status"),
+            time_field=None,
+        ),
+    )
+    envelope, observed = OperatorEvidenceReader(
+        {"policy": configured}, clock=lambda: NOW
+    ).read_payload("policy")
+    assert envelope.schema_integrity == "valid"
+    assert envelope.status == "UNAVAILABLE/DATA_MISSING"
+    assert envelope.age_seconds is None
+    assert dict(observed or {}) == payload
+
+    with pytest.raises(ValueError, match="only adapter-owned"):
+        OperatorEvidenceReader(
+            {"policy": replace(configured, policy="P-DEPLOY-60")},
+            clock=lambda: NOW,
+        )
+
+
 def test_missing_unreadable_and_oversize_fail_closed(tmp_path, monkeypatch):
     path = tmp_path / "fixture.json"
     configured = source_config(tmp_path, path)
@@ -270,14 +388,64 @@ def test_malformed_duplicate_and_nonfinite_json_is_invalid(tmp_path, raw):
     assert observed.content_sha256 == foundation.hashlib.sha256(raw).hexdigest()
 
 
-def test_noncanonical_unexpected_and_wrong_schema_are_invalid(tmp_path):
+def test_json_serialization_policy_is_finite_and_defaults_to_compact():
+    source = source_config(Path("/unused"), Path("/unused/fixture.json")).json
+    assert (
+        source.serialization_policy
+        is JsonSerializationPolicy.COMPACT_CANONICAL
+    )
+
+    explicit = replace(source, serialization_policy="producer_pretty_sorted")
+    assert (
+        explicit.serialization_policy
+        is JsonSerializationPolicy.PRODUCER_PRETTY_SORTED
+    )
+
+    with pytest.raises(ValueError, match="serialization policy"):
+        replace(source, serialization_policy="unknown")
+
+
+@pytest.mark.parametrize(
+    "producer_writer",
+    [
+        pytest.param(producer_write_json, id="shadow-autopilot-daemon"),
+        pytest.param(
+            __import__(
+                "scripts.build_race_evidence_inventory_packet",
+                fromlist=["write_json"],
+            ).write_json,
+            id="race-evidence-inventory",
+        ),
+    ],
+)
+def test_pretty_sorted_producer_requires_exact_explicit_policy(
+    tmp_path, producer_writer
+):
     path = tmp_path / "fixture.json"
     configured = source_config(tmp_path, path)
+    producer_writer(path, valid_payload())
+    raw = path.read_bytes()
+    assert raw.endswith(b"\n") and b"\n  " in raw
+    assert reader(configured).read("fixture").status == "INVALID/INTEGRITY_FAILED"
 
-    path.write_text(json.dumps(valid_payload(), indent=2))
-    assert reader(configured).read("fixture").status == (
-        "INVALID/INTEGRITY_FAILED"
+    configured = replace(
+        configured,
+        json=replace(
+            configured.json,
+            serialization_policy=JsonSerializationPolicy.PRODUCER_PRETTY_SORTED,
+        ),
     )
+    observed = reader(configured).read("fixture")
+    assert observed.status == "AVAILABLE/FRESH"
+    assert observed.content_sha256 == hashlib.sha256(raw).hexdigest()
+
+    path.write_bytes(raw.replace(b'  "generated_at"', b' "generated_at"', 1))
+    assert reader(configured).read("fixture").status == "INVALID/INTEGRITY_FAILED"
+
+
+def test_unexpected_and_wrong_schema_are_invalid(tmp_path):
+    path = tmp_path / "fixture.json"
+    configured = source_config(tmp_path, path)
 
     extra = valid_payload()
     extra["unexpected"] = True
@@ -292,74 +460,6 @@ def test_noncanonical_unexpected_and_wrong_schema_are_invalid(tmp_path):
     assert reader(configured).read("fixture").status == (
         "INVALID/INTEGRITY_FAILED"
     )
-
-
-def test_json_serialization_policy_is_finite_and_defaults_to_compact():
-    source = source_config(Path("/unused"), Path("/unused/fixture.json")).json
-    assert (
-        source.serialization_policy
-        is JsonSerializationPolicy.COMPACT_CANONICAL
-    )
-
-    explicit = replace(
-        source, serialization_policy="producer_pretty_sorted"
-    )
-    assert (
-        explicit.serialization_policy
-        is JsonSerializationPolicy.PRODUCER_PRETTY_SORTED
-    )
-
-    with pytest.raises(ValueError, match="serialization policy"):
-        replace(source, serialization_policy="unknown")
-
-
-@pytest.mark.parametrize(
-    "producer_writer",
-    [
-        pytest.param(
-            __import__(
-                "scripts.shadow_autopilot_daemon", fromlist=["write_json"]
-            ).write_json,
-            id="shadow-autopilot-daemon",
-        ),
-        pytest.param(
-            __import__(
-                "scripts.build_race_evidence_inventory_packet",
-                fromlist=["write_json"],
-            ).write_json,
-            id="race-evidence-inventory",
-        ),
-    ],
-)
-def test_authoritative_pretty_json_requires_exact_explicit_policy(
-    tmp_path, producer_writer
-):
-    path = tmp_path / "fixture.json"
-    producer_writer(path, valid_payload())
-    raw = path.read_bytes()
-    expected = (
-        json.dumps(valid_payload(), indent=2, sort_keys=True, default=str) + "\n"
-    ).encode("utf-8")
-    assert raw == expected
-
-    compact = source_config(tmp_path, path)
-    assert reader(compact).read("fixture").status == "INVALID/INTEGRITY_FAILED"
-
-    pretty = replace(
-        compact,
-        json=replace(
-            compact.json,
-            serialization_policy=(
-                JsonSerializationPolicy.PRODUCER_PRETTY_SORTED
-            ),
-        ),
-    )
-    accepted = reader(pretty).read("fixture")
-    assert accepted.status == "AVAILABLE/FRESH"
-    assert accepted.content_sha256 == foundation.hashlib.sha256(raw).hexdigest()
-
-    path.write_bytes(raw.replace(b'  "generated_at"', b' "generated_at"', 1))
-    assert reader(pretty).read("fixture").status == "INVALID/INTEGRITY_FAILED"
 
 
 def test_expected_content_and_reference_hash_conflicts_are_divergent(tmp_path):

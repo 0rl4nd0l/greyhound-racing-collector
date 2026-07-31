@@ -36,6 +36,14 @@ _URL = re.compile(r"https://(?:www\.)?thedogs\.com\.au/[^\s]{1,480}\Z")
 _MAX_ITEMS = 100
 _MAX_TEXT_BYTES = 512
 _CLOCK_SKEW_SECONDS = 1e-6
+_NON_HEALTHY_DISCLOSURE_RESOURCES = frozenset({"collector", "system"})
+_NON_HEALTHY_DISCLOSURE_STATUSES = frozenset(
+    {
+        EvidenceStatus.STALE,
+        EvidenceStatus.UNAVAILABLE_DATA_MISSING,
+        EvidenceStatus.DIVERGENT,
+    }
+)
 
 _RESOURCE_POLICIES: Mapping[str, frozenset[str]] = MappingProxyType(
     {
@@ -118,6 +126,16 @@ _COLLECTOR_LANE_STATUSES = frozenset(
         "DATA_MISSING",
         "INTEGRITY_FAILED",
         "DIVERGENT",
+    }
+)
+_COLLECTOR_TERMINAL_STATUSES = frozenset(
+    {
+        "RECEIPT_READY",
+        "REQUEST_EXPIRED",
+        "RACE_NOT_FOUND",
+        "CAPTURE_WINDOW_CLOSED",
+        "IDENTITY_MISMATCH",
+        "CAPTURE_FAILED",
     }
 )
 _CORPUS_STATUSES = frozenset(
@@ -390,7 +408,7 @@ def _prediction(value: Any, *, route_id: str | None) -> dict[str, Any]:
     }
 
 
-def _collector_lane(value: Any) -> dict[str, Any]:
+def _collector_lane(value: Any, *, request_now: datetime) -> dict[str, Any]:
     raw = _exact(
         value,
         frozenset(
@@ -399,11 +417,12 @@ def _collector_lane(value: Any) -> dict[str, Any]:
                 "status",
                 "run_id",
                 "phase",
+                "cycle_state",
                 "deadline_utc",
                 "state_age_seconds",
-                "next_action",
                 "component_identity",
                 "reference_hashes",
+                "operational_context",
             }
         ),
     )
@@ -413,15 +432,93 @@ def _collector_lane(value: Any) -> dict[str, Any]:
     status = _text(raw["status"])
     if status not in _COLLECTOR_LANE_STATUSES:
         raise ValueError("unknown collector lane status")
+    context_raw = _exact(
+        raw["operational_context"],
+        frozenset({
+            "final_status", "final_verdict", "status",
+            "next_meaningful_action", "next_meaningful_action_at",
+            "lock_owner", "recent_capture",
+        }),
+    )
+    optional_text = lambda item: None if item is None else _text(item)
+    optional_time = lambda item: None if item is None else _utc(item, field="operational timestamp")[0]
+    owner = None
+    if context_raw["lock_owner"] is not None:
+        owner_raw = _exact(
+            context_raw["lock_owner"], frozenset({"kind", "run_id", "started_at"})
+        )
+        owner = {
+            "kind": _text(owner_raw["kind"]),
+            "run_id": _id(owner_raw["run_id"]),
+            "started_at": _utc(owner_raw["started_at"], field="lock owner started_at")[0],
+        }
+    capture_raw = _exact(
+        context_raw["recent_capture"],
+        frozenset({
+            "inserted_live_odds_rows", "ready_count", "status_counts",
+            "blocked_attempt_count",
+        }),
+    )
+    def optional_count(item: Any) -> int | None:
+        if item is None:
+            return None
+        if type(item) is not int or item < 0 or item > 1_000_000_000:
+            raise ValueError("collector count is invalid or unbounded")
+        return item
+    status_counts = None
+    if capture_raw["status_counts"] is not None:
+        if not isinstance(capture_raw["status_counts"], Mapping) or len(capture_raw["status_counts"]) > 64:
+            raise ValueError("collector status counts are invalid or unbounded")
+        status_counts = {
+            _text(name): optional_count(count)
+            for name, count in capture_raw["status_counts"].items()
+        }
+    context = {
+        "final_status": optional_text(context_raw["final_status"]),
+        "final_verdict": optional_text(context_raw["final_verdict"]),
+        "status": optional_text(context_raw["status"]),
+        "next_meaningful_action": optional_text(context_raw["next_meaningful_action"]),
+        "next_meaningful_action_at": optional_time(context_raw["next_meaningful_action_at"]),
+        "lock_owner": owner,
+        "recent_capture": {
+            "inserted_live_odds_rows": optional_count(capture_raw["inserted_live_odds_rows"]),
+            "ready_count": optional_count(capture_raw["ready_count"]),
+            "status_counts": status_counts,
+            "blocked_attempt_count": optional_count(capture_raw["blocked_attempt_count"]),
+        },
+    }
+    deadline_text, deadline_at = (
+        (None, None)
+        if raw["deadline_utc"] is None
+        else _utc(raw["deadline_utc"], field="deadline_utc")
+    )
+    state_age = (
+        None
+        if raw["state_age_seconds"] is None
+        else _finite_number(raw["state_age_seconds"], minimum=0)
+    )
+    deadline_statuses = _COLLECTOR_TERMINAL_STATUSES | {"ACTIVE"}
+    if status in deadline_statuses and (
+        deadline_at is None or state_age is None
+    ):
+        raise ValueError("current collector lane requires deadline and age")
+    if (
+        status in deadline_statuses
+        and request_now.astimezone(timezone.utc) > deadline_at
+    ):
+        raise ValueError("current collector lane has passed its deadline")
     return {
         "component_identity": _identity(raw["component_identity"]),
-        "deadline_utc": _utc(raw["deadline_utc"], field="deadline_utc")[0],
+        "deadline_utc": deadline_text,
         "lane": lane,
-        "next_action": _text(raw["next_action"]),
+        "cycle_state": _text(raw["cycle_state"]),
+        "operational_context": context,
         "phase": _text(raw["phase"]),
-        "reference_hashes": _named_hashes(raw["reference_hashes"]),
+        "reference_hashes": _named_hashes(
+            raw["reference_hashes"], required=status != "DATA_MISSING"
+        ),
         "run_id": _id(raw["run_id"]),
-        "state_age_seconds": _finite_number(raw["state_age_seconds"], minimum=0),
+        "state_age_seconds": state_age,
         "status": status,
     }
 
@@ -439,6 +536,7 @@ def _corpus_report(value: Any) -> dict[str, Any]:
                 "chain_hashes",
                 "generated_at",
                 "status",
+                "admission_gap",
             }
         ),
     )
@@ -471,6 +569,7 @@ def _corpus_report(value: Any) -> dict[str, Any]:
         "population_id": _id(raw["population_id"]),
         "report_id": _id(raw["report_id"]),
         "status": status,
+        "admission_gap": _text(raw["admission_gap"]),
     }
 
 
@@ -500,6 +599,10 @@ def _model(value: Any) -> dict[str, Any]:
     claim = raw["evaluation_claim"]
     if (slice_id is None) != (claim is None):
         raise ValueError("evaluation slice and claim must be jointly available")
+    model_hash = raw["model_sha256"]
+    manifest_hash = raw["manifest_sha256"]
+    if (model_hash is None) != (manifest_hash is None):
+        raise ValueError("model and manifest identities must be jointly available")
     return {
         "config_id": _id(raw["config_id"]),
         "config_sha256": _hash(raw["config_sha256"]),
@@ -508,9 +611,9 @@ def _model(value: Any) -> dict[str, Any]:
             raw["evaluation_hashes"], required=claim is not None
         ),
         "evaluation_status": status,
-        "manifest_sha256": _hash(raw["manifest_sha256"]),
+        "manifest_sha256": None if manifest_hash is None else _hash(manifest_hash),
         "model_id": _id(raw["model_id"]),
-        "model_sha256": _hash(raw["model_sha256"]),
+        "model_sha256": None if model_hash is None else _hash(model_hash),
         "role": role,
         "slice_id": None if slice_id is None else _id(slice_id),
     }
@@ -531,6 +634,7 @@ def _component(value: Any, *, request_now: datetime) -> dict[str, Any]:
                 "observed_at",
                 "age_seconds",
                 "reference_hashes",
+                "service_status",
             }
         ),
     )
@@ -546,10 +650,18 @@ def _component(value: Any, *, request_now: datetime) -> dict[str, Any]:
         age, computed_age, abs_tol=_CLOCK_SKEW_SECONDS
     ):
         raise ValueError("component age is future or inconsistent")
-    source_commit = _git_oid(raw["source_commit"])
-    source_tree = _git_oid(raw["source_tree"])
-    deployed_commit = _git_oid(raw["deployed_commit"])
-    deployed_tree = _git_oid(raw["deployed_tree"])
+    bounded_nonhealthy = status in {"DEGRADED", "STALE", "DIVERGENT"}
+    unavailable = bounded_nonhealthy and raw["reference_hashes"] is None
+
+    def component_oid(value: Any) -> str | None:
+        if unavailable and value is None:
+            return None
+        return _git_oid(value)
+
+    source_commit = component_oid(raw["source_commit"])
+    source_tree = component_oid(raw["source_tree"])
+    deployed_commit = component_oid(raw["deployed_commit"])
+    deployed_tree = component_oid(raw["deployed_tree"])
     identities_match = (
         source_commit == deployed_commit and source_tree == deployed_tree
     )
@@ -557,17 +669,46 @@ def _component(value: Any, *, request_now: datetime) -> dict[str, Any]:
         raise ValueError("healthy or degraded component is stale")
     if status == "STALE" and age <= 60:
         raise ValueError("stale component has fresh evidence")
-    if not identities_match and status in {"HEALTHY", "DEGRADED", "STALE"}:
+    if not unavailable and not identities_match and status in {"HEALTHY", "DEGRADED", "STALE"}:
         raise ValueError("component identity mismatch must be divergent")
+    service_status = _exact(raw["service_status"], frozenset({"full", "odds"}))
+    services: dict[str, dict[str, Any]] = {}
+    for lane, value in service_status.items():
+        service = _exact(
+            value, frozenset({"active_state", "sub_state", "exec_main_pid"})
+        )
+        pid = service["exec_main_pid"]
+        if bounded_nonhealthy:
+            active_state = (
+                None if service["active_state"] is None else _text(service["active_state"])
+            )
+            sub_state = (
+                None if service["sub_state"] is None else _text(service["sub_state"])
+            )
+            if pid is not None and (type(pid) is not int or pid < 0):
+                raise ValueError("service process identity is invalid")
+        else:
+            active_state = _text(service["active_state"])
+            sub_state = _text(service["sub_state"])
+            if type(pid) is not int or pid < 0:
+                raise ValueError("service process identity is invalid")
+        services[lane] = {
+            "active_state": active_state,
+            "sub_state": sub_state,
+            "exec_main_pid": pid,
+        }
     return {
         "age_seconds": age,
         "component": _id(raw["component"]),
         "deployed_commit": deployed_commit,
         "deployed_tree": deployed_tree,
         "observed_at": observed_text,
-        "reference_hashes": _named_hashes(raw["reference_hashes"]),
+        "reference_hashes": (
+            None if unavailable else _named_hashes(raw["reference_hashes"])
+        ),
         "source_commit": source_commit,
         "source_tree": source_tree,
+        "service_status": services,
         "status": status,
         "version": _text(raw["version"]),
     }
@@ -651,7 +792,10 @@ def _validate_data(
         )
         return {key: predictions}
     key, validator = {
-        "collector": ("lanes", _collector_lane),
+        "collector": (
+            "lanes",
+            lambda item: _collector_lane(item, request_now=request_now),
+        ),
         "corpus": ("reports", _corpus_report),
         "models": ("models", _model),
         "system": (
@@ -664,8 +808,8 @@ def _validate_data(
     values = [validator(item) for item in _items(raw[key])]
     if resource == "collector":
         lanes = [item["lane"] for item in values]
-        if len(lanes) != len(set(lanes)):
-            raise ValueError("collector lanes must be unique")
+        if len(lanes) != 2 or set(lanes) != {"FULL_DAEMON", "ODDS_ONLY"}:
+            raise ValueError("collector requires exactly one lane of each kind")
     elif resource == "corpus":
         _require_unique(values, "report_id", "corpus report identities")
     elif resource == "models":
@@ -744,22 +888,37 @@ def _validate_envelope(
         EvidenceStatus.INVALID_INTEGRITY_FAILED: (None, "failed"),
         EvidenceStatus.DIVERGENT: ("present", "valid"),
     }[status]
+    operational_degraded = (
+        resource in _NON_HEALTHY_DISCLOSURE_RESOURCES
+        and status is EvidenceStatus.UNAVAILABLE_DATA_MISSING
+        and envelope.availability == "present"
+        and envelope.schema_integrity == "valid"
+    )
     if (
-        expected_axis[0] is not None and envelope.availability != expected_axis[0]
+        not operational_degraded
+        and expected_axis[0] is not None
+        and envelope.availability != expected_axis[0]
     ) or (
-        expected_axis[1] is not None
+        not operational_degraded
+        and expected_axis[1] is not None
         and envelope.schema_integrity != expected_axis[1]
     ):
         raise ValueError("evidence status axes are inconsistent")
-    if status is EvidenceStatus.UNAVAILABLE_DATA_MISSING and (
+    if status is EvidenceStatus.UNAVAILABLE_DATA_MISSING and not operational_degraded and (
         envelope.availability == "present" or envelope.schema_integrity == "valid"
     ):
         raise ValueError("missing evidence axes are inconsistent")
+    bounded_incomplete_system = (
+        resource == "system"
+        and status in {EvidenceStatus.STALE, EvidenceStatus.DIVERGENT}
+        and bool(content)
+        and identity is None
+    )
     if status in {
         EvidenceStatus.AVAILABLE_FRESH,
         EvidenceStatus.STALE,
         EvidenceStatus.DIVERGENT,
-    } and (not content or identity is None):
+    } and (not content or (identity is None and not bounded_incomplete_system)):
         raise ValueError("classified evidence requires content and exact identity")
 
     _, observed = _utc(envelope.server_observed_at, field="server_observed_at")
@@ -779,7 +938,7 @@ def _validate_envelope(
     if status in {
         EvidenceStatus.UNAVAILABLE_DATA_MISSING,
         EvidenceStatus.INVALID_INTEGRITY_FAILED,
-    }:
+    } and not operational_degraded:
         if times or age is not None:
             raise ValueError("unavailable or invalid evidence cannot claim age")
     elif status in {EvidenceStatus.AVAILABLE_FRESH, EvidenceStatus.STALE}:
@@ -947,7 +1106,12 @@ def install_level_1_api(app: Flask) -> bool:
                 "server_observed_at": envelope["server_observed_at"],
                 "stale": classification is EvidenceStatus.STALE,
             }
-            if classification is EvidenceStatus.AVAILABLE_FRESH:
+            disclose_data = classification is EvidenceStatus.AVAILABLE_FRESH or (
+                resource in _NON_HEALTHY_DISCLOSURE_RESOURCES
+                and classification in _NON_HEALTHY_DISCLOSURE_STATUSES
+                and bool(raw.data)
+            )
+            if disclose_data:
                 data = _validate_data(resource, raw.data, route_id, request_now)
                 if resource in {"upcoming_races", "race_detail"}:
                     races: Sequence[dict[str, Any]] = (
@@ -963,6 +1127,12 @@ def install_level_1_api(app: Flask) -> bool:
                     if envelope["age_seconds"] > 300:
                         raise ValueError("available race evidence exceeds 300 seconds")
                 response["data"] = data
+            elif (
+                resource == "system"
+                and classification is EvidenceStatus.INVALID_INTEGRITY_FAILED
+                and not raw.data
+            ):
+                response["data"] = {}
             elif raw.data:
                 raise ValueError("non-available evidence must disclose no data")
             body = _canonical(response)
