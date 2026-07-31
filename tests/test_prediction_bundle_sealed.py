@@ -1,0 +1,859 @@
+from __future__ import annotations
+
+import copy
+import ast
+import os
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timedelta
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+import src.predictor.on_demand as sealed
+from src.predictor.on_demand import PredictionBlocked, canonical_bytes, sha256_bytes
+
+
+PREDICTION_ID = "12345678-1234-4123-8123-123456789abc"
+GENERATED = datetime.fromisoformat("2026-07-19T12:00:00+10:00")
+DIRECTORY = "prediction_20260719T120000000000+1000_0123456789ab"
+ZERO_SHA = "0" * 64
+
+
+def ready_result(*, job_id: str | None = None) -> dict[str, Any]:
+    race = {
+        "race_id": "Race 5 - GUNN - 2026-07-19",
+        "url": "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5",
+        "race_date": "2026-07-19",
+        "venue": "GUNN",
+        "venue_slug": "gunnedah",
+        "race_number": 5,
+        "jump_timestamp": "2026-07-19T13:00:00+10:00",
+    }
+    runners = [
+        {"box_number": 1, "display_name": "ONE", "identity": "ONE", "source_native_runner_id": "101"},
+        {"box_number": 2, "display_name": "TWO", "identity": "TWO", "source_native_runner_id": None},
+    ]
+    predictions = [
+        {"rank": 1, "box_number": 1, "dog_name": "ONE", "identity": "ONE", "source_native_runner_id": "101", "probability": 0.6},
+        {"rank": 2, "box_number": 2, "dog_name": "TWO", "identity": "TWO", "source_native_runner_id": None, "probability": 0.4},
+    ]
+    return {
+        "schema_version": sealed.PREDICTION_RESULT_SCHEMA_V2,
+        "prediction_id": PREDICTION_ID,
+        "job_id": job_id,
+        "generated_at": GENERATED.isoformat(),
+        "status": "PREDICTION_READY",
+        "blocker_stage": None,
+        "blocker": None,
+        "research_only": True,
+        "production_persisted": False,
+        "betting_output": False,
+        "race": race,
+        "model": {
+            "requested": "market-only",
+            "resolved": "market_only_v1",
+            "alias_resolved": True,
+            "schema_sha256": ZERO_SHA,
+            "artifact_identity": "UNAVAILABLE_NOT_APPLICABLE",
+            "artifact_sha256": None,
+            "artifact_manifest_identity": "UNAVAILABLE_NOT_APPLICABLE",
+            "artifact_manifest_sha256": None,
+        },
+        "config": {"sha256": ZERO_SHA},
+        "evidence": {
+            "request": "request.json",
+            "config": "config.json",
+            "model_schema": "model/config.schema.json",
+            "model_artifact": None,
+            "model_manifest": None,
+            "runner_set_sha256": sealed.sealed_runner_set_sha256(race, runners),
+            "prediction_output_sha256": sha256_bytes(canonical_bytes(predictions)),
+        },
+        "prediction": {
+            "predictions": predictions
+        },
+    }
+
+
+def blocked_result(stage: str = "VALIDATION") -> dict[str, Any]:
+    value = ready_result()
+    value.update(
+        status="PREDICTION_BLOCKED",
+        blocker_stage=stage,
+        blocker={"code": "POST_JUMP"},
+        prediction=None,
+    )
+    value["evidence"]["prediction_output_sha256"] = None
+    return value
+
+
+def request_for(result: dict[str, Any]) -> dict[str, Any]:
+    model = result["model"]
+    runners = [
+        {"box_number": row["box_number"], "display_name": row["dog_name"], "identity": row["identity"], "source_native_runner_id": row["source_native_runner_id"]}
+        for row in (result.get("prediction") or {"predictions": ready_result()["prediction"]["predictions"]})["predictions"]
+    ]
+    runners.sort(key=lambda row: (row["box_number"], row["identity"]))
+    return {
+        "schema_version": "on_demand_prediction_request_v1",
+        "prediction_id": result["prediction_id"],
+        "job_id": result["job_id"],
+        "race_query": result["race"]["race_id"],
+        "race_id": result["race"]["race_id"],
+        "jump_timestamp": result["race"]["jump_timestamp"],
+        "request_timestamp": "2026-07-19T11:59:00+10:00",
+        "odds_source": "receipt",
+        "model": {
+            "requested": model["requested"],
+            "resolved": model["resolved"],
+            "alias_resolved": model["alias_resolved"],
+            "model_sha256": model["artifact_sha256"],
+            "manifest_sha256": model["artifact_manifest_sha256"],
+            "schema_sha256": model["schema_sha256"],
+        },
+        "config_sha256": result["config"]["sha256"],
+        "research_only": True,
+        "runners": runners,
+        "runner_set_sha256": sealed.sealed_runner_set_sha256(result["race"], runners),
+    }
+
+
+def make_bundle(root: Path, result: dict[str, Any] | None = None) -> tuple[Path, dict[str, Any]]:
+    result = copy.deepcopy(result or ready_result())
+    bundle = root / DIRECTORY
+    (bundle / "model").mkdir(parents=True)
+    files = {
+        "result.json": canonical_bytes(result),
+        "request.json": canonical_bytes(request_for(result)),
+        "config.json": b"{}\n",
+        "model/config.schema.json": b"{}\n",
+    }
+    result["config"]["sha256"] = sha256_bytes(files["config.json"])
+    result["model"]["schema_sha256"] = sha256_bytes(files["model/config.schema.json"])
+    files["result.json"] = canonical_bytes(result)
+    files["request.json"] = canonical_bytes(request_for(result))
+    for name, raw in files.items():
+        target = bundle / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(raw)
+    manifest = sealed.build_prediction_bundle_manifest_v2(
+        bundle, prediction_id=PREDICTION_ID, job_id=result["job_id"]
+    )
+    manifest_raw = canonical_bytes(manifest)
+    (bundle / "bundle_manifest.json").write_bytes(manifest_raw)
+    entry = sealed.prediction_bundle_index_entry(
+        bundle=bundle, result=result, manifest_raw=manifest_raw
+    )
+    return bundle, entry
+
+
+def assert_blocked(callable_: Any, *args: Any, **kwargs: Any) -> PredictionBlocked:
+    with pytest.raises(PredictionBlocked) as captured:
+        callable_(*args, **kwargs)
+    return captured.value
+
+
+def test_publish_verify_index_and_detail_positive(tmp_path: Path):
+    bundle, entry = make_bundle(tmp_path)
+    index = sealed.publish_prediction_bundle_index_entry(tmp_path, entry)
+
+    assert sealed.verify_prediction_bundle_index(tmp_path) == index
+    verified = sealed.verify_indexed_prediction_bundle(tmp_path, entry)
+    assert verified.directory == bundle.name
+    assert verified.result["prediction"]["predictions"][0]["probability"] == 0.6
+    assert not (tmp_path / sealed.PREDICTION_BUNDLE_LOCK_NAME).exists()
+
+
+@pytest.mark.parametrize(
+    ("mutation", "field"),
+    [
+        (lambda value: value.update(extra=True), "unknown"),
+        (lambda value: value.update(generated_at="2026-07-19T12:00:00"), "time"),
+        (lambda value: value.update(status="READY"), "status"),
+        (lambda value: value.update(blocker_stage="PROTOCOL"), "stage"),
+        (lambda value: value["prediction"]["predictions"][0].update(probability=float("nan")), "finite"),
+        (lambda value: value["prediction"]["predictions"][0].update(probability=0.3), "order"),
+        (lambda value: value["prediction"]["predictions"][1].update(probability=0.3), "sum"),
+        (lambda value: value["prediction"]["predictions"][1].update(box_number=1), "box"),
+        (lambda value: value["prediction"]["predictions"][1].update(dog_name="ONE"), "runner"),
+    ],
+)
+def test_result_schema_rejects_unknown_time_status_and_probability_attacks(mutation: Any, field: str):
+    value = ready_result()
+    mutation(value)
+    assert_blocked(sealed.validate_prediction_result_v2, value)
+
+
+@pytest.mark.parametrize(("code", "stage"), list(sealed.BLOCKER_STAGE_BY_CODE.items()))
+def test_blocked_terminal_code_stage_pairs_are_exact(code: str, stage: str):
+    value = blocked_result(stage)
+    value["blocker"] = {"code": code}
+    assert sealed.validate_prediction_result_v2(value)["blocker_stage"] == stage
+    for wrong in {"PROTOCOL", "VALIDATION", "SCORING"} - {stage}:
+        attack = copy.deepcopy(value)
+        attack["blocker_stage"] = wrong
+        assert_blocked(sealed.validate_prediction_result_v2, attack)
+
+
+def test_market_only_is_the_only_nullable_artifact_identity():
+    valid = ready_result()
+    sealed.validate_prediction_result_v2(valid)
+    invalid = copy.deepcopy(valid)
+    invalid["model"]["resolved"] = "market_form_residual_v1"
+    assert_blocked(sealed.validate_prediction_result_v2, invalid)
+
+
+@pytest.mark.parametrize(
+    "job_id",
+    ["x", "job-" + "1" * 32, "job_" + "A" * 32, "job_" + "1" * 31,
+     "job_" + "1" * 33, "xjob_" + "1" * 32, "job_" + "1" * 32 + "x"],
+)
+def test_job_id_is_null_or_exact_future_operations_store_format(job_id: str):
+    value = ready_result(job_id=job_id)
+    assert_blocked(sealed.validate_prediction_result_v2, value)
+    assert_blocked(
+        sealed.validate_prediction_bundle_manifest_v2,
+        {"schema_version": sealed.PREDICTION_MANIFEST_SCHEMA_V2, "prediction_id": PREDICTION_ID, "job_id": job_id, "files": {"x": {"bytes": 0, "sha256": ZERO_SHA}}},
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda race: race.update(url="http://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"),
+        lambda race: race.update(url="https://thedogs.com.au/racing/gunnedah/2026-07-19/5"),
+        lambda race: race.update(url="https://www.thedogs.com.au/RACING/gunnedah/2026-07-19/5"),
+        lambda race: race.update(url="https://www.thedogs.com.au/racing/Gunnedah/2026-07-19/5"),
+        lambda race: race.update(url="https://www.thedogs.com.au/racing/gunnedah/2026-07-19/05"),
+        lambda race: race.update(url="https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5/"),
+        lambda race: race.update(url="https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5?q=1"),
+        lambda race: race.update(url="https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5#x"),
+        lambda race: race.update(url="https://www.thedogs.com.au/racing/gunnedah%2Fother/2026-07-19/5"),
+        lambda race: race.update(race_date="2026-07-20"),
+        lambda race: race.update(venue_slug="sandown"),
+        lambda race: race.update(race_number=0),
+        lambda race: race.update(race_number=-1),
+        lambda race: race.update(race_number=5.0),
+        lambda race: race.update(race_id="Race 5 - OTHER - 2026-07-19"),
+    ],
+)
+def test_race_identity_rejects_every_alias_mismatch_and_substitution(mutation: Any):
+    value = ready_result()
+    mutation(value["race"])
+    assert_blocked(sealed.validate_prediction_result_v2, value)
+
+
+def test_runner_set_and_output_hash_reject_all_named_substitutions(tmp_path: Path):
+    attacks = []
+    for mutate in (
+        lambda rows: rows.pop(),
+        lambda rows: rows.append(copy.deepcopy(rows[0])),
+        lambda rows: rows.reverse(),
+        lambda rows: rows[0].update(display_name="SUBSTITUTE"),
+        lambda rows: rows[0].update(identity="SUBSTITUTE"),
+        lambda rows: rows[0].update(source_native_runner_id="invented"),
+        lambda rows: rows[1].update(box_number=1),
+    ):
+        request = request_for(ready_result())
+        mutate(request["runners"])
+        attacks.append(request)
+    for offset, request in enumerate(attacks):
+        root = tmp_path / str(offset)
+        bundle, entry = make_bundle(root)
+        (bundle / "request.json").write_bytes(canonical_bytes(request))
+        manifest = sealed.build_prediction_bundle_manifest_v2(bundle, prediction_id=PREDICTION_ID, job_id=None)
+        raw = canonical_bytes(manifest)
+        (bundle / "bundle_manifest.json").write_bytes(raw)
+        entry = sealed.prediction_bundle_index_entry(bundle=bundle, result=ready_result(), manifest_raw=raw)
+        assert_blocked(sealed.verify_indexed_prediction_bundle, root, entry)
+    value = ready_result()
+    value["prediction"]["predictions"].reverse()
+    assert_blocked(sealed.validate_prediction_result_v2, value)
+    value = ready_result()
+    value["evidence"]["prediction_output_sha256"] = ZERO_SHA
+    assert_blocked(sealed.validate_prediction_result_v2, value)
+
+
+def test_shared_blocker_allowlist_covers_literal_and_dynamic_terminal_codes_once():
+    import scripts.predict_race_now as producer
+    assert producer.BLOCKER_STAGE_BY_CODE is sealed.BLOCKER_STAGE_BY_CODE
+    source = Path(producer.__file__).read_text()
+    tree = ast.parse(source)
+    excluded_replay_only = {"REPLAY_INPUT_INVALID", "REPLAY_NONDETERMINISTIC", "REPLAY_SCORER_FAILED", "REPLAY_TAMPERED", "UNSEALED_BLOCKER_CODE"}
+    reachable = {
+        node.args[0].value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and getattr(node.func, "id", None) == "PredictionBlocked"
+        and node.args and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+    } - excluded_replay_only
+    assert reachable <= sealed.BLOCKER_STAGE_BY_CODE.keys()
+    assert sealed.CURRENT_INDEX_BLOCKER_STAGE_BY_CODE == {
+        code: "PROTOCOL" for code in {
+            "CURRENT_INDEX_INVALID", "CURRENT_INDEX_PATH_UNSAFE",
+            "CURRENT_INDEX_PUBLICATION_INVALID", "CURRENT_INDEX_PUBLICATION_MISSING",
+            "CURRENT_INDEX_REPORT_INVALID", "CURRENT_INDEX_REPORT_MISSING",
+            "CURRENT_INDEX_SIZE_INVALID", "CURRENT_INDEX_SOURCE_CHANGED",
+            "CURRENT_INDEX_SOURCE_INVALID", "CURRENT_INDEX_SOURCE_MISSING",
+            "CURRENT_INDEX_STALE", "CURRENT_INDEX_UNAVAILABLE", "CURRENT_INDEX_UNBOUNDED",
+        }
+    }
+    assert sealed.CURRENT_INDEX_BLOCKER_STAGE_BY_CODE.items() <= sealed.BLOCKER_STAGE_BY_CODE.items()
+    assert set(sealed.BLOCKER_STAGE_BY_CODE.values()) == {"PROTOCOL", "VALIDATION", "SCORING"}
+
+
+def index_entry(offset: int, prediction_id: str = PREDICTION_ID) -> dict[str, Any]:
+    return {
+        "directory": f"prediction_20260719T12000000000{offset}+1000_{offset:012x}",
+        "prediction_id": prediction_id,
+        "job_id": None,
+        "generated_at": (GENERATED + timedelta(seconds=offset)).isoformat(),
+        "status": "PREDICTION_READY",
+        "blocker_stage": None,
+        "manifest_sha256": ZERO_SHA,
+        "logical_bundle_sha256": ZERO_SHA,
+    }
+
+
+def test_index_schema_rejects_order_duplicates_count_and_unknown_fields():
+    first = index_entry(0)
+    second = index_entry(1, "22345678-1234-4123-8123-123456789abc")
+    base = {"schema_version": sealed.PREDICTION_BUNDLE_INDEX_SCHEMA, "entries": [second, first]}
+    sealed.validate_prediction_bundle_index_v1(base)
+    for invalid in (
+        {**base, "extra": True},
+        {**base, "entries": [first, second]},
+        {**base, "entries": [first, first]},
+        {**base, "entries": [index_entry(0, f"{number:08x}-1234-4123-8123-123456789abc") for number in range(257)]},
+    ):
+        assert_blocked(sealed.validate_prediction_bundle_index_v1, invalid)
+
+
+def test_index_rejects_noncanonical_duplicate_json_oversize_and_deadline(tmp_path: Path):
+    path = tmp_path / sealed.PREDICTION_BUNDLE_INDEX_NAME
+    path.write_bytes(b'{"entries":[],"schema_version":"on_demand_prediction_bundle_index_v1"}\n ')
+    assert_blocked(sealed.verify_prediction_bundle_index, tmp_path)
+    path.write_bytes(b'{"entries":[],"entries":[],"schema_version":"on_demand_prediction_bundle_index_v1"}\n')
+    assert_blocked(sealed.verify_prediction_bundle_index, tmp_path)
+    path.write_bytes(b"x" * (sealed.INDEX_MAX_BYTES + 1))
+    assert_blocked(sealed.verify_prediction_bundle_index, tmp_path)
+    path.write_bytes(canonical_bytes({"schema_version": sealed.PREDICTION_BUNDLE_INDEX_SCHEMA, "entries": []}))
+    times = iter((0.0, 2.0))
+    assert_blocked(sealed.verify_prediction_bundle_index, tmp_path, monotonic=lambda: next(times))
+
+
+@pytest.mark.parametrize("name", ["../escape", "a/../escape", "/absolute", "a\\b", "a//b", "./a"])
+def test_manifest_rejects_traversal_and_platform_names(name: str):
+    manifest = {
+        "schema_version": sealed.PREDICTION_MANIFEST_SCHEMA_V2,
+        "prediction_id": PREDICTION_ID,
+        "job_id": None,
+        "files": {name: {"bytes": 1, "sha256": ZERO_SHA}},
+    }
+    assert_blocked(sealed.validate_prediction_bundle_manifest_v2, manifest)
+
+
+def test_manifest_rejects_duplicates_bounds_and_noncanonical_order():
+    duplicate = b'{"files":{"a":{"bytes":1,"sha256":"' + ZERO_SHA.encode() + b'"},"a":{"bytes":1,"sha256":"' + ZERO_SHA.encode() + b'"}},"job_id":null,"prediction_id":"' + PREDICTION_ID.encode() + b'","schema_version":"on_demand_prediction_bundle_manifest_v2"}\n'
+    assert_blocked(sealed._canonical_json, duplicate, max_bytes=sealed.BUNDLE_CONTROL_MAX_BYTES, label="manifest")
+    files = {f"f{number:02d}": {"bytes": 1, "sha256": ZERO_SHA} for number in range(33)}
+    value = {"schema_version": sealed.PREDICTION_MANIFEST_SCHEMA_V2, "prediction_id": PREDICTION_ID, "job_id": None, "files": files}
+    assert_blocked(sealed.validate_prediction_bundle_manifest_v2, value)
+    value["files"] = {"z": {"bytes": 1, "sha256": ZERO_SHA}, "a": {"bytes": 1, "sha256": ZERO_SHA}}
+    assert_blocked(sealed.validate_prediction_bundle_manifest_v2, value)
+    value["files"] = {"a": {"bytes": sealed.BUNDLE_AGGREGATE_MAX_BYTES + 1, "sha256": ZERO_SHA}}
+    assert_blocked(sealed.validate_prediction_bundle_manifest_v2, value)
+
+
+@pytest.mark.parametrize("kind", ["extra_file", "extra_directory", "missing", "changed", "symlink", "fifo"])
+def test_detail_rejects_exact_membership_and_unsafe_types(tmp_path: Path, kind: str):
+    bundle, entry = make_bundle(tmp_path)
+    target = bundle / "config.json"
+    if kind == "extra_file":
+        (bundle / "extra").write_text("x")
+    elif kind == "extra_directory":
+        (bundle / "extra").mkdir()
+    elif kind == "missing":
+        target.unlink()
+    elif kind == "changed":
+        target.write_text("changed")
+    elif kind == "symlink":
+        target.unlink()
+        target.symlink_to("request.json")
+    else:
+        target.unlink()
+        os.mkfifo(target)
+    started = time.monotonic()
+    assert_blocked(sealed.verify_indexed_prediction_bundle, tmp_path, entry)
+    if kind == "fifo":
+        assert time.monotonic() - started < 1.0
+
+
+def test_manifest_producer_hashes_exact_descriptor_enumerated_membership(tmp_path: Path):
+    bundle = tmp_path / DIRECTORY
+    (bundle / "model").mkdir(parents=True)
+    (bundle / "result.json").write_bytes(b"result\n")
+    (bundle / "model" / "schema.json").write_bytes(b"schema\n")
+
+    manifest = sealed.build_prediction_bundle_manifest_v2(
+        bundle, prediction_id=PREDICTION_ID, job_id=None
+    )
+
+    assert manifest["files"] == {
+        "model/schema.json": {"bytes": 7, "sha256": sha256_bytes(b"schema\n")},
+        "result.json": {"bytes": 7, "sha256": sha256_bytes(b"result\n")},
+    }
+
+
+@pytest.mark.parametrize("kind", ["symlink", "fifo"])
+def test_manifest_producer_rejects_unsafe_types(tmp_path: Path, kind: str):
+    bundle = tmp_path / DIRECTORY
+    bundle.mkdir()
+    target = bundle / "unsafe"
+    if kind == "symlink":
+        target.symlink_to("missing")
+    else:
+        os.mkfifo(target)
+    assert_blocked(
+        sealed.build_prediction_bundle_manifest_v2,
+        bundle,
+        prediction_id=PREDICTION_ID,
+        job_id=None,
+    )
+
+
+def test_manifest_producer_rejects_file_replacement_during_hash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    bundle = tmp_path / DIRECTORY
+    bundle.mkdir()
+    target = bundle / "result.json"
+    target.write_bytes(b"same\n")
+    inode = target.stat().st_ino
+    original = sealed._read_fd
+
+    def replace_after_read(descriptor: int, *args: Any, **kwargs: Any) -> bytes:
+        raw = original(descriptor, *args, **kwargs)
+        if os.fstat(descriptor).st_ino == inode and target.exists():
+            target.rename(bundle / "old")
+            target.write_bytes(raw)
+            (bundle / "old").unlink()
+        return raw
+
+    monkeypatch.setattr(sealed, "_read_fd", replace_after_read)
+    assert_blocked(
+        sealed.build_prediction_bundle_manifest_v2,
+        bundle,
+        prediction_id=PREDICTION_ID,
+        job_id=None,
+    )
+
+
+def test_manifest_producer_rejects_directory_replacement_and_extra_entry_race(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    bundle = tmp_path / DIRECTORY
+    model = bundle / "model"
+    model.mkdir(parents=True)
+    (model / "schema.json").write_bytes(b"{}\n")
+    inode = model.stat().st_ino
+    original = sealed._directory_children
+
+    def replace_after_enumeration(descriptor: int) -> tuple[str, ...]:
+        children = original(descriptor)
+        if os.fstat(descriptor).st_ino == inode and model.exists():
+            model.rename(bundle / "retained-model")
+            model.mkdir()
+            (model / "extra").write_bytes(b"x")
+        return children
+
+    monkeypatch.setattr(sealed, "_directory_children", replace_after_enumeration)
+    assert_blocked(
+        sealed.build_prediction_bundle_manifest_v2,
+        bundle,
+        prediction_id=PREDICTION_ID,
+        job_id=None,
+    )
+
+
+def test_detail_rejects_configured_root_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    root = tmp_path / "root"
+    root.mkdir()
+    _, entry = make_bundle(root)
+    original = sealed._read_fd
+    replaced = False
+
+    def replace_after_read(*args: Any, **kwargs: Any) -> bytes:
+        nonlocal replaced
+        raw = original(*args, **kwargs)
+        if not replaced:
+            root.rename(tmp_path / "retained-root")
+            root.mkdir()
+            replaced = True
+        return raw
+
+    monkeypatch.setattr(sealed, "_read_fd", replace_after_read)
+    assert_blocked(sealed.verify_indexed_prediction_bundle, root, entry)
+    assert replaced
+
+
+def test_detail_rejects_indexed_bundle_component_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    root = tmp_path / "root"
+    root.mkdir()
+    bundle, entry = make_bundle(root)
+    original = sealed._read_fd
+    replaced = False
+
+    def replace_after_manifest_read(*args: Any, **kwargs: Any) -> bytes:
+        nonlocal replaced
+        raw = original(*args, **kwargs)
+        if not replaced:
+            bundle.rename(root / "retained-bundle")
+            bundle.mkdir()
+            replaced = True
+        return raw
+
+    monkeypatch.setattr(sealed, "_read_fd", replace_after_manifest_read)
+    assert_blocked(sealed.verify_indexed_prediction_bundle, root, entry)
+    assert replaced
+
+
+def test_detail_rejects_derived_directory_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    root = tmp_path / "root"
+    root.mkdir()
+    bundle, entry = make_bundle(root)
+    model = bundle / "model"
+    model_inode = model.stat().st_ino
+    original = sealed._directory_children
+    replaced = False
+
+    def replace_retained_directory(descriptor: int) -> tuple[str, ...]:
+        nonlocal replaced
+        if not replaced and os.fstat(descriptor).st_ino == model_inode:
+            model.rename(bundle / "retained-model")
+            model.mkdir()
+            replaced = True
+        return original(descriptor)
+
+    monkeypatch.setattr(sealed, "_directory_children", replace_retained_directory)
+    assert_blocked(sealed.verify_indexed_prediction_bundle, root, entry)
+    assert replaced
+
+
+def test_detail_rejects_regular_file_replacement_with_identical_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    root = tmp_path / "root"
+    root.mkdir()
+    bundle, entry = make_bundle(root)
+    target = bundle / "config.json"
+    target_inode = target.stat().st_ino
+    original = sealed._read_fd
+    replaced = False
+
+    def replace_after_read(descriptor: int, *args: Any, **kwargs: Any) -> bytes:
+        nonlocal replaced
+        raw = original(descriptor, *args, **kwargs)
+        if not replaced and os.fstat(descriptor).st_ino == target_inode:
+            target.rename(bundle / "retained-config.json")
+            target.write_bytes(raw)
+            (bundle / "retained-config.json").unlink()
+            replaced = True
+        return raw
+
+    monkeypatch.setattr(sealed, "_read_fd", replace_after_read)
+    assert_blocked(sealed.verify_indexed_prediction_bundle, root, entry)
+    assert replaced
+
+
+def test_detail_rejects_manifest_index_request_and_job_binding(tmp_path: Path):
+    bundle, entry = make_bundle(tmp_path, ready_result(job_id="job_" + "1" * 32))
+    attacks = [
+        {**entry, "job_id": "job_" + "2" * 32},
+        {**entry, "manifest_sha256": ZERO_SHA},
+        {**entry, "logical_bundle_sha256": ZERO_SHA},
+        {**entry, "directory": DIRECTORY[:-1] + "c"},
+    ]
+    for attack in attacks:
+        assert_blocked(sealed.verify_indexed_prediction_bundle, tmp_path, attack)
+    request = request_for(ready_result(job_id="job_" + "1" * 32))
+    request["race_id"] = "other"
+    (bundle / "request.json").write_bytes(canonical_bytes(request))
+    assert_blocked(sealed.verify_indexed_prediction_bundle, tmp_path, entry)
+
+
+@pytest.mark.parametrize("field", ["prediction_id", "job_id"])
+def test_detail_rejects_transplanted_byte_identical_request_identity(
+    tmp_path: Path, field: str
+):
+    job_id = "job_" + "1" * 32
+    result = ready_result(job_id=job_id)
+    bundle, entry = make_bundle(tmp_path, result)
+    transplanted = request_for(result)
+    transplanted[field] = (
+        "22345678-1234-4123-8123-123456789abc"
+        if field == "prediction_id" else "job_" + "2" * 32
+    )
+    (bundle / "request.json").write_bytes(canonical_bytes(transplanted))
+    manifest = sealed.build_prediction_bundle_manifest_v2(
+        bundle, prediction_id=result["prediction_id"], job_id=job_id
+    )
+    manifest_raw = canonical_bytes(manifest)
+    (bundle / "bundle_manifest.json").write_bytes(manifest_raw)
+    entry = sealed.prediction_bundle_index_entry(
+        bundle=bundle, result=result, manifest_raw=manifest_raw
+    )
+    assert_blocked(sealed.verify_indexed_prediction_bundle, tmp_path, entry)
+
+
+@pytest.mark.parametrize(
+    ("url", "venue", "venue_slug"),
+    [
+        ("https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5", "GOSF", "gunnedah"),
+        ("https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5", "Gunnedah", "gunnedah"),
+        ("https://www.thedogs.com.au/racing/gosford/2026-07-19/5", "GUNN", "gosford"),
+    ],
+)
+def test_result_rejects_venue_substitution_alias_and_mapping_mismatch(
+    url: str, venue: str, venue_slug: str
+):
+    value = ready_result()
+    value["race"].update(url=url, venue=venue, venue_slug=venue_slug)
+    value["race"]["race_id"] = sealed.stable_race_id({
+        "race_number": 5, "venue": venue, "race_date": "2026-07-19", "url": url,
+    })
+    assert_blocked(sealed.validate_prediction_result_v2, value)
+
+
+def test_lock_contention_stale_symlink_and_special_file_are_never_stolen(tmp_path: Path):
+    _, entry = make_bundle(tmp_path)
+    lock = tmp_path / sealed.PREDICTION_BUNDLE_LOCK_NAME
+    for create in (
+        lambda: lock.write_bytes(canonical_bytes({"pid": 999999, "token": "stale"})),
+        lambda: lock.symlink_to("missing"),
+        lambda: os.mkfifo(lock),
+    ):
+        create()
+        assert_blocked(sealed.publish_prediction_bundle_index_entry, tmp_path, entry)
+        assert lock.lexists() if hasattr(lock, "lexists") else os.path.lexists(lock)
+        if lock.is_symlink() or lock.is_file():
+            lock.unlink()
+        else:
+            os.unlink(lock)
+
+
+def test_lock_release_refuses_replacement_and_non_owner(tmp_path: Path):
+    root_fd = os.open(tmp_path, sealed._open_flags(directory=True))
+    try:
+        lock_fd, identity, payload = sealed._acquire_index_lock(
+            root_fd, start=0.0, monotonic=lambda: 0.0
+        )
+        lock = tmp_path / sealed.PREDICTION_BUNDLE_LOCK_NAME
+        lock.unlink()
+        lock.write_bytes(payload)
+        assert_blocked(sealed._release_index_lock, root_fd, lock_fd, identity, payload)
+        assert lock.exists()
+        os.close(lock_fd)
+    finally:
+        os.close(root_fd)
+
+
+def test_concurrent_publish_never_loses_an_acknowledged_entry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    _, first = make_bundle(tmp_path)
+    second = copy.deepcopy(first)
+    second["prediction_id"] = "22345678-1234-4123-8123-123456789abc"
+    second["directory"] = DIRECTORY[:-1] + "c"
+    second["generated_at"] = (GENERATED + timedelta(seconds=1)).isoformat()
+    started = threading.Barrier(2)
+
+    def publish(entry: dict[str, Any]) -> tuple[bool, str]:
+        started.wait()
+        try:
+            sealed.publish_prediction_bundle_index_entry(tmp_path, entry)
+            return True, entry["prediction_id"]
+        except PredictionBlocked:
+            return False, entry["prediction_id"]
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(publish, (first, second)))
+    acknowledged = {prediction_id for success, prediction_id in outcomes if success}
+    indexed = {row["prediction_id"] for row in sealed.verify_prediction_bundle_index(tmp_path)["entries"]}
+    assert acknowledged
+    assert indexed == acknowledged
+
+
+def test_legacy_v1_remains_verifiable_but_is_not_catalogued(tmp_path: Path):
+    legacy = tmp_path / "legacy"
+    legacy.mkdir()
+    (legacy / "result.json").write_bytes(canonical_bytes({"schema_version": "on_demand_race_prediction_v1"}))
+    (legacy / "bundle_manifest.json").write_bytes(canonical_bytes(sealed.bundle_manifest(legacy)))
+    assert sealed.verify_bundle(legacy)["schema_version"] == "on_demand_prediction_bundle_manifest_v1"
+    index = {"schema_version": sealed.PREDICTION_BUNDLE_INDEX_SCHEMA, "entries": []}
+    (tmp_path / sealed.PREDICTION_BUNDLE_INDEX_NAME).write_bytes(canonical_bytes(index))
+    assert sealed.verify_prediction_bundle_index(tmp_path)["entries"] == []
+
+
+def test_verifier_has_no_recursive_walk_or_collector_lock_authority():
+    source = Path(sealed.__file__).read_text()
+    verifier = source[source.index("def verify_indexed_prediction_bundle"):source.index("def build_prediction_bundle_manifest_v2")]
+    assert ".rglob(" not in verifier
+    assert ".walk(" not in verifier
+    assert "collector_lock" not in source.lower()
+
+
+@pytest.mark.parametrize("requested,resolved", sorted(sealed.MODEL_ALIASES.items()))
+def test_c5_result_accepts_every_supported_model_selector_mapping(
+    requested: str, resolved: str
+):
+    value = ready_result()
+    value["model"].update(
+        requested=requested,
+        resolved=resolved,
+        alias_resolved=requested != resolved,
+    )
+    if resolved != "market_only_v1":
+        value["model"].update(
+            artifact_identity="AVAILABLE",
+            artifact_sha256=ZERO_SHA,
+            artifact_manifest_identity="AVAILABLE",
+            artifact_manifest_sha256=ZERO_SHA,
+        )
+        value["evidence"].update(
+            model_artifact="model/model.json", model_manifest="model/manifest.json"
+        )
+    sealed.validate_prediction_result_v2(value)
+
+
+@pytest.mark.parametrize(
+    "requested,resolved,alias_resolved",
+    [
+        ("attacker-alias", "market_only_v1", True),
+        ("attacker-alias", "market_only_v1", False),
+        ("market-only", "market_form_residual_v1", True),
+        ("market_only_v1", "market_only_v1", True),
+        (" MARKET-ONLY ", "market_only_v1", False),
+        (" MARKET_ONLY_V1 ", "market_only_v1", True),
+        ("LATEST-RESEARCH", "market_only_v1", True),
+    ],
+)
+def test_c5_result_rejects_self_asserted_model_selector_identity(
+    requested: str, resolved: str, alias_resolved: bool
+):
+    value = ready_result()
+    value["model"].update(
+        requested=requested,
+        resolved=resolved,
+        alias_resolved=alias_resolved,
+    )
+    assert_blocked(sealed.validate_prediction_result_v2, value)
+
+
+@pytest.mark.parametrize(
+    "status,blocker_stage",
+    [("PREDICTION_BLOCKED", None), ("PREDICTION_READY", "PROTOCOL")],
+)
+def test_c5_index_and_detail_reject_status_stage_disagreement(
+    tmp_path: Path, status: str, blocker_stage: str | None
+):
+    _, entry = make_bundle(tmp_path)
+    entry.update(status=status, blocker_stage=blocker_stage)
+    index = {
+        "schema_version": sealed.PREDICTION_BUNDLE_INDEX_SCHEMA,
+        "entries": [entry],
+    }
+    assert_blocked(sealed.validate_prediction_bundle_index_v1, index)
+    assert_blocked(sealed.verify_indexed_prediction_bundle, tmp_path, entry)
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_c5_manifest_producer_rejects_hardlinked_declared_files(
+    tmp_path: Path, nested: bool
+):
+    bundle = tmp_path / DIRECTORY
+    bundle.mkdir()
+    first = bundle / "first"
+    first.write_bytes(b"same inode\n")
+    alias = bundle / "nested" / "alias" if nested else bundle / "alias"
+    alias.parent.mkdir(parents=True, exist_ok=True)
+    os.link(first, alias)
+    assert_blocked(
+        sealed.build_prediction_bundle_manifest_v2,
+        bundle,
+        prediction_id=PREDICTION_ID,
+        job_id=None,
+    )
+
+
+def test_c5_manifest_producer_rejects_declared_file_hardlinked_to_manifest(
+    tmp_path: Path
+):
+    bundle = tmp_path / DIRECTORY
+    bundle.mkdir()
+    manifest = bundle / "bundle_manifest.json"
+    manifest.write_bytes(b"existing manifest\n")
+    os.link(manifest, bundle / "alias")
+    assert_blocked(
+        sealed.build_prediction_bundle_manifest_v2,
+        bundle,
+        prediction_id=PREDICTION_ID,
+        job_id=None,
+    )
+
+
+def _rewrite_manifest_for_hardlink_attack(
+    bundle: Path, entry: dict[str, Any], relative: str, evidence: dict[str, Any]
+) -> None:
+    manifest_path = bundle / "bundle_manifest.json"
+    value = sealed._canonical_json(
+        manifest_path.read_bytes(),
+        max_bytes=sealed.BUNDLE_CONTROL_MAX_BYTES,
+        label="manifest",
+    )
+    value["files"][relative] = evidence
+    value["files"] = dict(sorted(value["files"].items()))
+    raw = canonical_bytes(value)
+    manifest_path.write_bytes(raw)
+    entry.update(
+        manifest_sha256=sha256_bytes(raw),
+        logical_bundle_sha256=sealed.logical_bundle_sha256(value),
+    )
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_c5_detail_rejects_hardlinked_declared_files(tmp_path: Path, nested: bool):
+    bundle, entry = make_bundle(tmp_path)
+    source = bundle / "config.json"
+    alias = bundle / "nested" / "alias.json" if nested else bundle / "alias.json"
+    alias.parent.mkdir(parents=True, exist_ok=True)
+    os.link(source, alias)
+    relative = alias.relative_to(bundle).as_posix()
+    _rewrite_manifest_for_hardlink_attack(
+        bundle,
+        entry,
+        relative,
+        {"bytes": source.stat().st_size, "sha256": sha256_bytes(source.read_bytes())},
+    )
+    assert_blocked(sealed.verify_indexed_prediction_bundle, tmp_path, entry)
+
+
+def test_c5_detail_rejects_declared_file_hardlinked_to_manifest(tmp_path: Path):
+    bundle, entry = make_bundle(tmp_path)
+    manifest_path = bundle / "bundle_manifest.json"
+    os.link(manifest_path, bundle / "manifest-alias.json")
+    _rewrite_manifest_for_hardlink_attack(
+        bundle,
+        entry,
+        "manifest-alias.json",
+        {"bytes": 0, "sha256": ZERO_SHA},
+    )
+    assert_blocked(sealed.verify_indexed_prediction_bundle, tmp_path, entry)

@@ -53,35 +53,17 @@ NOW = datetime.fromisoformat("2026-07-19T12:00:00+10:00")
 RACE_ID = "Race 5 - GUNN - 2026-07-19"
 
 
-def _current_index_runner_coverage(evidence_root: Path, race_url: str) -> dict[str, Any]:
-    form = evidence_root / "upcoming/gunnedah-r5.csv"
-    form.parent.mkdir(parents=True, exist_ok=True)
-    form.write_bytes(b"box|dog_name\n1|Alpha\n2|Beta\n")
-    sidecar = form.with_name(form.name + ".metadata.json")
-    sidecar.write_bytes(canonical_bytes({
-        "runner_completeness_after_canonical_alignment": {
-            "status": "COMPLETE", "runner_count": 2,
-            "participants": [{"box_number": 1, "dog_name": "Alpha", "scratch_state": "ACTIVE"}, {"box_number": 2, "dog_name": "Beta", "scratch_state": "ACTIVE"}],
-        },
-        "prejump_shadow_metadata": {
-        "status": "PASS", "metadata_is_leakage_safe": True,
-        "race_date": "2026-07-19", "venue": "GUNN", "race_number": 5,
-        "source_url": race_url, "metadata_captured_at": NOW.isoformat(),
-        "runner_box_name_list": [{"box_number": 1, "dog_name": "Alpha"}, {"box_number": 2, "dog_name": "Beta"}],
-        "canonical_final_runner_alignment": {"status": "aligned", "canonical_runner_set_status": "available"},
-    }}))
-    return {"schema_version": "prejump_sidecar_metadata_coverage_v1", "races": [{
-        "race_url": race_url, "csv_path": str(form), "sidecar_path": str(sidecar)
-    }]}
-
-
 def race(race_time: str = "13:00") -> dict[str, Any]:
     return {
         "venue": "GUNN",
         "race_number": 5,
         "date": "2026-07-19",
         "race_time": race_time,
-        "url": "https://thedogs.com.au/racing/gunnedah/2026-07-19/5",
+        "url": "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5",
+        "participants": [
+            {"box": 1, "display_name": "Alpha", "identity": "ALPHA", "source_native_runner_id": "101"},
+            {"box": 2, "display_name": "Beta", "identity": "BETA", "source_native_runner_id": None},
+        ],
     }
 
 
@@ -476,7 +458,7 @@ def test_master_packet_adapter_reuses_pr56_validated_handoff(
     assert score_calls[0]["capture_path"] == capture
 
 
-def test_default_schedule_reads_only_collector_owned_bounded_index(
+def test_legacy_refresh_report_is_not_substituted_for_collector_owned_bounded_index(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     evidence_root = tmp_path / "evidence"
@@ -486,19 +468,14 @@ def test_default_schedule_reads_only_collector_owned_bounded_index(
     source.write_bytes(
         canonical_bytes(
             {
-                "status": "SUCCESS",
                 "generated_at": NOW.isoformat(),
-                "sidecar_metadata_coverage": _current_index_runner_coverage(
-                    evidence_root,
-                    "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5",
-                ),
                 "selected_count": 1,
                 "selected_races": [
                     {
                         "date": "2026-07-19",
                         "jump_datetime": "2026-07-19T13:00:00+10:00",
                         "race_id": RACE_ID,
-                        "race_id_aliases": ["GUNN-R5-20260719"],
+                        "race_id_aliases": [RACE_ID],
                         "race_number": 5,
                         "race_time": "13:00",
                         "race_url": (
@@ -516,52 +493,21 @@ def test_default_schedule_reads_only_collector_owned_bounded_index(
         source_refresh_report_path=source,
         run_id="fixture",
     )
-    publication_locator = "daemon_publication"
-    publication_dir = evidence_root / publication_locator
-    publication_dir.mkdir()
-    state.parent.mkdir(parents=True, exist_ok=True)
-    state.write_bytes(canonical_bytes({
-        "schema_version": "shadow_autopilot_odds_capture_only_state_v1",
-        "updated_at": NOW.isoformat(),
-        "run_id": "fixture", "output_dir": publication_locator,
-        "autopilot_output_dir": publication_locator,
-        "final_status": "ODDS_CAPTURE_ONLY_READY", "status": "READY",
-    }))
-    (publication_dir / "odds_capture_only_daemon_report.json").write_bytes(
-        canonical_bytes({
-            "schema_version": "shadow_autopilot_odds_capture_only_daemon_report_v1",
-            "generated_at": NOW.isoformat(),
-            "run_id": "fixture", "output_dir": publication_locator,
-            "autopilot_output_dir": publication_locator,
-            "final_status": "ODDS_CAPTURE_ONLY_READY", "status": "READY",
-            "current_race_index_publish": published,
-        })
-    )
     browser_sentinel = object()
     monkeypatch.setitem(sys.modules, "upcoming_race_browser", browser_sentinel)
 
-    races = predict_now._default_schedule(
-        NOW,
-        12,
-        synchronous_capture.current_race_index_path(state),
-        evidence_root,
-        900,
-    )
+    with pytest.raises(synchronous_capture.CaptureOneRejected) as captured:
+        predict_now._default_schedule(
+            NOW,
+            12,
+            synchronous_capture.current_race_index_path(state),
+            evidence_root,
+            900,
+        )
 
-    assert published["status"] == "PUBLISHED"
+    assert published["status"] == "REJECTED"
+    assert captured.value.code == "CURRENT_INDEX_UNAVAILABLE"
     assert sys.modules["upcoming_race_browser"] is browser_sentinel
-    assert races == [
-        {
-            "date": "2026-07-19",
-            "jump_datetime": "2026-07-19T13:00:00+10:00",
-            "race_id": RACE_ID,
-            "race_id_aliases": ["GUNN-R5-20260719"],
-            "race_number": 5,
-            "race_time": "13:00",
-            "race_url": "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5",
-            "venue": "GUNN",
-        }
-    ]
 
 
 def test_default_refresh_downloads_only_exact_target_into_bundle(
@@ -839,15 +785,13 @@ def test_fixture_e2e_reuses_receipt_seals_features_selects_model_and_bundles(
 ):
     result = run_prediction(args(tmp_path), dependencies())
 
+    assert result["schema_version"] == "on_demand_race_prediction_v2"
     assert result["status"] == "PREDICTION_READY"
-    assert result["odds_source"] == "verified_autonomous_receipt"
     assert result["model"]["resolved"] == "market_form_residual_v1"
     assert result["model"]["alias_resolved"] is True
-    assert result["prediction"]["variant"] == "full_strength"
-    assert result["history_seal"]["safe_race_count"] == 1
-    assert result["history_seal"]["excluded_target_metadata_rows"] == 1
-    assert result["history_seal"]["excluded_at_or_after_cutoff_metadata_rows"] == 1
-    bundle = Path(result["bundle"])
+    assert sum(row["probability"] for row in result["prediction"]["predictions"]) == pytest.approx(1.0)
+    index = json.loads((tmp_path / "bundles/prediction_bundle_index_v1.json").read_bytes())
+    bundle = tmp_path / "bundles" / index["entries"][0]["directory"]
     assert (bundle / "bundle_manifest.json").is_file()
     assert json.loads((bundle / "result.json").read_bytes()) == result
 
@@ -952,7 +896,8 @@ def test_synchronous_capture_does_not_use_predictor_lock_hook(tmp_path: Path):
 
     result = run_prediction(args(tmp_path), deps)
 
-    assert result["odds_source"] == "verified_autonomous_receipt"
+    assert result["schema_version"] == "on_demand_race_prediction_v2"
+    assert result["status"] == "PREDICTION_READY"
     assert calls["acquire"] == 0
     assert len(list((tmp_path / "collector-requests/requests").glob("*.json"))) == 1
 
@@ -978,7 +923,8 @@ def test_request_response_receipt_continues_existing_scoring_once(
     deps.score_residual = score
     result = run_prediction(args(tmp_path), deps)
 
-    assert result["odds_source"] == "verified_autonomous_receipt"
+    assert result["schema_version"] == "on_demand_race_prediction_v2"
+    assert result["status"] == "PREDICTION_READY"
     assert calls == {"capture": 1, "score": 1}
     consumes = list((tmp_path / "collector-requests/consumed").glob("*.json"))
     assert len(consumes) == 1
@@ -1002,6 +948,67 @@ def test_slow_discovery_fails_before_capture_or_bundle(tmp_path: Path):
         run_prediction(args(tmp_path), deps)
     assert captured.value.code == "DISCOVERY_TIMEOUT"
     assert calls["capture"] == 0
+    assert not (tmp_path / "bundles").exists()
+
+
+def test_parser_rejects_caller_controlled_current_race_index():
+    with pytest.raises(SystemExit) as captured:
+        predict_now.build_parser().parse_args(
+            ["--race-id", "race", "--current-race-index", "/tmp/attacker.json"]
+        )
+    assert captured.value.code == 2
+
+
+def test_prediction_discovery_uses_only_fixed_current_index_locator(tmp_path: Path):
+    observed: list[Path] = []
+    deps = dependencies()
+
+    def schedule(*values: Any) -> list[dict[str, Any]]:
+        observed.append(values[2])
+        return [race()]
+
+    deps.schedule = schedule
+    run_prediction(args(tmp_path, capture_evidence_root=[tmp_path / "caller-root"]), deps)
+    assert observed == [
+        predict_now.DEFAULT_CAPTURE_EVIDENCE_ROOTS[0]
+        / "shadow_autopilot_daemon_runtime"
+        / "manual_prediction_current_race_index.json"
+    ]
+
+
+def test_request_race_failure_preserves_original_pre_bundle_blocker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    target = race()
+    deps = dependencies()
+    deps.schedule = lambda *values: [target]
+    monkeypatch.setattr(
+        predict_now,
+        "_request_race",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            PredictionBlocked("EXACT_RACE_IDENTITY_UNAVAILABLE")
+        ),
+    )
+
+    with pytest.raises(PredictionBlocked) as captured:
+        run_prediction(args(tmp_path), deps)
+
+    assert captured.value.code == "EXACT_RACE_IDENTITY_UNAVAILABLE"
+    assert "bundle_persistence_error" not in captured.value.details
+    assert not (tmp_path / "bundles").exists()
+
+
+def test_empty_runner_set_preserves_original_pre_bundle_blocker(tmp_path: Path):
+    target = race()
+    target["participants"] = []
+    deps = dependencies()
+    deps.schedule = lambda *values: [target]
+
+    with pytest.raises(PredictionBlocked) as captured:
+        run_prediction(args(tmp_path), deps)
+
+    assert captured.value.code == "RUNNER_SET_AMBIGUOUS"
+    assert "bundle_persistence_error" not in captured.value.details
     assert not (tmp_path / "bundles").exists()
 
 
@@ -1214,10 +1221,54 @@ def test_dependency_failures_become_canonical_persisted_blockers(
         run_prediction(args(tmp_path), deps)
     assert captured.value.code == code
     result = json.loads(
-        Path(captured.value.details["bundle"], "result.json").read_bytes()
+        (
+            tmp_path
+            / "bundles"
+            / json.loads(
+                (tmp_path / "bundles/prediction_bundle_index_v1.json").read_bytes()
+            )["entries"][0]["directory"]
+            / "result.json"
+        ).read_bytes()
     )
-    assert result["status"] == code
-    assert result["blockers"] == [{"code": code, "error": "RuntimeError"}]
+    assert result["status"] == "PREDICTION_BLOCKED"
+    assert result["blocker_stage"] == "SCORING"
+    assert result["blocker"] == {"code": code}
+
+
+@pytest.mark.parametrize(
+    "publication_code",
+    [
+        "PREDICTION_BUNDLE_INDEX_LOCK_UNAVAILABLE",
+        "PREDICTION_BUNDLE_INDEX_LOCK_INVALID",
+        "PREDICTION_BUNDLE_INDEX_LOCK_REPLACED",
+        "PREDICTION_BUNDLE_INDEX_LOCK_RELEASE_FAILED",
+        "PREDICTION_BUNDLE_INDEX_WRITE_FAILED",
+        "PREDICTION_BUNDLE_REPLACED",
+    ],
+)
+def test_post_creation_publication_failure_seals_once_without_retry_or_substitution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, publication_code: str
+):
+    calls = 0
+
+    def fail_publication(*values: Any, **kwargs: Any) -> None:
+        nonlocal calls
+        del values, kwargs
+        calls += 1
+        raise PredictionBlocked(publication_code)
+
+    monkeypatch.setattr(predict_now, "publish_prediction_bundle_index_entry", fail_publication)
+    deps = dependencies()
+    with pytest.raises(PredictionBlocked) as captured:
+        run_prediction(args(tmp_path), deps)
+    assert captured.value.code == publication_code
+    assert calls == 1
+    bundles = list((tmp_path / "bundles").glob("prediction_*"))
+    assert len(bundles) == 1
+    assert (bundles[0] / "result.json").is_file()
+    assert (bundles[0] / "bundle_manifest.json").is_file()
+    assert not (tmp_path / "bundles/prediction_bundle_index_v1.json").exists()
+    assert len(list((tmp_path / "collector-requests/requests").glob("*.json"))) == 1
 
 
 def test_post_jump_blocks_before_bundle_or_lock(tmp_path: Path):
@@ -1490,15 +1541,22 @@ def test_list_configs_is_finite_validated_and_deterministic(
 
 
 def test_bundle_replay_is_deterministic_and_tampering_fails(tmp_path: Path):
-    result = run_prediction(
-        args(
-            tmp_path,
-            model="market-only",
-            config=Path("configs/prediction/market-only.json"),
-        ),
-        dependencies(),
+    bundle = tmp_path / "legacy-v1"
+    bundle.mkdir()
+    receipt, *_ = receipt_from_handoff(
+        handoff(NOW - timedelta(minutes=1)),
+        current_time=NOW,
+        max_age_seconds=900,
     )
-    bundle = Path(result["bundle"])
+    result = {
+        "schema_version": "on_demand_race_prediction_v1",
+        "prediction": on_demand.market_only_prediction(receipt),
+    }
+    (bundle / "result.json").write_bytes(canonical_bytes(result))
+    (bundle / "odds_receipt.json").write_bytes(canonical_bytes(receipt))
+    (bundle / "bundle_manifest.json").write_bytes(
+        canonical_bytes(on_demand.bundle_manifest(bundle))
+    )
     assert replay_bundle(bundle) == result
     receipt_path = bundle / "odds_receipt.json"
     receipt_path.write_bytes(receipt_path.read_bytes().replace(b"2.5", b"2.6", 1))
@@ -1509,29 +1567,11 @@ def test_bundle_replay_is_deterministic_and_tampering_fails(tmp_path: Path):
 
 def test_residual_bundle_replay_reruns_scorer_at_original_timestamp(tmp_path: Path):
     result = run_prediction(args(tmp_path), dependencies())
-    calls: list[dict[str, Any]] = []
-
-    def replay_score(**kwargs: Any) -> Mapping[str, Any]:
-        calls.append(kwargs)
-        return fake_score_residual(**kwargs)
-
-    assert replay_bundle(Path(result["bundle"]), replay_score) == result
-    assert len(calls) == 1
-    assert calls[0]["score_timestamp"] == datetime.fromisoformat(
-        result["score_timestamp"]
+    index = on_demand.verify_prediction_bundle_index(tmp_path / "bundles")
+    verified = on_demand.verify_indexed_prediction_bundle(
+        tmp_path / "bundles", index["entries"][0]
     )
-    replay_paths = result["feature_identity"]["replay_paths"]
-    assert set(replay_paths) == {
-        "capture",
-        "feature_manifest",
-        "feature_rows",
-        "form_csv",
-        "implementation_manifest",
-        "manifest",
-        "model",
-        "sidecar",
-    }
-    assert all(not Path(path).is_absolute() for path in replay_paths.values())
+    assert verified.result == result
 
 
 def test_output_symlink_write_attempt_is_rejected(tmp_path: Path):

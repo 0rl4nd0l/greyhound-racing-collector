@@ -17,6 +17,7 @@ import argparse
 import json
 import re
 import sys
+import uuid
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -50,24 +51,31 @@ from scripts.refresh_prejump_upcoming import (  # noqa: E402
     venue_exclusion_aliases,
 )
 from src.predictor.on_demand import (  # noqa: E402
+    BLOCKER_STAGE_BY_CODE,
     Dependencies,
     PredictionBlocked,
+    _job_id,
     _copy_exact,
     _write_canonical,
+    build_prediction_bundle_manifest_v2,
     bundle_manifest,
     canonical_bytes,
     create_bundle,
     load_config,
     market_only_prediction,
+    prediction_bundle_index_entry,
+    publish_prediction_bundle_index_entry,
     receipt_from_handoff,
     resolve_model,
     seal_history_database,
+    sealed_runner_set_sha256,
     sha256_bytes,
     sha256_file,
     verify_bundle,
     write_exact_bytes,
 )
 from utils.csv_metadata import canonical_thedogs_race_identity  # noqa: E402
+from utils.csv_metadata import canonical_thedogs_venue_identity  # noqa: E402
 
 DEFAULT_DB = ROOT / "greyhound_racing_data.db"
 DEFAULT_OUTPUT_ROOT = ROOT / "artifacts/on_demand_prediction_runs"
@@ -180,18 +188,13 @@ def _default_schedule(
         bounded_current_race_index,
     )
 
-    races = bounded_current_race_index(
+    return bounded_current_race_index(
         current_time=current_time,
         timeout_seconds=timeout_seconds,
         index_path=index_path,
         evidence_root=evidence_root,
         max_age_seconds=max_age_seconds,
     )
-    legacy_fields = (
-        "date", "jump_datetime", "race_id", "race_id_aliases", "race_number",
-        "race_time", "race_url", "venue",
-    )
-    return [{key: race[key] for key in legacy_fields} for race in races]
 
 
 def discover_capture_handoff(
@@ -425,6 +428,81 @@ def _public_model(model: Any) -> dict[str, Any]:
     }
 
 
+def _sealed_model(model: Any) -> dict[str, Any]:
+    available = model.model_sha256 is not None
+    return {
+        "requested": model.requested,
+        "resolved": model.resolved,
+        "alias_resolved": model.alias,
+        "schema_sha256": model.schema_sha256,
+        "artifact_identity": "AVAILABLE" if available else "UNAVAILABLE_NOT_APPLICABLE",
+        "artifact_sha256": model.model_sha256,
+        "artifact_manifest_identity": "AVAILABLE" if available else "UNAVAILABLE_NOT_APPLICABLE",
+        "artifact_manifest_sha256": model.manifest_sha256,
+    }
+
+
+def _blocker_stage(code: str) -> str:
+    try:
+        return BLOCKER_STAGE_BY_CODE[code]
+    except KeyError as exc:
+        raise PredictionBlocked("UNSEALED_BLOCKER_CODE", blocker_code=code) from exc
+
+
+def _sealed_result(
+    *, state: Mapping[str, Any], generated_at: datetime, blocker: PredictionBlocked | None,
+    prediction: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    model = state["model"]
+    race_identity = state["race"]
+    ready = blocker is None
+    rows = None
+    if ready:
+        runners_by_box = {row["box_number"]: row for row in state["runners"]}
+        rows = [
+            {"rank": int(row["rank"]), "box_number": int(row["box_number"]), "dog_name": str(row["dog_name"]), "identity": runners_by_box[int(row["box_number"])]["identity"], "source_native_runner_id": runners_by_box[int(row["box_number"])]["source_native_runner_id"], "probability": float(row["probability"])}
+            for row in (prediction or {}).get("predictions", [])
+        ]
+    return {
+        "schema_version": "on_demand_race_prediction_v2",
+        "prediction_id": state["prediction_id"],
+        "job_id": state["job_id"],
+        "generated_at": generated_at.isoformat(),
+        "status": "PREDICTION_READY" if ready else "PREDICTION_BLOCKED",
+        "blocker_stage": None if ready else _blocker_stage(blocker.code),
+        "blocker": None if ready else {"code": blocker.code},
+        "research_only": True,
+        "production_persisted": False,
+        "betting_output": False,
+        "race": race_identity,
+        "model": _sealed_model(model),
+        "config": {"sha256": state["config_sha"]},
+        "evidence": {
+            "request": "request.json", "config": "config.json",
+            "model_schema": "model/config.schema.json",
+            "model_artifact": "model/model.json" if model.model_path else None,
+            "model_manifest": "model/manifest.json" if model.manifest_path else None,
+            "runner_set_sha256": state["runner_set_sha256"],
+            "prediction_output_sha256": sha256_bytes(canonical_bytes(rows)) if ready else None,
+        },
+        "prediction": None if not ready else {"predictions": rows},
+    }
+
+
+def _seal_and_publish_v2(state: dict[str, Any], result: Mapping[str, Any]) -> None:
+    bundle = Path(state["bundle"])
+    _write_canonical(bundle / "result.json", result)
+    manifest = build_prediction_bundle_manifest_v2(
+        bundle, prediction_id=str(state["prediction_id"]), job_id=state["job_id"]
+    )
+    manifest_raw = canonical_bytes(manifest)
+    _write_canonical(bundle / "bundle_manifest.json", manifest)
+    state["terminal_sealed"] = True
+    entry = prediction_bundle_index_entry(bundle=bundle, result=result, manifest_raw=manifest_raw)
+    publish_prediction_bundle_index_entry(bundle.parent, entry)
+    state["catalog_published"] = True
+
+
 def _selected_variant(prediction: Mapping[str, Any], variant: str) -> dict[str, Any]:
     probability_key = {
         "full_strength": "full_probability",
@@ -485,23 +563,17 @@ def _validated_refreshed_sources(
     return form, metadata
 
 
-def _persist_blocked_bundle(bundle: Path, exc: PredictionBlocked) -> None:
+def _persist_blocked_bundle(
+    state: Mapping[str, Any], exc: PredictionBlocked, generated_at: datetime
+) -> None:
     """Seal the smallest post-bundle blocker as a research-only result."""
 
-    bundle_path = str(bundle.resolve())
-    blocker = {"code": exc.code, **exc.details}
-    result = {
-        "schema_version": "on_demand_race_prediction_v1",
-        "status": exc.code,
-        "research_only": True,
-        "production_persisted": False,
-        "betting_output": False,
-        "blockers": [blocker],
-        "bundle": bundle_path,
-    }
-    _write_canonical(bundle / "result.json", result)
-    _write_canonical(bundle / "bundle_manifest.json", bundle_manifest(bundle))
-    exc.details["bundle"] = bundle_path
+    bundle = Path(state["bundle"])
+    result = _sealed_result(
+        state=state, generated_at=generated_at, blocker=exc, prediction=None
+    )
+    _seal_and_publish_v2(state, result)
+    exc.details["prediction_id"] = state["prediction_id"]
 
 
 def _request_race(
@@ -511,18 +583,39 @@ def _request_race(
     jump: datetime,
 ) -> dict[str, Any]:
     try:
-        race_number = int(target.get("race_number"))
+        raw_number = target.get("race_number")
+        if isinstance(raw_number, bool) or not isinstance(raw_number, int) or raw_number <= 0:
+            raise ValueError(raw_number)
+        race_number = raw_number
     except (TypeError, ValueError) as exc:
         raise PredictionBlocked("EXACT_RACE_IDENTITY_UNAVAILABLE") from exc
     race_date = str(target.get("date") or target.get("race_date") or "").strip()
     venue = str(target.get("venue") or target.get("venue_name") or "").strip().upper()
     url = str(target.get("url") or target.get("race_url") or "").strip()
-    if not race_date or not venue or not url:
+    identity = canonical_thedogs_race_identity(url)
+    url_venue = (
+        canonical_thedogs_venue_identity(identity["venue_slug"])
+        if identity is not None
+        else None
+    )
+    projection = {"race_number": race_number, "venue": venue, "race_date": race_date[:10], "url": url}
+    if (
+        not race_date or not venue or identity is None
+        or identity["canonical_url"] != url
+        or identity["race_date"] != race_date[:10]
+        or identity["race_number"] != race_number
+        or url_venue is None
+        or canonical_thedogs_venue_identity(venue) != url_venue
+        or venue != url_venue
+        or stable_race_id(projection) != race_id
+        or race_id not in stable_race_id_variants(projection)
+    ):
         raise PredictionBlocked("EXACT_RACE_IDENTITY_UNAVAILABLE")
     return {
         "race_id": race_id,
         "url": url,
         "venue": venue,
+        "venue_slug": identity["venue_slug"],
         "race_number": race_number,
         "race_date": race_date[:10],
         "jump_timestamp": jump.isoformat(),
@@ -543,17 +636,23 @@ def _request_expected_runners(
             box = int(value.get("box_number") or value.get("box"))
         except (TypeError, ValueError):
             return []
-        dog_name = str(value.get("dog_name") or value.get("name") or "").strip()
-        identity = str(value.get("identity") or dog_name).strip().upper()
+        dog_name = str(value.get("display_name") or value.get("dog_name") or value.get("name") or "").strip()
+        identity = str(value.get("identity") or "").strip()
         if not dog_name or not identity:
+            return []
+        native_id = value.get("source_native_runner_id")
+        if native_id is not None and (not isinstance(native_id, str) or not native_id or native_id != native_id.strip()):
             return []
         rows.append(
             {
                 "box_number": box,
-                "dog_name": dog_name,
+                "display_name": dog_name,
                 "identity": identity,
+                "source_native_runner_id": native_id,
             }
         )
+    if rows != sorted(rows, key=lambda row: (row["box_number"], row["identity"])) or len(rows) < 2:
+        return []
     return rows
 
 
@@ -634,9 +733,18 @@ def _acquire_or_reuse(
                 remaining_seconds=remaining,
                 required_seconds=latency_budget.capture_margin_seconds,
             )
+        protocol_race = _request_race(target, race_id=race_id, jump=jump)
+        protocol_race.pop("venue_slug")
         published = protocol.publish_request(
-            race=_request_race(target, race_id=race_id, jump=jump),
-            expected_runners=_request_expected_runners(target),
+            race=protocol_race,
+            expected_runners=[
+                {
+                    "box_number": row["box_number"],
+                    "dog_name": row["display_name"],
+                    "identity": row["identity"],
+                }
+                for row in _request_expected_runners(target)
+            ],
             created_at=current_time,
             expires_at=jump,
         )
@@ -751,7 +859,7 @@ def _acquire_or_reuse(
 
 
 def _run_prediction(
-    args: argparse.Namespace, dependencies: Dependencies, state: dict[str, Path]
+    args: argparse.Namespace, dependencies: Dependencies, state: dict[str, Any]
 ) -> dict[str, Any]:
     current_time = (
         parse_current_time(args.current_time)
@@ -776,7 +884,7 @@ def _run_prediction(
     )
     primary_evidence_root = evidence_roots[0]
     current_index_path = (
-        primary_evidence_root
+        DEFAULT_CAPTURE_EVIDENCE_ROOTS[0]
         / "shadow_autopilot_daemon_runtime"
         / "manual_prediction_current_race_index.json"
     )
@@ -821,8 +929,25 @@ def _run_prediction(
             "POST_JUMP", race_id=race_id, jump_timestamp=jump.isoformat()
         )
 
+    race = _request_race(target, race_id=race_id, jump=jump)
+    runners = _request_expected_runners(target)
+    if not runners:
+        raise PredictionBlocked("RUNNER_SET_AMBIGUOUS")
+    runner_hash = sealed_runner_set_sha256(race, runners)
+
+    # A v2 bundle is a promise that exact race and runner identity exists.
+    # Do not expose bundle state until every schema-required identity is known.
     bundle = create_bundle(Path(args.output_root), current_time)
-    state["bundle"] = bundle
+    state.update(
+        bundle=bundle,
+        prediction_id=str(uuid.uuid4()),
+        job_id=_job_id(getattr(args, "job_id", None)),
+        model=model,
+        config_sha=config_sha,
+        race=race,
+        runners=runners,
+        runner_set_sha256=runner_hash,
+    )
     race_selector = (
         getattr(args, "race", None)
         or getattr(args, "race_id", None)
@@ -830,6 +955,8 @@ def _run_prediction(
     )
     request = {
         "schema_version": "on_demand_prediction_request_v1",
+        "prediction_id": state["prediction_id"],
+        "job_id": state["job_id"],
         "race_query": race_selector,
         "race_id": race_id,
         "jump_timestamp": jump.isoformat(),
@@ -838,6 +965,8 @@ def _run_prediction(
         "model": _public_model(model),
         "config_sha256": config_sha,
         "research_only": True,
+        "runners": state["runners"],
+        "runner_set_sha256": state["runner_set_sha256"],
     }
     _write_canonical(bundle / "request.json", request)
     write_exact_bytes(bundle / "config.json", config_raw)
@@ -1021,7 +1150,7 @@ def _run_prediction(
             "POST_JUMP", race_id=race_id, completed_at=completed_time.isoformat()
         )
 
-    result = {
+    legacy_result = {
         "schema_version": "on_demand_race_prediction_v1",
         "status": "PREDICTION_READY",
         "research_only": True,
@@ -1051,23 +1180,27 @@ def _run_prediction(
         "blockers": [],
         "bundle": str(bundle.resolve()),
     }
-    _write_canonical(bundle / "result.json", result)
-    manifest = bundle_manifest(bundle)
-    _write_canonical(bundle / "bundle_manifest.json", manifest)
+    result = _sealed_result(
+        state=state,
+        generated_at=completed_time,
+        blocker=None,
+        prediction=legacy_result["prediction"],
+    )
+    _seal_and_publish_v2(state, result)
     return result
 
 
 def run_prediction(
     args: argparse.Namespace, dependencies: Dependencies
 ) -> dict[str, Any]:
-    state: dict[str, Path] = {}
+    state: dict[str, Any] = {}
     try:
         return _run_prediction(args, dependencies, state)
     except PredictionBlocked as exc:
         bundle = state.get("bundle")
-        if bundle is not None:
+        if bundle is not None and not state.get("terminal_sealed"):
             try:
-                _persist_blocked_bundle(bundle, exc)
+                _persist_blocked_bundle(state, exc, dependencies.now())
             except (OSError, TypeError, ValueError, PredictionBlocked) as persist_exc:
                 # Never replace the smallest operational blocker with a reporting failure.
                 exc.details["bundle"] = str(bundle.resolve())
@@ -1078,9 +1211,9 @@ def run_prediction(
             "PREDICTION_INTERNAL_ERROR", error=type(exc).__name__
         )
         bundle = state.get("bundle")
-        if bundle is not None:
+        if bundle is not None and not state.get("terminal_sealed"):
             try:
-                _persist_blocked_bundle(bundle, blocked)
+                _persist_blocked_bundle(state, blocked, dependencies.now())
             except (OSError, TypeError, ValueError, PredictionBlocked) as persist_exc:
                 blocked.details["bundle"] = str(bundle.resolve())
                 blocked.details["bundle_persistence_error"] = type(persist_exc).__name__
@@ -1226,6 +1359,7 @@ def build_parser() -> argparse.ArgumentParser:
     target.add_argument("--replay-bundle", type=Path)
     target.add_argument("--list-configs", action="store_true")
     parser.add_argument("--model", default="latest-research")
+    parser.add_argument("--job-id")
     parser.add_argument(
         "--config", type=Path, default=ROOT / "configs/prediction/manual-default.json"
     )
