@@ -3,6 +3,16 @@ const AxeBuilder = require('@axe-core/playwright').default;
 
 const route = '/operator-ui';
 
+function computedTimesInMilliseconds(value) {
+  return value.split(',').map((duration) => {
+    const match = duration.trim().match(/^([+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)\s*(ms|s)$/i);
+    expect(match, `valid computed time: ${duration}`).not.toBeNull();
+    const milliseconds = Number(match[1]) * (match[2].toLowerCase() === 's' ? 1000 : 1);
+    expect(Number.isFinite(milliseconds), `finite computed time: ${duration}`).toBe(true);
+    return milliseconds;
+  });
+}
+
 async function expectNoOverflow(page) {
   const width = await page.evaluate(() => ({
     scroll: document.documentElement.scrollWidth,
@@ -34,6 +44,8 @@ test.describe('atomic fixture-only operator workflow', () => {
     await expect(page.getByRole('heading', { name: 'Ranked win probabilities' })).toBeVisible();
     await expect(page.getByText('bundle-fixture-20990401-r06')).toBeVisible();
     await expectNoOverflow(page);
+    await page.locator('#audit').scrollIntoViewIfNeeded();
+    await expect(page.locator('.persistent-labels .research-warning')).toBeInViewport();
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   });
 
@@ -67,6 +79,8 @@ test.describe('atomic fixture-only operator workflow', () => {
     await expect(page.getByRole('button', { name: 'Review research-only confirmation' })).toBeVisible();
     await page.getByText('90766b65ba7f184d53b57c520fd9af1962797c9370984769d93eecc631716cea').scrollIntoViewIfNeeded();
     await expectNoOverflow(page);
+    await page.locator('#audit').scrollIntoViewIfNeeded();
+    await expect(page.locator('.persistent-labels .research-warning')).toBeInViewport();
   });
 
   test('keyboard dialog focus and print evidence view are supported', async ({ page }) => {
@@ -81,5 +95,27 @@ test.describe('atomic fixture-only operator workflow', () => {
     await page.emulateMedia({ media: 'print' });
     await expect(page.locator('.sidebar')).toHaveCSS('display', 'none');
     await expect(page.locator('.evidence-view').first()).toBeVisible();
+  });
+
+  test('reduced motion preference disables smooth scrolling and animation', async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.goto(route);
+    expect(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true);
+    const motion = await page.locator('html').evaluate((element) => {
+      const panel = document.querySelector('.panel');
+      return {
+        scrollBehavior: getComputedStyle(element).scrollBehavior,
+        animationDuration: getComputedStyle(panel).animationDuration,
+        transitionDuration: getComputedStyle(panel).transitionDuration,
+      };
+    });
+
+    expect(motion.scrollBehavior).toBe('auto');
+    for (const duration of [
+      ...computedTimesInMilliseconds(motion.animationDuration),
+      ...computedTimesInMilliseconds(motion.transitionDuration),
+    ]) {
+      expect(duration).toBeLessThanOrEqual(0.01);
+    }
   });
 });

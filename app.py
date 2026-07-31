@@ -846,6 +846,12 @@ else:
 request_times = {}
 performance_log_file = "logs/perf_server.log"
 
+
+def _is_operator_ui_path(path):
+    """Return whether path is the isolated operator UI or one of its descendants."""
+    return path == "/operator-ui" or path.startswith("/operator-ui/")
+
+
 # Ensure logs directory exists
 os.makedirs("logs", exist_ok=True)
 
@@ -862,14 +868,15 @@ except Exception as e:
 def before_request():
     """Track request start time for profiling and record module deltas"""
     # Log module delta at request start (captures any lazy imports before handler)
-    try:
-        from utils import module_monitor as _module_monitor
+    if not _is_operator_ui_path(request.path or ""):
+        try:
+            from utils import module_monitor as _module_monitor
 
-        _module_monitor.log_request_modules(
-            request.path, method=request.method, context="before_request"
-        )
-    except Exception as e:
-        _debug_silent_failure("Before-request module delta start", e)
+            _module_monitor.log_request_modules(
+                request.path, method=request.method, context="before_request"
+            )
+        except Exception as e:
+            _debug_silent_failure("Before-request module delta start", e)
     if is_profiling():
         request.start_time = time.time()
         # Log the start of request processing
@@ -903,14 +910,15 @@ def after_request(response):
     except Exception as e:
         _debug_silent_failure("After-request early return", e)
     # Log module delta at request end (captures imports within handler)
-    try:
-        from utils import module_monitor as _module_monitor
+    if not _is_operator_ui_path(request.path or ""):
+        try:
+            from utils import module_monitor as _module_monitor
 
-        _module_monitor.log_request_modules(
-            request.path, method=request.method, context="after_request"
-        )
-    except Exception as e:
-        _debug_silent_failure("Before-request module delta end", e)
+            _module_monitor.log_request_modules(
+                request.path, method=request.method, context="after_request"
+            )
+        except Exception as e:
+            _debug_silent_failure("Before-request module delta end", e)
     if is_profiling() and hasattr(request, "start_time"):
         duration = time.time() - request.start_time
         endpoint = request.endpoint or "unknown"
@@ -938,10 +946,7 @@ def after_request(response):
         if (
             "text/html" in ctype
             and not getattr(response, "direct_passthrough", False)
-            and not (
-                (request.path or "") == "/operator-ui"
-                or (request.path or "").startswith("/operator-ui/")
-            )
+            and not _is_operator_ui_path(request.path or "")
         ):
             # Never mutate error responses; let Flask render its own 4xx/5xx pages
             try:

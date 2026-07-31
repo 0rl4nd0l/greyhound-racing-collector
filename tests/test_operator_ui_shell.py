@@ -2,7 +2,10 @@ import ast
 from pathlib import Path
 from unittest.mock import patch
 
+from bs4 import BeautifulSoup
+
 import app as dashboard_app
+from utils import module_monitor
 
 
 def _unexpected_call(*_args, **_kwargs):
@@ -22,10 +25,28 @@ def test_operator_ui_get_is_fixture_only_and_has_persistent_boundaries():
         patch.object(dashboard_app.subprocess, "Popen", side_effect=_unexpected_call),
         patch.object(dashboard_app.db_manager, "get_database_stats", side_effect=_unexpected_call),
         patch.object(dashboard_app.db_manager, "get_recent_races", side_effect=_unexpected_call),
+        patch.object(
+            module_monitor, "log_request_modules", side_effect=_unexpected_call
+        ) as monitor_log,
     ):
-        html = _html()
+        html = _html("/operator-ui")
+        _html("/operator-ui/prototype")
+        monitor_log.assert_not_called()
 
-    assert html.count("PROTOTYPE DATA") >= 100
+    document = BeautifulSoup(html, "html.parser")
+    fixture_values = document.select(".fixture-value")
+    statuses = document.select(".status")
+    assert fixture_values
+    assert statuses
+    assert all(
+        value.find(class_="prototype-marker", recursive=False)
+        for value in fixture_values
+    )
+    assert all(
+        status.find(class_="prototype-marker", recursive=False) for status in statuses
+    )
+    assert len(document.select(".fixture-value > .prototype-marker")) == len(fixture_values)
+    assert len(document.select(".status > .prototype-marker")) == len(statuses)
     assert html.count("RESEARCH ONLY — NOT FOR BETTING") >= 3
     assert "<form" not in html
     assert "onclick=" not in html

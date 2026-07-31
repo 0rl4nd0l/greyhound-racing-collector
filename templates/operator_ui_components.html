@@ -6,8 +6,8 @@
 <span class="status status--{{ tone }}">
   <span class="status__dot" aria-hidden="true"></span>
   {{ value }}
+  {{ prototype_marker() }}
 </span>
-{{ prototype_marker() }}
 {%- endmacro %}
 
 {% macro fixture_value(value, extra_class="") -%}
