@@ -41,6 +41,9 @@ from race_collection.manual_prediction_collector_request import (  # noqa: E402
     ProtocolRejected,
     canonical_bytes,
 )
+from race_collection.synchronous_manual_capture import (  # noqa: E402
+    publish_current_race_index,
+)
 from scripts.shadow_feature_audit_packet import feature_activation_gate_input_paths  # noqa: E402
 
 
@@ -6620,6 +6623,31 @@ def finalize_manual_collector_request(
         )
 
 
+def publish_current_race_index_after_refresh(
+    *,
+    state_path: Path | None,
+    evidence_root: Path,
+    output_dir: Path,
+    run_id: str,
+) -> dict[str, Any]:
+    """Publish the bounded index before the slower odds-capture batch begins."""
+
+    if state_path is None:
+        return {
+            "schema_version": "collector_current_race_index_publish_v1",
+            "status": "SKIPPED",
+            "reason": "state_path_missing",
+        }
+    return publish_current_race_index(
+        state_path=state_path,
+        evidence_root=evidence_root,
+        source_refresh_report_path=(
+            output_dir / "odds_capture_refresh_report.json"
+        ),
+        run_id=run_id,
+    )
+
+
 def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
     generated_at = datetime.now().astimezone()
     run_id = args.run_id or now_id(generated_at)
@@ -6810,6 +6838,16 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
     odds_capture_refresh_report = (
         load_json(output_dir / "odds_capture_refresh_report.json")
         or load_json(output_dir / "refresh_prejump_report.json")
+    )
+    current_race_index_publish = publish_current_race_index_after_refresh(
+        state_path=getattr(args, "current_race_index_state_path", None),
+        evidence_root=evidence_root,
+        output_dir=output_dir,
+        run_id=collector_run_id or run_id,
+    )
+    write_json(
+        output_dir / "current_race_index_publish.json",
+        current_race_index_publish,
     )
     if args.enable_autonomous_odds_capture:
         capture_current_time = (
@@ -8317,6 +8355,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             "inserted_live_odds_rows"
         ),
         "manual_prediction_collector_request": manual_request_status,
+        "current_race_index_publish": current_race_index_publish,
         "prediction_sample_odds_coverage_status": daily_status.get(
             "prediction_sample_odds_coverage_status"
         ),
@@ -8488,6 +8527,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--run-id")
     parser.add_argument("--evidence-root", type=Path, default=DEFAULT_EVIDENCE_ROOT)
     parser.add_argument("--collector-lock-path", type=Path)
+    parser.add_argument("--current-race-index-state-path", type=Path)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--current-time")
     parser.add_argument("--db", type=Path, default=ROOT / "greyhound_racing_data.db")
