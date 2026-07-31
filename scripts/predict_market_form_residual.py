@@ -125,6 +125,8 @@ CAPTURE_REPORT_SCHEMAS = {
     "autonomous_live_odds_capture_report_v1",
     # Current capture reports overlay this summary after the report header.
     "autonomous_live_odds_capture_t2_miss_cause_summary_v1",
+    # Scheduled collector receipts wrap one hash-bound canonical capture attempt.
+    "collector_exact_capture_source_v1",
 }
 CAPTURE_ATTEMPT_SCHEMA = "autonomous_live_odds_capture_attempt_v1"
 CAPTURE_VALIDATION_SCHEMA = "autonomous_live_odds_capture_validation_v1"

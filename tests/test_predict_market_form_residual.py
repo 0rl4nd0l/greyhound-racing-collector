@@ -455,6 +455,28 @@ def test_scores_hash_bound_exact_race_page_grade(tmp_path):
     assert prediction["persisted"] is False
 
 
+def test_scores_collector_exact_receipt_source_wrapper(tmp_path):
+    paths = _write_fixture(tmp_path)
+    capture = _json(paths["capture"])
+    _write_json(
+        paths["capture"],
+        {
+            "schema_version": "collector_exact_capture_source_v1",
+            "collector_run_id": "scheduled-run",
+            "generated_at": "2026-07-16T18:51:00+10:00",
+            "race_id": RACE_ID,
+            "source_race_id": RACE_ID,
+            "attempts": capture["attempts"],
+        },
+    )
+
+    prediction = _score_paths(paths)
+
+    assert prediction["status"] == "MANUAL_PREJUMP_FROZEN_RESIDUAL_PREDICTION"
+    assert prediction["persisted"] is False
+    assert prediction["outcomes_present"] is False
+
+
 def test_rejects_exact_race_page_grade_bound_to_other_race(
     tmp_path, monkeypatch
 ):
