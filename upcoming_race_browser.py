@@ -1173,7 +1173,27 @@ class UpcomingRaceBrowser:
             if linked_identities == {identity["canonical_url"]}:
                 candidates = []
                 for text_node in scope.find_all(string=True):
-                    if any(
+                    if scope is link_element:
+                        grade_marked = False
+                        for parent in getattr(text_node, "parents", ()):
+                            marker = " ".join(
+                                [
+                                    str(parent.get("id") or ""),
+                                    *[str(value) for value in parent.get("class") or []],
+                                ]
+                            )
+                            if re.search(
+                                r"(?:^|[^a-z0-9])(?:grade|class)(?:$|[^a-z0-9])",
+                                marker,
+                                re.IGNORECASE,
+                            ):
+                                grade_marked = True
+                                break
+                            if parent is link_element:
+                                break
+                        if not grade_marked:
+                            continue
+                    elif any(
                         getattr(parent, "name", None) == "a"
                         for parent in getattr(text_node, "parents", ())
                     ):
