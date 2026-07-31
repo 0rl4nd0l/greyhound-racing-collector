@@ -64,10 +64,11 @@ class Session:
         self.calls = []
         self.closed = False
 
-    def get(self, url, timeout, *, allow_redirects, stream):
+    def get(self, url, headers, timeout, *, allow_redirects, stream):
         self.calls.append(
             {
                 "url": url,
+                "headers": headers,
                 "timeout": timeout,
                 "allow_redirects": allow_redirects,
                 "stream": stream,
@@ -252,6 +253,8 @@ def test_redirect_is_not_followed_and_response_is_closed(tmp_path):
     report, session = _run(tmp_path, "redirect", [_dt("10:06")] * 2, [response])
     assert report["status"] == "COMPLETED_WITH_ERRORS"
     assert len(session.calls) == 1
+    assert session.calls[0]["headers"] == observer.THEDOGS_PUBLIC_HEADERS
+    assert session.calls[0]["headers"] is not observer.THEDOGS_PUBLIC_HEADERS
     assert session.calls[0]["allow_redirects"] is False
     assert session.calls[0]["stream"] is True
     assert response.closed

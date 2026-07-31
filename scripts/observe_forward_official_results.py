@@ -30,7 +30,10 @@ from race_collection.forward_sealed_corpus import (  # noqa: E402
     ForwardSealedCorpus,
     canonical_json,
 )
-from scripts.ingest_results_for_date import thedogs_result_urls_from_race_url  # noqa: E402
+from scripts.ingest_results_for_date import (  # noqa: E402
+    THEDOGS_PUBLIC_HEADERS,
+    thedogs_result_urls_from_race_url,
+)
 
 COLLECTOR_ID = "forward-official-result-observer-v1"
 TERMINAL_STATES = {"EXAMPLE_CLOSED", "RESULT_CHANGED_BEFORE_CLOSURE"}
@@ -274,6 +277,7 @@ def observe_once(
                     def transport(url: str) -> dict[str, Any]:
                         response = session.get(
                             url,
+                            headers=dict(THEDOGS_PUBLIC_HEADERS),
                             timeout=timeout_seconds,
                             allow_redirects=False,
                             stream=True,
