@@ -589,6 +589,107 @@ def test_current_race_index_rejects_stale_or_changed_source(tmp_path: Path):
     assert changed.value.code == "CURRENT_INDEX_SOURCE_CHANGED"
 
 
+def test_producer_rejects_identical_byte_refresh_replacement_at_final_validation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+):
+    evidence_root = tmp_path / "evidence"
+    state = evidence_root / "runtime/odds_capture_state.json"
+    source = evidence_root / "refresh/report.json"
+    source.parent.mkdir(parents=True)
+    generated = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
+    race_url = "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
+    source.write_bytes(canonical_bytes({
+        "status": "SUCCESS", "generated_at": generated.isoformat(),
+        "sidecar_metadata_coverage": _runner_coverage(evidence_root, race_url, generated),
+        "selected_count": 1, "selected_races": [{
+            "date": "2026-07-19", "jump_datetime": "2026-07-19T13:00:00+10:00",
+            "race_id": "Race 5 - GUNN - 2026-07-19",
+            "race_id_aliases": ["Race 5 - GUNN - 2026-07-19"],
+            "race_number": 5, "race_time": "13:00", "race_url": race_url,
+            "venue": "GUNN",
+        }],
+    }))
+    index_path = current_race_index_path(state)
+    publication_path = index_path.parent / capture.CURRENT_RACE_INDEX_PUBLICATION_FILENAME
+    real_validate = capture._RetainedSafeFiles.validate
+
+    def replace_refresh_at_final_boundary(retained: Any) -> None:
+        assert index_path.exists() and publication_path.exists()
+        replacement = source.with_name("replacement.json")
+        replacement.write_bytes(source.read_bytes())
+        os.replace(replacement, source)
+        real_validate(retained)
+
+    monkeypatch.setattr(
+        capture._RetainedSafeFiles, "validate", replace_refresh_at_final_boundary
+    )
+    rejected = publish_current_race_index(
+        state_path=state, evidence_root=evidence_root,
+        source_refresh_report_path=source, run_id="adversarial",
+    )
+
+    assert rejected["status"] == "REJECTED"
+    assert rejected["reason"] == "CURRENT_INDEX_PATH_UNSAFE"
+    assert not index_path.exists()
+    assert not publication_path.exists()
+
+
+def test_v2_runner_identity_uses_canonical_punctuation_protocol(tmp_path: Path):
+    evidence_root = tmp_path / "evidence"
+    generated = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
+    race_url = "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
+    coverage = _runner_coverage(evidence_root, race_url, generated)
+    record = coverage["races"][0]
+    csv_path = Path(record["csv_path"])
+    sidecar_path = Path(record["sidecar_path"])
+    sidecar = json.loads(sidecar_path.read_bytes())
+    for collection in (
+        sidecar["runner_completeness_after_canonical_alignment"]["participants"],
+        sidecar["prejump_shadow_metadata"]["runner_box_name_list"],
+    ):
+        collection[0]["dog_name"] = "O'MALLEY"
+    sidecar_path.write_bytes(canonical_bytes(sidecar))
+    csv_path.write_bytes(b"box|dog_name\n1|OMALLEY\n2|Beta\n")
+    race = {
+        "race_url": race_url, "date": "2026-07-19", "venue": "GUNN",
+        "race_number": 5, "jump_datetime": "2026-07-19T13:00:00+10:00",
+    }
+    source = {"generated_at": generated.isoformat(), "sidecar_metadata_coverage": coverage}
+
+    rows, _, _ = capture._v2_runner_rows(race, source, evidence_root=evidence_root)
+
+    assert rows[0]["display_name"] == "O'MALLEY"
+    assert rows[0]["identity"] == "OMALLEY"
+
+
+def test_v2_runner_punctuation_variants_cannot_evade_duplicate_validation(tmp_path: Path):
+    evidence_root = tmp_path / "evidence"
+    generated = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
+    race_url = "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
+    coverage = _runner_coverage(evidence_root, race_url, generated)
+    record = coverage["races"][0]
+    sidecar_path = Path(record["sidecar_path"])
+    sidecar = json.loads(sidecar_path.read_bytes())
+    names = ("O'MALLEY", "OMALLEY")
+    for key in (
+        ("runner_completeness_after_canonical_alignment", "participants"),
+        ("prejump_shadow_metadata", "runner_box_name_list"),
+    ):
+        for item, name in zip(sidecar[key[0]][key[1]], names):
+            item["dog_name"] = name
+    sidecar_path.write_bytes(canonical_bytes(sidecar))
+    race = {
+        "race_url": race_url, "date": "2026-07-19", "venue": "GUNN",
+        "race_number": 5, "jump_datetime": "2026-07-19T13:00:00+10:00",
+    }
+    source = {"generated_at": generated.isoformat(), "sidecar_metadata_coverage": coverage}
+
+    with pytest.raises(CaptureOneRejected) as rejected:
+        capture._v2_runner_rows(race, source, evidence_root=evidence_root)
+
+    assert rejected.value.details["reason"] == "runner_duplicate_or_invalid"
+
+
 @pytest.mark.parametrize(
     ("first_aliases", "second_aliases", "second_id"),
     [

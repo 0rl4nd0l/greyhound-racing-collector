@@ -33,6 +33,7 @@ from src.predictor.on_demand import (
     receipt_from_handoff,
     sha256_bytes,
 )
+from utils.runner_completeness import normalise_runner_name
 
 ROOT = Path(__file__).resolve().parents[1]
 HANDOFF_SCHEMA = "on_demand_verified_collector_capture_v2"
@@ -814,7 +815,7 @@ def _v2_runner_rows(
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_status_missing_or_inactive")
     detailed_participants = aligned_details["participants"]
     native_ids = {
-        (item.get("box_number"), str(item.get("dog_name") or "").strip()):
+        (item.get("box_number"), normalise_runner_name(item.get("dog_name"))):
         item.get("source_native_runner_id", item.get("runner_id"))
         for item in detailed_participants
         if isinstance(item, Mapping)
@@ -833,7 +834,7 @@ def _v2_runner_rows(
                 "CURRENT_INDEX_SOURCE_INVALID", reason="runner_status_missing_or_inactive"
             )
         canonical_active_projection.append(
-            (item.get("box_number"), item.get("dog_name"))
+            (item.get("box_number"), normalise_runner_name(item.get("dog_name")))
         )
     participant_projection = []
     for item in participants:
@@ -851,7 +852,7 @@ def _v2_runner_rows(
                 "CURRENT_INDEX_SOURCE_INVALID", reason="runner_status_ambiguous"
             )
         participant_projection.append(
-            (item.get("box_number"), item.get("dog_name"))
+            (item.get("box_number"), normalise_runner_name(item.get("dog_name")))
         )
     if (
         canonical_active_projection != participant_projection
@@ -875,12 +876,12 @@ def _v2_runner_rows(
         except (KeyError, TypeError, ValueError) as exc:
             raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_box_invalid") from exc
         name = str(item.get("dog_name") or "").strip()
-        identity = " ".join(name.split()).upper()
+        identity = normalise_runner_name(name)
         if box <= 0 or not name or box in boxes or identity in identities:
             raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_duplicate_or_invalid")
         native_id = item.get(
             "source_native_runner_id",
-            item.get("runner_id", native_ids.get((box, name))),
+            item.get("runner_id", native_ids.get((box, identity))),
         )
         if native_id is not None and (isinstance(native_id, bool) or not isinstance(native_id, (str, int)) or not str(native_id).strip()):
             raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_id_invalid")
@@ -939,7 +940,7 @@ def _v2_runner_rows(
                         raise ValueError("runner_box_prefix_ambiguous")
                 elif re.match(r"^[0-9]", name_cell):
                     raise ValueError("runner_box_prefix_malformed")
-            csv_runners.append((box, " ".join(name.split()).upper()))
+            csv_runners.append((box, normalise_runner_name(name)))
     except (csv.Error, TypeError, ValueError) as exc:
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="csv_runner_rows_invalid") from exc
     accepted = [(item["box"], item["identity"]) for item in rows]
@@ -1112,80 +1113,83 @@ def publish_current_race_index(
         "source_refresh_report_path": str(source_refresh_report_path),
         "run_id": run_id,
     }
+    publication_started = False
     try:
-        source_raw = _safe_file_bytes(
-            source_refresh_report_path,
-            evidence_root=evidence_root,
-            missing_code="CURRENT_INDEX_SOURCE_MISSING",
-        )
-        source = json.loads(source_raw)
-        if not isinstance(source, Mapping):
-            raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
-        if source.get("status") != "SUCCESS" or source.get("dry_run") is True:
-            raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="refresh_not_accepted_success")
-        source_generated_at = datetime.fromisoformat(str(source["generated_at"]))
-        if (
-            source_generated_at.tzinfo is None
-            or source_generated_at.utcoffset() is None
-        ):
-            raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
-        races = _normalize_current_index_rows(source, max_races=max_races)
-        sealed_races = []
-        for race in races:
-            runners, runner_source, runner_hash = _v2_runner_rows(
-                race, source, evidence_root=evidence_root
+        with _RetainedSafeFiles(evidence_root) as retained:
+            source_raw = retained.read(
+                source_refresh_report_path,
+                missing_code="CURRENT_INDEX_SOURCE_MISSING",
             )
-            sealed_races.append(
-                {
-                    **race,
-                    "runners": runners,
-                    "runner_set_sha256": runner_hash,
-                    "runner_source": runner_source,
-                }
+            source = json.loads(source_raw)
+            if not isinstance(source, Mapping):
+                raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
+            if source.get("status") != "SUCCESS" or source.get("dry_run") is True:
+                raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="refresh_not_accepted_success")
+            source_generated_at = datetime.fromisoformat(str(source["generated_at"]))
+            if (
+                source_generated_at.tzinfo is None
+                or source_generated_at.utcoffset() is None
+            ):
+                raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
+            races = _normalize_current_index_rows(source, max_races=max_races)
+            sealed_races = []
+            for race in races:
+                runners, runner_source, runner_hash = _v2_runner_rows(
+                    race, source, evidence_root=evidence_root, snapshot=retained
+                )
+                sealed_races.append(
+                    {
+                        **race,
+                        "runners": runners,
+                        "runner_set_sha256": runner_hash,
+                        "runner_source": runner_source,
+                    }
+                )
+            root = evidence_root.absolute()
+            refresh_locator = source_refresh_report_path.absolute().relative_to(root).as_posix()
+            packet = {
+                "schema_version": CURRENT_RACE_INDEX_SCHEMA,
+                "run_id": run_id,
+                "source_generated_at": source_generated_at.isoformat(),
+                "source_refresh_report_path": refresh_locator,
+                "source_refresh_report_sha256": sha256_bytes(source_raw),
+                "race_count": len(races),
+                "max_races": max_races,
+                "races": sealed_races,
+            }
+            _atomic_replace_canonical(index_path, packet, evidence_root=evidence_root)
+            publication_started = True
+            packet_raw = canonical_bytes(packet)
+            publication = {
+                "schema_version": "collector_current_race_index_publication_v1",
+                "status": "PUBLISHED",
+                "packet_schema_version": CURRENT_RACE_INDEX_SCHEMA,
+                "packet_sha256": sha256_bytes(packet_raw),
+                "run_id": run_id,
+                "source_refresh_report_path": refresh_locator,
+                "source_refresh_report_sha256": packet["source_refresh_report_sha256"],
+                "source_generated_at": source_generated_at.isoformat(),
+                "race_count": len(sealed_races),
+                "race_identities": [
+                    {
+                        "race_id": race["race_id"],
+                        "race_url": race["race_url"],
+                        "date": race["date"],
+                        "venue": race["venue"],
+                        "race_number": race["race_number"],
+                        "jump_datetime": race["jump_datetime"],
+                    }
+                    for race in sealed_races
+                ],
+                "runner_set_sha256": [race["runner_set_sha256"] for race in sealed_races],
+                "runner_sources": [race["runner_source"] for race in sealed_races],
+            }
+            _atomic_replace_canonical(
+                index_path.parent / CURRENT_RACE_INDEX_PUBLICATION_FILENAME,
+                publication,
+                evidence_root=evidence_root,
             )
-        root = evidence_root.absolute()
-        refresh_locator = source_refresh_report_path.absolute().relative_to(root).as_posix()
-        packet = {
-            "schema_version": CURRENT_RACE_INDEX_SCHEMA,
-            "run_id": run_id,
-            "source_generated_at": source_generated_at.isoformat(),
-            "source_refresh_report_path": refresh_locator,
-            "source_refresh_report_sha256": sha256_bytes(source_raw),
-            "race_count": len(races),
-            "max_races": max_races,
-            "races": sealed_races,
-        }
-        _atomic_replace_canonical(index_path, packet, evidence_root=evidence_root)
-        packet_raw = canonical_bytes(packet)
-        publication = {
-            "schema_version": "collector_current_race_index_publication_v1",
-            "status": "PUBLISHED",
-            "packet_schema_version": CURRENT_RACE_INDEX_SCHEMA,
-            "packet_sha256": sha256_bytes(packet_raw),
-            "run_id": run_id,
-            "source_refresh_report_path": refresh_locator,
-            "source_refresh_report_sha256": packet["source_refresh_report_sha256"],
-            "source_generated_at": source_generated_at.isoformat(),
-            "race_count": len(sealed_races),
-            "race_identities": [
-                {
-                    "race_id": race["race_id"],
-                    "race_url": race["race_url"],
-                    "date": race["date"],
-                    "venue": race["venue"],
-                    "race_number": race["race_number"],
-                    "jump_datetime": race["jump_datetime"],
-                }
-                for race in sealed_races
-            ],
-            "runner_set_sha256": [race["runner_set_sha256"] for race in sealed_races],
-            "runner_sources": [race["runner_source"] for race in sealed_races],
-        }
-        _atomic_replace_canonical(
-            index_path.parent / CURRENT_RACE_INDEX_PUBLICATION_FILENAME,
-            publication,
-            evidence_root=evidence_root,
-        )
+            retained.validate()
     except (
         CaptureOneRejected,
         KeyError,
@@ -1194,6 +1198,15 @@ def publish_current_race_index(
         ValueError,
         json.JSONDecodeError,
     ) as exc:
+        if publication_started:
+            for published_path in (
+                index_path,
+                index_path.parent / CURRENT_RACE_INDEX_PUBLICATION_FILENAME,
+            ):
+                try:
+                    published_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
         report["reason"] = (
             exc.code if isinstance(exc, CaptureOneRejected) else type(exc).__name__
         )
