@@ -867,6 +867,153 @@ def test_run_once_defer_writes_startup_output_manifest(tmp_path, monkeypatch):
     assert any(path.endswith("full_daemon_odds_window_defer.json") for path in manifest["files"])
 
 
+def test_run_once_defer_observes_result_before_odds_priority_return(
+    tmp_path, monkeypatch
+):
+    evidence_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
+    output_dir = evidence_root / "shadow_autopilot_daemonization_v1_observer_defer"
+    odds_state_path = tmp_path / "runtime" / "odds_capture_state.json"
+    corpus_root = tmp_path / "forward-corpus"
+    observed = {
+        "status": "COMPLETED",
+        "attempted_race_ids": ["race-1"],
+        "counts": {"observed": 1},
+    }
+
+    monkeypatch.setattr(daemon, "ROOT", tmp_path)
+    monkeypatch.setattr(daemon, "copy_if_exists", lambda source, dest: None)
+    monkeypatch.setattr(
+        daemon,
+        "write_service_files",
+        lambda **kwargs: {
+            "status": "SERVICE_FILES_WRITTEN",
+            "systemd_deployment_ready": True,
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "run_forward_official_result_observer",
+        lambda args, run_id: observed | {"run_id": run_id},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "full_daemon_odds_window_defer_decision",
+        lambda odds_state, current_time: {
+            "should_defer": True,
+            "reason": "test_fixed_window_open",
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "acquire_lock_with_odds_capture_retry",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("odds-priority return must remain before the full lock")
+        ),
+    )
+
+    args = daemon.parse_args(
+        [
+            "run-once",
+            "--run-id",
+            "observer_defer",
+            "--evidence-root",
+            str(evidence_root),
+            "--output-dir",
+            str(output_dir),
+            "--current-time",
+            "2026-06-13T15:17:11+10:00",
+            "--enable-forward-official-result-observer",
+            "--forward-corpus-root",
+            str(corpus_root),
+            "--enable-autonomous-odds-capture",
+            "--odds-capture-state-path",
+            str(odds_state_path),
+        ]
+    )
+
+    report = daemon.run_once(args)
+
+    assert report["final_verdict"] == "DAEMON_DEFERRED_TO_ODDS_CAPTURE_ONLY"
+    assert report["forward_official_result_observer"] == observed | {
+        "run_id": "observer_defer"
+    }
+    assert report["no_write_guarantees"]["official_result_evidence_write"] is True
+    assert json.loads(
+        (output_dir / "forward_official_result_observer.json").read_text()
+    ) == observed | {"run_id": "observer_defer"}
+
+
+def test_run_once_observer_failure_stops_before_odds_defer_and_full_lock(
+    tmp_path, monkeypatch
+):
+    evidence_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
+    output_dir = evidence_root / "shadow_autopilot_daemonization_v1_observer_failed"
+    state_path = tmp_path / "runtime" / "state.json"
+    failed = {
+        "status": "COMPLETED_WITH_ERRORS",
+        "attempted_race_ids": ["race-1"],
+    }
+
+    monkeypatch.setattr(daemon, "ROOT", tmp_path)
+    monkeypatch.setattr(daemon, "copy_if_exists", lambda source, dest: None)
+    monkeypatch.setattr(
+        daemon,
+        "write_service_files",
+        lambda **kwargs: {
+            "status": "SERVICE_FILES_WRITTEN",
+            "systemd_deployment_ready": True,
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "run_forward_official_result_observer",
+        lambda args, run_id: failed | {"run_id": run_id},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "full_daemon_odds_window_defer_decision",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("failed observer must stop before odds defer")
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "acquire_lock_with_odds_capture_retry",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("failed observer must stop before the full lock")
+        ),
+    )
+
+    args = daemon.parse_args(
+        [
+            "run-once",
+            "--run-id",
+            "observer_failed",
+            "--evidence-root",
+            str(evidence_root),
+            "--output-dir",
+            str(output_dir),
+            "--state-path",
+            str(state_path),
+            "--enable-forward-official-result-observer",
+            "--forward-corpus-root",
+            str(tmp_path / "forward-corpus"),
+            "--enable-autonomous-odds-capture",
+        ]
+    )
+
+    report = daemon.run_once(args)
+
+    assert report["final_verdict"] == "PARTIAL_DAEMONIZATION"
+    assert report["lock_validation_status"] == "NOT_ACQUIRED_OBSERVER_FAILED"
+    assert report["forward_official_result_observer"] == failed | {
+        "run_id": "observer_failed"
+    }
+    assert json.loads(state_path.read_text())[
+        "forward_official_result_observer"
+    ] == failed | {"run_id": "observer_failed"}
+
+
 def test_run_once_defers_before_lock_when_t2_window_recomputed_due(
     tmp_path, monkeypatch
 ):

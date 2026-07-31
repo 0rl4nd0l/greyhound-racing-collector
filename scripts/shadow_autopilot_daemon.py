@@ -9115,6 +9115,55 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
     copy_if_exists(timer_path, output_dir / "systemd" / TIMER_NAME)
     write_json(output_dir / "output_manifest.json", output_manifest(output_dir))
 
+    forward_official_result_observer: dict[str, Any] = {
+        "status": "DISABLED",
+        "attempted_race_ids": [],
+    }
+    if args.enable_forward_official_result_observer:
+        try:
+            forward_official_result_observer = run_forward_official_result_observer(
+                args, run_id
+            )
+        except Exception as exc:
+            forward_official_result_observer = {
+                "status": "FAILED",
+                "attempted_race_ids": [],
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+        write_json(
+            output_dir / "forward_official_result_observer.json",
+            forward_official_result_observer,
+        )
+        if forward_official_result_observer.get("status") != "COMPLETED":
+            persist_forward_observer_failure(
+                output_dir=output_dir,
+                state_path=state_path,
+                run_id=run_id,
+                generated_at=generated_at,
+                observer=forward_official_result_observer,
+            )
+            result = {
+                **completed_daemon_run_report_envelope(
+                    run_id=run_id,
+                    generated_at=generated_at,
+                    current_time=current_time,
+                    output_dir=output_dir,
+                    final_verdict="PARTIAL_DAEMONIZATION",
+                ),
+                "status": "PARTIAL_DAEMONIZATION",
+                "runtime_action": "CHECK_FORWARD_OFFICIAL_RESULT_OBSERVER",
+                "readiness_decision": "READY_FOR_RELIABILITY_REVIEW",
+                "forward_official_result_observer": forward_official_result_observer,
+                "lock_path": relpath(lock_path),
+                "lock_validation_status": "NOT_ACQUIRED_OBSERVER_FAILED",
+                "protected_paths_unchanged_or_allowed": False,
+                "no_write_guarantees": dict(NO_WRITE_GUARANTEES),
+            }
+            write_text(output_dir / "final_status.txt", "PARTIAL_DAEMONIZATION\n")
+            write_json(output_dir / "daemon_run_report.json", result)
+            write_json(output_dir / "output_manifest.json", output_manifest(output_dir))
+            return result
+
     current_dt = parse_datetime_value(current_time, default_tz=generated_at.tzinfo) or generated_at
     if args.enable_autonomous_odds_capture:
         odds_state = load_json(odds_state_path)
@@ -9139,13 +9188,16 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
                 "lock_validation_status": "NOT_ACQUIRED_DEFERRED",
                 "odds_capture_state_path": relpath(odds_state_path),
                 "odds_capture_defer_decision": defer_decision,
+                "forward_official_result_observer": forward_official_result_observer,
                 "protected_paths_unchanged_or_allowed": True,
                 "systemd_deployment_status": service_info.get("status"),
                 "systemd_deployment_ready": service_info.get("systemd_deployment_ready"),
                 "no_write_guarantees": {
                     "db_write": False,
                     "live_odds_write": False,
-                    "official_result_evidence_write": False,
+                    "official_result_evidence_write": bool(
+                        forward_official_result_observer.get("attempted_race_ids")
+                    ),
                     "label_write": False,
                     "production_pointer_update": False,
                     "production_promotion": False,
@@ -9180,10 +9232,6 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
     daily_manifest: dict[str, Any] | None = None
     shadow_odds_snapshot: dict[str, Any] | None = None
     odds_capture_state_publish: dict[str, Any] = {"status": "NOT_RUN"}
-    forward_official_result_observer: dict[str, Any] = {
-        "status": "DISABLED",
-        "attempted_race_ids": [],
-    }
     lock_validation: dict[str, Any]
     recovery_validation = {"status": "NOT_RUN"}
     try:
@@ -9210,26 +9258,6 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             if duplicate_probe.get("status") == "PASS" and stale_probe.get("status") == "PASS"
             else "FAIL",
         }
-        if args.enable_forward_official_result_observer:
-            forward_official_result_observer = run_forward_official_result_observer(
-                args, run_id
-            )
-            write_json(
-                output_dir / "forward_official_result_observer.json",
-                forward_official_result_observer,
-            )
-            if forward_official_result_observer.get("status") != "COMPLETED":
-                persist_forward_observer_failure(
-                    output_dir=output_dir,
-                    state_path=state_path,
-                    run_id=run_id,
-                    generated_at=generated_at,
-                    observer=forward_official_result_observer,
-                )
-                raise RuntimeError(
-                    "forward official-result observer failed closed: "
-                    + str(forward_official_result_observer.get("status"))
-                )
         recovery_validation = {
             "schema_version": "shadow_autopilot_recovery_validation_v1",
             "timeout_probe": simulate_timeout_recovery(output_dir),
