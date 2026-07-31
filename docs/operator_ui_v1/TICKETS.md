@@ -698,7 +698,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Authenticated Level 1 GET/read-only authority with mandatory access audit.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Preserve accepted/integrated `GHU-022` through C3; proceed only through the ready `GHU-026` dependency path.
+- Next safe action: Preserve accepted/integrated `GHU-022` through C3 and accepted/integrated R2 closeout; proceed only through ready `GHU-030`.
 - Closeout evidence: Accepted combined correction ticket `GHU-022C3/GHU-023C3`. Candidate base `d5e1c98620ea970333f76e8f14f94d55debf16bb`, base tree `4c4f3869dcfece12c56ff2da87ddbc5ccd85d579`; implementer run `20260731T173401Z-d5e1c98620-273581`, session `019fb93d-aee7-7c73-88db-51eb7e265061`, actual model `gpt-5.6-sol`, archive `/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/codex-x-run-archive/20260731T173401Z-d5e1c98620-273581`. Exact nine-file frozen diff SHA-256 `8c8b08d000daad16dc76428648444ebcea121a302c41f00c8e41b7e144185368`, frozen tree `f5789dc66c8ebe35029ebdc5c570b4ab53cb6f14`. Implementer validation: focused four-file suite `640 passed in 43.74s`; `tests/operator_ui` `528 passed in 49.04s`; shared prediction regression `62 passed in 2.54s`; `git diff --check` exit 0. Independent reviewer run `20260731T174136Z-d5e1c98620-c10a14`, session `019fb944-a8e1-7850-91fb-b5026e4e7c69`, actual model `gpt-5.6-sol`, verdict `ACCEPTED`; independently matched base/head/tree, all nine file hashes, candidate tree, and diff hash, reviewed freshness, descriptor-bound/no-mixing reads, upstream-state preservation, old verified-view classification, missing/unreadable/tampered distinction, exact-ID historical reads, and forbidden operations, parsed all nine changed Python files, and passed normalized `diff --check`; pytest was unavailable in the reviewer environment. Non-blocking: verified-view mode can return arbitrarily old but fully verified identity/hash-bound evidence, so the API owns freshness classification. Parent matched the exact frozen nine-file hash set and diff; parent validation: focused four-file suite `640 passed in 42.54s`, `tests/operator_ui` `528 passed in 48.19s`, shared prediction regression `62 passed in 2.90s`, and `git diff --check` exit 0. Integrated at commit `d5dcb1f84690c0c0bd68b2d472f89189fc4ad404`, tree `f5789dc66c8ebe35029ebdc5c570b4ab53cb6f14`. Rejected history remains preserved: initial candidate `a2cb104a57658a08422c45cd5714e0ae424a529aa22f91c781a5b1513d43b441` and its findings; C1 candidate `c8e918e350ba2278d9528f22ae3c65be761e19b402f04c40d8cb775d56695de5` and its findings; C2 candidate `22c5aa1fd53924f9196e28228e5b9dfbe111dcdc0845e1c386e113bc76560813` and its remaining race-detail, old verified-view, and `PermissionError` findings. No push, PR, merge, deployment, runtime/data mutation, live proof, training, promotion, EV, betting, or public exposure occurred; claims remain evidence-limited.
 
 ## GHU-023P — Producer-sealed prediction bundle read-contract prerequisite
@@ -742,7 +742,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Authenticated Level 1 GET/read-only authority with mandatory access audit.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Preserve accepted/integrated `GHU-023` through C3; proceed only through the ready `GHU-026` dependency path.
+- Next safe action: Preserve accepted/integrated `GHU-023` through C3 and accepted/integrated R2 closeout; proceed only through ready `GHU-030`.
 - Closeout evidence: Shares the exact accepted combined `GHU-022C3/GHU-023C3` candidate, review, parent validation, integration, rejection-history preservation, non-blocking freshness observation, prohibited-operation record, and evidence-limited claims recorded under `GHU-022` above.
 
 ## GHU-024 — Collector and system-status live adapters
@@ -764,7 +764,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Authenticated Level 1 GET/read-only authority with mandatory access audit.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Preserve accepted/integrated state; it now satisfies one `GHU-026` dependency.
+- Next safe action: Preserve accepted/integrated state and accepted/integrated R2 closeout; proceed only through ready `GHU-030`.
 - Closeout evidence: Accepted/integrated before this C3 ledger reconciliation; prior accepted evidence is preserved and not rewritten by this tranche.
 
 ## GHU-025 — Corpus and model live adapters
@@ -786,14 +786,14 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Authenticated Level 1 GET/read-only authority with mandatory access audit.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Preserve accepted/integrated state; it now satisfies one `GHU-026` dependency.
+- Next safe action: Preserve accepted/integrated state and accepted/integrated R2 closeout; proceed only through ready `GHU-030`.
 - Closeout evidence: Accepted/integrated before this C3 ledger reconciliation; prior accepted evidence is preserved and not rewritten by this tranche.
 
 ## GHU-026 — Live read-only UI integration
 
 - Release: `R2`
 - Priority: `P2`
-- Status: `ready`
+- Status: `accepted`
 - Dependencies: `GHU-022`, `GHU-023`, `GHU-024`, `GHU-025`
 - Dependency state: Satisfied; every listed prerequisite is accepted/integrated.
 - Model routing: GPT-5.6 Terra; fallback GPT-5.6 Luna
@@ -806,17 +806,18 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Risks: Material risk: Stop if the UI must bypass API contracts to read arbitrary files directly. Missing, stale, malformed, conflicting, or unavailable evidence must fail closed.
 - Stop conditions: Stop if the UI must bypass API contracts to read arbitrary files directly.
 - Authority: Authenticated Level 1 GET/read-only authority with mandatory access audit.
-- Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
+- Claims supported: Accepted/integrated R2 fixture prototype plus authenticated GET-only evidence-backed dashboard, exact provider binding, audit-before-disclosure, truthful stale/unavailable/offline/auth states, and validated desktop/mobile/accessibility behavior at integrated tree `7e087f5f117a8278e3ae61016baa3c8c3adf2d06`.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Assign one fresh bounded implementer, then independently review and parent-integrate the exact `GHU-026` delta before `GHU-027`.
-- Closeout evidence: PENDING: exact base/head/tree/path/diff identities, commands/exits, focused tests, reviewer identity/verdict, parent decision, and applicable commit/PR/merge/deploy/proof fields.
+- Next safe action: Preserve accepted/integrated R2 evidence; proceed only through ready `GHU-030` and the dependency-ordered coupled `GHU-030 + GHU-031` tranche.
+- Closeout evidence: Rejected initial run `20260731T175127Z-d5dcb1f846-a7be01`, session `019fb94d-ab83-75a1-bae9-4eb635660147`, archive `/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/codex-x-run-archive/20260731T175127Z-d5dcb1f846-a7be01`, historical shorthand candidate tree `6d7b5d...` and diff `b464...`: parent focused validation was `1 failed, 8 passed` because there was no explicit auth literal/provider-binding seam and browser coverage was incomplete. Rejected C1 run `20260731T175955Z-7d581abb7f-63adaa`, session `019fb955-6551-7cc3-a01f-8713152942e8`, archive `/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/codex-x-run-archive/20260731T175955Z-7d581abb7f-63adaa`, historical shorthand tree `122d169...` and binary diff `f6a260...`: Python focused `13 passed`, API/security `202 passed`, but parent browser `12 passed, 2 failed` for horizontal overflow at 375px. Reviewer run `20260731T180927Z-7d581abb7f-9345cb`, session `019fb95e-165a-7ee3-81db-a8eac3b1a82d`, archive of that run ID, was interrupted after the material browser failure and issued no acceptance verdict. Rejected C2 run `20260731T181619Z-7d581abb7f-7b2c3a`, session `019fb964-77cc-7323-8a07-009d620d797a`, archive `/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/codex-x-run-archive/20260731T181619Z-7d581abb7f-7b2c3a`, froze staged tree `d80e30e9fa535ad84643986f7a3eadcd2d4bca02` and staged binary diff SHA-256 `866e7f015255d5d6afeef5c6a2295188ec70e12a235800f66a91a562a11bc6e1`; parent focused `13 passed`, API/security `253 passed`, exact browser `14 passed`. Independent reviewer run `20260731T182606Z-7d581abb7f-912d4f`, session `019fb96d-5ef8-7b41-8b5b-3adc9202a603`, archive of that run ID, returned `REPAIR_REQUIRED` solely because `static/js/operator-ui-connected.js` fabricated top-level offline `server_observed_at` from browser time while the evidence drawer labelled it request-observed server evidence. Accepted C3 implementer run `20260731T182944Z-7d581abb7f-919530`, session `019fb970-c2a7-79d0-8acb-ea04e99b9446`, archive `/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/codex-x-run-archive/20260731T182944Z-7d581abb7f-919530`, actual model `gpt-5.6-sol`, froze the exact nine-path tree `7e087f5f117a8278e3ae61016baa3c8c3adf2d06` with full binary patch SHA-256 `541fd821b79515982ed5372ba7581388176d12c9d71bb741095472d6a4cb34ab`. It changed only the remaining correction atop C2—omitting fabricated offline `server_observed_at` and asserting `request observed not supplied`; the other seven files were byte-identical to C2. Implementer focused Python/API/security passed `266 passed in 48.56s`; Python/JavaScript syntax and `git diff --check` passed. Parent exact Chromium command `npx playwright test --config=playwright.config.js tests/playwright/operator-ui-shell.spec.js --project=chromium-mobile --project=chromium-desktop` passed `14 passed (29.0s)`. Independent accepted review is recorded in `GHU-027`. Parent inspected and accepted the exact diff, mechanically integrated it as commit `0b34bdd10533676f9bf491c85259bc5342049652`, tree `7e087f5f117a8278e3ae61016baa3c8c3adf2d06`, and passed focused validation `266 passed in 46.90s`; the binary patch SHA-256 and every file SHA matched the reviewed candidate. Push, PR, default-branch merge, publication, deployment, runtime/data mutation, live proof, training, promotion, EV, staking, betting, and public exposure: `NOT_OCCURRED`.
 
 ## GHU-027 — Read-only release security and acceptance
 
 - Release: `R2`
 - Priority: `P2`
-- Status: `planned`
+- Status: `accepted`
 - Dependencies: `GHU-026`
+- Dependency state: Satisfied; `GHU-026` is accepted/integrated.
 - Model routing: Pro (GPT-5.6 Sol Pro); fallback Extra High
 - Session role: Fresh independent review session
 - Outcome: Proves the read-only dashboard is truthful, bounded and safe to deploy behind a feature flag.
@@ -827,16 +828,16 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Risks: Material risk: Block only for reachable material risk; record cosmetic and low-probability issues as follow-up. Missing, stale, malformed, conflicting, or unavailable evidence must fail closed.
 - Stop conditions: Block only for reachable material risk; record cosmetic and low-probability issues as follow-up.
 - Authority: Authenticated Level 1 GET/read-only authority with mandatory access audit.
-- Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
+- Claims supported: Independent exact-candidate review completed with no material standards or specification finding; accepted/integrated R2 claims remain bounded to the evidence recorded for `GHU-026`.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Wait until every listed prerequisite is accepted/integrated, then parent may mark ready and assign one fresh bounded implementer.
-- Closeout evidence: PENDING: exact base/head/tree/path/diff identities, commands/exits, focused tests, reviewer identity/verdict, parent decision, and applicable commit/PR/merge/deploy/proof fields.
+- Next safe action: Preserve accepted independent-review evidence; proceed only through ready `GHU-030` and the dependency-ordered coupled `GHU-030 + GHU-031` tranche.
+- Closeout evidence: Independent C3 review run `20260731T183753Z-7d581abb7f-c74749`, session `019fb978-2391-7e50-b8e4-a38e61381870`, archive `/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/codex-x-run-archive/20260731T183753Z-7d581abb7f-c74749`, actual model `gpt-5.6-sol`, returned `ACCEPTED`. It independently matched the base, all nine hashes, candidate tree/path scope, AST and JavaScript syntax; standards and specification axes had no material finding. It relied on supplied `266`-test and `14`-browser-test evidence and launched no browser. Parent then accepted and mechanically integrated the exact reviewed candidate as commit `0b34bdd10533676f9bf491c85259bc5342049652`, tree `7e087f5f117a8278e3ae61016baa3c8c3adf2d06`; no push, PR, default-branch merge, publication, deployment, runtime/data mutation or live proof occurred.
 
 ## GHU-030 — Persistent manual-prediction job and audit contract
 
 - Release: `R3`
 - Priority: `P3`
-- Status: `planned`
+- Status: `ready`
 - Dependencies: `GHU-027`
 - Model routing: GPT-5.6 Sol; fallback GPT-5.6 Terra
 - Session role: Fresh Codex X implementation session
@@ -850,7 +851,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Level 2 only after all R3 gates; deployment/live proof require separate Level 4/explicit authority.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Wait until every listed prerequisite is accepted/integrated, then parent may mark ready and assign one fresh bounded implementer.
+- Next safe action: One fresh bounded implementer may own the dependency-ordered coupled `GHU-030 + GHU-031` tranche atomically: implement this job contract/store first, then the fixed-argument worker; freeze one candidate for independent review before parent integration.
 - Closeout evidence: PENDING: exact base/head/tree/path/diff identities, commands/exits, focused tests, reviewer identity/verdict, parent decision, and applicable commit/PR/merge/deploy/proof fields.
 
 ## GHU-031 — Fixed-argument manual prediction worker
@@ -871,7 +872,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Level 2 only after all R3 gates; deployment/live proof require separate Level 4/explicit authority.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Wait until every listed prerequisite is accepted/integrated, then parent may mark ready and assign one fresh bounded implementer.
+- Next safe action: Remain planned behind `GHU-030`; one fresh bounded implementer may include it after implementing the `GHU-030` job contract/store first in the same atomic candidate, which requires independent review before parent integration.
 - Closeout evidence: PENDING: exact base/head/tree/path/diff identities, commands/exits, focused tests, reviewer identity/verdict, parent decision, and applicable commit/PR/merge/deploy/proof fields.
 
 ## GHU-032 — Prediction submission, validation, CSRF and idempotency

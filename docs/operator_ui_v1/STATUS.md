@@ -7,14 +7,14 @@ product checkpoint remains preserved in the history below):
 |---|---|
 | Repository | `0rl4nd0l/greyhound-racing-collector` |
 | Branch | No current branch claim; ledger state is durable independently of delivery mechanics |
-| HEAD / tree | `d5dcb1f84690c0c0bd68b2d472f89189fc4ad404` / `f5789dc66c8ebe35029ebdc5c570b4ab53cb6f14` |
+| HEAD / tree | `0b34bdd10533676f9bf491c85259bc5342049652` / `7e087f5f117a8278e3ae61016baa3c8c3adf2d06` |
 | Baseline cleanliness | clean |
 | Historical/upstream source | Actual historical merge parent `51a5287d05c790e3855e5b74ce7117a29340135e`; later `origin/master` drift `f38a125f6364b8a60d17ae9c971b0ce172874eea`, tree `408a8adbfa2bd436132bc4d2c63e952aeb57c5a5`, parent `51a5287d05c790e3855e5b74ce7117a29340135e`; local merge `0b08966b31c15d8b459b9c6b60a48b19030a9ce4` |
-| Current release / ticket | R2 remains in progress. `GHU-022`, `GHU-023`, `GHU-024`, and `GHU-025` and their prerequisites are accepted/integrated; `GHU-026` is ready and `GHU-027` remains planned. R5 remains deferred. |
-| Counts | 25 accepted tickets, 1 ready, 0 active, 0 review, 13 blocked, 2 deferred, 12 planned (plus accepted audit milestone `GHU-000A`) |
-| Assignment | No active ticket; `GHU-026` is objectively ready for one fresh bounded implementer |
-| Next safe action | Preserve all accepted/integrated prerequisites and assign one fresh bounded implementer to `GHU-026`; R2 remains in progress through `GHU-026` and `GHU-027`. |
-| Validation | `GHU-022C3/GHU-023C3`: parent focused four-file suite `640 passed in 42.54s`, `tests/operator_ui` `528 passed in 48.19s`, shared prediction regression `62 passed in 2.90s`, and `git diff --check` exit 0. |
+| Current release / ticket | R2 is accepted/integrated. R3 is next and in progress only through ready `GHU-030`; `GHU-031` remains planned behind it. R5 remains deferred. |
+| Counts | 27 accepted tickets, 1 ready, 0 active, 0 review, 13 blocked, 2 deferred, 10 planned (plus accepted audit milestone `GHU-000A`) |
+| Assignment | No active ticket; one fresh bounded implementer may own the dependency-ordered coupled `GHU-030 + GHU-031` tranche atomically |
+| Next safe action | Implement the `GHU-030` job contract/store first and then the `GHU-031` fixed-argument worker in the same atomic candidate; require independent review before parent integration. |
+| Validation | Accepted R2 integration: parent focused `266 passed in 46.90s`; exact Chromium mobile/desktop `14 passed (29.0s)`; reviewed binary patch SHA-256 and every file SHA matched integrated tree `7e087f5f117a8278e3ae61016baa3c8c3adf2d06`. |
 
 `GHU-000B` audit run `20260730T172346Z-1bacc67937-3c5f6b`, session
 `019fb40d-e8ed-7d40-8ab2-8ad2b156552c`, child
@@ -594,3 +594,86 @@ membership is the manifest regular-file set plus exactly the parent-directory
 set derived from canonical manifest names, verified by bounded
 descriptor-relative per-directory enumeration with no recursive tree walk.
 Ticket state and counts are unchanged; no implementation validation is claimed.
+
+R2 closeout supersedes the historical pending state above without rewriting its
+rejection evidence. The initial `GHU-026` run
+`20260731T175127Z-d5dcb1f846-a7be01`, session
+`019fb94d-ab83-75a1-bae9-4eb635660147`, archive
+`/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/codex-x-run-archive/20260731T175127Z-d5dcb1f846-a7be01`,
+produced historical shorthand candidate tree `6d7b5d...` and diff `b464...`.
+Parent validation was `1 failed, 8 passed`: the candidate lacked an explicit
+auth literal/provider-binding seam and browser coverage was incomplete.
+
+Rejected `GHU-026C1` run `20260731T175955Z-7d581abb7f-63adaa`, session
+`019fb955-6551-7cc3-a01f-8713152942e8`, archive
+`/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/codex-x-run-archive/20260731T175955Z-7d581abb7f-63adaa`,
+produced historical shorthand candidate tree `122d169...` and binary diff
+`f6a260...`. Python focused passed `13 passed` and API/security passed
+`202 passed`, but parent browser validation was `12 passed, 2 failed` because
+the page overflowed horizontally at 375px. Reviewer run
+`20260731T180927Z-7d581abb7f-9345cb`, session
+`019fb95e-165a-7ee3-81db-a8eac3b1a82d`, archive of that run ID, was
+interrupted after the material browser failure and returned no acceptance
+verdict.
+
+Rejected `GHU-026C2` run `20260731T181619Z-7d581abb7f-7b2c3a`, session
+`019fb964-77cc-7323-8a07-009d620d797a`, archive
+`/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/codex-x-run-archive/20260731T181619Z-7d581abb7f-7b2c3a`,
+froze staged tree `d80e30e9fa535ad84643986f7a3eadcd2d4bca02` and staged binary
+diff SHA-256
+`866e7f015255d5d6afeef5c6a2295188ec70e12a235800f66a91a562a11bc6e1`.
+Parent focused passed `13 passed`, API/security passed `253 passed`, and exact
+browser passed `14 passed`. Independent reviewer run
+`20260731T182606Z-7d581abb7f-912d4f`, session
+`019fb96d-5ef8-7b41-8b5b-3adc9202a603`, archive of that run ID, returned
+`REPAIR_REQUIRED`. Its sole remaining finding was that
+`static/js/operator-ui-connected.js` fabricated `server_observed_at` from
+browser time on the top-level offline catch while the evidence drawer labelled
+it request-observed server evidence.
+
+Accepted `GHU-026C3` implementer run
+`20260731T182944Z-7d581abb7f-919530`, session
+`019fb970-c2a7-79d0-8acb-ea04e99b9446`, archive
+`/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/codex-x-run-archive/20260731T182944Z-7d581abb7f-919530`,
+used actual model `gpt-5.6-sol` and froze the exact nine-path candidate tree
+`7e087f5f117a8278e3ae61016baa3c8c3adf2d06`, full binary patch SHA-256
+`541fd821b79515982ed5372ba7581388176d12c9d71bb741095472d6a4cb34ab`.
+It changed only the remaining correction atop C2: omit fabricated offline
+`server_observed_at` and assert `request observed not supplied`; the other
+seven files were byte-identical to C2. Implementer focused Python/API/security
+passed `266 passed in 48.56s`; Python/JavaScript syntax and
+`git diff --check` passed. Parent ran exactly
+`npx playwright test --config=playwright.config.js tests/playwright/operator-ui-shell.spec.js --project=chromium-mobile --project=chromium-desktop`;
+it passed `14 passed (29.0s)`.
+
+Accepted independent `GHU-027C3` review run
+`20260731T183753Z-7d581abb7f-c74749`, session
+`019fb978-2391-7e50-b8e4-a38e61381870`, archive
+`/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/codex-x-run-archive/20260731T183753Z-7d581abb7f-c74749`,
+used actual model `gpt-5.6-sol` and returned `ACCEPTED`. It independently
+matched the base, all nine hashes, candidate tree/path scope, AST and
+JavaScript syntax. Standards and specification axes had no material finding;
+it relied on supplied 266-test and 14-browser-test evidence and launched no
+browser.
+
+Parent inspected and accepted the exact diff, then mechanically integrated it
+as commit `0b34bdd10533676f9bf491c85259bc5342049652`, tree
+`7e087f5f117a8278e3ae61016baa3c8c3adf2d06`. Parent focused validation passed
+`266 passed in 46.90s`; the binary patch SHA-256 and every file SHA matched the
+reviewed candidate. Supported now are the accepted/integrated R2 fixture
+prototype plus authenticated GET-only evidence-backed dashboard, exact provider
+binding, audit-before-disclosure, truthful stale/unavailable/offline/auth
+states, and validated desktop/mobile/accessibility behavior at that integrated
+tree. Unsupported remain deployed identity/runtime health until generated
+deployment is merged, deployed and verified; live UI prediction until R3 and
+bounded proof; and training, model promotion, EV, staking, betting,
+profitability, public exposure, or outcomes not proven by evidence. No push,
+PR, default-branch merge, publication, deployment, runtime/data mutation, live
+proof, training, promotion, EV, staking, betting, or public exposure occurred.
+
+R2 is accepted/integrated. R3 is next and in progress only through ready
+`GHU-030`; `GHU-031` remains planned because it depends on `GHU-030`. One fresh
+bounded implementer may own their dependency-ordered coupled tranche
+atomically, implementing the job contract/store first and then the
+fixed-argument worker in the same candidate. Independent review is required
+before parent integration. R5 remains deferred.
