@@ -804,6 +804,95 @@ def test_fixture_e2e_reuses_receipt_seals_features_selects_model_and_bundles(
     assert json.loads((bundle / "result.json").read_bytes()) == result
 
 
+def test_scheduled_exact_receipt_reuses_while_capture_authority_is_busy(
+    tmp_path: Path,
+):
+    protocol_root = tmp_path / "collector-requests"
+    protocol = ManualPredictionCollectorProtocol(protocol_root)
+    value = handoff()
+    collector_run_id = "20260719T115500+1000_odds_capture"
+    source_attempt = {
+        **json.loads(value["_report_bytes"])["attempts"][0],
+        "append_report": {
+            "status": "SUCCESS",
+            "append_only": True,
+            "inserted_rows": 2,
+        },
+    }
+    value["_report_bytes"] = canonical_bytes(
+        {
+            "schema_version": "collector_exact_capture_source_v1",
+            "race_id": RACE_ID,
+            "collector_run_id": collector_run_id,
+            "attempts": [source_attempt],
+        }
+    )
+    value["source_report_sha256"] = sha256_bytes(value["_report_bytes"])
+    paths = {
+        label: tmp_path / name
+        for label, name in (
+            ("report", "scheduled-capture.json"),
+            ("form", "gunnedah-r5.csv"),
+            ("sidecar", "gunnedah-r5.csv.metadata.json"),
+        )
+    }
+    for label, path in paths.items():
+        path.write_bytes(value[f"_{label}_bytes"])
+        value[f"_{label}_path"] = path.resolve()
+    normalized, _, _, _ = receipt_from_handoff(
+        value,
+        current_time=NOW,
+        max_age_seconds=900,
+    )
+    value.update(
+        {
+            "schema_version": "on_demand_verified_collector_capture_v2",
+            "race": {
+                "race_id": RACE_ID,
+                "url": race()["url"],
+                "venue": "GUNN",
+                "race_number": 5,
+                "race_date": "2026-07-19",
+                "jump_timestamp": "2026-07-19T13:00:00+10:00",
+            },
+            "runner_set_sha256": normalized["runner_set_sha256"],
+            "capture_attempt_sha256": sha256_bytes(
+                canonical_bytes(source_attempt)
+            ),
+            "append_report_sha256": sha256_bytes(
+                canonical_bytes(source_attempt["append_report"])
+            ),
+        }
+    )
+    protocol.publish_collector_exact_receipt(
+        collector_run_id=collector_run_id,
+        emitted_at=NOW,
+        handoff=value,
+    )
+
+    calls = {"capture": 0, "score": 0}
+    deps = dependencies(
+        capture_one=lambda **_: calls.__setitem__(
+            "capture", calls["capture"] + 1
+        )
+    )
+    original_score = deps.score_residual
+
+    def score(**kwargs: Any) -> Mapping[str, Any]:
+        calls["score"] += 1
+        return original_score(**kwargs)
+
+    deps.score_residual = score
+    result = run_prediction(
+        args(tmp_path, collector_request_root=protocol_root),
+        deps,
+    )
+
+    assert result["status"] == "PREDICTION_READY"
+    assert calls == {"capture": 0, "score": 1}
+    assert not protocol.outstanding_request_ids()
+
+
 def test_operator_cli_emits_one_canonical_fixture_prediction(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -40,6 +40,17 @@ report, and pre-jump timestamp. Lookup is confined to that race's directory and
 rejects unsafe paths, changed bytes, malformed records, or more than 32 indexed
 receipts. `receipt` mode is reuse-only.
 
+Successful scheduled appends also publish
+`collector-exact-capture-receipt-v1` records immediately from inside the same
+validated collector capture loop. Each record binds the scheduled collector run,
+exact TheDogs URL/date/race number, canonical race-ID aliases, runner-set hash,
+append timestamp, capture attempt and append report, and immutable form,
+sidecar, and per-attempt source-report bytes. The predictor checks the bounded
+directory for the resolved exact race before requesting a new acquisition.
+This allows a current scheduled capture to be reused while the scheduled batch
+still owns the canonical lock; it does not create another browser, wait for a
+timer boundary, accept an unsealed database row, or weaken `BUSY`.
+
 If no reusable receipt exists, `auto` or `capture` atomically publishes one
 research-only, one-attempt request under
 `artifacts/full_evidence_orchestration_20260525/manual_prediction_collector_requests_v1`.

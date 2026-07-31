@@ -4,6 +4,8 @@ import socket
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import pytest
+
 from race_collection.manual_prediction_collector_request import (
     ManualPredictionCollectorProtocol,
     canonical_bytes,
@@ -498,6 +500,42 @@ def test_autonomous_live_odds_capture_command_requires_explicit_execute_flags():
 
     assert "--execute" in approved
     assert "--allow-auto-scrape-odds" in approved
+
+    receipt_enabled = autopilot.autonomous_live_odds_capture_command(
+        input_dirs=[Path("upcoming_a")],
+        evidence_root=Path("artifacts/full_evidence_orchestration_20260525"),
+        capture_dir=Path(
+            "artifacts/full_evidence_orchestration_20260525/"
+            "autonomous_live_odds_capture_x"
+        ),
+        db_path=Path("greyhound_racing_data.db"),
+        current_time="2026-06-10T14:00:00+10:00",
+        limit=16,
+        execute=True,
+        allow_auto_scrape_odds=True,
+        collector_receipt_root=Path("collector-requests"),
+        collector_run_id="scheduled-run-1",
+    )
+
+    assert receipt_enabled[
+        receipt_enabled.index("--collector-receipt-root") + 1
+    ] == "collector-requests"
+    assert receipt_enabled[
+        receipt_enabled.index("--collector-run-id") + 1
+    ] == "scheduled-run-1"
+    with pytest.raises(ValueError, match="collector_receipt_authority_missing"):
+        autopilot.autonomous_live_odds_capture_command(
+            input_dirs=[Path("upcoming_a")],
+            evidence_root=Path("artifacts/full_evidence_orchestration_20260525"),
+            capture_dir=Path("autonomous_live_odds_capture_x"),
+            db_path=Path("greyhound_racing_data.db"),
+            current_time="2026-06-10T14:00:00+10:00",
+            limit=16,
+            execute=False,
+            allow_auto_scrape_odds=False,
+            collector_receipt_root=Path("collector-requests"),
+            collector_run_id="scheduled-run-1",
+        )
 
 
 def test_manual_request_command_is_bound_to_claimed_collector_run():

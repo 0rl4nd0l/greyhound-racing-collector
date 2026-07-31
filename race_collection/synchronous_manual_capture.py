@@ -23,6 +23,7 @@ from race_collection.manual_prediction_collector_request import (
     ManualPredictionCollectorProtocol,
     ProtocolRejected,
     canonical_bytes,
+    runner_set_sha256,
 )
 from src.predictor.on_demand import (
     PredictionBlocked,
@@ -682,9 +683,10 @@ def _contains_outcome(value: Any) -> bool:
     return False
 
 
-def seal_capture_handoff(
+def _seal_capture_handoff(
     *,
-    context: CollectorRequest,
+    expected: Mapping[str, Any],
+    expected_runner_hash: str | None,
     plan_item: Mapping[str, Any],
     capture_report: Mapping[str, Any],
     report_path: Path,
@@ -693,7 +695,6 @@ def seal_capture_handoff(
 ) -> dict[str, Any]:
     """Seal one exact append-only capture without invoking prediction scoring."""
 
-    expected = context.request["race"]
     if (
         plan_item.get("race_id") != expected["race_id"]
         or plan_item.get("thedogs_source_url") != expected["url"]
@@ -744,7 +745,6 @@ def seal_capture_handoff(
         validation=validation,
         source_kind="verified_collector_capture_one",
     )
-    expected_runner_hash = context.request["expected_runner_set_sha256"]
     if (
         expected_runner_hash is not None
         and normalized["runner_set_sha256"] != expected_runner_hash
@@ -777,6 +777,176 @@ def seal_capture_handoff(
         "_form_path": form_path.resolve(),
         "_sidecar_path": sidecar_path.resolve(),
         "_form_name": form_path.name,
+    }
+
+
+def seal_capture_handoff(
+    *,
+    context: CollectorRequest,
+    plan_item: Mapping[str, Any],
+    capture_report: Mapping[str, Any],
+    report_path: Path,
+    form_path: Path,
+    sidecar_path: Path,
+) -> dict[str, Any]:
+    """Seal one exact manual capture through the shared collector primitive."""
+
+    return _seal_capture_handoff(
+        expected=context.request["race"],
+        expected_runner_hash=context.request["expected_runner_set_sha256"],
+        plan_item=plan_item,
+        capture_report=capture_report,
+        report_path=report_path,
+        form_path=form_path,
+        sidecar_path=sidecar_path,
+    )
+
+
+def _publish_once_canonical(path: Path, payload: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags, 0o600)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(canonical_bytes(payload))
+            handle.flush()
+            os.fsync(handle.fileno())
+        directory = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    except BaseException:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def publish_scheduled_capture_receipts(
+    *,
+    protocol: ManualPredictionCollectorProtocol,
+    evidence_root: Path,
+    collector_run_id: str,
+    plan_item: Mapping[str, Any],
+    attempt: Mapping[str, Any],
+    output_dir: Path,
+    emitted_at: datetime,
+) -> dict[str, Any]:
+    """Publish bounded alias-indexed receipts immediately after one append."""
+
+    evidence_root = evidence_root.resolve()
+    output_dir = output_dir.resolve()
+    if not output_dir.is_relative_to(evidence_root):
+        raise CaptureOneRejected("SOURCE_FILE_UNSAFE", label="output_dir")
+    if attempt.get("status") != "APPENDED":
+        raise CaptureOneRejected(
+            "CAPTURE_FAILED", reason="scheduled_attempt_not_appended"
+        )
+    from scripts.refresh_prejump_upcoming import stable_race_id_variants
+
+    aliases = set(stable_race_id_variants(plan_item))
+    aliases.update(
+        value
+        for value in plan_item.get("race_id_aliases") or []
+        if isinstance(value, str) and value
+    )
+    source_race_id = str(plan_item.get("race_id") or "")
+    if source_race_id and source_race_id not in aliases:
+        aliases.add(source_race_id)
+    if not aliases or len(aliases) > 16:
+        raise CaptureOneRejected(
+            "IDENTITY_MISMATCH",
+            reason="scheduled_receipt_aliases_unbounded",
+            alias_count=len(aliases),
+        )
+    expected_runner_hash = runner_set_sha256(
+        [
+            dict(row)
+            for row in plan_item.get("expected_runners") or []
+            if isinstance(row, Mapping)
+        ]
+    )
+    if expected_runner_hash is None:
+        raise CaptureOneRejected(
+            "IDENTITY_MISMATCH", reason="scheduled_receipt_runners_missing"
+        )
+
+    receipts: list[dict[str, Any]] = []
+    for race_id in sorted(aliases):
+        parts = race_id.split(" - ", 2)
+        if (
+            len(parts) != 3
+            or parts[0] != f"Race {plan_item.get('race_number')}"
+            or parts[2] != str(plan_item.get("race_date"))
+        ):
+            raise CaptureOneRejected(
+                "IDENTITY_MISMATCH", reason="scheduled_receipt_alias_invalid"
+            )
+        adapted_attempt = dict(attempt)
+        adapted_attempt["race_id"] = race_id
+        source_report = {
+            "schema_version": "collector_exact_capture_source_v1",
+            "collector_run_id": collector_run_id,
+            "generated_at": emitted_at.isoformat(),
+            "race_id": race_id,
+            "source_race_id": source_race_id,
+            "source_plan_item": dict(plan_item),
+            "source_attempt": dict(attempt),
+            "attempts": [adapted_attempt],
+        }
+        source_raw = canonical_bytes(source_report)
+        source_path = (
+            output_dir
+            / "collector_exact_receipt_sources"
+            / f"{sha256_bytes(source_raw)}.json"
+        )
+        try:
+            _publish_once_canonical(source_path, source_report)
+        except FileExistsError:
+            if source_path.is_symlink() or source_path.read_bytes() != source_raw:
+                raise CaptureOneRejected("HASH_DRIFT", field="source_report")
+
+        expected = {
+            "race_id": race_id,
+            "url": str(plan_item.get("thedogs_source_url") or ""),
+            "venue": parts[1],
+            "race_number": int(plan_item["race_number"]),
+            "race_date": str(plan_item["race_date"]),
+            "jump_timestamp": str(plan_item["jump_datetime"]),
+        }
+        adapted_plan = dict(plan_item)
+        adapted_plan["race_id"] = race_id
+        adapted_plan["venue"] = parts[1]
+        handoff = _seal_capture_handoff(
+            expected=expected,
+            expected_runner_hash=expected_runner_hash,
+            plan_item=adapted_plan,
+            capture_report=source_report,
+            report_path=source_path,
+            form_path=Path(str(plan_item["csv_path"])).resolve(),
+            sidecar_path=Path(str(plan_item["sidecar_path"])).resolve(),
+        )
+        published = protocol.publish_collector_exact_receipt(
+            collector_run_id=collector_run_id,
+            emitted_at=emitted_at,
+            handoff=handoff,
+        )
+        receipts.append(
+            {
+                "race_id": race_id,
+                "captured_at": published["captured_at"],
+                "capture_attempt_sha256": handoff["capture_attempt_sha256"],
+            }
+        )
+    return {
+        "schema_version": "collector_exact_capture_receipt_publish_v1",
+        "status": "PUBLISHED",
+        "source_race_id": source_race_id,
+        "receipt_count": len(receipts),
+        "receipts": receipts,
     }
 
 
