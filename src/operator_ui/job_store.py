@@ -161,7 +161,7 @@ TERMINAL_PHASES=frozenset({Phase.PREDICTION_READY,Phase.FAILED,Phase.REJECTED,Ph
 _NEXT={
  Phase.SUBMITTED:{Phase.VALIDATED,Phase.REJECTED,Phase.EXPIRED},
  Phase.VALIDATED:{Phase.WAITING_FOR_CLAIM,Phase.REJECTED,Phase.EXPIRED},
- Phase.WAITING_FOR_CLAIM:{Phase.CLAIMED,Phase.REJECTED,Phase.EXPIRED},
+ Phase.WAITING_FOR_CLAIM:{Phase.CLAIMED,Phase.FAILED,Phase.REJECTED,Phase.EXPIRED},
  Phase.CLAIMED:{Phase.ATTEMPT_STARTED,Phase.FAILED,Phase.REAP_UNCONFIRMED},
  Phase.ATTEMPT_STARTED:{Phase.RESPONSE_RECORDED,Phase.FAILED,Phase.TIMED_OUT,Phase.CANCELLED,Phase.REAP_UNCONFIRMED},
  Phase.RESPONSE_RECORDED:{Phase.RECEIPT_VERIFIED,Phase.CONSUMED,Phase.PRODUCER_COMPLETED,Phase.FAILED,Phase.REJECTED},
@@ -208,6 +208,7 @@ def _event_contracts():
       (None,Phase.SUBMITTED,"ACCEPTED","submitted"):(empty,empty,"empty"),
       (Phase.SUBMITTED,Phase.VALIDATED,"VALID","validated"):(empty,empty,"empty"),
       (Phase.VALIDATED,Phase.WAITING_FOR_CLAIM,"WAITING","ready"):(empty,empty,"empty"),
+      (Phase.WAITING_FOR_CLAIM,Phase.FAILED,"FAILED","DISPATCH_FAILED"):(frozenset({"error"}),empty,"dispatch"),
       (Phase.WAITING_FOR_CLAIM,Phase.CLAIMED,"CLAIMED","unique_attempt_claimed"):(claim,empty,"claim"),
       (Phase.CLAIMED,Phase.ATTEMPT_STARTED,"RUNNING","predictor_started"):(start,empty,"start"),
       (Phase.CLAIMED,Phase.FAILED,"FAILED","PROCESS_LAUNCH_FAILED"):(frozenset({"attempt_id","error"}),empty,"prelaunch"),
@@ -301,10 +302,24 @@ class JobInput:
     race_id:str; jump_timestamp:str; runner_set_sha256:str; model_selector:str
     resolved_model_identity:str; model_sha256:str; model_manifest_sha256:str
     model_schema_sha256:str; config_id:str; config_sha256:str; odds_source:str
-    def fields(self)->dict[str,str]:
+    ordered_runners:tuple[Mapping[str,Any],...]=()
+    def __post_init__(self):
+        if isinstance(self.ordered_runners,list): object.__setattr__(self,"ordered_runners",tuple(self.ordered_runners))
+    def fields(self)->dict[str,Any]:
         values={n:getattr(self,n) for n in self.__dataclass_fields__}
-        for n,v in values.items(): _hash(v,n) if n.endswith("sha256") else _identifier(v,n)
+        for n,v in values.items():
+            if n == "ordered_runners": continue
+            _hash(v,n) if n.endswith("sha256") else _identifier(v,n)
         if self.odds_source not in {"auto","receipt","capture"}: raise ValueError("invalid odds_source")
+        if not isinstance(self.ordered_runners,tuple) or not self.ordered_runners: raise ValueError("ordered runners required")
+        normalized=[]; identities=set()
+        for runner in self.ordered_runners:
+            row=_exact_mapping(runner,{"box","name","identity"},"ordered runner")
+            if type(row["box"]) is not int or not 1<=row["box"]<=32: raise ValueError("invalid runner box")
+            name=_identifier(row["name"],"runner name"); identity=_identifier(row["identity"],"runner identity")
+            if identity in identities: raise ValueError("duplicate runner identity")
+            identities.add(identity); normalized.append({"box":row["box"],"name":name,"identity":identity})
+        values["ordered_runners"]=normalized
         parsed=datetime.fromisoformat(self.jump_timestamp.replace("Z","+00:00"))
         if parsed.tzinfo is None or parsed.utcoffset() is None: raise ValueError("jump_timestamp must be timezone aware")
         return values

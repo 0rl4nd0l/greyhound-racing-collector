@@ -460,3 +460,11 @@ supersession.
 - Supersession: Additively implements the accepted GHU-033 polling fallback;
   it does not claim candidate acceptance, integration, deployment, or runtime
   proof.
+
+## 2026-08-01 — DEC-GHU-032-034-REJECTED-CANDIDATE
+
+- Context: Independent review of the original coupled `GHU-032`/`033`/`034` candidate.
+- Decision: The candidate is rejected/blocked, not accepted. Correction is bounded to `GHU-032C1` through `GHU-034C1`.
+- Evidence: commit `8262553eafc1dc3513efebe6f0f1d68cc58e044b`, tree `c2a31048fa043e28f1deeccfaa55b8dde9e0fd59`, reviewer session `019fba4a-d4de-7152-820e-504a013f7a85`.
+- Consequences: Seven unresolved findings require correction: durable pre-POST intent; atomic launch and failure closure; full sealed-result binding; server-owned R3 capability; model-specific catalogs; default-off repository startup factory; and bounded non-overlapping reconnect.
+- Supersession: Does not alter accepted `GHU-030`/`GHU-031` evidence. The correction remains unaccepted pending independent review and parent decision.

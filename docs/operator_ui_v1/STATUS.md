@@ -711,3 +711,9 @@ Independent review, parent acceptance/integration, commit, publication,
 deployment, runtime/data mutation, live prediction/proof, browser execution,
 collector action, training, promotion, EV, staking, betting, and outcomes:
 `NOT_OCCURRED`.
+
+## GHU-032C1 through GHU-034C1 correction
+
+The original coupled candidate at commit `8262553eafc1dc3513efebe6f0f1d68cc58e044b`, tree `c2a31048fa043e28f1deeccfaa55b8dde9e0fd59`, is rejected/blocked by reviewer session `019fba4a-d4de-7152-820e-504a013f7a85` for seven findings: submission-intent durability; atomic launch/failure closure; full sealed-result verification; server-owned R3 capability; model-specific catalogs; a safe default-off runtime factory; and bounded reconnect.
+
+`GHU-032C1` through `GHU-034C1` depends on accepted/integrated `GHU-030`/`GHU-031` and is `REVIEW` after bounded implementation. It is not accepted, deployed, or runtime-proven. Validation availability and exact final working-tree evidence belong to the implementer handoff and parent review.

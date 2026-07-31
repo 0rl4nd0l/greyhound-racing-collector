@@ -4,9 +4,11 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 import threading
 import time
 import uuid
+from dataclasses import replace
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable, Mapping
@@ -15,6 +17,7 @@ from flask import Flask, jsonify, request, session
 
 from .job_store import (
     IdempotencyConflict,
+    IllegalTransition,
     Job,
     JobInput,
     JobStore,
@@ -103,7 +106,9 @@ def _verified_result(job: Job, value: Any) -> dict[str, Any] | None:
         "job_id", "race_id", "jump_timestamp", "runner_set_sha256", "prediction_id",
         "request_id", "claim_id", "attempt_id", "response_id", "receipt_id", "consume_id",
         "source_hashes", "temporal_cutoff", "bundle_manifest", "model_sha256",
-        "config_sha256", "input_sha256", "terminal_classification",
+        "config_sha256", "input_sha256", "terminal_classification", "protocol",
+        "model_selector", "resolved_model_identity", "config_id", "odds_source",
+        "ordered_runners", "result_manifest", "evidence_manifest", "provenance_chain",
     }
     if not isinstance(evidence, Mapping) or set(evidence) != evidence_fields:
         return None
@@ -113,13 +118,31 @@ def _verified_result(job: Job, value: Any) -> dict[str, Any] | None:
                                                "model_sha256", "config_sha256", "input_sha256", "terminal_classification"))
     if actual != expected or not isinstance(evidence["source_hashes"], Mapping) or not evidence["source_hashes"] or not isinstance(evidence["bundle_manifest"], Mapping) or not evidence["bundle_manifest"]:
         return None
-    for digest in (*evidence["source_hashes"].values(),):
+    if (evidence["protocol"], evidence["model_selector"], evidence["resolved_model_identity"], evidence["config_id"], evidence["odds_source"]) != ("sealed_prediction_v2", job.input.model_selector, job.input.resolved_model_identity, job.input.config_id, job.input.odds_source):
+        return None
+    if evidence["ordered_runners"] != job.input.fields()["ordered_runners"]:
+        return None
+    identifiers=("prediction_id","request_id","claim_id","attempt_id","response_id","receipt_id","consume_id")
+    if any(not isinstance(evidence[name],str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}",evidence[name]) for name in identifiers):
+        return None
+    cutoff=evidence["temporal_cutoff"]
+    if not isinstance(cutoff,Mapping) or set(cutoff)!={"capture_cutoff","scoring_cutoff","post_cutoff_evidence"} or cutoff["post_cutoff_evidence"] is not False or cutoff["capture_cutoff"]!=job.input.jump_timestamp or cutoff["scoring_cutoff"]!=job.input.jump_timestamp:
+        return None
+    manifests=(evidence["bundle_manifest"],evidence["result_manifest"],evidence["evidence_manifest"])
+    if any(not isinstance(manifest,Mapping) or not manifest for manifest in manifests):
+        return None
+    for manifest in manifests:
+        if any(not isinstance(path,str) or path.startswith(("/","~")) or ".." in path.split("/") or "\\" in path for path in manifest): return None
+    chain=evidence["provenance_chain"]
+    if not isinstance(chain,Mapping) or set(chain)!=set(identifiers) or any(chain[name]!=evidence[name] for name in identifiers): return None
+    digests=[*evidence["source_hashes"].values(),*[digest for manifest in manifests for digest in manifest.values()]]
+    for digest in digests:
         if not isinstance(digest, str) or len(digest) != 64 or set(digest) - set("0123456789abcdef"):
             return None
     probabilities = value.get("probabilities")
     if not isinstance(probabilities, list) or not probabilities:
         return None
-    total = 0.0; runner_ids = set()
+    total = 0.0; runner_ids = set(); expected_runner_ids=[runner["identity"] for runner in job.input.ordered_runners]
     for index, row in enumerate(probabilities, 1):
         if not isinstance(row, Mapping) or set(row) != {"rank", "runner_id", "probability"} or row["rank"] != index:
             return None
@@ -127,7 +150,7 @@ def _verified_result(job: Job, value: Any) -> dict[str, Any] | None:
         if isinstance(probability, bool) or not isinstance(probability, (int, float)) or not math.isfinite(probability) or not 0 <= probability <= 1 or not isinstance(row["runner_id"], str) or not row["runner_id"] or row["runner_id"] in runner_ids:
             return None
         runner_ids.add(row["runner_id"]); total += probability
-    if not math.isclose(total, 1.0, abs_tol=1e-9):
+    if not math.isclose(total, 1.0, abs_tol=1e-9) or [row["runner_id"] for row in probabilities] != expected_runner_ids:
         return None
     return {"schema": value["schema"], "verification_status": "VERIFIED", "probabilities": [dict(row) for row in probabilities], "evidence": dict(evidence)}
 
@@ -180,6 +203,16 @@ def install_r3_api(app: Flask, services: R3Services | None = None) -> bool:
     def response_error(code: str, status: int):
         return jsonify(schema="operator_ui_prediction_error_v1", classification=code), status
 
+    @app.get(f"{API_PREFIX}/r3-capability", endpoint="operator_ui_r3_capability")
+    def capability():
+        actor = authority()
+        if actor is None:
+            return response_error("NON_OPERATIONAL/AUTHENTICATION_REQUIRED", 401)
+        _identity, level = actor
+        if level != 2:
+            return response_error("NON_OPERATIONAL/LEVEL_2_REQUIRED", 403)
+        return jsonify(schema="operator_ui_r3_capability_v1", authorized=True, runtime_configured=True)
+
     def confirm(intent: Mapping[str, Any]):
         operation = str(intent["operation"])
         proposed = intent["proposed_event"]
@@ -225,15 +258,40 @@ def install_r3_api(app: Flask, services: R3Services | None = None) -> bool:
             resolved = services.resolve_submission(selected, now)
             if type(resolved) is not ResolvedSubmission or type(resolved.job_input) is not JobInput or not resolved.ordered_runners:
                 raise R3Rejected("RACE_EVIDENCE_INVALID")
+            ordered_runners = tuple(dict(runner) for runner in resolved.ordered_runners)
+            if resolved.job_input.ordered_runners:
+                if resolved.job_input.fields()["ordered_runners"] != [dict(runner) for runner in ordered_runners]:
+                    raise R3Rejected("RUNNER_SET_BINDING_MISMATCH")
+                job_input = resolved.job_input
+            else:
+                job_input = replace(resolved.job_input, ordered_runners=ordered_runners)
             job = services.job_store.create(actor_identity=identity, actor_level=2, operation="manual_prediction",
-                idempotency_key=selected["idempotency_key"], job_input=resolved.job_input, now=now, confirm_audit=confirm)
-            created = job.phase is Phase.SUBMITTED
-            if created:
-                job = services.job_store.transition(job.job_id, Phase.VALIDATED, now=services.clock(), status="VALID", reason="validated", confirm_audit=confirm)
-                job = services.job_store.transition(job.job_id, Phase.WAITING_FOR_CLAIM, now=services.clock(), status="WAITING", reason="ready", confirm_audit=confirm)
-                services.launch_once(job.job_id)
-                job = services.job_store.get(job.job_id)
-            return jsonify(_job_payload(services.job_store, job, services.read_verified_result)), 202 if created else 200
+                idempotency_key=selected["idempotency_key"], job_input=job_input, now=now, confirm_audit=confirm)
+            newly_observed = job.phase is Phase.SUBMITTED
+            launch_eligible = False
+            if job.phase is Phase.SUBMITTED:
+                try:
+                    job = services.job_store.transition(job.job_id, Phase.VALIDATED, now=services.clock(), status="VALID", reason="validated", confirm_audit=confirm)
+                except IllegalTransition:
+                    job = services.job_store.get(job.job_id)
+            if job.phase is Phase.VALIDATED:
+                try:
+                    job = services.job_store.transition(job.job_id, Phase.WAITING_FOR_CLAIM, now=services.clock(), status="WAITING", reason="ready", confirm_audit=confirm)
+                    launch_eligible = True
+                except IllegalTransition:
+                    job = services.job_store.get(job.job_id)
+            if launch_eligible:
+                try:
+                    services.launch_once(job.job_id)
+                except Exception as exc:
+                    current = services.job_store.get(job.job_id)
+                    if current.phase is Phase.WAITING_FOR_CLAIM and not current.attempt_claimed:
+                        job = services.job_store.transition(job.job_id, Phase.FAILED, now=services.clock(), status="FAILED", reason="DISPATCH_FAILED", facts={"error": type(exc).__name__}, confirm_audit=confirm)
+                    else:
+                        job = current
+                else:
+                    job = services.job_store.get(job.job_id)
+            return jsonify(_job_payload(services.job_store, job, services.read_verified_result)), 202 if newly_observed else 200
         except IdempotencyConflict:
             return response_error("IDEMPOTENCY_CONFLICT", 409)
         except R3Rejected as exc:

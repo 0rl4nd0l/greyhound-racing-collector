@@ -23,7 +23,7 @@ CONFIRM = lambda intent: resolve_audit_confirmation(intent, AUDIT)
 
 
 def inputs(race="race-5"):
-    return JobInput(race, "2026-08-01T01:00:00Z", H, "latest-research", "model-v1", H, H, H, "manual-default", H, "auto")
+    return JobInput(race, "2026-08-01T01:00:00Z", H, "latest-research", "model-v1", H, H, H, "manual-default", H, "auto", ({"box":1,"name":"ALPHA","identity":"ALPHA"},))
 
 
 def store(tmp_path):

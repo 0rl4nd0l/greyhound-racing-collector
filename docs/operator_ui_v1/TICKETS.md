@@ -959,6 +959,20 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Next safe action: Wait until every listed prerequisite is accepted/integrated, then parent may mark ready and assign one fresh bounded implementer.
 - Closeout evidence: PENDING: exact base/head/tree/path/diff identities, commands/exits, focused tests, reviewer identity/verdict, parent decision, and applicable commit/PR/merge/deploy/proof fields.
 
+## GHU-032C1 through GHU-034C1 — Correct rejected coupled R3 candidate
+
+- Release: `R3`
+- Priority: `P0`
+- Status: `review`
+- Dependencies: accepted/integrated `GHU-030`, `GHU-031`
+- Outcome: Correct only the seven independently reviewed defects in the rejected `GHU-032`/`033`/`034` candidate.
+- Scope: Durable pre-POST request intent and same-key recovery; one accepted attempt claim with audited dispatch closure; exact runner and sealed-result bindings; authenticated server-owned capability; per-model dependent catalogs; typed default-off startup composition; bounded non-overlapping same-job reconnect.
+- Non-goals: No deployment, live prediction, collector/browser, retry, canonical DB/history write, training, promotion, EV, staking, betting, service/lock change, or external mutation.
+- Rejected predecessor: commit `8262553eafc1dc3513efebe6f0f1d68cc58e044b`; tree `c2a31048fa043e28f1deeccfaa55b8dde9e0fd59`; reviewer `019fba4a-d4de-7152-820e-504a013f7a85`; findings are the seven items recorded in `DECISIONS.md` and `STATUS.md`.
+- Claims supported: Bounded implementation candidate ready for independent review only.
+- Claims unsupported: Acceptance, integration, publication, deployment, runtime proof, live outcome access, or operational mutation.
+- Next safe action: Parent inspects the uncommitted delta, provisions/runs any unavailable required gates, and assigns independent review.
+
 ## GHU-036 — Feature-flagged generated deployment package
 
 - Release: `R3`

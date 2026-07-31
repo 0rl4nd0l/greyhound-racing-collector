@@ -17,6 +17,7 @@ def test_connected_client_uses_only_fixed_get_api_and_bounded_returned_ids():
         "/operator-ui/api/v1/corpus", "/operator-ui/api/v1/models",
         "/operator-ui/api/v1/system", "/operator-ui/api/v1/audit",
         "/operator-ui/api/v1/prediction-jobs",
+        "/operator-ui/api/v1/r3-capability",
     }
     assert "method:'GET'" in source
     assert "safeId.test(id)" in source and "encodeURIComponent(id)" in source
@@ -38,6 +39,16 @@ def test_connected_client_has_explicit_isolated_truthful_accessible_states():
     for state in ("fresh", "stale", "divergent", "invalid", "unavailable"):
         assert f"resource-panel--{state}" in css
     assert 'content: "Status: "' in css
+
+
+def test_prediction_intent_and_reconnect_are_durable_and_bounded():
+    source = SCRIPT.read_text(encoding="utf-8")
+    assert "operatorUiPredictionIntentV1" in source
+    assert "localStorage.setItem(INTENT_KEY" in source
+    assert "maxReconnectAttempts" in source
+    assert "pollTimer" in source and "pollInFlight" in source
+    assert "r3-capability" in source
+    assert "modelCatalog" in source
 
 
 def test_connected_template_default_off_and_prototype_are_distinct():

@@ -22,7 +22,7 @@ def setup(tmp_path):
     if not python.is_file(): python=Path("/usr/bin/python3")
     cfg=WorkerConfig(python,Path(__file__).parents[2],{"latest-research":choice},tmp_path/"canonical.db",tmp_path/"output",(tmp_path/"evidence-a",tmp_path/"evidence-b"),tmp_path/"requests",tmp_path/"index.json",tmp_path/"evidence",1,45.0,90.0,2)
     value=JobStore(tmp_path/"jobs.db",separate_from=(tmp_path/"canonical.db",tmp_path/"audit.db"))
-    inp=JobInput(RACE_ID,"2026-08-01T01:00:00+00:00",H,"latest-research","market_form_residual_v1",H,H,H,"manual-default",H,"auto")
+    inp=JobInput(RACE_ID,"2026-08-01T01:00:00+00:00",H,"latest-research","market_form_residual_v1",H,H,H,"manual-default",H,"auto",({"box":1,"name":"ALPHA","identity":"ALPHA"},))
     job=value.create(actor_identity="op",actor_level=2,operation="manual_prediction",idempotency_key="idempotency-key-1234",job_input=inp,now=NOW,confirm_audit=CONFIRM)
     job=value.transition(job.job_id,Phase.VALIDATED,now=NOW,status="VALID",reason="validated",confirm_audit=CONFIRM)
     job=value.transition(job.job_id,Phase.WAITING_FOR_CLAIM,now=NOW,status="WAITING",reason="ready",confirm_audit=CONFIRM)
