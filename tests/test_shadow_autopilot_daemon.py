@@ -6,6 +6,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from scripts import shadow_autopilot_daemon as daemon
 
 
@@ -9710,3 +9712,164 @@ def test_candidate_shadow_runs_rotates_by_oldest_join_check(tmp_path):
         "daily_race_ingest_shadow_run_2",
         "daily_race_ingest_shadow_run_3",
     ]
+
+
+def test_forward_observer_defaults_off_and_requires_root():
+    args = daemon.parse_args(["run-once"])
+    assert args.enable_forward_official_result_observer is False
+    assert args.forward_corpus_root is None
+    assert daemon.run_forward_official_result_observer(args, "run") == {
+        "status": "DISABLED",
+        "attempted_race_ids": [],
+    }
+    with pytest.raises(SystemExit):
+        daemon.parse_args(["run-once", "--enable-forward-official-result-observer"])
+
+
+def test_forward_observer_opt_in_invokes_owned_cycle(monkeypatch, tmp_path):
+    expected = {"status": "COMPLETED", "attempted_race_ids": ["race-1"]}
+    monkeypatch.setattr(
+        "scripts.observe_forward_official_results.observe_once",
+        lambda **kwargs: expected | {"arguments": kwargs},
+    )
+    args = daemon.parse_args(
+        [
+            "run-once",
+            "--enable-forward-official-result-observer",
+            "--forward-corpus-root",
+            str(tmp_path),
+            "--timeout-seconds",
+            "840",
+        ]
+    )
+    result = daemon.run_forward_official_result_observer(args, "daemon-cycle")
+    assert result["status"] == "COMPLETED"
+    assert result["arguments"] == {
+        "corpus_root": tmp_path,
+        "cycle_id": "daemon-cycle",
+        "timeout_seconds": 120.0,
+    }
+
+
+def test_full_service_generator_emits_forward_opt_in_only_when_declared(tmp_path):
+    default = daemon.service_file_text(repo_path=tmp_path, timeout_seconds=840)
+    enabled = daemon.service_file_text(
+        repo_path=tmp_path,
+        timeout_seconds=840,
+        forward_corpus_root=Path("/runtime/forward-corpus"),
+    )
+    assert "--enable-forward-official-result-observer" not in default
+    assert "--forward-corpus-root" not in default
+    assert (
+        "--enable-forward-official-result-observer "
+        '--forward-corpus-root "/runtime/forward-corpus"'
+    ) in enabled
+    generated = daemon.write_service_files(
+        service_dir=tmp_path / "systemd",
+        repo_path=tmp_path,
+        timeout_seconds=840,
+        forward_corpus_root=Path("/runtime/forward-corpus"),
+    )
+    assert generated["forward_corpus_root"] == "/runtime/forward-corpus"
+    assert '--forward-corpus-root "/runtime/forward-corpus"' in (
+        tmp_path / "systemd" / daemon.SERVICE_NAME
+    ).read_text()
+    odds = daemon.odds_capture_service_file_text(
+        repo_path=tmp_path,
+        timeout_seconds=600,
+    )
+    assert "--forward-corpus-root" not in odds
+
+
+@pytest.mark.parametrize("status", ["LOCK_BUSY", "COMPLETED_WITH_ERRORS", "FAILED"])
+def test_forward_observer_nonclean_daemon_cli_exit_is_nonzero(monkeypatch, status):
+    args = daemon.parse_args(
+        [
+            "run-once",
+            "--enable-forward-official-result-observer",
+            "--forward-corpus-root",
+            "/corpus",
+        ]
+    )
+    monkeypatch.setattr(daemon, "parse_args", lambda argv=None: args)
+    monkeypatch.setattr(
+        daemon,
+        "run_once",
+        lambda _args: {
+            "final_verdict": "PARTIAL_DAEMONIZATION",
+            "forward_official_result_observer": {
+                "status": status,
+                "cycle_id": "current-cycle",
+            },
+        },
+    )
+    assert daemon.main([]) == 2
+
+
+def test_forward_observer_failure_replaces_durable_success(tmp_path):
+    state_path = tmp_path / "state" / "daemon.json"
+    state_path.parent.mkdir()
+    state_path.write_text(
+        json.dumps(
+            {
+                "last_run_id": "old-success",
+                "forward_official_result_observer": {"status": "COMPLETED"},
+            }
+        )
+    )
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+    failed = {"status": "LOCK_BUSY", "cycle_id": "current-cycle"}
+    daemon.persist_forward_observer_failure(
+        output_dir=output_dir,
+        state_path=state_path,
+        run_id="current-cycle",
+        generated_at=datetime(2026, 7, 31, tzinfo=timezone.utc),
+        observer=failed,
+    )
+    durable = json.loads(state_path.read_text())
+    runtime = json.loads((output_dir / "forward_shadow_runtime_state.json").read_text())
+    assert durable["last_run_id"] == "current-cycle"
+    assert durable["forward_official_result_observer"] == failed
+    assert runtime["daemon_run_id"] == "current-cycle"
+    assert runtime["forward_official_result_observer"] == failed
+    assert "current-cycle" in (output_dir / "FORWARD_SHADOW_RUNTIME_STATE.md").read_text()
+
+
+@pytest.mark.parametrize(
+    ("path", "encoded"),
+    [
+        ("/corpus/with space", '"/corpus/with space"'),
+        ('/corpus/a"b', '"/corpus/a\\"b"'),
+        (r"/corpus/a\b", '"/corpus/a\\\\b"'),
+        ("/corpus/100%ready", '"/corpus/100%%ready"'),
+        ("/corpus/café/犬", '"/corpus/café/犬"'),
+    ],
+)
+def test_full_service_generator_systemd_escapes_corpus_root(tmp_path, path, encoded):
+    service = daemon.service_file_text(
+        repo_path=tmp_path,
+        timeout_seconds=840,
+        forward_corpus_root=Path(path),
+    )
+    assert f"--forward-corpus-root {encoded}" in service
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/corpus/new\nline",
+        "/corpus/null\0byte",
+        "/corpus/tab\tpath",
+        "/corpus/next-line\u0085path",
+        "/corpus/application-control\u009fpath",
+        "/corpus/left-to-right-mark\u200epath",
+    ],
+)
+def test_full_service_generator_rejects_control_corpus_root(tmp_path, path):
+    with pytest.raises(ValueError, match="control"):
+        daemon.service_file_text(
+            repo_path=tmp_path,
+            timeout_seconds=840,
+            forward_corpus_root=Path(path),
+        )

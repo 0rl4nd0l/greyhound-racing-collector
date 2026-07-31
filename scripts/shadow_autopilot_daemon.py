@@ -1093,6 +1093,14 @@ def optional_path_cli_args(flag: str, path: Path | None) -> list[str]:
     return [flag, str(path)]
 
 
+def systemd_exec_argument(value: str) -> str:
+    if any(not character.isprintable() for character in value):
+        raise ValueError(
+            "systemd executable arguments cannot contain control or non-printable characters"
+        )
+    return '"' + value.replace("%", "%%").replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
 def service_file_text(
     *,
     repo_path: Path,
@@ -1104,6 +1112,7 @@ def service_file_text(
     lock_path: Path | None = None,
     state_path: Path | None = None,
     odds_capture_state_path: Path | None = None,
+    forward_corpus_root: Path | None = None,
     pause_path: Path | None = DEFAULT_HEAVY_SCHEDULING_PAUSE_PATH,
 ) -> str:
     script_path = repo_path / "scripts/shadow_autopilot_daemon.py"
@@ -1116,6 +1125,15 @@ def service_file_text(
         *optional_path_cli_args("--lock-path", lock_path),
         *optional_path_cli_args("--state-path", state_path),
         *optional_path_cli_args("--odds-capture-state-path", odds_capture_state_path),
+        *(
+            [
+                "--enable-forward-official-result-observer",
+                "--forward-corpus-root",
+                systemd_exec_argument(str(forward_corpus_root)),
+            ]
+            if forward_corpus_root is not None
+            else []
+        ),
     ]
     explicit_path_segment = " ".join(explicit_path_args)
     explicit_path_segment = f"{explicit_path_segment} " if explicit_path_segment else ""
@@ -1265,6 +1283,7 @@ def write_service_files(
     lock_path: Path | None = None,
     state_path: Path | None = None,
     odds_capture_state_path: Path | None = None,
+    forward_corpus_root: Path | None = None,
     pause_path: Path | None = DEFAULT_HEAVY_SCHEDULING_PAUSE_PATH,
 ) -> dict[str, Any]:
     service_dir.mkdir(parents=True, exist_ok=True)
@@ -1282,6 +1301,7 @@ def write_service_files(
             lock_path=lock_path,
             state_path=state_path,
             odds_capture_state_path=odds_capture_state_path,
+            forward_corpus_root=forward_corpus_root,
             pause_path=pause_path,
         ),
     )
@@ -1303,8 +1323,58 @@ def write_service_files(
         "odds_capture_state_path": (
             str(odds_capture_state_path) if odds_capture_state_path is not None else None
         ),
+        "forward_corpus_root": (
+            str(forward_corpus_root) if forward_corpus_root is not None else None
+        ),
         "pause_path": str(pause_path) if pause_path is not None else None,
     }
+
+
+def run_forward_official_result_observer(args: argparse.Namespace, run_id: str) -> dict[str, Any]:
+    if not args.enable_forward_official_result_observer:
+        return {"status": "DISABLED", "attempted_race_ids": []}
+    from scripts.observe_forward_official_results import observe_once
+
+    return observe_once(
+        corpus_root=args.forward_corpus_root,
+        cycle_id=run_id,
+        timeout_seconds=min(float(args.timeout_seconds), 120.0),
+    )
+
+
+def persist_forward_observer_failure(
+    *,
+    output_dir: Path,
+    state_path: Path,
+    run_id: str,
+    generated_at: datetime,
+    observer: Mapping[str, Any],
+) -> None:
+    """Replace any older success with the identity of this failed observer cycle."""
+    payload = {
+        "schema_version": "shadow_autopilot_daemon_state_v1",
+        "last_run_id": run_id,
+        "last_output_dir": relpath(output_dir),
+        "last_verdict": "FORWARD_OFFICIAL_RESULT_OBSERVER_FAILED",
+        "updated_at": generated_at.isoformat(),
+        "forward_official_result_observer": dict(observer),
+    }
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    write_json(state_path, payload)
+    runtime = {
+        "schema_version": "forward_shadow_runtime_state_v1",
+        "generated_at": generated_at.isoformat(),
+        "daemon_run_id": run_id,
+        "status": "FORWARD_OFFICIAL_RESULT_OBSERVER_FAILED",
+        "forward_official_result_observer": dict(observer),
+    }
+    write_json(output_dir / "forward_shadow_runtime_state.json", runtime)
+    write_text(
+        output_dir / "FORWARD_SHADOW_RUNTIME_STATE.md",
+        "# Forward shadow runtime state\n\n"
+        f"- Daemon run: `{run_id}`\n"
+        f"- Observer status: `{observer.get('status')}`\n",
+    )
 
 
 def write_odds_capture_service_files(
@@ -9031,6 +9101,9 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
         lock_path=lock_path,
         state_path=state_path,
         odds_capture_state_path=odds_state_path,
+        forward_corpus_root=args.forward_corpus_root
+        if args.enable_forward_official_result_observer
+        else None,
         pause_path=lock_path.parent / "pause-heavy-scheduling",
     )
     service_path = DEFAULT_SERVICE_DIR / SERVICE_NAME
@@ -9107,6 +9180,10 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
     daily_manifest: dict[str, Any] | None = None
     shadow_odds_snapshot: dict[str, Any] | None = None
     odds_capture_state_publish: dict[str, Any] = {"status": "NOT_RUN"}
+    forward_official_result_observer: dict[str, Any] = {
+        "status": "DISABLED",
+        "attempted_race_ids": [],
+    }
     lock_validation: dict[str, Any]
     recovery_validation = {"status": "NOT_RUN"}
     try:
@@ -9133,6 +9210,26 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             if duplicate_probe.get("status") == "PASS" and stale_probe.get("status") == "PASS"
             else "FAIL",
         }
+        if args.enable_forward_official_result_observer:
+            forward_official_result_observer = run_forward_official_result_observer(
+                args, run_id
+            )
+            write_json(
+                output_dir / "forward_official_result_observer.json",
+                forward_official_result_observer,
+            )
+            if forward_official_result_observer.get("status") != "COMPLETED":
+                persist_forward_observer_failure(
+                    output_dir=output_dir,
+                    state_path=state_path,
+                    run_id=run_id,
+                    generated_at=generated_at,
+                    observer=forward_official_result_observer,
+                )
+                raise RuntimeError(
+                    "forward official-result observer failed closed: "
+                    + str(forward_official_result_observer.get("status"))
+                )
         recovery_validation = {
             "schema_version": "shadow_autopilot_recovery_validation_v1",
             "timeout_probe": simulate_timeout_recovery(output_dir),
@@ -9294,6 +9391,7 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
                 "status": "PARTIAL_DAEMONIZATION",
                 "runtime_action": "RELEASE_FULL_DAEMON_FOR_ODDS_CAPTURE",
                 "readiness_decision": "ODDS_CAPTURE_PRIORITY",
+                "forward_official_result_observer": forward_official_result_observer,
                 "autopilot_output_dir": relpath(autopilot_output_dir),
                 "autopilot_daily_status_path": relpath(autopilot_daily_status_path),
                 "daily_shadow_run_dir": relpath(daily_shadow_run_dir),
@@ -10214,6 +10312,7 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             "readiness_decision": "READY_FOR_RELIABILITY_REVIEW",
             "exception_type": type(exc).__name__,
             "exception_message": str(exc),
+            "forward_official_result_observer": forward_official_result_observer,
             "autopilot_output_dir": relpath(autopilot_output_dir),
             "daily_shadow_run_dir": relpath(daily_shadow_run_dir),
             "step_count": len(steps),
@@ -12396,6 +12495,7 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
         "updated_at": datetime.now().astimezone().isoformat(),
     }
     state_payload.update(autopilot_cycle_state_fields(daily_status))
+    state_payload["forward_official_result_observer"] = forward_official_result_observer
     write_json(state_path, state_payload)
     runtime_state_report = write_daemon_runtime_state_packet(
         output_dir=output_dir,
@@ -12414,6 +12514,7 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
         ),
         "systemd_deployment_status": systemd_deployment.get("deployment_status"),
         "systemd_deployment_ready": systemd_deployment.get("deployment_ready"),
+        "forward_official_result_observer": forward_official_result_observer,
         "safe_joined_races": dashboard.get("safe_joined_races"),
         "pending_races": dashboard.get("pending_races"),
         "unsafe_matches": dashboard.get("unsafe_matches"),
@@ -12806,6 +12907,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     run_parser.add_argument("--allow-auto-scrape-odds", action="store_true")
     run_parser.add_argument("--enable-autonomous-result-capture", action="store_true")
     run_parser.add_argument(
+        "--enable-forward-official-result-observer",
+        action="store_true",
+    )
+    run_parser.add_argument("--forward-corpus-root", type=Path)
+    run_parser.add_argument(
         "--result-backlog-limit",
         type=int,
         default=DEFAULT_FULL_DAEMON_RESULT_BACKLOG_LIMIT,
@@ -12919,6 +13025,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     service_parser.add_argument("--lock-path", type=Path)
     service_parser.add_argument("--state-path", type=Path)
     service_parser.add_argument("--odds-capture-state-path", type=Path)
+    service_parser.add_argument("--forward-corpus-root", type=Path)
     service_parser.add_argument(
         "--pause-path",
         type=Path,
@@ -12947,7 +13054,17 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=int,
         default=DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT,
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if (
+        args.command == "run-once"
+        and args.enable_forward_official_result_observer
+        and args.forward_corpus_root is None
+    ):
+        parser.error(
+            "--forward-corpus-root is required with "
+            "--enable-forward-official-result-observer"
+        )
+    return args
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -12996,6 +13113,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             lock_path=args.lock_path,
             state_path=args.state_path,
             odds_capture_state_path=args.odds_capture_state_path,
+            forward_corpus_root=args.forward_corpus_root,
             pause_path=args.pause_path,
         )
         print(json.dumps(result, indent=2, sort_keys=True))
@@ -13016,6 +13134,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     result = run_once(args)
     print(json.dumps(result, indent=2, sort_keys=True))
+    if args.enable_forward_official_result_observer and result.get(
+        "forward_official_result_observer", {}
+    ).get("status") != "COMPLETED":
+        return 2
     return 0 if result.get("final_verdict") != "NEEDS_MORE_AUTOMATION" else 2
 
 
