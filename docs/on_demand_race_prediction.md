@@ -26,7 +26,10 @@ Race resolution reads one collector-owned
 packet beneath the first `--capture-evidence-root` (or the explicit
 `--current-race-index`). A successful scheduled odds-refresh cycle atomically
 replaces this fixed packet with at most 32 selected races and seals the source
-refresh-report path and SHA-256. The predictor validates the packet schema,
+refresh-report path and SHA-256. Publication occurs immediately after that
+bounded refresh completes, before the slower multi-race odds-capture batch, so
+a later batch timeout cannot leave discovery dependent on an older index. The
+predictor validates the packet schema,
 canonical bytes, source path and hash, exact TheDogs identities, timezone-aware
 jump timestamps, uniqueness, row bound, and configured 1,200-second maximum
 source age. It does not browse, scan race/evidence directories, publish a timer

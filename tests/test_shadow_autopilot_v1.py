@@ -50,6 +50,47 @@ def test_autopilot_accepts_step_timeout_seconds():
     assert args.step_timeout_seconds == 12
 
 
+def test_autopilot_accepts_current_race_index_state_path():
+    args = autopilot.parse_args(
+        ["--current-race-index-state-path", "/runtime/odds_capture_state.json"]
+    )
+
+    assert args.current_race_index_state_path == Path(
+        "/runtime/odds_capture_state.json"
+    )
+
+
+def test_current_race_index_is_published_from_completed_refresh(
+    tmp_path, monkeypatch
+):
+    evidence_root = tmp_path / "evidence"
+    output_dir = evidence_root / "run"
+    state_path = evidence_root / "runtime/odds_capture_state.json"
+    source_path = output_dir / "odds_capture_refresh_report.json"
+    observed = {}
+
+    def fake_publish(**kwargs):
+        observed.update(kwargs)
+        return {"status": "PUBLISHED", "race_count": 1}
+
+    monkeypatch.setattr(autopilot, "publish_current_race_index", fake_publish)
+
+    result = autopilot.publish_current_race_index_after_refresh(
+        state_path=state_path,
+        evidence_root=evidence_root,
+        output_dir=output_dir,
+        run_id="scheduled-run",
+    )
+
+    assert result == {"status": "PUBLISHED", "race_count": 1}
+    assert observed == {
+        "state_path": state_path,
+        "evidence_root": evidence_root,
+        "source_refresh_report_path": source_path,
+        "run_id": "scheduled-run",
+    }
+
+
 def test_step_command_records_timeout_and_logs_output(tmp_path, monkeypatch):
     def fake_run(command, cwd, text, capture_output, check, timeout):
         assert timeout == 3

@@ -1186,6 +1186,7 @@ def test_odds_capture_only_autopilot_command_is_narrow_and_append_only():
         odds_capture_max_minutes=60.0,
         odds_capture_refresh_limit=8,
         timeout_seconds=600,
+        state_path=Path("/runtime/odds_capture_state.json"),
     )
 
     assert "scripts/shadow_autopilot_v1.py" in command[1]
@@ -1202,6 +1203,9 @@ def test_odds_capture_only_autopilot_command_is_narrow_and_append_only():
     assert "--require-safe-refresh-metadata" in command
     assert command[command.index("--collector-lock-path") + 1] == (
         "/runtime/shared.lock"
+    )
+    assert command[command.index("--current-race-index-state-path") + 1] == (
+        "/runtime/odds_capture_state.json"
     )
     assert "--enable-autonomous-result-capture" not in command
 
