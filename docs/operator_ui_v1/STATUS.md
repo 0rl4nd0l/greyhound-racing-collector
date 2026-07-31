@@ -585,3 +585,11 @@ not UI authority. `GHU-023P` owns only the smallest producer/index/verifier v2
 prerequisite. Legacy/unindexed v1 remains replay-compatible, catalog-ineligible
 and unchanged. This does not reopen `GHU-021`; its exact 551-test broad gate
 remains `RUNNING` with no terminal result claimed.
+
+Independent correction review further requires `GHU-023P` to serialize index
+replacement with its one fixed producer-owned bounded lock, failing closed and
+never stealing stale locks or manipulating a collector lock. Exact bundle
+membership is the manifest regular-file set plus exactly the parent-directory
+set derived from canonical manifest names, verified by bounded
+descriptor-relative per-directory enumeration with no recursive tree walk.
+Ticket state and counts are unchanged; no implementation validation is claimed.

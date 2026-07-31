@@ -219,7 +219,27 @@ These policies are exhaustive; an adapter may not invent or defer a threshold:
   unknown fields/identities/statuses, noncanonical/nonfinite bytes, oversize,
   truncation and unsafe file types. Atomic publication is canonical temporary
   regular-file write, flush/fsync, same-directory replace and directory fsync;
-  only producer-sealed v2 bundles are indexed. Existing/unindexed
+  only producer-sealed v2 bundles are indexed. Every producer index update is
+  serialized by the one fixed producer-owned sibling lock
+  `prediction_bundle_index_v1.lock`, distinct from every collector/runtime
+  lock. Acquisition is a descriptor-relative, no-follow, exclusive create of
+  a canonical regular file under the retained root descriptor, bounded by the
+  same 1-second monotonic index deadline. The producer records a fresh
+  unguessable ownership token and its process identity, retains the opened
+  lock descriptor, and verifies the constructed/opened name, type, device and
+  inode before reading the current index or publishing its replacement.
+  Contention, a pre-existing/stale lock, symlink, non-regular type, name or
+  component replacement, identity mismatch, or deadline exhaustion fails
+  closed without updating the index; stale locks are never inferred from age
+  or process liveness and are never stolen. Release occurs in a `finally`
+  path only by the acquiring producer, after publication or failure, and only
+  when descriptor `fstat`, descriptor-relative name lookup and the stored
+  ownership token still identify the same regular file; otherwise it leaves
+  the lock untouched and reports failure. `GHU-023P` authorizes creation,
+  validation and release of only this fixed lock during its producer index
+  update. It grants no discovery, opening, waiting on, deletion, replacement,
+  bypass or other manipulation of the live collector lock or any other lock.
+  Existing/unindexed
   `on_demand_race_prediction_v1` and
   `on_demand_prediction_bundle_manifest_v1` bundles remain replay-compatible
   but catalog-ineligible and are never rewritten absent a separately
@@ -236,8 +256,21 @@ These policies are exhaustive; an adapter may not invent or defer a threshold:
   every other allowed regular file is enumerated exactly once in `files` by a
   validated single-component or slash-separated relative name. Names
   prohibit empty/dot/dot-dot components, absolute paths and platform
-  separators. No unenumerated, missing, changed, symlink, device, FIFO, socket
-  or other special entry is allowed. The manifest itself is not self-hashed.
+  separators, and duplicate canonical names are rejected. The allowed
+  directory set is exactly the set of all proper parent-component prefixes
+  derived from those canonical `files` names; it is not manifest-authored and
+  cannot be enlarged. Under the 32-entry, byte and 5-second limits, the
+  verifier opens the bundle and each derived directory once
+  descriptor-relatively and performs bounded non-recursive enumeration of
+  each. The observed entries must equal exactly `bundle_manifest.json`, the
+  manifest regular-file set and that derived directory set at their respective
+  parents. Every derived directory must be a no-follow directory and every
+  manifest/control file a no-follow regular file. Any extra or missing entry,
+  extra directory, symlink, device, FIFO, socket, other special file,
+  traversal, duplicate, component/type/identity replacement, or enumeration
+  that exceeds the fixed count/deadline bounds fails closed; no recursive or
+  otherwise unbounded tree walk is permitted. The manifest itself is not
+  self-hashed.
   `logical_bundle_sha256` is SHA-256 of canonical JSON bytes of exactly
   `{schema_version, prediction_id, job_id, files}`, where `files` is the
   lexicographically keyed manifest mapping of relative name to exact byte

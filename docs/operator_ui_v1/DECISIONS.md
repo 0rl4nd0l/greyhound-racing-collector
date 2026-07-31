@@ -392,9 +392,14 @@ supersession.
   current on-demand v1 bundle and replay verifier insufficient as a bounded UI
   catalogue/read contract. No further run or session identity is verified.
 - Decision: Insert ready `GHU-023P` inside R2 before `GHU-023`. The producer
-  owns one fixed-root atomic canonical index and strict v2 result/manifest/index
-  schemas; detail verification is bounded and descriptor-relative with held
-  identities. Seal stable prediction and nullable job identity, complete
+  owns one fixed-root atomic canonical index, one fixed producer-only bounded
+  index-update lock, and strict v2 result/manifest/index schemas. Lock
+  contention and stale locks fail closed without stealing, and this authority
+  cannot touch any collector lock. Detail verification is bounded and
+  descriptor-relative with held identities; exact bundle membership is the
+  manifest regular-file set plus only its derived parent-directory set, with
+  bounded per-directory enumeration and no recursive walk. Seal stable
+  prediction and nullable job identity, complete
   terminal race/model/config/time/stage evidence, and a canonical aggregate
   logical hash over manifest payload/entries without requiring a self-hash.
 - Evidence: Current bundles live beneath
@@ -412,7 +417,8 @@ supersession.
   bundles remain replay-compatible but UI catalog-ineligible and unchanged.
   Listing freshness never makes historical content current. No replay,
   outcome/result access, bundle rewrite, path input/scan, acquisition,
-  service/lock/browser/collector/runtime action, training, promotion, EV,
+  service/browser/collector/runtime action or lock action beyond the fixed
+  producer index-update lock, training, promotion, EV,
   staking or betting is authorized. `GHU-021` remains accepted; its broad gate
   is still `RUNNING`, not terminal.
 - Supersession: Additively refines only the prediction-bundle source contract
