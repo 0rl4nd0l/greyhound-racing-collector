@@ -1326,6 +1326,10 @@ class UpcomingRaceBrowser:
         hint_grade_key = (hint_metadata or {}).get(
             "target_grade_equivalence_key"
         ) or target_grade_equivalence_key(hint_grade_raw)
+        hint_grade_is_exact = (
+            (hint_metadata or {}).get("target_grade_source")
+            == "thedogs_meeting_card_exact_race"
+        )
         grades_conflict = bool(
             page_grade
             and hint_grade
@@ -1352,7 +1356,7 @@ class UpcomingRaceBrowser:
             merged["target_grade_source"] = "default_missing_target"
             for key in provenance_keys:
                 merged.pop(key, None)
-        elif not page_grade and hint_grade:
+        elif hint_grade and (not page_grade or hint_grade_is_exact):
             merged.update(
                 {
                     "grade": hint_grade,
