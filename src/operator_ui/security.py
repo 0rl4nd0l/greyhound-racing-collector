@@ -6,10 +6,12 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import sqlite3
 import stat
 import threading
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import wraps
@@ -23,6 +25,7 @@ from .foundation import EvidenceStatus
 
 
 AUDIT_SCHEMA = "operator_ui_access_audit_v1"
+OPERATION_AUDIT_SCHEMA = "operator_ui_level2_operation_audit_v1"
 ZERO_HASH = "0" * 64
 NON_OPERATIONAL_ERROR = {
     "classification": "NON_OPERATIONAL/AUDIT_UNAVAILABLE",
@@ -44,6 +47,15 @@ _CONTENT_HASH_REQUIRED = frozenset(
 )
 _ACTIVE_SESSION_LIMIT = 256
 _ACTIVE_SESSION_LIMIT_HARD_MAX = 4096
+
+_AUDIT_SCHEMA_SQL = """
+CREATE TABLE audit_events (sequence INTEGER PRIMARY KEY AUTOINCREMENT,event_id TEXT NOT NULL UNIQUE,schema TEXT NOT NULL,event_time_utc TEXT NOT NULL,actor_identity TEXT NOT NULL,actor_level INTEGER NOT NULL,session_identifier TEXT NOT NULL,request_identifier TEXT NOT NULL,route TEXT NOT NULL,http_method TEXT NOT NULL,authorization_decision TEXT NOT NULL,authorization_policy TEXT NOT NULL,evidence_source_identifiers TEXT NOT NULL,content_hashes TEXT NOT NULL,reference_hashes TEXT NOT NULL,deployed_commit TEXT NOT NULL,deployed_tree TEXT NOT NULL,deployed_version TEXT NOT NULL,response_classification TEXT NOT NULL,previous_event_hash TEXT NOT NULL,event_hash TEXT NOT NULL UNIQUE);
+CREATE TRIGGER audit_events_no_update BEFORE UPDATE ON audit_events BEGIN SELECT RAISE(ABORT, 'audit events are immutable'); END;
+CREATE TRIGGER audit_events_no_delete BEFORE DELETE ON audit_events BEGIN SELECT RAISE(ABORT, 'audit events are immutable'); END;
+CREATE TABLE operation_audit_events (sequence INTEGER PRIMARY KEY AUTOINCREMENT,event_id TEXT NOT NULL UNIQUE, schema TEXT NOT NULL,event_time_utc TEXT NOT NULL, actor_identity TEXT NOT NULL,actor_level INTEGER NOT NULL CHECK(actor_level = 2),session_identifier TEXT NOT NULL, request_identifier TEXT NOT NULL,client_identity TEXT NOT NULL, operation TEXT NOT NULL,idempotency_key_sha256 TEXT NOT NULL, job_id TEXT NOT NULL,race_id TEXT NOT NULL, runner_set_sha256 TEXT NOT NULL,model_identity TEXT NOT NULL, model_sha256 TEXT NOT NULL,config_id TEXT NOT NULL, config_sha256 TEXT NOT NULL,input_identity_sha256 TEXT NOT NULL, prior_state TEXT NOT NULL,new_state TEXT NOT NULL, status TEXT NOT NULL, reason TEXT NOT NULL,reference_hashes TEXT NOT NULL, previous_event_hash TEXT NOT NULL,event_hash TEXT NOT NULL UNIQUE);
+CREATE TRIGGER operation_audit_no_update BEFORE UPDATE ON operation_audit_events BEGIN SELECT RAISE(ABORT, 'operation audit events are immutable'); END;
+CREATE TRIGGER operation_audit_no_delete BEFORE DELETE ON operation_audit_events BEGIN SELECT RAISE(ABORT, 'operation audit events are immutable'); END;
+"""
 
 
 class ConnectedModeConfigurationError(RuntimeError):
@@ -169,14 +181,120 @@ class AuditEvent:
             "http_method": self.http_method,
             "authorization_decision": self.authorization_decision,
             "authorization_policy": self.authorization_policy,
-            "evidence_source_identifiers": list(self.evidence_source_identifiers),
-            "content_hashes": list(self.content_hashes),
-            "reference_hashes": list(self.reference_hashes),
+            "evidence_source_identifiers": sorted(self.evidence_source_identifiers),
+            "content_hashes": sorted(self.content_hashes),
+            "reference_hashes": sorted(self.reference_hashes),
             "deployed_commit": self.deployed_commit,
             "deployed_tree": self.deployed_tree,
             "deployed_version": self.deployed_version,
             "response_classification": self.response_classification,
         }
+
+
+@dataclass(frozen=True)
+class OperationAuditEvent:
+    """Privacy-bounded Level-2 mutation fact, separate from job persistence."""
+
+    event_id: str
+    event_time_utc: str
+    actor_identity: str
+    actor_level: int
+    session_identifier: str
+    request_identifier: str
+    client_identity: str
+    operation: str
+    idempotency_key_sha256: str
+    job_id: str
+    race_id: str
+    runner_set_sha256: str
+    model_identity: str
+    model_sha256: str
+    config_id: str
+    config_sha256: str
+    input_identity_sha256: str
+    prior_state: str
+    new_state: str
+    status: str
+    reason: str
+    reference_hashes: tuple[str, ...] = ()
+
+    def fields(self) -> dict[str, Any]:
+        return {
+            **{name: getattr(self, name) for name in self.__dataclass_fields__ if name != "reference_hashes"},
+            "schema": OPERATION_AUDIT_SCHEMA,
+            "reference_hashes": sorted(self.reference_hashes),
+        }
+
+
+def _canonical_utc(value: Any) -> bool:
+    if not isinstance(value, str): return False
+    try: parsed=datetime.fromisoformat(value.replace("Z","+00:00"))
+    except ValueError: return False
+    return parsed.tzinfo is not None and _utc_text(parsed)==value
+
+
+_ACCESS_CONTRACTS = frozenset({
+    ("/operator-ui/connected/sentinel", "GET", "LEVEL_1_CONNECTED_SENTINEL"),
+    ("/operator-ui/api/v1/overview", "GET", "LEVEL_1_API_V1_OVERVIEW"),
+    ("/operator-ui/api/v1/races/upcoming", "GET", "LEVEL_1_API_V1_UPCOMING_RACES"),
+    ("/operator-ui/api/v1/predictions/recent", "GET", "LEVEL_1_API_V1_RECENT_PREDICTIONS"),
+    ("/operator-ui/api/v1/collector", "GET", "LEVEL_1_API_V1_COLLECTOR"),
+    ("/operator-ui/api/v1/corpus", "GET", "LEVEL_1_API_V1_CORPUS"),
+    ("/operator-ui/api/v1/models", "GET", "LEVEL_1_API_V1_MODELS"),
+    ("/operator-ui/api/v1/system", "GET", "LEVEL_1_API_V1_SYSTEM"),
+    ("/operator-ui/api/v1/audit", "GET", "LEVEL_1_API_V1_AUDIT"),
+})
+def _declared_access_contract(route: Any, method: Any, policy: Any) -> bool:
+    if (route, method, policy) in _ACCESS_CONTRACTS:
+        return True
+    details = (
+        (r"/operator-ui/api/v1/races/[A-Za-z0-9._~-]+", "LEVEL_1_API_V1_RACE_DETAIL"),
+        (r"/operator-ui/api/v1/predictions/[A-Za-z0-9._~-]+", "LEVEL_1_API_V1_PREDICTION_DETAIL"),
+    )
+    return method == "GET" and any(policy == declared and re.fullmatch(pattern, str(route)) for pattern, declared in details)
+
+
+def _validate_audit_fields(fields: Mapping[str, Any], *, operation: bool) -> None:
+    expected_schema=OPERATION_AUDIT_SCHEMA if operation else AUDIT_SCHEMA
+    if fields.get("schema")!=expected_schema or not _canonical_utc(fields.get("event_time_utc")):
+        raise AuditUnavailable("audit event semantics invalid")
+    list_names=("reference_hashes",) if operation else ("evidence_source_identifiers","content_hashes","reference_hashes")
+    for name in list_names:
+        value=fields.get(name)
+        if not isinstance(value,list) or value!=sorted(value) or len(value)!=len(set(value)):
+            raise AuditUnavailable("audit array semantics invalid")
+    for name in ("event_id","session_identifier","request_identifier"):
+        value=fields.get(name)
+        try: parsed=uuid.UUID(value) if isinstance(value,str) else None
+        except ValueError: parsed=None
+        if parsed is None or str(parsed)!=value: raise AuditUnavailable(f"audit {name} invalid")
+    if operation:
+        if fields.get("actor_level")!=2: raise AuditUnavailable("operation audit authority invalid")
+        hashes=("idempotency_key_sha256","runner_set_sha256","model_sha256","config_sha256","input_identity_sha256")
+        if any(not isinstance(fields.get(name),str) or not _valid_sha256(fields[name]) for name in (*hashes,"reference_hashes") if name!="reference_hashes") or any(not _valid_sha256(v) for v in fields["reference_hashes"]):
+            raise AuditUnavailable("operation audit hash invalid")
+        if fields.get("operation")!="manual_prediction_claim" or fields.get("prior_state")!="WAITING_FOR_CLAIM" or fields.get("new_state")!="CLAIMED" or fields.get("status")!="CONFIRMED" or fields.get("reason")!="unique_attempt_claim": raise AuditUnavailable("operation audit lifecycle invalid")
+        if not str(fields.get("job_id","")).startswith("job_") or not str(fields.get("race_id","")).startswith("race-"): raise AuditUnavailable("operation audit identity invalid")
+        scalar_names=set(OperationAuditEvent.__dataclass_fields__)-{"actor_level","reference_hashes"}
+    else:
+        if fields.get("actor_level") not in {0,1,2} or fields.get("http_method") not in {"GET","POST"} or fields.get("authorization_decision") not in {"allowed","denied"}:
+            raise AuditUnavailable("access audit vocabulary invalid")
+        if any(not _valid_sha256(v) for n in ("content_hashes","reference_hashes") for v in fields[n]): raise AuditUnavailable("access audit hash invalid")
+        if any(not _valid_identifier(v) for v in fields["evidence_source_identifiers"]): raise AuditUnavailable("access audit source invalid")
+        route=str(fields.get("route",""))
+        if not _declared_access_contract(route, fields.get("http_method"), fields.get("authorization_policy")): raise AuditUnavailable("access audit route policy invalid")
+        classification=fields.get("response_classification"); decision=fields.get("authorization_decision")
+        allowed_classifications=_EVIDENCE_CLASSIFICATIONS|{"NON_OPERATIONAL/PROVIDER_ERROR"}
+        if decision=="denied" and classification!="NON_OPERATIONAL/AUTHORIZATION_DENIED": raise AuditUnavailable("access audit denial classification invalid")
+        if decision=="allowed" and classification not in allowed_classifications: raise AuditUnavailable("access audit allowed classification invalid")
+        if decision=="allowed" and fields.get("actor_level",0)<1 or decision=="denied" and fields.get("actor_level")!=0: raise AuditUnavailable("access audit actor coupling invalid")
+        for name in ("deployed_commit","deployed_tree"):
+            value=fields.get(name)
+            if not isinstance(value,str) or len(value)!=40 or set(value)-set("0123456789abcdef"): raise AuditUnavailable("access audit deployed identity invalid")
+        if not isinstance(fields.get("deployed_version"),str) or not 1<=len(fields["deployed_version"])<=64: raise AuditUnavailable("access audit deployed version invalid")
+        scalar_names=set(AuditEvent.__dataclass_fields__)-{"actor_level","evidence_source_identifiers","content_hashes","reference_hashes"}
+    if any(not _valid_identifier(fields.get(name)) for name in scalar_names):
+        raise AuditUnavailable("audit identifier invalid")
 
 
 @dataclass(frozen=True)
@@ -364,43 +482,11 @@ class AuditStore:
         self._validate_separation(
             None if existing is None else (existing.st_dev, existing.st_ino)
         )
+        populated = existing is not None and existing.st_size > 0
         connection = self._connect()
         try:
-            connection.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS audit_events (
-                    sequence INTEGER PRIMARY KEY AUTOINCREMENT,
-                    event_id TEXT NOT NULL UNIQUE,
-                    schema TEXT NOT NULL,
-                    event_time_utc TEXT NOT NULL,
-                    actor_identity TEXT NOT NULL,
-                    actor_level INTEGER NOT NULL,
-                    session_identifier TEXT NOT NULL,
-                    request_identifier TEXT NOT NULL,
-                    route TEXT NOT NULL,
-                    http_method TEXT NOT NULL,
-                    authorization_decision TEXT NOT NULL,
-                    authorization_policy TEXT NOT NULL,
-                    evidence_source_identifiers TEXT NOT NULL,
-                    content_hashes TEXT NOT NULL,
-                    reference_hashes TEXT NOT NULL,
-                    deployed_commit TEXT NOT NULL,
-                    deployed_tree TEXT NOT NULL,
-                    deployed_version TEXT NOT NULL,
-                    response_classification TEXT NOT NULL,
-                    previous_event_hash TEXT NOT NULL,
-                    event_hash TEXT NOT NULL UNIQUE
-                );
-                CREATE TRIGGER IF NOT EXISTS audit_events_no_update
-                BEFORE UPDATE ON audit_events BEGIN
-                    SELECT RAISE(ABORT, 'audit events are immutable');
-                END;
-                CREATE TRIGGER IF NOT EXISTS audit_events_no_delete
-                BEFORE DELETE ON audit_events BEGIN
-                    SELECT RAISE(ABORT, 'audit events are immutable');
-                END;
-                """
-            )
+            if not populated:
+                connection.executescript(_AUDIT_SCHEMA_SQL)
         finally:
             connection.close()
         os.chmod(self.path, 0o600)
@@ -409,9 +495,30 @@ class AuditStore:
             raise AuditUnavailable("audit store must be a regular file")
         self._file_identity = (details.st_dev, details.st_ino)
         self._validate_pinned_path()
+        if not self.verify_chain():
+            raise AuditUnavailable("audit store integrity invalid")
+
+    def _validate_schema(self, connection: sqlite3.Connection) -> None:
+        expected = sqlite3.connect(":memory:")
+        try:
+            expected.executescript(_AUDIT_SCHEMA_SQL)
+            query="SELECT type,name,tbl_name,sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name"
+            if [tuple(r) for r in connection.execute(query)] != [tuple(r) for r in expected.execute(query)]:
+                raise AuditUnavailable("audit schema invalid")
+            for table in ("audit_events","operation_audit_events"):
+                for pragma in ("table_info","index_list","foreign_key_list"):
+                    if [tuple(r) for r in connection.execute(f"PRAGMA {pragma}({table})")] != [tuple(r) for r in expected.execute(f"PRAGMA {pragma}({table})")]:
+                        raise AuditUnavailable("audit schema metadata invalid")
+                for row in expected.execute(f"PRAGMA index_list({table})"):
+                    name=row[1]
+                    if [tuple(r) for r in connection.execute(f"PRAGMA index_info('{name}')")] != [tuple(r) for r in expected.execute(f"PRAGMA index_info('{name}')")]:
+                        raise AuditUnavailable("audit index metadata invalid")
+        finally:
+            expected.close()
 
     def append_and_confirm(self, event: AuditEvent) -> str:
         fields = event.fields()
+        _validate_audit_fields(fields,operation=False)
         for name in ("content_hashes", "reference_hashes"):
             if any(not _valid_sha256(value) for value in fields[name]):
                 raise AuditUnavailable(f"invalid {name}")
@@ -478,6 +585,7 @@ class AuditStore:
             connection.close()
 
     def _verified_tail(self, connection: sqlite3.Connection) -> str:
+        self._validate_schema(connection)
         previous_hash = ZERO_HASH
         rows = connection.execute(
             "SELECT * FROM audit_events ORDER BY sequence"
@@ -502,6 +610,8 @@ class AuditStore:
                 "reference_hashes",
             ):
                 fields[name] = json.loads(row[name])
+                if row[name]!=json.dumps(fields[name],separators=(",",":"),ensure_ascii=False): raise AuditUnavailable("audit JSON encoding invalid")
+            _validate_audit_fields(fields,operation=False)
             calculated = hashlib.sha256(
                 _canonical({**fields, "previous_event_hash": previous_hash})
             ).hexdigest()
@@ -512,6 +622,62 @@ class AuditStore:
             previous_hash = row["event_hash"]
         return previous_hash
 
+    def append_operation_and_confirm(self, event: OperationAuditEvent) -> str:
+        fields = event.fields()
+        _validate_audit_fields(fields,operation=True)
+        hashes = (
+            fields["idempotency_key_sha256"], fields["runner_set_sha256"],
+            fields["model_sha256"], fields["config_sha256"],
+            fields["input_identity_sha256"], *fields["reference_hashes"],
+        )
+        if event.actor_level != 2 or any(not _valid_sha256(value) for value in hashes):
+            raise AuditUnavailable("invalid operation audit event")
+        for name, value in fields.items():
+            if name not in {"actor_level", "reference_hashes", "schema"} and not _valid_identifier(value):
+                raise AuditUnavailable(f"invalid operation audit {name}")
+        connection = self._connect()
+        try:
+            self._validate_pinned_path()
+            connection.execute("BEGIN IMMEDIATE")
+            previous = self._verified_operation_tail(connection)
+            event_hash = hashlib.sha256(_canonical({**fields, "previous_event_hash": previous})).hexdigest()
+            values = {**fields, "reference_hashes": json.dumps(fields["reference_hashes"], separators=(",", ":")), "previous_event_hash": previous, "event_hash": event_hash}
+            columns = tuple(values)
+            connection.execute(
+                f"INSERT INTO operation_audit_events ({','.join(columns)}) VALUES ({','.join(':'+name for name in columns)})",
+                values,
+            )
+            confirmed = connection.execute("SELECT event_hash FROM operation_audit_events WHERE event_id=?", (event.event_id,)).fetchone()
+            if confirmed is None or not hmac.compare_digest(confirmed["event_hash"], event_hash):
+                raise AuditUnavailable("operation audit confirmation failed")
+            connection.commit()
+            self._validate_pinned_path()
+            return event_hash
+        except AuditUnavailable:
+            connection.rollback(); raise
+        except (sqlite3.Error, ValueError, TypeError) as exc:
+            connection.rollback(); raise AuditUnavailable("operation audit append failed") from exc
+        finally:
+            connection.close()
+
+    def _verified_operation_tail(self, connection: sqlite3.Connection) -> str:
+        self._validate_schema(connection)
+        previous = ZERO_HASH
+        rows = connection.execute("SELECT * FROM operation_audit_events ORDER BY sequence").fetchall()
+        for sequence, row in enumerate(rows, 1):
+            if row["sequence"] != sequence:
+                raise AuditUnavailable("operation audit sequence invalid")
+            fields = {name: row[name] for name in OperationAuditEvent.__dataclass_fields__ if name != "reference_hashes"}
+            fields["schema"] = row["schema"]
+            fields["reference_hashes"] = json.loads(row["reference_hashes"])
+            if row["reference_hashes"]!=json.dumps(fields["reference_hashes"],separators=(",",":"),ensure_ascii=False): raise AuditUnavailable("operation audit JSON encoding invalid")
+            _validate_audit_fields(fields,operation=True)
+            calculated = hashlib.sha256(_canonical({**fields, "previous_event_hash": previous})).hexdigest()
+            if row["previous_event_hash"] != previous or not hmac.compare_digest(row["event_hash"], calculated):
+                raise AuditUnavailable("operation audit chain integrity invalid")
+            previous = row["event_hash"]
+        return previous
+
     def verify_chain(self) -> bool:
         try:
             connection = self._connect()
@@ -519,6 +685,7 @@ class AuditStore:
             return False
         try:
             self._verified_tail(connection)
+            self._verified_operation_tail(connection)
             return True
         except (
             AuditUnavailable,
@@ -718,7 +885,7 @@ def install_connected_mode(app: Flask) -> AuditStore | None:
         current = now_epoch()
         identity = str(app.config["OPERATOR_UI_USERNAME"])
         level = int(app.config.get("OPERATOR_UI_LEVEL", 1))
-        session_identifier = secrets.token_urlsafe(24)
+        session_identifier = str(uuid.uuid4())
         active_sessions.register(
             session_identifier,
             identity,
@@ -784,12 +951,12 @@ def install_connected_mode(app: Flask) -> AuditStore | None:
                     references: tuple[str, ...] = (),
                 ) -> AuditEvent:
                     return AuditEvent(
-                        event_id=secrets.token_urlsafe(24),
+                        event_id=str(uuid.uuid4()),
                         event_time_utc=_utc_text(clock()),
                         actor_identity=identity,
                         actor_level=level,
                         session_identifier=str(session["operator_session_id"]),
-                        request_identifier=secrets.token_urlsafe(18),
+                        request_identifier=str(uuid.uuid4()),
                         route=request.path,
                         http_method=request.method,
                         authorization_decision=decision,

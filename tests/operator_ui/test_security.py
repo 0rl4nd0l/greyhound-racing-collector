@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 import pytest
+import uuid
 from flask import Flask, Response
 from werkzeug.security import generate_password_hash
 
@@ -20,13 +21,13 @@ from src.operator_ui.security import (
     PreparedDisclosure,
     install_connected_mode,
     load_connected_environment,
+    OperationAuditEvent,
 )
 from src.operator_ui.foundation import EvidenceStatus
 
 
 NOW = datetime(2026, 7, 31, 1, 0, tzinfo=timezone.utc)
 HASH = hashlib.sha256(b"safe metadata only").hexdigest()
-
 
 def configured_app(tmp_path, *, level=1, clock=None):
     app = Flask(__name__)
@@ -61,24 +62,174 @@ def login(client, password="correct horse"):
 
 def event(number: int) -> AuditEvent:
     return AuditEvent(
-        event_id=f"event-{number}",
+        event_id=str(uuid.uuid5(uuid.NAMESPACE_OID,f"event-{number}")),
         event_time_utc="2026-07-31T01:00:00.000000Z",
         actor_identity="viewer",
         actor_level=1,
-        session_identifier="session-safe",
-        request_identifier=f"request-{number}",
+        session_identifier=str(uuid.uuid5(uuid.NAMESPACE_OID,"session-safe")),
+        request_identifier=str(uuid.uuid5(uuid.NAMESPACE_OID,f"request-{number}")),
         route="/operator-ui/connected/sentinel",
         http_method="GET",
         authorization_decision="allowed",
-        authorization_policy="LEVEL_1_TEST",
+        authorization_policy="LEVEL_1_CONNECTED_SENTINEL",
         evidence_source_identifiers=("fixture.identity",),
         content_hashes=(HASH,),
         reference_hashes=(HASH,),
         deployed_commit="c" * 40,
         deployed_tree="d" * 40,
         deployed_version="test-v1",
-        response_classification="OPERATIONAL/AVAILABLE",
+        response_classification=EvidenceStatus.AVAILABLE_FRESH.value,
     )
+
+
+def operation_event(number: int) -> OperationAuditEvent:
+    return OperationAuditEvent(
+        event_id=str(uuid.uuid5(uuid.NAMESPACE_OID,f"operation-{number}")), event_time_utc="2026-07-31T01:00:00.000000Z",
+        actor_identity="operator", actor_level=2, session_identifier=str(uuid.uuid5(uuid.NAMESPACE_OID,"operation-session")),
+        request_identifier=str(uuid.uuid5(uuid.NAMESPACE_OID,f"operation-request-{number}")), client_identity="privacy-client-v1:local",
+        operation="manual_prediction_claim", idempotency_key_sha256=HASH,
+        job_id="job_safe", race_id="race-safe", runner_set_sha256=HASH,
+        model_identity="model-safe", model_sha256=HASH, config_id="config-safe",
+        config_sha256=HASH, input_identity_sha256=HASH, prior_state="WAITING_FOR_CLAIM",
+        new_state="CLAIMED", status="CONFIRMED", reason="unique_attempt_claim",
+        reference_hashes=(HASH,),
+    )
+
+
+def test_operation_audit_is_separate_insert_only_confirmed_and_verified(tmp_path):
+    store = AuditStore(tmp_path / "audit.sqlite3", (tmp_path / "canonical.sqlite3", tmp_path / "jobs.sqlite3"))
+    assert store.append_operation_and_confirm(operation_event(1))
+    assert store.verify_chain()
+    with sqlite3.connect(store.path) as db:
+        with pytest.raises(sqlite3.IntegrityError): db.execute("UPDATE operation_audit_events SET reason='changed'")
+        with pytest.raises(sqlite3.IntegrityError): db.execute("DELETE FROM operation_audit_events")
+
+@pytest.mark.parametrize("field",["event_id","session_identifier","request_identifier"])
+@pytest.mark.parametrize("spelling",["upper","braced"])
+def test_audit_uuid_fields_require_exact_canonical_serialization(tmp_path,field,spelling):
+    original=event(1); values=original.__dict__.copy(); value=values[field]
+    values[field]=value.upper() if spelling=="upper" else "{"+value+"}"
+    with pytest.raises(AuditUnavailable): AuditStore(tmp_path/"audit.sqlite3").append_and_confirm(AuditEvent(**values))
+
+def test_undeclared_audit_tuple_cannot_be_registered_or_reconstructed(tmp_path):
+    import src.operator_ui.security as security
+    assert not hasattr(security,"register_test_audit_contract")
+    values=event(1).__dict__.copy(); values.update(route="/operator-ui/connected/undeclared",authorization_policy="LEVEL_1_UNDECLARED")
+    with pytest.raises(AuditUnavailable): AuditStore(tmp_path/"audit.sqlite3").append_and_confirm(AuditEvent(**values))
+
+def test_access_contract_authority_cannot_be_expanded_at_runtime(tmp_path):
+    import src.operator_ui.security as security
+    invented=("/operator-ui/connected/invented","GET","LEVEL_1_INVENTED")
+    with pytest.raises(AttributeError): security._ACCESS_CONTRACTS.add(invented)
+    assert invented not in security._ACCESS_CONTRACTS
+    values=event(1).__dict__.copy(); values.update(route=invented[0],http_method=invented[1],authorization_policy=invented[2])
+    with pytest.raises(AuditUnavailable): AuditStore(tmp_path/"audit.sqlite3").append_and_confirm(AuditEvent(**values))
+
+
+def test_operation_audit_tamper_and_append_failure_fail_closed(tmp_path, monkeypatch):
+    store = AuditStore(tmp_path / "audit.sqlite3")
+    store.append_operation_and_confirm(operation_event(1))
+    with sqlite3.connect(store.path) as db:
+        db.execute("DROP TRIGGER operation_audit_no_update")
+        db.execute("UPDATE operation_audit_events SET reason='tampered'")
+    assert store.verify_chain() is False
+    with pytest.raises(AuditUnavailable): store.append_operation_and_confirm(operation_event(2))
+
+def test_rehashed_semantically_invalid_operation_row_fails_closed(tmp_path):
+    store = AuditStore(tmp_path / "audit.sqlite3")
+    store.append_operation_and_confirm(operation_event(1))
+    with sqlite3.connect(store.path) as db:
+        db.execute("DROP TRIGGER operation_audit_no_update")
+        row=db.execute("SELECT * FROM operation_audit_events").fetchone()
+        db.execute("UPDATE operation_audit_events SET status='bad status'")
+        fields=operation_event(1).fields(); fields["status"]="bad status"
+        import json
+        fields["reference_hashes"]=list(operation_event(1).reference_hashes)
+        bad=hashlib.sha256(json.dumps({**fields,"previous_event_hash":row[-2]},sort_keys=True,separators=(",",":"),ensure_ascii=False,allow_nan=False).encode()).hexdigest()
+        db.execute("UPDATE operation_audit_events SET event_hash=?",(bad,))
+    assert store.verify_chain() is False
+    with pytest.raises(AuditUnavailable): store.append_operation_and_confirm(operation_event(2))
+
+def test_undeclared_route_and_policy_reviewer_probe_is_rejected(tmp_path):
+    store = AuditStore(tmp_path / "audit.sqlite3")
+    bad = event(1)
+    bad = AuditEvent(**{
+        **{name: getattr(bad, name) for name in bad.__dataclass_fields__},
+        "route": "/operator-ui/api/v1/undeclared/foo/bar",
+        "http_method": "POST",
+        "authorization_policy": "LEVEL_1_INVENTED_POLICY",
+    })
+    with pytest.raises(AuditUnavailable):
+        store.append_and_confirm(bad)
+
+_AUDIT_CORRUPTIONS=("sequence","event_id","time","actor","level","session","request","route","method","decision","policy","sources","content","references","commit","tree","version","classification")
+
+@pytest.mark.parametrize("family",_AUDIT_CORRUPTIONS)
+def test_corrupt_and_rehash_access_audit_field_family_fails_reopen_and_next_append(tmp_path,family):
+    store=AuditStore(tmp_path/"audit.sqlite3"); original=event(1); store.append_and_confirm(original); fields=original.fields()
+    changes={
+      "event_id":("event_id","not-a-uuid"),"time":("event_time_utc","2026-07-31T01:00:00Z"),"actor":("actor_identity",""),
+      "level":("actor_level",9),"session":("session_identifier",""),"request":("request_identifier",""),
+      "route":("route","/operator-ui/api/v1/undeclared/foo/bar"),"method":("http_method","POST"),
+      "decision":("authorization_decision","maybe"),"policy":("authorization_policy","LEVEL_1_INVENTED_POLICY"),
+      "commit":("deployed_commit","g"*40),"tree":("deployed_tree","0"*39),"version":("deployed_version",""),
+      "classification":("response_classification","NON_OPERATIONAL/AUTHORIZATION_DENIED"),
+    }
+    with sqlite3.connect(store.path) as db:
+        db.execute("DROP TRIGGER audit_events_no_update")
+        if family=="sequence": db.execute("UPDATE audit_events SET sequence=2")
+        elif family in {"sources","content","references"}:
+            column={"sources":"evidence_source_identifiers","content":"content_hashes","references":"reference_hashes"}[family]
+            value=["z","a"] if family=="sources" else ["bad"]
+            fields[column]=value; db.execute(f"UPDATE audit_events SET {column}=?",(json.dumps(value,separators=(",",":")),))
+        else:
+            column,value=changes[family]; fields[column]=value; db.execute(f"UPDATE audit_events SET {column}=?",(value,))
+        digest=hashlib.sha256(json.dumps({**fields,"previous_event_hash":"0"*64},sort_keys=True,separators=(",",":"),ensure_ascii=False,allow_nan=False).encode()).hexdigest()
+        db.execute("UPDATE audit_events SET event_hash=?",(digest,))
+    assert not store.verify_chain()
+    with pytest.raises(AuditUnavailable): store.append_and_confirm(event(2))
+
+_OPERATION_CORRUPTIONS=("sequence","event_id","time","actor","level","session","request","client","operation","idempotency","job","race","runner","model_id","model_hash","config_id","config_hash","input","prior","new","status","reason","references")
+
+@pytest.mark.parametrize("family",_OPERATION_CORRUPTIONS)
+def test_corrupt_and_rehash_operation_audit_field_family_fails_closed(tmp_path,family):
+    store=AuditStore(tmp_path/"audit.sqlite3"); original=operation_event(1); store.append_operation_and_confirm(original); fields=original.fields()
+    columns={"event_id":"event_id","time":"event_time_utc","actor":"actor_identity","level":"actor_level","session":"session_identifier","request":"request_identifier","client":"client_identity","operation":"operation","idempotency":"idempotency_key_sha256","job":"job_id","race":"race_id","runner":"runner_set_sha256","model_id":"model_identity","model_hash":"model_sha256","config_id":"config_id","config_hash":"config_sha256","input":"input_identity_sha256","prior":"prior_state","new":"new_state","status":"status","reason":"reason"}
+    hash_families={"idempotency","runner","model_hash","config_hash","input"}
+    with sqlite3.connect(store.path) as db:
+        db.execute("DROP TRIGGER operation_audit_no_update")
+        db.execute("PRAGMA ignore_check_constraints=ON")
+        if family=="sequence": db.execute("UPDATE operation_audit_events SET sequence=2")
+        elif family=="references": fields["reference_hashes"]=["bad"]; db.execute("UPDATE operation_audit_events SET reference_hashes='[\"bad\"]'")
+        else:
+            column=columns[family]
+            if family=="event_id": value="not-a-uuid"
+            elif family=="time": value="2026-07-31T01:00:00Z"
+            elif family=="level": value=1
+            elif family in hash_families: value="bad"
+            elif family=="job": value="not-job"
+            elif family=="race": value="not-race"
+            else: value=""
+            fields[column]=value; db.execute(f"UPDATE operation_audit_events SET {column}=?",(value,))
+        digest=hashlib.sha256(json.dumps({**fields,"previous_event_hash":"0"*64},sort_keys=True,separators=(",",":"),ensure_ascii=False,allow_nan=False).encode()).hexdigest()
+        db.execute("UPDATE operation_audit_events SET event_hash=?",(digest,))
+    assert not store.verify_chain()
+    with pytest.raises(AuditUnavailable): store.append_operation_and_confirm(operation_event(2))
+
+
+def test_operation_audit_reopen_does_not_repair_removed_trigger(tmp_path):
+    store = AuditStore(tmp_path / "audit.sqlite3")
+    store.append_operation_and_confirm(operation_event(1))
+    with sqlite3.connect(store.path) as db:
+        db.execute("DROP TRIGGER operation_audit_no_update")
+    with pytest.raises(AuditUnavailable): AuditStore(store.path)
+
+def test_audit_same_named_noop_trigger_fails_before_use(tmp_path):
+    store=AuditStore(tmp_path/"audit.sqlite3")
+    with sqlite3.connect(store.path) as db:
+        db.execute("DROP TRIGGER audit_events_no_update")
+        db.execute("CREATE TRIGGER audit_events_no_update BEFORE UPDATE ON audit_events BEGIN SELECT 1; END")
+    assert store.verify_chain() is False
 
 
 def test_connected_mode_is_default_off_and_registers_no_routes():
@@ -358,8 +509,8 @@ def test_overlapping_authenticated_requests_accept_stale_rotated_cookie(tmp_path
     first_authenticated = threading.Event()
     release_first = threading.Event()
 
-    @app.get("/operator-ui/connected/overlap")
-    @decorator(policy="LEVEL_1_OVERLAP")
+    @app.get("/operator-ui/api/v1/races/overlap")
+    @decorator(policy="LEVEL_1_API_V1_RACE_DETAIL")
     def overlap():
         if request_clock.advance == 1:
             first_authenticated.set()
@@ -380,7 +531,7 @@ def test_overlapping_authenticated_requests_accept_stale_rotated_cookie(tmp_path
         request_clock.advance = advance
         client = app.test_client()
         client.set_cookie(cookie_name, original_cookie)
-        response = client.get("/operator-ui/connected/overlap")
+        response = client.get("/operator-ui/api/v1/races/overlap")
         return response, client.get_cookie(cookie_name).value
 
     with ThreadPoolExecutor(max_workers=2) as executor:
@@ -467,8 +618,8 @@ def test_prepared_result_audits_exact_dynamic_classification_and_metadata(
     reference_hash = hashlib.sha256(source.encode()).hexdigest()
     protected_payload_marker = "protected-payload-marker-must-not-enter-audit"
 
-    @app.get("/operator-ui/connected/probe")
-    @decorator(policy="LEVEL_1_PROBE")
+    @app.get("/operator-ui/api/v1/races/probe")
+    @decorator(policy="LEVEL_1_API_V1_RACE_DETAIL")
     def probe():
         return PreparedDisclosure(
             body=json.dumps(
@@ -485,7 +636,7 @@ def test_prepared_result_audits_exact_dynamic_classification_and_metadata(
 
     client = app.test_client()
     assert login(client).status_code == 200
-    response = client.get("/operator-ui/connected/probe", headers={"X-Request-ID": "req-1"})
+    response = client.get("/operator-ui/api/v1/races/probe", headers={"X-Request-ID": "req-1"})
     assert response.status_code == 200
     assert response.get_json()["classification"] == classification.value
     with sqlite3.connect(tmp_path / "ui-audit.sqlite3") as connection:
@@ -512,8 +663,8 @@ def test_audit_failure_withholds_already_buffered_provider_bytes(tmp_path, monke
     called = []
     decorator = app.extensions["operator_ui_operational_get"]
 
-    @app.get("/operator-ui/connected/protected")
-    @decorator(policy="LEVEL_1_PROTECTED")
+    @app.get("/operator-ui/api/v1/races/protected")
+    @decorator(policy="LEVEL_1_API_V1_RACE_DETAIL")
     def protected():
         called.append(True)
         return PreparedDisclosure(
@@ -531,7 +682,7 @@ def test_audit_failure_withholds_already_buffered_provider_bytes(tmp_path, monke
     )
     client = app.test_client()
     assert login(client).status_code == 200
-    response = client.get("/operator-ui/connected/protected")
+    response = client.get("/operator-ui/api/v1/races/protected")
     assert response.status_code == 503
     assert response.get_json()["classification"] == "NON_OPERATIONAL/AUDIT_UNAVAILABLE"
     assert b"must-not-disclose" not in response.data
@@ -563,8 +714,8 @@ def test_same_inode_earlier_corruption_blocks_next_operational_disclosure(tmp_pa
     protected_marker = b"same-inode-corruption-must-not-disclose"
     decorator = app.extensions["operator_ui_operational_get"]
 
-    @app.get("/operator-ui/connected/corrupt-chain")
-    @decorator(policy="LEVEL_1_CORRUPT_CHAIN")
+    @app.get("/operator-ui/api/v1/races/corrupt-chain")
+    @decorator(policy="LEVEL_1_API_V1_RACE_DETAIL")
     def protected():
         return PreparedDisclosure(
             body=(
@@ -579,7 +730,7 @@ def test_same_inode_earlier_corruption_blocks_next_operational_disclosure(tmp_pa
 
     client = app.test_client()
     assert login(client).status_code == 200
-    response = client.get("/operator-ui/connected/corrupt-chain")
+    response = client.get("/operator-ui/api/v1/races/corrupt-chain")
 
     assert response.status_code == 503
     assert response.get_json() == {
@@ -635,8 +786,8 @@ def test_post_connect_identity_change_withholds_operational_response(
     protected_marker = b"prepared-protected-marker-must-not-disclose"
     decorator = app.extensions["operator_ui_operational_get"]
 
-    @app.get("/operator-ui/connected/post-connect-race")
-    @decorator(policy="LEVEL_1_POST_CONNECT_RACE")
+    @app.get("/operator-ui/api/v1/races/post-connect-race")
+    @decorator(policy="LEVEL_1_API_V1_RACE_DETAIL")
     def protected():
         return PreparedDisclosure(
             body=(
@@ -651,7 +802,7 @@ def test_post_connect_identity_change_withholds_operational_response(
 
     client = app.test_client()
     assert login(client).status_code == 200
-    response = client.get("/operator-ui/connected/post-connect-race")
+    response = client.get("/operator-ui/api/v1/races/post-connect-race")
 
     assert response.status_code == 503
     assert response.get_json()["classification"] == "NON_OPERATIONAL/AUDIT_UNAVAILABLE"
@@ -690,12 +841,12 @@ def test_provider_failures_are_evidence_free_and_never_audit_available(
     app = configured_app(tmp_path)
     decorator = app.extensions["operator_ui_operational_get"]
     app.add_url_rule(
-        "/operator-ui/connected/failing",
-        view_func=decorator(policy="LEVEL_1_FAILING")(provider),
+        "/operator-ui/api/v1/races/failing",
+        view_func=decorator(policy="LEVEL_1_API_V1_RACE_DETAIL")(provider),
     )
     client = app.test_client()
     assert login(client).status_code == 200
-    response = client.get("/operator-ui/connected/failing")
+    response = client.get("/operator-ui/api/v1/races/failing")
     assert response.status_code == 503
     assert response.get_json()["classification"] == "NON_OPERATIONAL/PROVIDER_ERROR"
     assert b"withheld" not in response.data
@@ -728,8 +879,8 @@ def test_empty_required_evidence_metadata_fails_without_disclosure_or_false_audi
     decorator = app.extensions["operator_ui_operational_get"]
     protected_marker = "empty-metadata-protected-marker"
 
-    @app.get("/operator-ui/connected/empty-metadata")
-    @decorator(policy="LEVEL_1_EMPTY_METADATA")
+    @app.get("/operator-ui/api/v1/races/empty-metadata")
+    @decorator(policy="LEVEL_1_API_V1_RACE_DETAIL")
     def empty_metadata():
         return PreparedDisclosure(
             body=json.dumps(
@@ -745,7 +896,7 @@ def test_empty_required_evidence_metadata_fails_without_disclosure_or_false_audi
 
     client = app.test_client()
     assert login(client).status_code == 200
-    response = client.get("/operator-ui/connected/empty-metadata")
+    response = client.get("/operator-ui/api/v1/races/empty-metadata")
     assert response.status_code == 503
     assert response.get_json()["classification"] == "NON_OPERATIONAL/PROVIDER_ERROR"
     assert protected_marker.encode() not in response.data
