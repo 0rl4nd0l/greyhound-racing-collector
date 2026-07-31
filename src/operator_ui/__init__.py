@@ -25,6 +25,7 @@ from .security import (
     install_connected_mode,
     load_connected_environment,
 )
+from .api import API_PREFIX, API_SCHEMA, API_VERSION, install_level_1_api
 
 __all__ = [
     "Availability",
@@ -48,4 +49,8 @@ __all__ = [
     "PreparedDisclosure",
     "install_connected_mode",
     "load_connected_environment",
+    "API_PREFIX",
+    "API_SCHEMA",
+    "API_VERSION",
+    "install_level_1_api",
 ]

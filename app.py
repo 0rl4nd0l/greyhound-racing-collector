@@ -729,9 +729,11 @@ if not app.config.get("SECRET_KEY"):
 # The accepted fixture UI remains unchanged. Connected operational routes are
 # absent unless the server explicitly enables and fully configures this gate.
 from src.operator_ui.security import install_connected_mode, load_connected_environment
+from src.operator_ui.api import install_level_1_api
 
 load_connected_environment(app)
 install_connected_mode(app)
+install_level_1_api(app)
 
 # Initialize asset management system
 if ASSET_MANAGEMENT_AVAILABLE and AssetManager:
