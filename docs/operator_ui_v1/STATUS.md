@@ -1,19 +1,20 @@
 # Greyhound Operator UI V1 status
 
-Observed 2026-07-31 at the frozen accepted R1 product checkpoint:
+Observed 2026-07-31 at the current clean programme integration base (the R1
+product checkpoint remains preserved in the history below):
 
 | Field | State |
 |---|---|
 | Repository | `0rl4nd0l/greyhound-racing-collector` |
 | Branch | No current branch claim; ledger state is durable independently of delivery mechanics |
-| HEAD / tree | `51fe070ba2a0778bca0b0334c00cae9d75561952` / `0c2b82a391b8dd0a1dcc525cf4203edc910843c1` |
+| HEAD / tree | `4a24218379d186d951f47d3fcf0d17d396d7d066` / `af89578953145e5049bb9d2c70f3de150fad86ca` |
 | Baseline cleanliness | clean |
 | Historical/upstream source | Actual historical merge parent `51a5287d05c790e3855e5b74ce7117a29340135e`; later `origin/master` drift `f38a125f6364b8a60d17ae9c971b0ce172874eea`, tree `408a8adbfa2bd436132bc4d2c63e952aeb57c5a5`, parent `51a5287d05c790e3855e5b74ce7117a29340135e`; local merge `0b08966b31c15d8b459b9c6b60a48b19030a9ce4` |
-| Current release / ticket | R1 and its `GHU-016A` corrected closeout remain parent-accepted; `GHU-020B`, `GHU-020C`, the prior ledger-only `GHU-020E` candidate, and non-formal `GHU-020F` remain rejected evidence; `GHU-020D` and its finite evidence/read-only foundation outcome are parent-accepted and integrated; accepted formal `GHU-020E` is corrected by non-formal record `GHU-020G` |
-| Counts | 17 accepted tickets, 0 ready, 0 review, 13 blocked, 2 deferred, 19 planned (plus accepted audit milestone `GHU-000A`) |
-| Assignment | No active ticket; `GHU-020A` is next |
-| Next safe action | Preserve rejected `GHU-020`/`GHU-020B`/`GHU-020C`, prior `GHU-020E` candidate, and non-formal `GHU-020F` evidence, accepted/integrated `GHU-020D`, and the non-formal `GHU-020G` ledger correction; `GHU-020A` is the next ticket. |
-| Validation | Parent focused validation of the final `GHU-020D` candidate passed `62 tests`. The exact frozen full-forecasting gate passed `551 passed, 40 subtests passed in 6001.15s (1:40:01)`, exit 0. Main reviewer session `019fb68d-96c4-7cb3-9cfc-a50c4f49d5cc`, run `20260731T050230Z-8b1ac4235d-ce8207`, returned `ACCEPT_GHU_020D`. This ledger-only closeout reruns no product tests or broad suite. |
+| Current release / ticket | R2 remains in progress. `GHU-020A` and `GHU-021` are parent-accepted/integrated; read-only audit requires ready prerequisite `GHU-022P` before `GHU-022`. R5 remains deferred. |
+| Counts | 19 accepted tickets, 1 ready, 0 active, 0 review, 13 blocked, 2 deferred, 17 planned (plus accepted audit milestone `GHU-000A`) |
+| Assignment | No active ticket; `GHU-022P` is next |
+| Next safe action | Preserve accepted/integrated `GHU-020A` and `GHU-021`; assign a fresh bounded collector implementer for ready `GHU-022P`, then independently review and parent-integrate it before `GHU-022`. |
+| Validation | `GHU-021` parent focused gate passed `254 passed in 39.77s`; reviewer verdict `ACCEPT_GHU_021`. Classifier selected `full_forecasting`; the exact 551-test broad gate remains `RUNNING`, with no terminal result claimed. |
 
 `GHU-000B` audit run `20260730T172346Z-1bacc67937-3c5f6b`, session
 `019fb40d-e8ed-7d40-8ab2-8ad2b156552c`, child
@@ -533,7 +534,7 @@ or any change to formal counts or the accepted status of corrected formal
 The reviewer/parent freezes final G diff and file hashes externally together
 with the exact commit/tree; self-referential final G hashes are not embedded
 here.
-`GHU-020A` precedes `GHU-021` and owns default-off connected-mode
+Accepted/integrated `GHU-020A` precedes accepted/integrated `GHU-021` and owns default-off connected-mode
 authentication/authorization, secure configured secrets and session
 expiry/rotation, CSRF, and the separate append-only UI operations/access-audit
 store. Every authenticated operational GET appends and confirms audit before
@@ -542,3 +543,32 @@ evidence. The store is separate from the canonical racing DB and future
 prediction-job DB. No public bind, operational POST, arbitrary path, shell,
 service, lock, browser, canonical write, training, promotion, betting, or
 runtime action is in scope.
+
+`GHU-021` is accepted and integrated. Accepted child HEAD
+`8db34fe53af252fdb6dd743b51d3531fb1f8b618` has tree
+`af89578953145e5049bb9d2c70f3de150fad86ca`; parent integration commit is
+`4a24218379d186d951f47d3fcf0d17d396d7d066` with that exact tree. The
+programme correction chain is preserved. Final correction diff from
+`f1f1bd96c60d690bb2a7247e79db4cffc6360594` has SHA-256
+`d18f42206bfc4a103d4ae352f93f3963f54c62820de7cb5646dbb1860a67dafa`;
+the full accepted four-path diff from
+`d71857e232ce7371280f9e5c56c45be7b9f7f9e5` has SHA-256
+`037adf12c9d37c0e96a66e65645392a06482378262ac8b496c0b662253b860ea`.
+Parent authoritative focused gate passed `254 passed in 39.77s`. Final reviewer
+run `20260731T100618Z-8db34fe53a-a6a1cc`, session
+`019fb7a3-c1d4-7da1-946e-291651763774`, returned `ACCEPT_GHU_021`.
+Classifier selected `full_forecasting` because paths default unknown-to-full;
+the exact 551-test broad gate is `RUNNING` and no terminal result is known or
+claimed. Push, PR, default-branch merge, deployment, runtime mutation, and live
+proof remain `NOT_OCCURRED`.
+
+Read-only audit run `20260731T095910Z-d71857e232-648124`, session
+`019fb79d-352a-7c62-88a7-588974824079`, returned
+`PREREQUISITE_REQUIRED`. The fixed packet is runnerless:
+`collector_current_race_index_v1` and `_normalize_current_index_rows` retain
+only race/time identity; refresh `race_window_record`/`selected_races` has no
+sealed runner rows; daemon `current_race_index_publish` lacks packet SHA-256;
+and predictor bounded discovery strips runners even though downstream request
+construction can consume `participants`/`runners`. `GHU-022P` therefore owns
+the smallest collector current-index v2 evolution before `GHU-022`. It does
+not reopen `GHU-000` or `GHU-021`; R2 remains in progress and R5 deferred.

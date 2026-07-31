@@ -333,3 +333,55 @@ supersession.
   evidence envelope and primitives; GHU-020A precedes GHU-021 for auth/session/
   CSRF and separate append-only UI access audit.
 - Supersession: None; append-only UX freeze decision.
+
+## 2026-07-31 — DEC-GHU-021-ACCEPTED-INTEGRATION
+
+- Context: Final independent review and parent integration of the versioned
+  read-only operator API.
+- Decision: Accept `GHU-021` at child HEAD
+  `8db34fe53af252fdb6dd743b51d3531fb1f8b618`, tree
+  `af89578953145e5049bb9d2c70f3de150fad86ca`, and integrate that exact tree at
+  parent commit `4a24218379d186d951f47d3fcf0d17d396d7d066`. Preserve the programme
+  correction chain and do not invent a terminal broad-gate result.
+- Evidence: Final correction diff from
+  `f1f1bd96c60d690bb2a7247e79db4cffc6360594` SHA-256
+  `d18f42206bfc4a103d4ae352f93f3963f54c62820de7cb5646dbb1860a67dafa`;
+  full accepted four-path diff from
+  `d71857e232ce7371280f9e5c56c45be7b9f7f9e5` SHA-256
+  `037adf12c9d37c0e96a66e65645392a06482378262ac8b496c0b662253b860ea`;
+  parent focused gate `254 passed in 39.77s`; reviewer run
+  `20260731T100618Z-8db34fe53a-a6a1cc`, session
+  `019fb7a3-c1d4-7da1-946e-291651763774`, verdict `ACCEPT_GHU_021`.
+  Classifier selected `full_forecasting` because paths default unknown-to-full;
+  the exact 551-test broad gate is `RUNNING` without a terminal result.
+- Consequences: `GHU-021` remains closed and accepted. No push, PR,
+  default-branch merge, deployment, runtime mutation, or live proof occurred.
+- Supersession: None; append-only accepted integration record.
+
+## 2026-07-31 — DEC-GHU-022P-RUNNER-SEALED-INDEX
+
+- Context: Read-only audit run `20260731T095910Z-d71857e232-648124`, session
+  `019fb79d-352a-7c62-88a7-588974824079`, verdict
+  `PREREQUISITE_REQUIRED`, proved the fixed current-index packet is runnerless.
+- Decision: Insert `GHU-022P` inside R2 and before `GHU-022`. Keep the sole
+  fixed filename and bounded v1 predictor compatibility, but make v1
+  catalog-ineligible. Collector-owned v2 must seal a canonical ordered final
+  active runner set and its exact race/pre-race source/hash chain during the
+  existing refresh/download flow; read/publication/UI paths may neither create
+  nor guess that evidence.
+- Evidence: `collector_current_race_index_v1` and
+  `_normalize_current_index_rows` retain race/time identity only;
+  `race_window_record`/`selected_races` contain no sealed runners;
+  `current_race_index_publish` omits packet SHA-256; predictor request handling
+  accepts `participants`/`runners`, while bounded discovery strips them.
+  Existing canonical-alignment and runner-completeness helpers supply accepted
+  leakage-safe box/name, final-active, scratch/ambiguity, and normalization
+  evidence when the source actually contains it; no source-native ID is
+  presumed.
+- Consequences: `GHU-022` now depends on accepted/integrated `GHU-022P` and
+  may adapt only a fully matched v2 `PUBLISHED` chain. R2 remains in progress;
+  R5 remains deferred. `GHU-000` and `GHU-021` are not reopened. No new fetch,
+  browser, scan, lock, caller path, retry, collector, canonical write, runtime
+  action, training, promotion, EV, staking, or betting is authorized.
+- Supersession: Additively refines only the current-index source contract for
+  `GHU-022`; preserves v1 predictor behavior and all prior history.

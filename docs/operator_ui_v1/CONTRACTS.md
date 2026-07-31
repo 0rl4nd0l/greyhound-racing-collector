@@ -145,13 +145,17 @@ These policies are exhaustive; an adapter may not invent or defer a threshold:
   fixed packet
   `shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json`
   at its server-configured locator beneath the server-owned evidence root. The
-  packet has schema `collector_current_race_index_v1`, canonical bytes, at most
-  32 races, a timezone-aware `source_generated_at`, and the sealed refresh-
-  report path and SHA-256. Its configured maximum age is exactly 1200 seconds.
-  Each row is exactly `date`, timezone-aware `jump_datetime`, stable `race_id`,
-  bounded `race_id_aliases`, integer `race_number`, `race_time`, canonical
-  TheDogs `race_url`, and non-empty `venue`; canonical URL date/race-number,
-  stable ID, and race-ID uniqueness must agree. Daemon
+  packet has schema `collector_current_race_index_v1` or
+  `collector_current_race_index_v2`, canonical bytes, at most 32 races, a
+  timezone-aware `source_generated_at`, and the sealed refresh-report path and
+  SHA-256. Its configured maximum age is exactly 1200 seconds. Every v1 and v2
+  row contains validated `date`, timezone-aware `jump_datetime`, stable
+  `race_id`, bounded `race_id_aliases`, integer `race_number`, `race_time`,
+  canonical TheDogs `race_url`, and non-empty `venue`; canonical URL
+  date/race-number, stable ID, and race-ID uniqueness must agree. The exact row
+  shape containing only those fields is v1-only; v2 additionally has the exact
+  runner, provenance, source, and hash fields required by
+  P-CURRENT-INDEX-V2-RUNNER-SEALED. Daemon
   `current_race_index_publish` evidence is `SKIPPED`, `REJECTED`, or
   `PUBLISHED`; only a matching `PUBLISHED` chain is usable. Fail closed with
   `CURRENT_INDEX_UNAVAILABLE`, `CURRENT_INDEX_STALE`,
@@ -161,7 +165,35 @@ These policies are exhaustive; an adapter may not invent or defer a threshold:
   `CURRENT_INDEX_UNBOUNDED` as applicable, including noncanonical bytes and
   oversized/unbounded input. This predictor allowance never relaxes
   P-UPCOMING-300-PREJUMP: UI selection still requires age no greater than 300
-  seconds and observation strictly pre-jump.
+  seconds and observation strictly pre-jump. For both schemas, publication is
+  an atomic canonical replacement at the sole fixed filename; safe-root,
+  no-symlink, age, finite size/count/deadline, matching publication/source,
+  failure, and atomic-publication rules are identical.
+- **P-CURRENT-INDEX-V2-RUNNER-SEALED:** `GHU-022P` keeps that sole fixed
+  filename and bounded legacy v1 reader compatibility for predictor discovery,
+  but v1 is runnerless and MUST NOT source the `GHU-022` UI catalog. Schema
+  `collector_current_race_index_v2` preserves every validated v1 race/time
+  field and adds one non-empty canonically ordered unique final active runner
+  set derived only inside the existing collector refresh/download flow from an
+  accepted canonical-aligned, leakage-safe pre-race CSV/sidecar. Publication,
+  bounded read, and later UI adaptation perform no new fetch, browser, scan,
+  lock, caller-path resolution, or independent refresh-report interpretation.
+  Each runner binds integer box, source display name, protocol-compatible
+  normalized uppercase identity, explicit `ACTIVE` scratch state, and a
+  source-native runner ID only when the accepted source supplies it; absence is
+  explicit and IDs are never guessed. Duplicate box/normalized identity,
+  empty/partial/ambiguous sets, unknown scratch state, or noncanonical ordering
+  is invalid. The deterministic runner-set SHA binds the ordered set to exact
+  race URL/date/venue/number/jump identity, pre-race source URL/timestamp,
+  fixed-root source locators, and source byte hashes using the existing
+  protocol contract where compatible. Safe fixed-root reads verify the sealed
+  refresh report and runner-source bytes and fail closed on missing, changed,
+  tampered, stale, unsafe, or mismatched identity. V2
+  `current_race_index_publish` names v2 and carries exact packet SHA-256 and
+  source/runner hashes; only `PUBLISHED` with matching packet, publication,
+  source chain, and identities is usable. Atomic canonical write, finite
+  sizes/counts/deadline, v1 predictor behavior, no retry/second collector, and
+  no canonical database/history write remain unchanged.
 - **P-CATALOG-60:** repository configs/schemas and deployed/model manifests
   are observed within 60 seconds and every expected SHA-256 matches.
 - **P-BUNDLE-LIST-60:** a directory/index listing observation is fresh for 60
@@ -203,7 +235,7 @@ only supported claim.
 | Collector — full daemon | Read-only installed `shadow-autopilot.timer`/`.service`, server-configured `shadow_autopilot_daemon_runtime/state.json`, and current full-daemon `daemon_run_report.json`, owned by `scripts/shadow_autopilot_daemon.py`. | P-COLLECTOR-FULL-DYNAMIC. Missing cadence/accuracy/timeout or required lane evidence is `DATA_MISSING`; intra-lane conflict is `DIVERGENT`; passed lane deadline is `STALE`. No UI service action. | Last internally consistent full-daemon lifecycle and whether its evidence is within that lane's derived deadline. |
 | Collector — odds only | Read-only installed `shadow-autopilot-odds-capture.timer`/`.service`, server-configured `shadow_autopilot_daemon_runtime/odds_capture_state.json`, current odds-only `odds_capture_only_daemon_report.json`, and its embedded or same-run `odds_capture_refresh_report.json` evidence, owned by `scripts/shadow_autopilot_daemon.py`. | P-COLLECTOR-ODDS-DYNAMIC. Missing cadence/accuracy/timeout or required lane evidence is `DATA_MISSING`; intra-lane conflict is `DIVERGENT`; passed lane deadline is `STALE`. No UI service action. | Last internally consistent odds-only lifecycle and whether its evidence is within that lane's derived deadline. |
 | Collector — aggregate | The two lane envelopes above plus matching installed/deployed source identities. | P-COLLECTOR-AGGREGATE. Show both lanes separately and preserve the unavailable/degraded state of either. Never compare their run IDs for equality. | Whether all plan-required collector lanes are individually fresh/integrity-valid under a consistent deployment identity. |
-| Upcoming races | Collector-owned fixed packet `shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json`; matching `current_race_index_publish`; sealed source refresh-report path/SHA-256; packet/source hashes; fixed server-owned locator and evidence root. | Validate P-CURRENT-INDEX-1200, then apply stricter P-UPCOMING-300-PREJUMP. Read/adapt only this packet and publication/source chain. Browser/UI never supplies, derives, enumerates, or displays as input `--current-race-index`, evidence root, filesystem path, lock/browser/current-time argument; it never independently interprets a refresh report, browses, scans, fetches, scrapes, locks, or starts a browser. | Exact pre-jump race and ordered validated runner set from one verified collector publication chain. |
+| Upcoming races | Collector-owned fixed packet `shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json` at schema `collector_current_race_index_v2`; matching v2 `current_race_index_publish`; sealed refresh-report and runner-source locators/hashes; exact packet and runner-set hashes; fixed server-owned locator and evidence root. | Validate P-CURRENT-INDEX-1200 and P-CURRENT-INDEX-V2-RUNNER-SEALED, then apply stricter P-UPCOMING-300-PREJUMP. Legacy v1 is predictor-compatible but catalog-ineligible. Read/adapt only the verified packet/publication/source chain. Browser/UI never supplies, derives, enumerates, or displays as input `--current-race-index`, evidence root, filesystem path, lock/browser/current-time argument; it never independently interprets a refresh report, browses, scans, fetches, scrapes, locks, or starts a browser. | Exact pre-jump race and ordered validated final active runner set from one verified collector v2 publication chain. |
 | Model/config catalog | Finite checked-in configs and schemas resolved by `scripts/predict_race_now.py --list-configs`, plus matching frozen model/deployed manifest hashes. | P-CATALOG-60. Hash the exact observed files and normalized finite catalog; all repository, deployed, model, schema, and config identities must agree. Missing is `DATA_MISSING`; mismatch is `DIVERGENT`; invalid schema is `INVALID`. | Finite server-allowlisted model/config choices with exact byte identities. |
 | Bundle list/detail | Private isolated bundle `result.json` and `bundle_manifest.json` produced by `scripts/predict_race_now.py`, with every manifest entry rehashed and exact job/race binding verified. | Listing uses P-BUNDLE-LIST-60; verified detail uses P-IMMUTABLE-HISTORICAL. Tamper/missing bytes are `INVALID`/`UNAVAILABLE`. Historical bundle age never makes it a current prediction. | The verified result of one named historical prediction run. |
 | Prediction progress | Durable UI job/process identity; protocol and capture records; fixed current-index packet hash; `current_race_index_publish` status/hash; sealed source refresh-report path/SHA-256; runner-set, source, receipt, and bundle hashes; one fixed server-owned packet locator and evidence root. | P-CURRENT-INDEX-1200 and P-JOB-5-DEADLINE. Validate the complete source-to-screen chain and exact race/runner/model/config/job/process binding. Browser/UI never supplies, derives, enumerates, or displays packet/root/path/lock/browser/current-time arguments. No independent refresh-report interpretation, browsing, scan, fetch, scrape, lock, browser, or raw collector control. Probabilities require verified `PREDICTION_READY`. | Last persisted UI phase and exact packet/publication/source, protocol, capture, and scoring evidence. |
@@ -230,6 +262,14 @@ temporal cutoff and source timestamps. Same-day or undated history is excluded
 when pre-jump safety is unprovable. Prediction execution cannot access outcomes
 or results. Post-closure research may read authoritative results only after
 closure, never as prediction input.
+
+For the current-index v2 selection, each runner's source display name and
+protocol-compatible normalized uppercase identity are distinct bound fields;
+scratch state is exactly `ACTIVE`. A source-native runner ID is bound only when
+present in the accepted source and is otherwise explicitly unavailable. The
+ordered runner-set hash also binds the exact race identity and accepted
+pre-race source URL/timestamp, locators, and byte hashes. No layer may infer a
+missing ID, runner, scratch state, order, or source field.
 
 ## 6. Status and lifecycle vocabulary
 
