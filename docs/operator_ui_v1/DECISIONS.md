@@ -306,3 +306,30 @@ supersession.
 - Supersession: Supersedes the pending/current-state reading of
   `DEC-GHU-000B3-STALE-CURRENT-POINTER-CORRECTION`; preserves all prior entries
   and detailed history.
+
+## 2026-07-31 — DEC-GHU-016-UX-FREEZE
+
+- Context: Accepted R1 product checkpoint and independent visual/UX review.
+- Decision: Freeze fixture labels **RESEARCH ONLY — NOT FOR BETTING** and
+  **PROTOTYPE DATA**; navigation is Dashboard, Race, Lifecycle, Result,
+  Collector, Corpus, Models, System, Audit. Advanced source/evidence controls
+  remain disclosure/details. Mobile remains stacked, with dense tables
+  contained or scrollable and primary actions/warnings visible. No blocking
+  workflow, truthfulness, security, identity, or evidence finding exists.
+- Evidence: Integrated checkpoint `51fe070ba2a0778bca0b0334c00cae9d75561952`,
+  tree `0c2b82a391b8dd0a1dcc525cf4203edc910843c1`; binary diff SHA-256
+  `3f74ec86de1ab68b0fbb1a13125efa6fa416e3cc1fdc9bfc658f97118d3dc135`;
+  reviewer run `20260731T001624Z-51fe070ba2-937103`, child
+  `eda938ef8b7cf07d87eb37719e0929c2`, verdict `PRODUCT ACCEPT` / `GATE ACCEPT`.
+  Focused pytest `5 passed in 0.50s`; Chromium desktop `5 passed in 6.9s`;
+  classifier `full_forecasting`. Desktop screenshot SHA-256
+  `fc181de498c5ae287343cfc6026ef4e0dafcb9bb51ac91a605af37fab8d06ba6`;
+  mobile `e841e7953ea63cfb278837511ded73a1298c78159a7f575f92fac4b00962896d`.
+- Consequences: IMPORTANT R2 follow-up is responsive stacked-card or
+  equivalently readable mobile treatment for dense runner/model/governance
+  tables while preserving exact identities. OPTIONAL polish is narrowing the
+  operator path predicate to exact supported routes and replacing positional
+  fixture tuples with named fields. GHU-020 owns only the foundational finite
+  evidence envelope and primitives; GHU-020A precedes GHU-021 for auth/session/
+  CSRF and separate append-only UI access audit.
+- Supersession: None; append-only UX freeze decision.

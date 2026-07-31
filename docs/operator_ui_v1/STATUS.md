@@ -6,13 +6,13 @@ Observed 2026-07-31 at the frozen accepted R1 product checkpoint:
 |---|---|
 | Repository | `0rl4nd0l/greyhound-racing-collector` |
 | Branch | No current branch claim; ledger state is durable independently of delivery mechanics |
-| HEAD / tree | `e10cff293141569b1a5a169dd05efc8109e3c603` / `07f02fc46b88b47bf0ade8ee264505f8b47c7d91` |
+| HEAD / tree | `51fe070ba2a0778bca0b0334c00cae9d75561952` / `0c2b82a391b8dd0a1dcc525cf4203edc910843c1` |
 | Baseline cleanliness | clean |
 | Historical/upstream source | Actual historical merge parent `51a5287d05c790e3855e5b74ce7117a29340135e`; later `origin/master` drift `f38a125f6364b8a60d17ae9c971b0ce172874eea`, tree `408a8adbfa2bd436132bc4d2c63e952aeb57c5a5`, parent `51a5287d05c790e3855e5b74ce7117a29340135e`; local merge `0b08966b31c15d8b459b9c6b60a48b19030a9ce4` |
-| Current release / ticket | R1 gate closed: `GHU-000B3`, `GHU-010H`, and `GHU-011` are accepted; `GHU-012`–`GHU-015` are one ready atomic coupled fixture tranche |
-| Counts | 9 accepted tickets, 4 ready, 0 review, 10 blocked, 2 deferred, 20 planned (plus accepted audit milestone `GHU-000A`) |
-| Assignment | No implementation is assigned; the next assignment is one fresh bounded implementer for atomic `GHU-012`–`GHU-015` |
-| Next safe action | Assign one fresh bounded implementer to atomic `GHU-012`–`GHU-015`, then freeze all four surfaces together for independent exact-delta review |
+| Current release / ticket | R1 accepted: `GHU-012`–`GHU-016` are accepted at the integrated checkpoint; `GHU-016A` is the active ledger-only closeout candidate |
+| Counts | 14 accepted tickets, 1 ready, 1 review, 10 blocked, 2 deferred, 19 planned (plus accepted audit milestone `GHU-000A`) |
+| Assignment | `GHU-016A` documentation correction is assigned to this fresh bounded implementer |
+| Next safe action | Independently review this four-file closeout candidate; parent then decides acceptance/integration. `GHU-020` is ready only after that closeout is parent-integrated. |
 | Validation | Documentation-only exact base/path/scans/count/dependency/cross-reference validation and `git diff --check`; no tests or product/runtime actions |
 
 `GHU-000B` audit run `20260730T172346Z-1bacc67937-3c5f6b`, session
@@ -387,13 +387,50 @@ Parent accepted the exact product checkpoint at the head/integration identity
 above. Publication, push, PR, default-branch merge, deploy, runtime mutation,
 and live proof are all `NOT_OCCURRED`.
 
-The R1 gate is closed. `GHU-012`, `GHU-013`, `GHU-014`, and `GHU-015` are
-ready as one atomic coupled fixture tranche, each with accepted `GHU-011` as
-its sole prerequisite; no same-tranche ticket is another's prerequisite.
-`GHU-015` acceptance requires all four tranche surfaces in one frozen delta.
-`GHU-016` remains planned and depends on `GHU-015`. Supported claims are
-limited to accepted R0 contracts, the fixed collector-owned current-race
-index, and the R1 fixture dashboard. No push, PR, default-branch merge,
-deployment, runtime mutation, live proof, deployed/live/authenticated
-dashboard, R2+ behavior, prediction/runtime/deployment proof, training,
-promotion, EV, staking, betting, or public claim occurred.
+The R1 gate is closed. `GHU-012`, `GHU-013`, `GHU-014`, `GHU-015`, and `GHU-016`
+are accepted at the integrated checkpoint above; `GHU-016A` is the current
+ledger-only correction in review. Supported claims are limited to accepted R0
+contracts, the fixed collector-owned current-race index, and the accepted R1
+fixture dashboard. No push, PR, default-branch merge, deployment, runtime
+mutation, live proof, deployed/live/authenticated dashboard, R2+ behavior,
+prediction/runtime/deployment proof, training, promotion, EV, staking, betting,
+or public claim occurred.
+
+`GHU-016A` is the ledger-only R1 closeout correction. This candidate records
+`planned -> ready -> active -> review`; parent acceptance/integration is not
+claimed. It records accepted `GHU-012`–`GHU-016` at product checkpoint
+`51fe070ba2a0778bca0b0334c00cae9d75561952`, tree
+`0c2b82a391b8dd0a1dcc525cf4203edc910843c1`, and seven-path binary diff
+SHA-256 `3f74ec86de1ab68b0fbb1a13125efa6fa416e3cc1fdc9bfc658f97118d3dc135`.
+Independent reviewer run `20260731T001624Z-51fe070ba2-937103`, child
+`eda938ef8b7cf07d87eb37719e0929c2`, returned `PRODUCT ACCEPT` and `GATE
+ACCEPT`; parent fast-forward integrated the exact checkpoint. Focused pytest
+`5 passed in 0.50s`; Chromium `5 passed in 6.9s`; classifier
+`full_forecasting`; syntax/diff checks passed. The timestamped broad run is
+not a pass: `15 failed, 536 passed, 40 subtests passed in 5400.39s`, all 15
+failures being timestamped-path `_safe_operational_path` rejections in
+`test_phase7_runtime_adapter.py`; identical nodes passed `15 passed in 12.47s`
+from the stable detached path. No UI/product assertion failed. Visual hashes:
+desktop `fc181de498c5ae287343cfc6026ef4e0dafcb9bb51ac91a605af37fab8d06ba6`,
+mobile `e841e7953ea63cfb278837511ded73a1298c78159a7f575f92fac4b00962896d`.
+
+The frozen UX contract is **RESEARCH ONLY — NOT FOR BETTING** and
+**PROTOTYPE DATA**; navigation is Dashboard, Race, Lifecycle, Result,
+Collector, Corpus, Models, System, Audit; advanced source/evidence controls
+remain disclosure/details; mobile is stacked with contained/scrollable dense
+tables and visible actions/warnings. IMPORTANT R2 follow-up: responsive
+stacked-card or equivalently readable mobile treatment for dense runner/model/
+governance tables while preserving exact identities. OPTIONAL: narrow the
+operator path predicate to exact supported routes and replace positional
+fixture tuples with named fields.
+
+`GHU-020` is ready only effective after parent integration of this closeout.
+`GHU-020A` precedes `GHU-021` and owns default-off connected-mode
+authentication/authorization, secure configured secrets and session
+expiry/rotation, CSRF, and the separate append-only UI operations/access-audit
+store. Every authenticated operational GET appends and confirms audit before
+disclosure; append failure returns deterministic non-operational error with no
+evidence. The store is separate from the canonical racing DB and future
+prediction-job DB. No public bind, operational POST, arbitrary path, shell,
+service, lock, browser, canonical write, training, promotion, betting, or
+runtime action is in scope.
