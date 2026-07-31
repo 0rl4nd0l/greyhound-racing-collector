@@ -27,6 +27,9 @@ from race_collection.source_admission import (
         "https://www.thedogs.com.au/racing/test/results?trial%3Dfalse",
         "https://www.thedogs.com.au/racing/test/results?trial=false%26other=1",
         "https://www.thedogs.com.au/racing/test?trial=false",
+        "https://www.thedogs.com.au/racing/venue/not-a-date/1/race?trial=false",
+        "https://www.thedogs.com.au/racing/venue/2026-07-29/not-a-race/race?trial=false",
+        "https://www.thedogs.com.au/racing/venue/2026-07-29/0/race?trial=false",
     ],
 )
 def test_official_result_query_exception_rejects_every_other_query(url):
@@ -46,6 +49,30 @@ def test_official_result_query_exception_rejects_every_other_query(url):
 
 def test_official_result_query_exception_is_not_a_generic_source_exception():
     url = "https://www.thedogs.com.au/racing/test/results?trial=false"
+    assert (
+        corpus_module._source_url(
+            url,
+            "official request URL",
+            allow_official_result_query=True,
+        )
+        == url
+    )
+    assert (
+        admission_module._canonical_source_url(
+            url,
+            "official request URL",
+            allow_official_result_query=True,
+        )
+        == url
+    )
+    with pytest.raises(ForwardCorpusRejected):
+        corpus_module._source_url(url, "canonical source URL")
+    with pytest.raises(SourceAdmissionRejected):
+        admission_module._canonical_source_url(url, "forward source URL")
+
+
+def test_official_result_query_exception_accepts_exact_sealed_race_route_only():
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-name?trial=false"
     assert (
         corpus_module._source_url(
             url,

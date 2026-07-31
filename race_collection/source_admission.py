@@ -153,6 +153,20 @@ def _identity_key(value: Any, name: str) -> str:
     return normalized
 
 
+def _official_result_query_path(path: str) -> bool:
+    if path.endswith("/results"):
+        return True
+    parts = path.split("/")
+    if len(parts) != 6 or parts[1] != "racing" or not all(parts[2:]):
+        return False
+    try:
+        date.fromisoformat(parts[3])
+        race_number = int(parts[4])
+    except ValueError:
+        return False
+    return race_number > 0
+
+
 def _canonical_source_url(
     value: Any,
     name: str,
@@ -172,7 +186,7 @@ def _canonical_source_url(
             and not (
                 allow_official_result_query
                 and parsed.query == "trial=false"
-                and parsed.path.endswith("/results")
+                and _official_result_query_path(parsed.path)
             )
         )
         or parsed.fragment
