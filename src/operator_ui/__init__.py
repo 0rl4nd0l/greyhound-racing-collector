@@ -15,6 +15,16 @@ from .foundation import (
     SourceConfig,
     status_for,
 )
+from .security import (
+    AUDIT_SCHEMA,
+    AuditEvent,
+    AuditStore,
+    AuditUnavailable,
+    ConnectedModeConfigurationError,
+    PreparedDisclosure,
+    install_connected_mode,
+    load_connected_environment,
+)
 
 __all__ = [
     "Availability",
@@ -30,4 +40,12 @@ __all__ = [
     "ReferenceHash",
     "SourceConfig",
     "status_for",
+    "AUDIT_SCHEMA",
+    "AuditEvent",
+    "AuditStore",
+    "AuditUnavailable",
+    "ConnectedModeConfigurationError",
+    "PreparedDisclosure",
+    "install_connected_mode",
+    "load_connected_environment",
 ]

@@ -726,6 +726,13 @@ except Exception:
 if not app.config.get("SECRET_KEY"):
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY") or secrets.token_urlsafe(32)
 
+# The accepted fixture UI remains unchanged. Connected operational routes are
+# absent unless the server explicitly enables and fully configures this gate.
+from src.operator_ui.security import install_connected_mode, load_connected_environment
+
+load_connected_environment(app)
+install_connected_mode(app)
+
 # Initialize asset management system
 if ASSET_MANAGEMENT_AVAILABLE and AssetManager:
     try:
