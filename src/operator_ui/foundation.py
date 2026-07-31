@@ -55,6 +55,11 @@ class HistoricalClaim(str, Enum):
     SLICE = "historical_slice"
 
 
+class JsonSerializationPolicy(str, Enum):
+    COMPACT_CANONICAL = "compact_canonical"
+    PRODUCER_PRETTY_SORTED = "producer_pretty_sorted"
+
+
 _HISTORICAL_CLAIMS: Mapping[HistoricalClaim, str] = MappingProxyType(
     {
         HistoricalClaim.RUN: (
@@ -137,6 +142,16 @@ class JsonSource:
     max_depth: int = 12
     max_items: int = 1024
     max_string_bytes: int = 4096
+    serialization_policy: JsonSerializationPolicy = (
+        JsonSerializationPolicy.COMPACT_CANONICAL
+    )
+
+    def __post_init__(self) -> None:
+        try:
+            policy = JsonSerializationPolicy(self.serialization_policy)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("unsupported JSON serialization policy") from exc
+        object.__setattr__(self, "serialization_policy", policy)
 
 
 @dataclass(frozen=True)
@@ -727,13 +742,22 @@ class OperatorEvidenceReader:
                 raise _InvalidEvidence("unexpected top-level schema")
             if payload.get(config.json.schema_field) != config.json.schema_value:
                 raise _InvalidEvidence("schema identity mismatch")
-            canonical = json.dumps(
-                payload,
-                allow_nan=False,
-                ensure_ascii=False,
-                separators=(",", ":"),
-                sort_keys=True,
-            ).encode("utf-8")
+            if (
+                config.json.serialization_policy
+                is JsonSerializationPolicy.COMPACT_CANONICAL
+            ):
+                canonical = json.dumps(
+                    payload,
+                    allow_nan=False,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ).encode("utf-8")
+            else:
+                canonical = (
+                    json.dumps(payload, indent=2, sort_keys=True, default=str)
+                    + "\n"
+                ).encode("utf-8")
             if canonical != raw:
                 raise _InvalidEvidence("JSON bytes are not canonical")
             evidence_time = _parse_utc(payload[config.json.time_field])

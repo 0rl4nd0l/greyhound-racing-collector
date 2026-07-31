@@ -21,6 +21,7 @@ from src.operator_ui.foundation import (
     EvidenceStatus,
     Freshness,
     Integrity,
+    JsonSerializationPolicy,
     JsonSource,
     OperatorEvidenceReader,
     ReadOnlyDatabase,
@@ -291,6 +292,74 @@ def test_noncanonical_unexpected_and_wrong_schema_are_invalid(tmp_path):
     assert reader(configured).read("fixture").status == (
         "INVALID/INTEGRITY_FAILED"
     )
+
+
+def test_json_serialization_policy_is_finite_and_defaults_to_compact():
+    source = source_config(Path("/unused"), Path("/unused/fixture.json")).json
+    assert (
+        source.serialization_policy
+        is JsonSerializationPolicy.COMPACT_CANONICAL
+    )
+
+    explicit = replace(
+        source, serialization_policy="producer_pretty_sorted"
+    )
+    assert (
+        explicit.serialization_policy
+        is JsonSerializationPolicy.PRODUCER_PRETTY_SORTED
+    )
+
+    with pytest.raises(ValueError, match="serialization policy"):
+        replace(source, serialization_policy="unknown")
+
+
+@pytest.mark.parametrize(
+    "producer_writer",
+    [
+        pytest.param(
+            __import__(
+                "scripts.shadow_autopilot_daemon", fromlist=["write_json"]
+            ).write_json,
+            id="shadow-autopilot-daemon",
+        ),
+        pytest.param(
+            __import__(
+                "scripts.build_race_evidence_inventory_packet",
+                fromlist=["write_json"],
+            ).write_json,
+            id="race-evidence-inventory",
+        ),
+    ],
+)
+def test_authoritative_pretty_json_requires_exact_explicit_policy(
+    tmp_path, producer_writer
+):
+    path = tmp_path / "fixture.json"
+    producer_writer(path, valid_payload())
+    raw = path.read_bytes()
+    expected = (
+        json.dumps(valid_payload(), indent=2, sort_keys=True, default=str) + "\n"
+    ).encode("utf-8")
+    assert raw == expected
+
+    compact = source_config(tmp_path, path)
+    assert reader(compact).read("fixture").status == "INVALID/INTEGRITY_FAILED"
+
+    pretty = replace(
+        compact,
+        json=replace(
+            compact.json,
+            serialization_policy=(
+                JsonSerializationPolicy.PRODUCER_PRETTY_SORTED
+            ),
+        ),
+    )
+    accepted = reader(pretty).read("fixture")
+    assert accepted.status == "AVAILABLE/FRESH"
+    assert accepted.content_sha256 == foundation.hashlib.sha256(raw).hexdigest()
+
+    path.write_bytes(raw.replace(b'  "generated_at"', b' "generated_at"', 1))
+    assert reader(pretty).read("fixture").status == "INVALID/INTEGRITY_FAILED"
 
 
 def test_expected_content_and_reference_hash_conflicts_are_divergent(tmp_path):
