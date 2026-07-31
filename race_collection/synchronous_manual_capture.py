@@ -508,6 +508,12 @@ def _retained_read_identity(value: os.stat_result) -> tuple[int, ...]:
     )
 
 
+def _retained_directory_identity(value: os.stat_result) -> tuple[int, int, int]:
+    """Directory type and inode identity, excluding mutable child metadata."""
+
+    return (stat.S_IFMT(value.st_mode), value.st_dev, value.st_ino)
+
+
 class _RetainedSafeFiles:
     """One bounded no-follow snapshot whose descriptors live through validation."""
 
@@ -527,7 +533,8 @@ class _RetainedSafeFiles:
         if (
             not stat.S_ISDIR(named.st_mode)
             or not stat.S_ISDIR(opened.st_mode)
-            or _retained_read_identity(named) != _retained_read_identity(opened)
+            or _retained_directory_identity(named)
+            != _retained_directory_identity(opened)
         ):
             os.close(root_fd)
             raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(self.root))
@@ -565,7 +572,8 @@ class _RetainedSafeFiles:
                     if (
                         not stat.S_ISDIR(named.st_mode)
                         or not stat.S_ISDIR(opened.st_mode)
-                        or _retained_read_identity(named) != _retained_read_identity(opened)
+                        or _retained_directory_identity(named)
+                        != _retained_directory_identity(opened)
                     ):
                         os.close(child_fd)
                         raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path))
@@ -628,7 +636,11 @@ class _RetainedSafeFiles:
                 raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path), reason="path_replaced")
         for key, opened in self.directory_stats.items():
             current = os.fstat(self.directory_fds[key])
-            if _retained_read_identity(current) != _retained_read_identity(opened):
+            if (
+                not stat.S_ISDIR(current.st_mode)
+                or _retained_directory_identity(current)
+                != _retained_directory_identity(opened)
+            ):
                 raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", reason="directory_replaced")
             if key:
                 try:
@@ -637,7 +649,11 @@ class _RetainedSafeFiles:
                     raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", reason="directory_replaced") from exc
             else:
                 named = root_named
-            if not stat.S_ISDIR(named.st_mode) or _retained_read_identity(named) != _retained_read_identity(opened):
+            if (
+                not stat.S_ISDIR(named.st_mode)
+                or _retained_directory_identity(named)
+                != _retained_directory_identity(opened)
+            ):
                 raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", reason="directory_replaced")
 
 

@@ -634,6 +634,25 @@ def test_producer_rejects_identical_byte_refresh_replacement_at_final_validation
     assert not publication_path.exists()
 
 
+def test_retained_inputs_survive_expected_atomic_publication(tmp_path: Path):
+    evidence_root = tmp_path / "evidence"
+    evidence_root.mkdir()
+    source = evidence_root / "refresh.json"
+    source.write_bytes(b"retained input")
+
+    with capture._RetainedSafeFiles(evidence_root) as retained:
+        assert retained.read(source, missing_code="CURRENT_INDEX_SOURCE_MISSING")
+        capture._atomic_replace_canonical(
+            evidence_root / "current.json", {"kind": "index"},
+            evidence_root=evidence_root,
+        )
+        capture._atomic_replace_canonical(
+            evidence_root / "publication.json", {"kind": "publication"},
+            evidence_root=evidence_root,
+        )
+        retained.validate()
+
+
 def test_v2_runner_identity_uses_canonical_punctuation_protocol(tmp_path: Path):
     evidence_root = tmp_path / "evidence"
     generated = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
