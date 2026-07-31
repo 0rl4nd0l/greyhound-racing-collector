@@ -823,10 +823,6 @@ footer strong {
     display: block;
   }
 
-  details:not([open]) > :not(summary) {
-    display: block;
-  }
-
   .panel,
   .hero {
     break-inside: avoid;
