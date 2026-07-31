@@ -16,10 +16,13 @@ def test_connected_client_uses_only_fixed_get_api_and_bounded_returned_ids():
         "/operator-ui/api/v1/predictions/", "/operator-ui/api/v1/collector",
         "/operator-ui/api/v1/corpus", "/operator-ui/api/v1/models",
         "/operator-ui/api/v1/system", "/operator-ui/api/v1/audit",
+        "/operator-ui/api/v1/prediction-jobs",
     }
     assert "method:'GET'" in source
     assert "safeId.test(id)" in source and "encodeURIComponent(id)" in source
-    for prohibited in ("URLSearchParams", "FormData", "method:'POST'", "XMLHttpRequest", "WebSocket", "EventSource"):
+    assert "method:'POST'" in source and "X-CSRF-Token" in source
+    assert "setTimeout" in source and "EventSource" not in source
+    for prohibited in ("URLSearchParams", "FormData", "XMLHttpRequest", "WebSocket"):
         assert prohibited not in source
 
 

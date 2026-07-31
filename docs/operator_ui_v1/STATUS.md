@@ -7,14 +7,14 @@ product checkpoint remains preserved in the history below):
 |---|---|
 | Repository | `0rl4nd0l/greyhound-racing-collector` |
 | Branch | No current branch claim; ledger state is durable independently of delivery mechanics |
-| HEAD / tree | `0b34bdd10533676f9bf491c85259bc5342049652` / `7e087f5f117a8278e3ae61016baa3c8c3adf2d06` |
+| HEAD / tree | Base `dee082e954038c9ac4bf48d48bbe3901879310b8` / `302e144765d9bfd7ea3a7a1ef8a25e4fd3ab2c41`; current work is an uncommitted review candidate |
 | Baseline cleanliness | clean |
 | Historical/upstream source | Actual historical merge parent `51a5287d05c790e3855e5b74ce7117a29340135e`; later `origin/master` drift `f38a125f6364b8a60d17ae9c971b0ce172874eea`, tree `408a8adbfa2bd436132bc4d2c63e952aeb57c5a5`, parent `51a5287d05c790e3855e5b74ce7117a29340135e`; local merge `0b08966b31c15d8b459b9c6b60a48b19030a9ce4` |
-| Current release / ticket | R2 is accepted/integrated. R3 is next and in progress only through ready `GHU-030`; `GHU-031` remains planned behind it. R5 remains deferred. |
-| Counts | 27 accepted tickets, 1 ready, 0 active, 0 review, 13 blocked, 2 deferred, 10 planned (plus accepted audit milestone `GHU-000A`) |
-| Assignment | No active ticket; one fresh bounded implementer may own the dependency-ordered coupled `GHU-030 + GHU-031` tranche atomically |
-| Next safe action | Implement the `GHU-030` job contract/store first and then the `GHU-031` fixed-argument worker in the same atomic candidate; require independent review before parent integration. |
-| Validation | Accepted R2 integration: parent focused `266 passed in 46.90s`; exact Chromium mobile/desktop `14 passed (29.0s)`; reviewed binary patch SHA-256 and every file SHA matched integrated tree `7e087f5f117a8278e3ae61016baa3c8c3adf2d06`. |
+| Current release / ticket | R2 and `GHU-030`/`GHU-031` are accepted/integrated. Coupled `GHU-032 + GHU-033 + GHU-034` is an unaccepted review candidate. R5 remains deferred. |
+| Counts | 29 accepted tickets, 0 ready, 0 active, 3 review, 13 blocked, 2 deferred, 7 planned (plus accepted audit milestone `GHU-000A`) |
+| Assignment | Fresh bounded implementer candidate for dependency-ordered `GHU-032 + GHU-033 + GHU-034`; implementation is complete pending independent review |
+| Next safe action | Freeze and independently review the exact uncommitted R3 submission/polling/result candidate; parent retains acceptance and integration authority. |
+| Validation | Focused R3/security/store/bootstrap/connected UI: `282 passed in 29.78s`. Required full Operator UI: `804 passed in 119.75s (0:01:59)`. |
 
 `GHU-000B` audit run `20260730T172346Z-1bacc67937-3c5f6b`, session
 `019fb40d-e8ed-7d40-8ab2-8ad2b156552c`, child
@@ -677,3 +677,37 @@ bounded implementer may own their dependency-ordered coupled tranche
 atomically, implementing the job contract/store first and then the
 fixed-argument worker in the same candidate. Independent review is required
 before parent integration. R5 remains deferred.
+
+R3 parent closeout supersedes only the stale current pointer immediately above.
+Parent accepted and integrated `GHU-030` and `GHU-031` at commit
+`dee082e954038c9ac4bf48d48bbe3901879310b8`, tree
+`302e144765d9bfd7ea3a7a1ef8a25e4fd3ab2c41`. The accepted source candidate was
+`88853fdd2a26d7b8b1b7b2c45a5900b87d8e9c5a` with the identical tree and
+cumulative binary diff SHA-256
+`3b6443dfb565829d35374ff56ea4656f1cae4483aa46451e388b762571efeb73`.
+Implementer session `019fba2b-0df0-76c2-a55f-b6cdffbcc94c`; independent
+reviewer session `019fba30-921d-7c13-a443-3ac0a79351ff`, verdict `ACCEPT`.
+Targeted and full Operator UI validation passed `316` and `801` tests;
+parent integration validation likewise passed targeted `316` and full `801`.
+
+At that exact clean base, the coupled `GHU-032 + GHU-033 + GHU-034` candidate
+transitioned dependency-order `planned -> ready -> active -> review`. It adds
+an explicitly composed, default-off Level-2 JSON submission/read API, exact
+server re-resolution seam, actor-scoped idempotency and rate limiting,
+audit-confirmed durable transitions before launch, actor-isolated polling,
+persisted timeline, and strict verified-only result disclosure. The connected
+dashboard gains exact-race selection, guarded submit, refresh reconnect,
+terminal blocker/result, and evidence views. Polling is used because the
+repository has no SSE infrastructure. No replay command is displayed because
+this tranche established no safe fixed copy-only command. Focused validation:
+`/tmp/ghu010-validation-73f1e5d/bin/python -m pytest -q
+tests/operator_ui/test_r3_api.py tests/operator_ui/test_security.py
+tests/operator_ui/test_job_store.py tests/operator_ui/test_bootstrap.py
+tests/operator_ui/test_connected_ui.py` passed `282 passed in 29.78s`.
+The required single final command
+`/tmp/ghu010-validation-73f1e5d/bin/python -m pytest -q tests/operator_ui`
+passed `804 passed in 119.75s (0:01:59)`.
+Independent review, parent acceptance/integration, commit, publication,
+deployment, runtime/data mutation, live prediction/proof, browser execution,
+collector action, training, promotion, EV, staking, betting, and outcomes:
+`NOT_OCCURRED`.

@@ -730,12 +730,13 @@ if not app.config.get("SECRET_KEY"):
 # absent unless the server explicitly enables and fully configures this gate.
 from src.operator_ui.security import install_connected_mode, load_connected_environment
 from src.operator_ui.api import install_level_1_api
-from src.operator_ui.bootstrap import bind_configured_live_evidence
+from src.operator_ui.bootstrap import bind_configured_live_evidence, bind_configured_r3
 
 load_connected_environment(app)
 install_connected_mode(app)
 install_level_1_api(app)
 bind_configured_live_evidence(app)
+bind_configured_r3(app)
 
 # Initialize asset management system
 if ASSET_MANAGEMENT_AVAILABLE and AssetManager:

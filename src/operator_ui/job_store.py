@@ -560,3 +560,12 @@ class JobStore:
             facts=json.loads(event["facts_json"])
             return Job(row["job_id"],row["actor_identity"],row["actor_level"],row["operation"],row["idempotency_key_sha256"],JobInput(**json.loads(row["input_json"])),row["created_at"],Phase(event["phase"]),event["event_at"],event["status"],event["reason"],facts.get("evidence_bundle_ref"),facts.get("evidence_bundle_sha256"),attempt is not None)
         finally: db.close()
+    def events(self,job_id):
+        """Return the persisted finite timeline for an existing job."""
+        _job_id(job_id); db=self._connect()
+        try:
+            self._require_valid(db)
+            if db.execute("SELECT 1 FROM jobs WHERE job_id=?",(job_id,)).fetchone() is None: raise JobStoreError("unknown job")
+            rows=db.execute("SELECT event_id,phase,event_at,status,reason,facts_json,event_hash FROM job_events WHERE job_id=? ORDER BY sequence",(job_id,)).fetchall()
+            return tuple({"event_id":row["event_id"],"phase":row["phase"],"event_at":row["event_at"],"status":row["status"],"reason":row["reason"],"facts":json.loads(row["facts_json"]),"event_hash":row["event_hash"]} for row in rows)
+        finally: db.close()

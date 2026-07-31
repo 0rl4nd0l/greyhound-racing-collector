@@ -6,9 +6,11 @@ from flask import Flask
 
 from .api import register_level_1_provider
 from .live_adapters import LiveEvidenceAdapters
+from .r3_api import R3Services, install_r3_api
 
 
 CONFIG_KEY = "OPERATOR_UI_LIVE_EVIDENCE_ADAPTERS"
+R3_CONFIG_KEY = "OPERATOR_UI_R3_SERVICES"
 _BOUND_KEY = "operator_ui_live_evidence_bound"
 _METHODS = (
     ("upcoming_races", "upcoming"),
@@ -50,4 +52,14 @@ def bind_configured_live_evidence(app: Flask) -> bool:
     return True
 
 
-__all__ = ["CONFIG_KEY", "bind_configured_live_evidence"]
+def bind_configured_r3(app: Flask) -> bool:
+    """Bind the explicit server-owned R3 composition; default is safely off."""
+    services = app.config.get(R3_CONFIG_KEY)
+    if services is None:
+        return False
+    if type(services) is not R3Services:
+        raise TypeError("configured R3 services must be exact R3Services")
+    return install_r3_api(app, services)
+
+
+__all__ = ["CONFIG_KEY", "R3_CONFIG_KEY", "bind_configured_live_evidence", "bind_configured_r3"]

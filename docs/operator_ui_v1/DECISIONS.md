@@ -439,3 +439,24 @@ supersession.
   evidence only; product scope and all accepted ticket histories are unchanged.
 - Supersession: Additively closes only the previously running exact `GHU-021`
   551-test broad-gate record.
+
+## 2026-08-01 — DEC-GHU-R3-PERSISTED-POLLING
+
+- Context: `GHU-032 + GHU-033 + GHU-034` require reconnectable job progress;
+  the accepted application has no SSE or broker infrastructure.
+- Decision: Use bounded same-origin polling of the accepted persisted job/event
+  store. Disconnect and refresh only reread the actor-owned job; they never
+  cancel, retry, requeue, substitute, or fabricate progress. Keep R3 default
+  off until explicitly composed with exact server-owned resolver, store,
+  launcher, and strict result-reader services.
+- Evidence: Accepted `GHU-030`/`GHU-031` immutable store and one-attempt worker
+  at commit `dee082e954038c9ac4bf48d48bbe3901879310b8`, tree
+  `302e144765d9bfd7ea3a7a1ef8a25e4fd3ab2c41`; current unaccepted coupled R3
+  review candidate and focused validation recorded in `STATUS.md`.
+- Consequences: No SSE, broker, timer-derived progress, new process boundary,
+  or rerun control is introduced. Ranked probabilities remain absent unless
+  the accepted strict verifier has produced `PREDICTION_READY` and the
+  configured verified-result reader returns the exact verified schema.
+- Supersession: Additively implements the accepted GHU-033 polling fallback;
+  it does not claim candidate acceptance, integration, deployment, or runtime
+  proof.

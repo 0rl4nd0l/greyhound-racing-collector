@@ -860,3 +860,12 @@ footer strong {
     animation-iteration-count: 1 !important;
   }
 }
+
+#prediction-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1rem; }
+#prediction-form label { display:grid; gap:.4rem; min-width:0; }
+#prediction-form select { width:100%; min-width:0; padding:.7rem; color:inherit; background:#17202a; border:1px solid currentColor; border-radius:.35rem; }
+#prediction-form p, #prediction-form button { grid-column:1 / -1; }
+#job-timeline { padding-inline-start:1.5rem; }
+#job-timeline li { margin-block:.5rem; overflow-wrap:anywhere; }
+#job-status:focus { outline:2px solid currentColor; outline-offset:.25rem; }
+@media (max-width: 600px) { #prediction-form { grid-template-columns:minmax(0,1fr); } }

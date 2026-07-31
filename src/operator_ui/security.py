@@ -273,7 +273,24 @@ def _validate_audit_fields(fields: Mapping[str, Any], *, operation: bool) -> Non
         hashes=("idempotency_key_sha256","runner_set_sha256","model_sha256","config_sha256","input_identity_sha256")
         if any(not isinstance(fields.get(name),str) or not _valid_sha256(fields[name]) for name in (*hashes,"reference_hashes") if name!="reference_hashes") or any(not _valid_sha256(v) for v in fields["reference_hashes"]):
             raise AuditUnavailable("operation audit hash invalid")
-        if fields.get("operation")!="manual_prediction_claim" or fields.get("prior_state")!="WAITING_FOR_CLAIM" or fields.get("new_state")!="CLAIMED" or fields.get("status")!="CONFIRMED" or fields.get("reason")!="unique_attempt_claim": raise AuditUnavailable("operation audit lifecycle invalid")
+        observed = tuple(fields.get(name) for name in ("operation", "prior_state", "new_state", "status", "reason"))
+        operation, prior, new, status, reason = observed
+        if operation not in {"manual_prediction_create", "manual_prediction_transition", "manual_prediction_claim", "manual_prediction_verify"} or prior == new:
+            raise AuditUnavailable("operation audit lifecycle invalid")
+        if operation == "manual_prediction_create" and observed != (operation, "NONE", "SUBMITTED", "ACCEPTED", "submitted"):
+            raise AuditUnavailable("operation audit create lifecycle invalid")
+        legacy_claim = (operation, "WAITING_FOR_CLAIM", "CLAIMED", "CONFIRMED", "unique_attempt_claim")
+        current_claim = (operation, "WAITING_FOR_CLAIM", "CLAIMED", "CLAIMED", "unique_attempt_claimed")
+        if operation == "manual_prediction_claim" and observed not in {legacy_claim, current_claim}:
+            raise AuditUnavailable("operation audit claim lifecycle invalid")
+        if operation in {"manual_prediction_transition", "manual_prediction_verify"}:
+            try:
+                from .job_store import Phase, _EVENT_CONTRACTS
+                contract = (Phase(prior), Phase(new), status, reason)
+            except (ImportError, ValueError):
+                raise AuditUnavailable("operation audit transition lifecycle invalid") from None
+            if contract not in _EVENT_CONTRACTS:
+                raise AuditUnavailable("operation audit transition lifecycle invalid")
         if not str(fields.get("job_id","")).startswith("job_") or not str(fields.get("race_id","")).startswith("race-"): raise AuditUnavailable("operation audit identity invalid")
         scalar_names=set(OperationAuditEvent.__dataclass_fields__)-{"actor_level","reference_hashes"}
     else:
@@ -859,6 +876,8 @@ def install_connected_mode(app: Flask) -> AuditStore | None:
         return protected
 
     app.extensions["operator_ui_csrf_protect"] = csrf_protect
+    app.extensions["operator_ui_authenticated_actor"] = actor
+    app.extensions["operator_ui_csrf_token"] = csrf_token
 
     @app.get("/operator-ui/login")
     def operator_ui_login_form() -> Response:

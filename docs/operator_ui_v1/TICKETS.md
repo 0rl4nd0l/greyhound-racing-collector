@@ -837,7 +837,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 
 - Release: `R3`
 - Priority: `P3`
-- Status: `ready`
+- Status: `accepted`
 - Dependencies: `GHU-027`
 - Model routing: GPT-5.6 Sol; fallback GPT-5.6 Terra
 - Session role: Fresh Codex X implementation session
@@ -851,14 +851,14 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Level 2 only after all R3 gates; deployment/live proof require separate Level 4/explicit authority.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: One fresh bounded implementer may own the dependency-ordered coupled `GHU-030 + GHU-031` tranche atomically: implement this job contract/store first, then the fixed-argument worker; freeze one candidate for independent review before parent integration.
-- Closeout evidence: PENDING: exact base/head/tree/path/diff identities, commands/exits, focused tests, reviewer identity/verdict, parent decision, and applicable commit/PR/merge/deploy/proof fields.
+- Next safe action: Preserve the accepted/integrated store contract; review the coupled `GHU-032 + GHU-033 + GHU-034` candidate independently.
+- Closeout evidence: Parent accepted and integrated the coupled `GHU-030 + GHU-031` tranche at commit `dee082e954038c9ac4bf48d48bbe3901879310b8`, tree `302e144765d9bfd7ea3a7a1ef8a25e4fd3ab2c41`. Accepted source candidate `88853fdd2a26d7b8b1b7b2c45a5900b87d8e9c5a` had the identical tree; cumulative binary diff SHA-256 `3b6443dfb565829d35374ff56ea4656f1cae4483aa46451e388b762571efeb73`. Implementer session `019fba2b-0df0-76c2-a55f-b6cdffbcc94c`; independent reviewer session `019fba30-921d-7c13-a443-3ac0a79351ff`, verdict `ACCEPT`. Targeted validation passed `316 passed`; full Operator UI passed `801 passed`. Parent integration validation passed targeted `316 passed` and full Operator UI `801 passed`. Publication, deployment, runtime mutation, and live proof: `NOT_OCCURRED`.
 
 ## GHU-031 — Fixed-argument manual prediction worker
 
 - Release: `R3`
 - Priority: `P3`
-- Status: `planned`
+- Status: `accepted`
 - Dependencies: `GHU-030`, `GHU-000C1`
 - Model routing: GPT-5.6 Sol; fallback GPT-5.6 Terra
 - Session role: Fresh Codex X implementation session
@@ -872,14 +872,14 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Level 2 only after all R3 gates; deployment/live proof require separate Level 4/explicit authority.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Remain planned behind `GHU-030`; one fresh bounded implementer may include it after implementing the `GHU-030` job contract/store first in the same atomic candidate, which requires independent review before parent integration.
-- Closeout evidence: PENDING: exact base/head/tree/path/diff identities, commands/exits, focused tests, reviewer identity/verdict, parent decision, and applicable commit/PR/merge/deploy/proof fields.
+- Next safe action: Preserve the accepted/integrated fixed-argument worker; review the coupled `GHU-032 + GHU-033 + GHU-034` candidate independently.
+- Closeout evidence: Parent accepted and integrated the coupled `GHU-030 + GHU-031` tranche at commit `dee082e954038c9ac4bf48d48bbe3901879310b8`, tree `302e144765d9bfd7ea3a7a1ef8a25e4fd3ab2c41`. Accepted source candidate `88853fdd2a26d7b8b1b7b2c45a5900b87d8e9c5a` had the identical tree; cumulative binary diff SHA-256 `3b6443dfb565829d35374ff56ea4656f1cae4483aa46451e388b762571efeb73`. Implementer session `019fba2b-0df0-76c2-a55f-b6cdffbcc94c`; independent reviewer session `019fba30-921d-7c13-a443-3ac0a79351ff`, verdict `ACCEPT`. Targeted validation passed `316 passed`; full Operator UI passed `801 passed`. Parent integration validation passed targeted `316 passed` and full Operator UI `801 passed`. Publication, deployment, runtime mutation, and live proof: `NOT_OCCURRED`.
 
 ## GHU-032 — Prediction submission, validation, CSRF and idempotency
 
 - Release: `R3`
 - Priority: `P3`
-- Status: `planned`
+- Status: `review`
 - Dependencies: `GHU-030`, `GHU-031`
 - Model routing: GPT-5.6 Sol; fallback GPT-5.6 Terra
 - Session role: Fresh Codex X implementation session
@@ -893,14 +893,14 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Level 2 only after all R3 gates; deployment/live proof require separate Level 4/explicit authority.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Wait until every listed prerequisite is accepted/integrated, then parent may mark ready and assign one fresh bounded implementer.
-- Closeout evidence: PENDING: exact base/head/tree/path/diff identities, commands/exits, focused tests, reviewer identity/verdict, parent decision, and applicable commit/PR/merge/deploy/proof fields.
+- Next safe action: Independently review this uncommitted coupled `GHU-032 + GHU-033 + GHU-034` candidate; parent retains acceptance and integration authority.
+- Closeout evidence: At exact accepted base `dee082e954038c9ac4bf48d48bbe3901879310b8`, tree `302e144765d9bfd7ea3a7a1ef8a25e4fd3ab2c41`, the dependency was verified and this ticket transitioned `planned -> ready -> active -> review` in the fresh bounded implementation candidate. Focused and final validation identities are recorded in `STATUS.md`. Independent review, parent acceptance/integration, publication, deployment, runtime proof, and live prediction: `NOT_OCCURRED`.
 
 ## GHU-033 — Prediction progress stream and reconnect
 
 - Release: `R3`
 - Priority: `P3`
-- Status: `planned`
+- Status: `review`
 - Dependencies: `GHU-030`, `GHU-032`
 - Model routing: GPT-5.6 Terra; fallback GPT-5.6 Luna
 - Session role: Fresh Codex X implementation session
@@ -914,14 +914,14 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Level 2 only after all R3 gates; deployment/live proof require separate Level 4/explicit authority.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Wait until every listed prerequisite is accepted/integrated, then parent may mark ready and assign one fresh bounded implementer.
-- Closeout evidence: PENDING: exact base/head/tree/path/diff identities, commands/exits, focused tests, reviewer identity/verdict, parent decision, and applicable commit/PR/merge/deploy/proof fields.
+- Next safe action: Independently review this uncommitted coupled `GHU-032 + GHU-033 + GHU-034` candidate; parent retains acceptance and integration authority.
+- Closeout evidence: At exact accepted base `dee082e954038c9ac4bf48d48bbe3901879310b8`, tree `302e144765d9bfd7ea3a7a1ef8a25e4fd3ab2c41`, the dependency was verified and this ticket transitioned `planned -> ready -> active -> review` in the fresh bounded implementation candidate. Polling was selected because no SSE infrastructure exists. Focused and final validation identities are recorded in `STATUS.md`. Independent review, parent acceptance/integration, publication, deployment, runtime proof, and live prediction: `NOT_OCCURRED`.
 
 ## GHU-034 — Live prediction result, evidence and offline replay controls
 
 - Release: `R3`
 - Priority: `P3`
-- Status: `planned`
+- Status: `review`
 - Dependencies: `GHU-023`, `GHU-033`
 - Model routing: GPT-5.6 Terra; fallback GPT-5.6 Luna
 - Session role: Fresh Codex X implementation session
@@ -935,8 +935,8 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Level 2 only after all R3 gates; deployment/live proof require separate Level 4/explicit authority.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Wait until every listed prerequisite is accepted/integrated, then parent may mark ready and assign one fresh bounded implementer.
-- Closeout evidence: PENDING: exact base/head/tree/path/diff identities, commands/exits, focused tests, reviewer identity/verdict, parent decision, and applicable commit/PR/merge/deploy/proof fields.
+- Next safe action: Independently review this uncommitted coupled `GHU-032 + GHU-033 + GHU-034` candidate; parent retains acceptance and integration authority.
+- Closeout evidence: At exact accepted base `dee082e954038c9ac4bf48d48bbe3901879310b8`, tree `302e144765d9bfd7ea3a7a1ef8a25e4fd3ab2c41`, the dependency was verified and this ticket transitioned `planned -> ready -> active -> review` in the fresh bounded implementation candidate. Focused and final validation identities are recorded in `STATUS.md`. No offline command is displayed because no safe fixed command was established in this tranche. Independent review, parent acceptance/integration, publication, deployment, runtime proof, and live prediction: `NOT_OCCURRED`.
 
 ## GHU-035 — End-to-end manual prediction safety suite
 
