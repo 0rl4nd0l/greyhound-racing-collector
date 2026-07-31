@@ -8,6 +8,16 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+from types import SimpleNamespace
+
+import src.operator_ui.live_adapters as live_module
+from race_collection.synchronous_manual_capture import VerifiedCurrentRaceIndex
+from race_collection.synchronous_manual_capture import CaptureOneRejected
+from src.predictor.on_demand import (
+    PREDICTION_BUNDLE_INDEX_NAME,
+    VerifiedPredictionBundleIndex,
+    canonical_bytes as prediction_canonical_bytes,
+)
 
 from scripts.shadow_autopilot_daemon import (
     completed_daemon_run_report_envelope,
@@ -26,7 +36,10 @@ from src.operator_ui.foundation import (
     SourceConfig,
     TimestampSyntax,
 )
-from src.operator_ui.live_adapters import InstalledUnits, LiveEvidenceAdapters, _calendar_gap, _finite_metric
+from src.operator_ui.live_adapters import (
+    InstalledUnits, LiveEvidenceAdapters, PredictionBundleSource,
+    UpcomingRaceSource, _calendar_gap, _finite_metric,
+)
 
 NOW = datetime(2026, 7, 31, 2, tzinfo=timezone.utc)
 
@@ -131,6 +144,8 @@ def make_live(
     units_observed_at=None,
     serialization_policies=None,
     raw_overrides=None,
+    upcoming_races=None,
+    prediction_bundles=None,
 ):
     values = values or actual_payloads()
     unit_bytes = {
@@ -241,7 +256,10 @@ def make_live(
             for name, raw in unit_bytes.items()
         },
     )
-    return LiveEvidenceAdapters(reader, units=units)
+    return LiveEvidenceAdapters(
+        reader, units=units, upcoming_races=upcoming_races,
+        prediction_bundles=prediction_bundles,
+    )
 
 
 def test_actual_generated_units_and_distinct_lane_ids(tmp_path):
@@ -1123,6 +1141,234 @@ def test_no_browser_path_shell_scan_write_service_or_database_surface():
     source = inspect.getsource(__import__("src.operator_ui.live_adapters", fromlist=["x"]))
     for forbidden in ("subprocess", "systemctl", "sqlite3", "requests", "glob(", "rglob(", "write_text(", "write_bytes(", "unlink("):
         assert forbidden not in source
+
+
+@pytest.mark.parametrize(
+    ("age", "jump_offset", "count"),
+    [(300, 1, 1), (300.000001, 1, 0), (0, 1, 1), (0, 0, 0), (0, -1, 0)],
+)
+def test_upcoming_verified_view_exact_boundaries_and_identity(
+    tmp_path, monkeypatch, age, jump_offset, count
+):
+    generated = NOW - timedelta(seconds=age)
+    race_id = "Race 5 - GUNN - 2026-07-19"
+    row = {
+        "race_id": race_id, "race_url": "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5",
+        "date": "2026-07-19", "venue": "GUNN", "race_number": 5,
+        "jump_datetime": (NOW + timedelta(seconds=jump_offset)).isoformat(),
+        "runner_set_sha256": "a" * 64,
+        "runners": [
+            {"box_number": 1, "dog_name": "ONE", "identity": "ONE", "source_native_runner_id": None, "scratch_state": "ACTIVE"},
+            {"box_number": 2, "dog_name": "TWO", "identity": "TWO", "source_native_runner_id": "22", "scratch_state": "ACTIVE"},
+        ],
+    }
+    view = VerifiedCurrentRaceIndex(
+        "collector_current_race_index_v2", "run-1", generated.isoformat(),
+        "1" * 64, b"packet", (row,), "refresh.json", "2" * 64,
+        "3" * 64, "4" * 64, "5" * 64,
+    )
+    monkeypatch.setattr(live_module, "bounded_current_race_index", lambda **kwargs: view)
+    adapter = make_live(
+        tmp_path, upcoming_races=UpcomingRaceSource(tmp_path / "index", tmp_path)
+    )
+    result = adapter.upcoming(NOW)
+    expected_status = "STALE" if age > 300 else "AVAILABLE/FRESH"
+    assert result.evidence.status == expected_status
+    assert result.data == {} if expected_status == "STALE" else len(result.data["races"]) == count
+    if count:
+        race = result.data["races"][0]
+        assert race["race_id"] == race["source_race_id"] == race_id
+        assert race["route_id"].startswith("r1.")
+        assert race["meeting_slug"] is None and race["venue"] == "GUNN"
+        assert [runner["runner_id"] for runner in race["runners"]] == ["ONE", "TWO"]
+        assert [runner["source_runner_id"] for runner in race["runners"]] == [None, "22"]
+        assert {runner["scratch_state"] for runner in race["runners"]} == {"ACTIVE"}
+        assert adapter.race_detail(race["route_id"], NOW).data["race"] == race
+        assert adapter.race_detail("hostile..route", NOW).data == {}
+
+
+def test_fresh_source_with_only_post_jump_rows_is_verified_empty(tmp_path, monkeypatch):
+    row = {
+        "race_id": "Race 5 - GUNN - 2026-07-19",
+        "race_url": "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5",
+        "date": "2026-07-19", "venue": "GUNN", "race_number": 5,
+        "jump_datetime": NOW.isoformat(), "runner_set_sha256": "a" * 64,
+        "runners": ({"box_number": 1, "dog_name": "ONE", "identity": "ONE", "source_native_runner_id": None, "scratch_state": "ACTIVE"},),
+    }
+    view = VerifiedCurrentRaceIndex(
+        "collector_current_race_index_v2", "run-1", NOW.isoformat(), "1" * 64,
+        b"packet", (row,), "refresh.json", "2" * 64, "3" * 64, "4" * 64, "5" * 64,
+    )
+    monkeypatch.setattr(live_module, "bounded_current_race_index", lambda **kwargs: view)
+    result = make_live(tmp_path, upcoming_races=UpcomingRaceSource(tmp_path / "index", tmp_path)).upcoming(NOW)
+    assert result.evidence.status == "AVAILABLE/FRESH"
+    assert result.data == {"races": []}
+
+
+@pytest.mark.parametrize("status", ["STALE", "INVALID/INTEGRITY_FAILED"])
+def test_race_detail_preserves_nonfresh_snapshot_envelope(tmp_path, monkeypatch, status):
+    upstream = make_live(tmp_path)._verified_envelope(
+        now=NOW, policy="P-UPCOMING-300-PREJUMP",
+        identity="collector_current_race_index_v2",
+        locator="operator_ui.current_race_index", status=status,
+        source_at=NOW - timedelta(seconds=1200), content_sha256="1" * 64,
+        references={"publication": "2" * 64},
+        evidence_identity={"run_id": "run-1"},
+    )
+    adapter = make_live(tmp_path)
+    monkeypatch.setattr(adapter, "_race_snapshot", lambda _now: (upstream, []))
+    detail = adapter.race_detail("r1.missing", NOW)
+    assert detail.evidence == upstream
+    assert detail.data == {}
+
+
+def test_ui_stale_snapshot_beyond_predictor_window_retains_bound_identity(tmp_path, monkeypatch):
+    generated = NOW - timedelta(seconds=1200, microseconds=1)
+    view = VerifiedCurrentRaceIndex(
+        "collector_current_race_index_v2", "run-1", generated.isoformat(),
+        "1" * 64, b"packet", (), "refresh.json", "2" * 64,
+        "3" * 64, "4" * 64, "5" * 64,
+    )
+    monkeypatch.setattr(live_module, "bounded_current_race_index", lambda **kwargs: view)
+    result = make_live(
+        tmp_path, upcoming_races=UpcomingRaceSource(tmp_path / "index", tmp_path)
+    ).upcoming(NOW)
+    assert result.evidence.status == "STALE"
+    assert result.evidence.content_sha256 == "1" * 64
+    assert dict(result.evidence.evidence_identity) == {
+        "run_id": "run-1", "schema_version": "collector_current_race_index_v2"
+    }
+    assert result.evidence.source_at == generated.isoformat().replace("+00:00", "Z")
+    assert result.data == {}
+
+
+@pytest.mark.parametrize(
+    ("code", "status", "availability", "integrity"),
+    [
+        ("CURRENT_INDEX_UNAVAILABLE", "UNAVAILABLE/DATA_MISSING", "missing", "unknown"),
+        ("DISCOVERY_TIMEOUT", "UNAVAILABLE/DATA_MISSING", "error", "unknown"),
+        ("CURRENT_INDEX_SOURCE_CHANGED", "INVALID/INTEGRITY_FAILED", "error", "failed"),
+        ("CURRENT_INDEX_PUBLICATION_INVALID", "INVALID/INTEGRITY_FAILED", "error", "failed"),
+    ],
+)
+def test_real_collector_rejection_codes_map_truthfully(tmp_path, monkeypatch, code, status, availability, integrity):
+    def rejected(**kwargs):
+        raise CaptureOneRejected(code)
+    monkeypatch.setattr(live_module, "bounded_current_race_index", rejected)
+    result = make_live(tmp_path, upcoming_races=UpcomingRaceSource(tmp_path / "index", tmp_path)).upcoming(NOW)
+    assert (result.evidence.status, result.evidence.availability, result.evidence.schema_integrity) == (status, availability, integrity)
+    assert "no operational claim" in result.evidence.supported_claim
+
+
+@pytest.mark.parametrize(("age", "status"), [(60, "AVAILABLE/FRESH"), (60.000001, "STALE")])
+def test_prediction_empty_index_uses_only_producer_publication_time(
+    tmp_path, monkeypatch, age, status
+):
+    published = NOW - timedelta(seconds=age)
+    view = VerifiedPredictionBundleIndex(
+        "on_demand_prediction_bundle_index_v1", published.isoformat(), (),
+        b"index", "a" * 64,
+    )
+    monkeypatch.setattr(live_module, "verify_prediction_bundle_index", lambda *args, **kwargs: view)
+    result = make_live(
+        tmp_path, prediction_bundles=PredictionBundleSource(tmp_path)
+    ).recent_predictions(NOW)
+    assert result.evidence.status == status
+    assert result.evidence.source_at == published.isoformat().replace("+00:00", "Z")
+    assert result.data == ({"predictions": []} if status == "AVAILABLE/FRESH" else {})
+
+
+def test_real_missing_prediction_index_differs_from_malformed_index(tmp_path):
+    adapter = make_live(tmp_path, prediction_bundles=PredictionBundleSource(tmp_path))
+    missing = adapter.recent_predictions(NOW)
+    assert missing.evidence.status == "UNAVAILABLE/DATA_MISSING"
+    assert missing.evidence.availability == "missing"
+    assert missing.evidence.schema_integrity == "unknown"
+    (tmp_path / PREDICTION_BUNDLE_INDEX_NAME).write_bytes(b"not-json")
+    malformed = adapter.recent_predictions(NOW)
+    assert malformed.evidence.status == "INVALID/INTEGRITY_FAILED"
+    assert malformed.evidence.schema_integrity == "failed"
+    assert all("Exact producer-verified" not in item.evidence.supported_claim for item in (missing, malformed))
+
+
+def test_unreadable_prediction_index_is_unavailable_for_listing_and_detail(tmp_path, monkeypatch):
+    def unreadable(*args, **kwargs):
+        raise PermissionError("configured prediction evidence is unreadable")
+    monkeypatch.setattr(live_module, "verify_prediction_bundle_index", unreadable)
+    adapter = make_live(tmp_path, prediction_bundles=PredictionBundleSource(tmp_path))
+    for result in (
+        adapter.recent_predictions(NOW),
+        adapter.prediction_detail("prediction-1", NOW),
+    ):
+        assert result.evidence.status == "UNAVAILABLE/DATA_MISSING"
+        assert result.evidence.availability == "unreadable"
+        assert result.evidence.schema_integrity == "unknown"
+        assert "no operational claim" in result.evidence.supported_claim
+        assert result.data == {}
+
+
+def test_legacy_index_blocks_listing_but_allows_verified_historical_detail(tmp_path, monkeypatch):
+    prediction_id = "11111111-1111-4111-8111-111111111111"
+    entry = {
+        "directory": "prediction_20260719T120000000000+0000_aaaaaaaaaaaa",
+        "prediction_id": prediction_id, "job_id": None,
+        "generated_at": NOW.isoformat(), "status": "PREDICTION_BLOCKED",
+        "blocker_stage": "PROTOCOL", "manifest_sha256": "b" * 64,
+        "logical_bundle_sha256": "c" * 64,
+    }
+    legacy = {"schema_version": live_module.PREDICTION_BUNDLE_INDEX_SCHEMA, "entries": [entry]}
+    (tmp_path / PREDICTION_BUNDLE_INDEX_NAME).write_bytes(prediction_canonical_bytes(legacy))
+    bundle = SimpleNamespace(
+        index_entry=entry, directory=entry["directory"],
+        manifest={"files": {"result.json": {}}},
+        result={
+            "prediction_id": prediction_id, "job_id": None,
+            "race": {"race_id": "Race 5 - GUNN - 2026-07-19"},
+            "model": {"resolved": "market_only_v1", "artifact_sha256": None},
+            "config": {"sha256": "d" * 64}, "status": "PREDICTION_BLOCKED",
+            "blocker_stage": "PROTOCOL", "blocker": {"code": "PROTOCOL_FAILED"},
+            "prediction": None, "evidence": {"runner_set_sha256": "e" * 64},
+        },
+    )
+    monkeypatch.setattr(live_module, "verify_indexed_prediction_bundle", lambda root, selected: bundle)
+    adapter = make_live(tmp_path, prediction_bundles=PredictionBundleSource(tmp_path))
+    assert adapter.recent_predictions(NOW).evidence.status == "INVALID/INTEGRITY_FAILED"
+    detail = adapter.prediction_detail(prediction_id, NOW)
+    assert detail.evidence.status == "AVAILABLE/FRESH"
+    assert detail.data["prediction"]["prediction_id"] == prediction_id
+
+
+def test_prediction_verified_records_preserve_terminal_distinctions(tmp_path, monkeypatch):
+    entries = tuple({
+        "directory": f"bundle-{stage.lower()}", "prediction_id": f"prediction-{stage.lower()}",
+        "job_id": None, "generated_at": NOW.isoformat(), "status": "PREDICTION_BLOCKED",
+        "blocker_stage": stage, "manifest_sha256": "b" * 64,
+        "logical_bundle_sha256": "c" * 64,
+    } for stage in ("PROTOCOL", "VALIDATION", "SCORING"))
+    view = VerifiedPredictionBundleIndex(
+        "on_demand_prediction_bundle_index_v1", NOW.isoformat(), entries,
+        b"index", "a" * 64,
+    )
+    monkeypatch.setattr(live_module, "verify_prediction_bundle_index", lambda *args, **kwargs: view)
+    def verify(_root, entry):
+        stage = entry["blocker_stage"]
+        return SimpleNamespace(
+            index_entry=entry, directory=entry["directory"],
+            manifest={"files": {"result.json": {}, "request.json": {}, "config.json": {}, "model/config.schema.json": {}}},
+            result={
+                "prediction_id": entry["prediction_id"], "job_id": None,
+                "race": {"race_id": "Race 5 - GUNN - 2026-07-19"},
+                "model": {"resolved": "market_only_v1", "artifact_sha256": None, "requested": "market-only"},
+                "config": {"sha256": "d" * 64}, "status": "PREDICTION_BLOCKED",
+                "blocker_stage": stage, "blocker": {"code": f"{stage}_FAILED"},
+                "prediction": None, "evidence": {"runner_set_sha256": "e" * 64},
+            },
+        )
+    monkeypatch.setattr(live_module, "verify_indexed_prediction_bundle", verify)
+    result = make_live(tmp_path, prediction_bundles=PredictionBundleSource(tmp_path)).recent_predictions(NOW)
+    assert [item["blocker_stage"] for item in result.data["predictions"]] == ["PROTOCOL", "VALIDATION", "SCORING"]
+    assert all(item["probabilities"] is None and item["job_id"] is None and item["model_sha256"] is None for item in result.data["predictions"])
+    assert all(len(item["evidence_names"]) == len(set(item["evidence_names"])) for item in result.data["predictions"])
 
 
 

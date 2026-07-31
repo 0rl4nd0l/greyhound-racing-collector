@@ -142,6 +142,17 @@ class VerifiedPredictionBundle:
     manifest: dict[str, Any]
 
 
+@dataclass(frozen=True, slots=True)
+class VerifiedPredictionBundleIndex:
+    """Exact descriptor-retained producer index snapshot for read adapters."""
+
+    schema_version: str
+    published_at: str | None
+    entries: tuple[Mapping[str, Any], ...]
+    canonical_bytes: bytes
+    sha256: str
+
+
 def _blocked(code: str, **details: Any) -> PredictionBlocked:
     return PredictionBlocked(code, **details)
 
@@ -1162,9 +1173,17 @@ def _same_root_identity(
         os.close(check_fd)
 
 
-def _openat(parent_fd: int, name: str, *, directory: bool) -> tuple[int, tuple[int, int, int, int]]:
+def _openat(
+    parent_fd: int,
+    name: str,
+    *,
+    directory: bool,
+    missing_code: str = "PREDICTION_BUNDLE_OPEN_FAILED",
+) -> tuple[int, tuple[int, int, int, int]]:
     try:
         descriptor = os.open(name, _open_flags(directory=directory), dir_fd=parent_fd)
+    except FileNotFoundError as exc:
+        raise _blocked(missing_code, name=name) from exc
     except OSError as exc:
         raise _blocked("PREDICTION_BUNDLE_OPEN_FAILED", name=name) from exc
     try:
@@ -1211,10 +1230,20 @@ def _read_fd(
     return raw
 
 
-def validate_prediction_bundle_index_v1(value: Any) -> dict[str, Any]:
-    index = _exact_fields(value, {"schema_version", "entries"}, "index")
+def validate_prediction_bundle_index_v1(
+    value: Any, *, require_publication_time: bool = False
+) -> dict[str, Any]:
+    fields = set(value) if isinstance(value, Mapping) else set()
+    allowed = {"schema_version", "entries"}
+    sealed = allowed | {"published_at"}
+    accepted = (sealed,) if require_publication_time else (allowed, sealed)
+    if not any(fields == candidate for candidate in accepted):
+        raise _blocked("PREDICTION_BUNDLE_INVALID", field="index", reason="fields")
+    index = _exact_fields(value, fields, "index")
     if index["schema_version"] != PREDICTION_BUNDLE_INDEX_SCHEMA:
         raise _blocked("PREDICTION_BUNDLE_INVALID", field="index.schema_version")
+    if "published_at" in index:
+        _timestamp(index["published_at"], "index.published_at")
     entries = index["entries"]
     if not isinstance(entries, list) or len(entries) > INDEX_MAX_ENTRIES:
         raise _blocked("PREDICTION_BUNDLE_INVALID", field="index.entries")
@@ -1249,21 +1278,37 @@ def validate_prediction_bundle_index_v1(value: Any) -> dict[str, Any]:
 
 
 def verify_prediction_bundle_index(
-    root: Path, *, monotonic: Callable[[], float] = time.monotonic
-) -> dict[str, Any]:
+    root: Path, *, monotonic: Callable[[], float] = time.monotonic,
+    return_verified_view: bool = False,
+) -> dict[str, Any] | VerifiedPredictionBundleIndex:
     start = monotonic()
     root_fd = os.open(root, _open_flags(directory=True))
     try:
         root_identity = _identity(root_fd, directory=True)
-        index_fd, index_identity = _openat(root_fd, PREDICTION_BUNDLE_INDEX_NAME, directory=False)
+        index_fd, index_identity = _openat(
+            root_fd,
+            PREDICTION_BUNDLE_INDEX_NAME,
+            directory=False,
+            missing_code="PREDICTION_BUNDLE_INDEX_UNAVAILABLE",
+        )
         try:
             raw = _read_fd(index_fd, index_identity, max_bytes=INDEX_MAX_BYTES, start=start, seconds=1.0, monotonic=monotonic)
-            value = validate_prediction_bundle_index_v1(_canonical_json(raw, max_bytes=INDEX_MAX_BYTES, label="index"))
+            value = validate_prediction_bundle_index_v1(
+                _canonical_json(raw, max_bytes=INDEX_MAX_BYTES, label="index"),
+                require_publication_time=False,
+            )
             named = os.stat(PREDICTION_BUNDLE_INDEX_NAME, dir_fd=root_fd, follow_symlinks=False)
             if (named.st_dev, named.st_ino) != index_identity[:2]:
                 raise _blocked("PREDICTION_BUNDLE_REPLACED")
             _same_root_identity(root, root_fd, root_identity)
             _deadline(start, 1.0, monotonic)
+            if return_verified_view:
+                return VerifiedPredictionBundleIndex(
+                    schema_version=value["schema_version"],
+                    published_at=value.get("published_at"),
+                    entries=tuple(value["entries"]), canonical_bytes=raw,
+                    sha256=sha256_bytes(raw),
+                )
             return value
         finally:
             os.close(index_fd)
@@ -1287,6 +1332,7 @@ def verify_indexed_prediction_bundle(
     *,
     monotonic: Callable[[], float] = time.monotonic,
 ) -> VerifiedPredictionBundle:
+    # A selected entry is validated independently of index listing freshness.
     validate_prediction_bundle_index_v1({"schema_version": PREDICTION_BUNDLE_INDEX_SCHEMA, "entries": [dict(entry)]})
     start = monotonic(); root_fd = os.open(root, _open_flags(directory=True)); descriptors: list[int] = []
     try:
@@ -1604,11 +1650,14 @@ def _release_index_lock(root_fd: int, descriptor: int, identity: tuple[int, int,
 
 def publish_prediction_bundle_index_entry(
     root: Path,
-    entry: Mapping[str, Any],
+    entry: Mapping[str, Any] | None,
     *,
     monotonic: Callable[[], float] = time.monotonic,
+    _clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
 ) -> dict[str, Any]:
-    single = validate_prediction_bundle_index_v1({"schema_version": PREDICTION_BUNDLE_INDEX_SCHEMA, "entries": [dict(entry)]})["entries"][0]
+    single = None
+    if entry is not None:
+        single = validate_prediction_bundle_index_v1({"schema_version": PREDICTION_BUNDLE_INDEX_SCHEMA, "entries": [dict(entry)]})["entries"][0]
     start = monotonic(); root_fd = os.open(root, _open_flags(directory=True)); lock_fd: int | None = None
     try:
         root_identity = _identity(root_fd, directory=True)
@@ -1619,7 +1668,12 @@ def publish_prediction_bundle_index_entry(
         try:
             _same_root_identity(root, root_fd, root_identity)
             try:
-                index_fd, index_identity = _openat(root_fd, PREDICTION_BUNDLE_INDEX_NAME, directory=False)
+                index_fd, index_identity = _openat(
+                    root_fd,
+                    PREDICTION_BUNDLE_INDEX_NAME,
+                    directory=False,
+                    missing_code="PREDICTION_BUNDLE_INDEX_UNAVAILABLE",
+                )
             except PredictionBlocked as exc:
                 try:
                     os.stat(PREDICTION_BUNDLE_INDEX_NAME, dir_fd=root_fd, follow_symlinks=False)
@@ -1633,14 +1687,26 @@ def publish_prediction_bundle_index_entry(
                     current = validate_prediction_bundle_index_v1(_canonical_json(raw, max_bytes=INDEX_MAX_BYTES, label="index"))
                 finally:
                     os.close(index_fd)
-            matching = [row for row in current["entries"] if row["prediction_id"] == single["prediction_id"]]
-            if matching and matching[0] != single:
-                raise _blocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH", field="prediction_id")
-            entries = [dict(row) for row in current["entries"] if row["prediction_id"] != single["prediction_id"]]
-            entries.append(dict(single))
+            if single is None:
+                entries = [dict(row) for row in current["entries"]]
+            else:
+                matching = [row for row in current["entries"] if row["prediction_id"] == single["prediction_id"]]
+                if matching and matching[0] != single:
+                    raise _blocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH", field="prediction_id")
+                entries = [dict(row) for row in current["entries"] if row["prediction_id"] != single["prediction_id"]]
+                entries.append(dict(single))
             entries.sort(key=lambda row: (-_timestamp(row["generated_at"], "generated_at").timestamp(), row["prediction_id"]))
             entries = entries[:INDEX_MAX_ENTRIES]
-            updated = validate_prediction_bundle_index_v1({"schema_version": PREDICTION_BUNDLE_INDEX_SCHEMA, "entries": entries})
+            if entries == current["entries"] and "published_at" in current:
+                return current
+            publication_time = _clock()
+            if not isinstance(publication_time, datetime) or publication_time.tzinfo is None or publication_time.utcoffset() is None:
+                raise _blocked("PREDICTION_BUNDLE_INVALID", field="index.published_at")
+            publication_time = publication_time.astimezone(timezone.utc)
+            if "published_at" in current and publication_time < _timestamp(current["published_at"], "index.published_at"):
+                raise _blocked("PREDICTION_BUNDLE_PUBLICATION_TIME_REGRESSION")
+            publication_text = publication_time.isoformat()
+            updated = validate_prediction_bundle_index_v1({"schema_version": PREDICTION_BUNDLE_INDEX_SCHEMA, "published_at": publication_text, "entries": entries})
             raw = canonical_bytes(updated)
             if len(raw) > INDEX_MAX_BYTES:
                 raise _blocked("PREDICTION_BUNDLE_INVALID", reason="index_size")

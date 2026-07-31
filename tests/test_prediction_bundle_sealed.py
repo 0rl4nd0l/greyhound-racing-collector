@@ -6,7 +6,7 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -165,6 +165,55 @@ def test_publish_verify_index_and_detail_positive(tmp_path: Path):
     assert verified.directory == bundle.name
     assert verified.result["prediction"]["predictions"][0]["probability"] == 0.6
     assert not (tmp_path / sealed.PREDICTION_BUNDLE_LOCK_NAME).exists()
+    view = sealed.verify_prediction_bundle_index(
+        tmp_path, return_verified_view=True
+    )
+    assert isinstance(view, sealed.VerifiedPredictionBundleIndex)
+    assert view.sha256 == sha256_bytes(view.canonical_bytes)
+    assert datetime.fromisoformat(view.published_at).tzinfo is not None
+
+
+def test_empty_index_publication_has_producer_owned_aware_time(tmp_path: Path):
+    published_at = GENERATED - timedelta(minutes=5)
+    index = sealed.publish_prediction_bundle_index_entry(
+        tmp_path, None, _clock=lambda: published_at
+    )
+    assert index == {
+        "schema_version": sealed.PREDICTION_BUNDLE_INDEX_SCHEMA,
+        "published_at": published_at.astimezone(timezone.utc).isoformat(),
+        "entries": [],
+    }
+    view = sealed.verify_prediction_bundle_index(
+        tmp_path, return_verified_view=True
+    )
+    assert view.published_at == published_at.astimezone(timezone.utc).isoformat()
+
+
+def test_duplicate_and_repeated_empty_publication_are_idempotent(tmp_path: Path):
+    calls = iter((GENERATED, GENERATED + timedelta(minutes=1)))
+    empty = sealed.publish_prediction_bundle_index_entry(tmp_path, None, _clock=lambda: next(calls))
+    assert sealed.publish_prediction_bundle_index_entry(tmp_path, None, _clock=lambda: next(calls)) == empty
+    _, entry = make_bundle(tmp_path)
+    first = sealed.publish_prediction_bundle_index_entry(tmp_path, entry, _clock=lambda: GENERATED + timedelta(minutes=2))
+    duplicate = sealed.publish_prediction_bundle_index_entry(tmp_path, entry, _clock=lambda: GENERATED + timedelta(days=1))
+    assert duplicate == first
+
+
+def test_publication_clock_is_utc_aware_monotonic_and_legacy_migrates(tmp_path: Path):
+    legacy = {"schema_version": sealed.PREDICTION_BUNDLE_INDEX_SCHEMA, "entries": []}
+    (tmp_path / sealed.PREDICTION_BUNDLE_INDEX_NAME).write_bytes(canonical_bytes(legacy))
+    migrated = sealed.publish_prediction_bundle_index_entry(
+        tmp_path, None, _clock=lambda: GENERATED.astimezone(timezone(timedelta(hours=10)))
+    )
+    assert datetime.fromisoformat(migrated["published_at"]).utcoffset() == timedelta(0)
+    with pytest.raises(PredictionBlocked) as regression:
+        _, entry = make_bundle(tmp_path)
+        sealed.publish_prediction_bundle_index_entry(
+            tmp_path, entry, _clock=lambda: GENERATED - timedelta(seconds=1)
+        )
+    assert regression.value.code == "PREDICTION_BUNDLE_PUBLICATION_TIME_REGRESSION"
+    with pytest.raises(PredictionBlocked):
+        sealed.publish_prediction_bundle_index_entry(tmp_path, entry, _clock=lambda: datetime(2026, 1, 1))
 
 
 @pytest.mark.parametrize(
@@ -324,6 +373,14 @@ def test_index_schema_rejects_order_duplicates_count_and_unknown_fields():
     second = index_entry(1, "22345678-1234-4123-8123-123456789abc")
     base = {"schema_version": sealed.PREDICTION_BUNDLE_INDEX_SCHEMA, "entries": [second, first]}
     sealed.validate_prediction_bundle_index_v1(base)
+    with pytest.raises(PredictionBlocked):
+        sealed.validate_prediction_bundle_index_v1(
+            base, require_publication_time=True
+        )
+    sealed.validate_prediction_bundle_index_v1(
+        {**base, "published_at": GENERATED.isoformat()},
+        require_publication_time=True,
+    )
     for invalid in (
         {**base, "extra": True},
         {**base, "entries": [first, second]},

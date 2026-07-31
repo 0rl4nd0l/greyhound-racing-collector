@@ -31,7 +31,7 @@ _REGISTRY_KEY = "operator_ui_level_1_api_providers"
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\Z")
 _HASH = re.compile(r"[0-9a-f]{64}\Z")
 _GIT_OID = re.compile(r"(?:[0-9a-f]{40}|[0-9a-f]{64})\Z")
-_ZONE = re.compile(r"(?:UTC|[A-Za-z]+(?:[/_-][A-Za-z0-9+_-]+)+)\Z")
+_ZONE = re.compile(r"(?:UTC(?:[+-][0-9]{2}:[0-9]{2})?|[A-Za-z]+(?:[/_-][A-Za-z0-9+_-]+)+)\Z")
 _URL = re.compile(r"https://(?:www\.)?thedogs\.com\.au/[^\s]{1,480}\Z")
 _MAX_ITEMS = 100
 _MAX_TEXT_BYTES = 512
@@ -94,7 +94,7 @@ _OVERVIEW_STATUSES = frozenset(
         "DIVERGENT",
     }
 )
-_RACE_STATUSES = frozenset({"SCHEDULED", "SCRATCHED"})
+_RACE_STATUSES = frozenset({"SCHEDULED", "SCRATCHED", "ACTIVE"})
 _PREDICTION_LIFECYCLES = frozenset(
     {
         "SUBMITTED",
@@ -256,7 +256,7 @@ def _identity(value: Any) -> dict[str, str]:
     return {_id(name): _text(item) for name, item in value.items()}
 
 
-def _runner(value: Any) -> dict[str, Any]:
+def _runner(value: Any, *, sealed: bool = False) -> dict[str, Any]:
     raw = _exact(
         value,
         frozenset(
@@ -274,15 +274,15 @@ def _runner(value: Any) -> dict[str, Any]:
         "name": _text(raw["name"]),
         "runner_id": _id(raw["runner_id"]),
         "scratch_state": scratch,
-        "source_runner_id": _id(raw["source_runner_id"]),
+        "source_runner_id": (
+            None if sealed and raw["source_runner_id"] is None
+            else _id(raw["source_runner_id"])
+        ),
     }
 
 
 def _race(value: Any, *, route_id: str | None) -> dict[str, Any]:
-    raw = _exact(
-        value,
-        frozenset(
-            {
+    legacy_fields = frozenset({
                 "race_id",
                 "source_race_id",
                 "source_url",
@@ -296,11 +296,15 @@ def _race(value: Any, *, route_id: str | None) -> dict[str, Any]:
                 "grade",
                 "runners",
                 "runner_set_sha256",
-            }
-        ),
-    )
-    race_id = _id(raw["race_id"])
-    if route_id is not None and race_id != route_id:
+    })
+    sealed_fields = legacy_fields | {"route_id"}
+    if not isinstance(value, dict) or set(value) not in {legacy_fields, sealed_fields}:
+        raise ValueError("object has unknown or missing fields")
+    raw = value
+    sealed = "route_id" in raw
+    race_id = _text(raw["race_id"]) if sealed else _id(raw["race_id"])
+    resource_id = _id(raw["route_id"]) if sealed else race_id
+    if route_id is not None and resource_id != route_id:
         raise ValueError("race identity does not match route")
     url = _text(raw["source_url"])
     if _URL.fullmatch(url) is None:
@@ -325,23 +329,26 @@ def _race(value: Any, *, route_id: str | None) -> dict[str, Any]:
     grade = raw["grade"]
     if grade is not None:
         grade = _text(grade)
-    runners = [_runner(item) for item in _items(raw["runners"])]
+    runners = [_runner(item, sealed=sealed) for item in _items(raw["runners"])]
     if not runners or len({item["runner_id"] for item in runners}) != len(runners):
         raise ValueError("runner identities must be non-empty and unique")
-    _require_unique(runners, "source_runner_id", "source runner identities")
+    native_ids = [item["source_runner_id"] for item in runners if item["source_runner_id"] is not None]
+    if len(native_ids) != len(set(native_ids)):
+        raise ValueError("source runner identities must be unique")
     if len({item["box"] for item in runners}) != len(runners):
         raise ValueError("runner boxes must be unique")
     return {
         "distance_metres": distance,
         "grade": grade,
         "jump_utc": raw["jump_utc"],
-        "meeting_slug": _id(raw["meeting_slug"]),
+        "meeting_slug": None if sealed and raw["meeting_slug"] is None else _id(raw["meeting_slug"]),
         "race_id": race_id,
+        **({"route_id": resource_id} if sealed else {}),
         "race_number": race_number,
         "racing_date": date,
         "runner_set_sha256": _hash(raw["runner_set_sha256"]),
         "runners": runners,
-        "source_race_id": _id(raw["source_race_id"]),
+        "source_race_id": _text(raw["source_race_id"]) if sealed else _id(raw["source_race_id"]),
         "source_url": url,
         "source_zone": zone,
         "venue": _text(raw["venue"]),
@@ -350,10 +357,7 @@ def _race(value: Any, *, route_id: str | None) -> dict[str, Any]:
 
 
 def _prediction(value: Any, *, route_id: str | None) -> dict[str, Any]:
-    raw = _exact(
-        value,
-        frozenset(
-            {
+    legacy_fields = frozenset({
                 "prediction_id",
                 "job_id",
                 "race_id",
@@ -365,15 +369,24 @@ def _prediction(value: Any, *, route_id: str | None) -> dict[str, Any]:
                 "probabilities",
                 "bundle_sha256",
                 "evidence_identities",
-            }
-        ),
-    )
+    })
+    sealed_fields = (legacy_fields - {"lifecycle_status"}) | {
+        "terminal_status", "blocker_stage", "blocker_code", "evidence_names"
+    }
+    if not isinstance(value, dict) or set(value) not in {legacy_fields, sealed_fields}:
+        raise ValueError("object has unknown or missing fields")
+    raw = value
+    sealed = "terminal_status" in raw
     prediction_id = _id(raw["prediction_id"])
     if route_id is not None and prediction_id != route_id:
         raise ValueError("prediction identity does not match route")
-    lifecycle = _text(raw["lifecycle_status"])
-    if lifecycle not in _PREDICTION_LIFECYCLES:
+    lifecycle = _text(raw["terminal_status"] if sealed else raw["lifecycle_status"])
+    if lifecycle not in ({"PREDICTION_READY", "PREDICTION_BLOCKED"} if sealed else _PREDICTION_LIFECYCLES):
         raise ValueError("unknown prediction lifecycle")
+    blocker_stage = raw.get("blocker_stage")
+    blocker_code = raw.get("blocker_code")
+    if sealed and ((lifecycle == "PREDICTION_READY" and (blocker_stage is not None or blocker_code is not None)) or (lifecycle == "PREDICTION_BLOCKED" and (blocker_stage not in {"PROTOCOL", "VALIDATION", "SCORING"} or blocker_code is None))):
+        raise ValueError("terminal blocker identity is invalid")
     probabilities: list[dict[str, Any]] | None = None
     if raw["probabilities"] is not None:
         if lifecycle != "PREDICTION_READY":
@@ -393,18 +406,30 @@ def _prediction(value: Any, *, route_id: str | None) -> dict[str, Any]:
             raise ValueError("probabilities must be non-empty and sum to one")
         if len({item["runner_id"] for item in probabilities}) != len(probabilities):
             raise ValueError("probability runner identities must be unique")
+    evidence_names = None
+    if sealed:
+        evidence_names = []
+        for item in _items(raw["evidence_names"]):
+            name = _text(item)
+            if name.startswith("/") or "\\" in name or any(part in {"", ".", ".."} for part in name.split("/")):
+                raise ValueError("evidence name must be fixed-root-relative")
+            evidence_names.append(name)
+        if not evidence_names or len(evidence_names) != len(set(evidence_names)):
+            raise ValueError("evidence names must be non-empty and unique")
     return {
         "bundle_sha256": _hash(raw["bundle_sha256"]),
         "config_id": _id(raw["config_id"]),
         "config_sha256": _hash(raw["config_sha256"]),
         "evidence_identities": _identity(raw["evidence_identities"]),
-        "job_id": _id(raw["job_id"]),
-        "lifecycle_status": lifecycle,
+        "job_id": None if sealed and raw["job_id"] is None else _id(raw["job_id"]),
+        **({"terminal_status": lifecycle, "blocker_stage": blocker_stage,
+            "blocker_code": blocker_code, "evidence_names": evidence_names}
+           if sealed else {"lifecycle_status": lifecycle}),
         "model_id": _id(raw["model_id"]),
-        "model_sha256": _hash(raw["model_sha256"]),
+        "model_sha256": None if sealed and raw["model_sha256"] is None else _hash(raw["model_sha256"]),
         "prediction_id": prediction_id,
         "probabilities": probabilities,
-        "race_id": _id(raw["race_id"]),
+        "race_id": _text(raw["race_id"]) if sealed else _id(raw["race_id"]),
     }
 
 

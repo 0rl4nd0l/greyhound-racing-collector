@@ -10,10 +10,26 @@ from __future__ import annotations
 import hashlib
 import math
 import re
+import base64
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
+
+from race_collection.synchronous_manual_capture import (
+    CURRENT_RACE_INDEX_SCHEMA,
+    CaptureOneRejected,
+    VerifiedCurrentRaceIndex,
+    bounded_current_race_index,
+)
+from src.predictor.on_demand import (
+    PREDICTION_BUNDLE_INDEX_SCHEMA,
+    PredictionBlocked,
+    VerifiedPredictionBundleIndex,
+    verify_indexed_prediction_bundle,
+    verify_prediction_bundle_index,
+)
 
 from .api import APIObservation
 from .foundation import EvidenceEnvelope, OperatorEvidenceReader, _new_envelope
@@ -89,6 +105,26 @@ class InstalledUnits:
     full_service_sha256: str | None = None
     odds_timer_sha256: str | None = None
     odds_service_sha256: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class UpcomingRaceSource:
+    index_path: Path
+    evidence_root: Path
+    timeout_seconds: float = 1.0
+
+
+@dataclass(frozen=True, slots=True)
+class PredictionBundleSource:
+    root: Path
+
+
+def _route_key(race_id: str) -> str:
+    encoded = base64.urlsafe_b64encode(race_id.encode("utf-8")).decode("ascii").rstrip("=")
+    key = f"r1.{encoded}"
+    if len(key) > 128:
+        raise ValueError("race identity cannot be represented by the bounded route grammar")
+    return key
 
 
 def _duration(value: str) -> float:
@@ -823,11 +859,224 @@ def _lane_data(
 class LiveEvidenceAdapters:
     """Adapt finite, server-named real producer sources."""
 
-    def __init__(self, reader: OperatorEvidenceReader, *, units: InstalledUnits):
+    def __init__(
+        self, reader: OperatorEvidenceReader, *, units: InstalledUnits,
+        upcoming_races: UpcomingRaceSource | None = None,
+        prediction_bundles: PredictionBundleSource | None = None,
+    ):
         if not isinstance(reader, OperatorEvidenceReader) or not isinstance(units, InstalledUnits):
             raise TypeError("reader and installed units are required")
         self._reader = reader
         self._units = units
+        self._upcoming_races = upcoming_races
+        self._prediction_bundles = prediction_bundles
+
+    @staticmethod
+    def _verified_envelope(
+        *, now: datetime, policy: str, identity: str, locator: str,
+        status: str, source_at: datetime | None = None,
+        content_sha256: str | None = None,
+        references: Mapping[str, str] | None = None,
+        evidence_identity: Mapping[str, str] | None = None,
+        availability: str | None = None,
+    ) -> EvidenceEnvelope:
+        observed = now.astimezone(timezone.utc)
+        stamp = observed.isoformat(timespec="microseconds").replace("+00:00", "Z")
+        age = None if source_at is None else (observed - source_at.astimezone(timezone.utc)).total_seconds()
+        present = status in {"AVAILABLE/FRESH", "STALE", "DIVERGENT"}
+        valid = status in {"AVAILABLE/FRESH", "STALE", "DIVERGENT"}
+        supported_claim = (
+            "Exact producer-verified read-only evidence for this finite resource."
+            if present and content_sha256 is not None and evidence_identity
+            else "Integrity failed; no operational claim is supported."
+            if status == "INVALID/INTEGRITY_FAILED"
+            else "Evidence unavailable; no operational claim is supported."
+        )
+        return _new_envelope(
+            source_kind="producer_verified_view", source_identity=identity,
+            content_sha256=content_sha256, source_locator=locator,
+            source_at=None if source_at is None else source_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+            generated_at=None, observed_at=None, server_observed_at=stamp,
+            age_seconds=age, freshness_policy=policy,
+            availability=availability or ("present" if present else ("missing" if status == "UNAVAILABLE/DATA_MISSING" else "error")),
+            schema_integrity="valid" if valid else ("failed" if status == "INVALID/INTEGRITY_FAILED" else "unknown"),
+            reference_hashes=tuple(sorted((references or {}).items())),
+            evidence_identity=None if evidence_identity is None else tuple(sorted(evidence_identity.items())),
+            status=status,
+            supported_claim=supported_claim,
+        )
+
+    @staticmethod
+    def _collector_failure(code: str) -> tuple[str, str | None]:
+        if code == "DISCOVERY_TIMEOUT":
+            return "UNAVAILABLE/DATA_MISSING", "error"
+        if code in {
+            "CURRENT_INDEX_UNAVAILABLE", "CURRENT_INDEX_SOURCE_MISSING",
+            "CURRENT_INDEX_PUBLICATION_MISSING", "CURRENT_INDEX_REPORT_MISSING",
+        }:
+            return "UNAVAILABLE/DATA_MISSING", "missing"
+        return "INVALID/INTEGRITY_FAILED", None
+
+    @staticmethod
+    def _prediction_failure(code: str) -> str:
+        if code == "PREDICTION_BUNDLE_INDEX_UNAVAILABLE":
+            return "UNAVAILABLE/DATA_MISSING"
+        return "INVALID/INTEGRITY_FAILED"
+
+    def _race_snapshot(self, now: datetime) -> tuple[EvidenceEnvelope, list[dict[str, Any]]]:
+        source = self._upcoming_races
+        if source is None:
+            return self._verified_envelope(now=now, policy="P-UPCOMING-300-PREJUMP", identity=CURRENT_RACE_INDEX_SCHEMA, locator="operator_ui.current_race_index", status="UNAVAILABLE/DATA_MISSING"), []
+        try:
+            view = bounded_current_race_index(
+                current_time=now, timeout_seconds=source.timeout_seconds,
+                index_path=source.index_path, evidence_root=source.evidence_root,
+                max_age_seconds=1200, return_verified_view=True,
+            )
+            if not isinstance(view, VerifiedCurrentRaceIndex):
+                raise ValueError("producer did not return a v2 verified view")
+            generated = _time(view.source_generated_at)
+            age = (now.astimezone(timezone.utc) - generated).total_seconds()
+            if age < 0:
+                raise ValueError("future collector observation")
+            races = []
+            for row in view.races:
+                jump = _time(row["jump_datetime"])
+                if jump <= now.astimezone(timezone.utc):
+                    continue
+                race_id = _text(row["race_id"])
+                races.append({
+                    "route_id": _route_key(race_id), "race_id": race_id,
+                    "source_race_id": race_id, "source_url": row["race_url"],
+                    "racing_date": row["date"], "venue": row["venue"],
+                    "meeting_slug": None, "race_number": row["race_number"],
+                    "jump_utc": jump.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+                    "source_zone": str(datetime.fromisoformat(row["jump_datetime"]).tzinfo),
+                    "distance_metres": None, "grade": None,
+                    "runners": [{
+                        "runner_id": runner["identity"],
+                        "source_runner_id": runner["source_native_runner_id"],
+                        "box": runner["box_number"], "name": runner["dog_name"],
+                        "scratch_state": runner["scratch_state"],
+                    } for runner in row["runners"]],
+                    "runner_set_sha256": row["runner_set_sha256"],
+                })
+            envelope = self._verified_envelope(
+                now=now, policy="P-UPCOMING-300-PREJUMP", identity=view.schema_version,
+                locator="operator_ui.current_race_index", status="AVAILABLE/FRESH" if age <= 300 else "STALE",
+                source_at=generated, content_sha256=view.packet_sha256,
+                references={"publication": view.publication_sha256, "refresh_report": view.source_refresh_report_sha256, "state": view.state_sha256, "daemon_report": view.report_sha256},
+                evidence_identity={"run_id": view.run_id, "schema_version": view.schema_version},
+            )
+            return envelope, races
+        except CaptureOneRejected as exc:
+            status, availability = self._collector_failure(exc.code)
+            return self._verified_envelope(now=now, policy="P-UPCOMING-300-PREJUMP", identity=CURRENT_RACE_INDEX_SCHEMA, locator="operator_ui.current_race_index", status=status, availability=availability), []
+        except FileNotFoundError:
+            return self._verified_envelope(now=now, policy="P-UPCOMING-300-PREJUMP", identity=CURRENT_RACE_INDEX_SCHEMA, locator="operator_ui.current_race_index", status="UNAVAILABLE/DATA_MISSING"), []
+        except PermissionError:
+            return self._verified_envelope(now=now, policy="P-UPCOMING-300-PREJUMP", identity=CURRENT_RACE_INDEX_SCHEMA, locator="operator_ui.current_race_index", status="UNAVAILABLE/DATA_MISSING", availability="unreadable"), []
+        except (ValueError, TypeError, KeyError, OSError):
+            return self._verified_envelope(now=now, policy="P-UPCOMING-300-PREJUMP", identity=CURRENT_RACE_INDEX_SCHEMA, locator="operator_ui.current_race_index", status="INVALID/INTEGRITY_FAILED"), []
+
+    def upcoming(self, now: datetime) -> APIObservation:
+        envelope, races = self._race_snapshot(now)
+        return APIObservation(envelope, {"races": races} if envelope.status == "AVAILABLE/FRESH" else {})
+
+    def race_detail(self, route_id: str, now: datetime) -> APIObservation:
+        envelope, races = self._race_snapshot(now)
+        if envelope.status != "AVAILABLE/FRESH":
+            return APIObservation(envelope, {})
+        race = next((item for item in races if item["route_id"] == route_id), None)
+        if race is None:
+            missing = self._verified_envelope(now=now, policy="P-UPCOMING-300-PREJUMP", identity=CURRENT_RACE_INDEX_SCHEMA, locator="operator_ui.current_race_index", status="UNAVAILABLE/DATA_MISSING")
+            return APIObservation(missing, {})
+        return APIObservation(envelope, {"race": race})
+
+    @staticmethod
+    def _prediction_record(bundle: Any) -> dict[str, Any]:
+        result = bundle.result
+        ready = result["status"] == "PREDICTION_READY"
+        blocker = result["blocker"]
+        evidence_names = ["bundle_manifest.json", *bundle.manifest["files"].keys()]
+        return {
+            "prediction_id": result["prediction_id"], "job_id": result["job_id"],
+            "race_id": result["race"]["race_id"],
+            "model_id": result["model"]["resolved"],
+            "model_sha256": result["model"]["artifact_sha256"],
+            "config_id": result["config"]["sha256"],
+            "config_sha256": result["config"]["sha256"],
+            "terminal_status": result["status"],
+            "blocker_stage": result["blocker_stage"],
+            "blocker_code": None if blocker is None else blocker["code"],
+            "probabilities": None if not ready else [{"runner_id": row["identity"], "probability": row["probability"]} for row in result["prediction"]["predictions"]],
+            "bundle_sha256": bundle.index_entry["logical_bundle_sha256"],
+            "evidence_names": evidence_names,
+            "evidence_identities": {"directory": bundle.directory, "runner_set_sha256": result["evidence"]["runner_set_sha256"]},
+        }
+
+    def _prediction_index(self, now: datetime) -> tuple[EvidenceEnvelope, VerifiedPredictionBundleIndex | None, list[dict[str, Any]]]:
+        source = self._prediction_bundles
+        if source is None:
+            return self._verified_envelope(now=now, policy="P-BUNDLE-LIST-60", identity=PREDICTION_BUNDLE_INDEX_SCHEMA, locator="operator_ui.prediction_bundle_index", status="UNAVAILABLE/DATA_MISSING"), None, []
+        try:
+            view = verify_prediction_bundle_index(source.root, return_verified_view=True)
+            if not isinstance(view, VerifiedPredictionBundleIndex):
+                raise ValueError("producer did not return a verified index view")
+            if view.published_at is None:
+                raise ValueError("producer index has no publication time")
+            published = _time(view.published_at)
+            age = (now.astimezone(timezone.utc) - published).total_seconds()
+            if age < 0:
+                raise ValueError("future index publication")
+            records = [self._prediction_record(verify_indexed_prediction_bundle(source.root, entry)) for entry in view.entries]
+            status = "AVAILABLE/FRESH" if age <= 60 else "STALE"
+            envelope = self._verified_envelope(now=now, policy="P-BUNDLE-LIST-60", identity=view.schema_version, locator="operator_ui.prediction_bundle_index", status=status, source_at=published, content_sha256=view.sha256, references={"index": view.sha256}, evidence_identity={"schema_version": view.schema_version})
+            return envelope, view, records
+        except FileNotFoundError:
+            return self._verified_envelope(now=now, policy="P-BUNDLE-LIST-60", identity=PREDICTION_BUNDLE_INDEX_SCHEMA, locator="operator_ui.prediction_bundle_index", status="UNAVAILABLE/DATA_MISSING"), None, []
+        except PermissionError:
+            return self._verified_envelope(now=now, policy="P-BUNDLE-LIST-60", identity=PREDICTION_BUNDLE_INDEX_SCHEMA, locator="operator_ui.prediction_bundle_index", status="UNAVAILABLE/DATA_MISSING", availability="unreadable"), None, []
+        except PredictionBlocked as exc:
+            return self._verified_envelope(now=now, policy="P-BUNDLE-LIST-60", identity=PREDICTION_BUNDLE_INDEX_SCHEMA, locator="operator_ui.prediction_bundle_index", status=self._prediction_failure(exc.code)), None, []
+        except (ValueError, TypeError, KeyError, OSError):
+            return self._verified_envelope(now=now, policy="P-BUNDLE-LIST-60", identity=PREDICTION_BUNDLE_INDEX_SCHEMA, locator="operator_ui.prediction_bundle_index", status="INVALID/INTEGRITY_FAILED"), None, []
+
+    def recent_predictions(self, now: datetime) -> APIObservation:
+        envelope, _, records = self._prediction_index(now)
+        return APIObservation(envelope, {"predictions": records} if envelope.status == "AVAILABLE/FRESH" else {})
+
+    def prediction_detail(self, prediction_id: str, now: datetime) -> APIObservation:
+        source = self._prediction_bundles
+        if source is None:
+            missing = self._verified_envelope(now=now, policy="P-IMMUTABLE-HISTORICAL", identity="on_demand_race_prediction_v2", locator="operator_ui.prediction_bundle", status="UNAVAILABLE/DATA_MISSING")
+            return APIObservation(missing, {})
+        try:
+            view = verify_prediction_bundle_index(source.root, return_verified_view=True)
+            if not isinstance(view, VerifiedPredictionBundleIndex):
+                raise ValueError("producer did not return a verified index view")
+            entry = next((item for item in view.entries if item["prediction_id"] == prediction_id), None)
+            if entry is None:
+                missing = self._verified_envelope(now=now, policy="P-IMMUTABLE-HISTORICAL", identity="on_demand_race_prediction_v2", locator="operator_ui.prediction_bundle", status="UNAVAILABLE/DATA_MISSING")
+                return APIObservation(missing, {})
+            record = self._prediction_record(
+                verify_indexed_prediction_bundle(source.root, entry)
+            )
+            historical = self._verified_envelope(now=now, policy="P-IMMUTABLE-HISTORICAL", identity="on_demand_race_prediction_v2", locator="operator_ui.prediction_bundle", status="AVAILABLE/FRESH", source_at=_time(entry["generated_at"]), content_sha256=entry["logical_bundle_sha256"], references={"index": view.sha256, "manifest": entry["manifest_sha256"], "bundle": entry["logical_bundle_sha256"]}, evidence_identity={"prediction_id": prediction_id})
+            return APIObservation(historical, {"prediction": record})
+        except FileNotFoundError:
+            missing = self._verified_envelope(now=now, policy="P-IMMUTABLE-HISTORICAL", identity="on_demand_race_prediction_v2", locator="operator_ui.prediction_bundle", status="UNAVAILABLE/DATA_MISSING")
+            return APIObservation(missing, {})
+        except PermissionError:
+            unreadable = self._verified_envelope(now=now, policy="P-IMMUTABLE-HISTORICAL", identity="on_demand_race_prediction_v2", locator="operator_ui.prediction_bundle", status="UNAVAILABLE/DATA_MISSING", availability="unreadable")
+            return APIObservation(unreadable, {})
+        except PredictionBlocked as exc:
+            status = self._prediction_failure(exc.code)
+            failed = self._verified_envelope(now=now, policy="P-IMMUTABLE-HISTORICAL", identity="on_demand_race_prediction_v2", locator="operator_ui.prediction_bundle", status=status)
+            return APIObservation(failed, {})
+        except (ValueError, TypeError, KeyError, OSError):
+            invalid = self._verified_envelope(now=now, policy="P-IMMUTABLE-HISTORICAL", identity="on_demand_race_prediction_v2", locator="operator_ui.prediction_bundle", status="INVALID/INTEGRITY_FAILED")
+            return APIObservation(invalid, {})
 
     def _read(self, key: str) -> tuple[EvidenceEnvelope, Mapping[str, Any] | None]:
         return self._reader.read_payload(key)

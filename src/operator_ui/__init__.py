@@ -28,7 +28,12 @@ from .security import (
     load_connected_environment,
 )
 from .api import API_PREFIX, API_SCHEMA, API_VERSION, install_level_1_api
-from .live_adapters import InstalledUnits, LiveEvidenceAdapters
+from .live_adapters import (
+    InstalledUnits,
+    LiveEvidenceAdapters,
+    PredictionBundleSource,
+    UpcomingRaceSource,
+)
 
 __all__ = [
     "Availability",
@@ -60,4 +65,6 @@ __all__ = [
     "install_level_1_api",
     "LiveEvidenceAdapters",
     "InstalledUnits",
+    "PredictionBundleSource",
+    "UpcomingRaceSource",
 ]

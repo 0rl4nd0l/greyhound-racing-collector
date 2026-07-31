@@ -310,6 +310,28 @@ def test_available_race_exact_binding_and_truthful_empty(tmp_path):
     assert client2.get(ROUTES["upcoming_races"]).get_json()["data"] == {"races": []}
 
 
+def test_sealed_race_schema_preserves_exact_primary_identity_active_and_nullable_runner(tmp_path):
+    item = race()
+    item.update(
+        route_id="r1.UmFjZSAxIC0gV0FSUk5BTUJPT0wgLSAyMDI2LTA3LTMw",
+        race_id="Race 1 - WARRNAMBOOL - 2026-07-30",
+        source_race_id="Race 1 - WARRNAMBOOL - 2026-07-30",
+        meeting_slug=None,
+    )
+    item["runners"][0].update(source_runner_id=None, scratch_state="ACTIVE")
+    app = app_for(tmp_path)
+    register_level_1_provider(
+        app, "upcoming_races",
+        lambda _now: APIObservation(evidence("P-UPCOMING-300-PREJUMP"), {"races": [item]}),
+    )
+    client = app.test_client(); login(client)
+    disclosed = client.get(ROUTES["upcoming_races"]).get_json()["data"]["races"][0]
+    assert disclosed["race_id"] == item["race_id"]
+    assert disclosed["route_id"] == item["route_id"]
+    assert disclosed["runners"][0]["scratch_state"] == "ACTIVE"
+    assert disclosed["runners"][0]["source_runner_id"] is None
+
+
 @pytest.mark.parametrize("mutation", [
     lambda x: x.update(extra="x"),
     lambda x: x.update(source_url="https://example.com/race"),
@@ -443,6 +465,35 @@ def prediction():
         "bundle_sha256": HASH,
         "evidence_identities": {"race_id": "race-1", "bundle_id": "bundle-1"},
     }
+
+
+def test_sealed_prediction_nullable_identities_do_not_weaken_legacy_schema(tmp_path):
+    sealed = prediction()
+    sealed.pop("lifecycle_status")
+    sealed.update(
+        job_id=None, model_sha256=None, terminal_status="PREDICTION_BLOCKED",
+        blocker_stage="VALIDATION", blocker_code="POST_JUMP",
+        probabilities=None,
+        evidence_names=["bundle_manifest.json", "result.json"],
+    )
+    app = app_for(tmp_path)
+    register_level_1_provider(
+        app, "recent_predictions",
+        lambda _now: APIObservation(evidence("P-BUNDLE-LIST-60"), {"predictions": [sealed]}),
+    )
+    client = app.test_client(); login(client)
+    disclosed = client.get(ROUTES["recent_predictions"]).get_json()["data"]["predictions"][0]
+    assert disclosed["job_id"] is None and disclosed["model_sha256"] is None
+    assert disclosed["blocker_stage"] == "VALIDATION" and disclosed["probabilities"] is None
+
+    legacy = prediction(); legacy["job_id"] = None
+    app2 = app_for(tmp_path / "legacy")
+    register_level_1_provider(
+        app2, "recent_predictions",
+        lambda _now: APIObservation(evidence("P-BUNDLE-LIST-60"), {"predictions": [legacy]}),
+    )
+    client2 = app2.test_client(); login(client2)
+    provider_error(client2.get(ROUTES["recent_predictions"]))
 
 
 def collector_lane():

@@ -73,6 +73,23 @@ class CaptureOneRejected(PredictionBlocked):
         super().__init__(code, **details)
 
 
+@dataclass(frozen=True, slots=True)
+class VerifiedCurrentRaceIndex:
+    """Immutable operator view of the exact retained, verified v2 snapshot."""
+
+    schema_version: str
+    run_id: str
+    source_generated_at: str
+    packet_sha256: str
+    packet_bytes: bytes
+    races: tuple[Mapping[str, Any], ...]
+    source_refresh_report_path: str
+    source_refresh_report_sha256: str
+    publication_sha256: str
+    state_sha256: str
+    report_sha256: str
+
+
 class _DiscoveryTimedOut(BaseException):
     pass
 
@@ -1285,6 +1302,7 @@ def _validate_current_odds_evidence(
     publication: Mapping[str, Any],
     current_time: datetime,
     max_age_seconds: int,
+    enforce_max_age: bool = True,
 ) -> None:
     """Bind the producer's current state/report lifecycle to this publication."""
 
@@ -1312,7 +1330,10 @@ def _validate_current_odds_evidence(
         or state_time != report_time
         or any(
             (current_time - moment).total_seconds() < 0
-            or (current_time - moment).total_seconds() > max_age_seconds
+            or (
+                enforce_max_age
+                and (current_time - moment).total_seconds() > max_age_seconds
+            )
             for moment in (state_time, report_time, source_time)
         )
     ):
@@ -1327,7 +1348,8 @@ def bounded_current_race_index(
     evidence_root: Path,
     max_age_seconds: int,
     max_races: int = MAX_CURRENT_INDEX_RACES,
-) -> list[Mapping[str, Any]]:
+    return_verified_view: bool = False,
+) -> list[Mapping[str, Any]] | VerifiedCurrentRaceIndex:
     """Read one finite collector-owned index with a hard wall-clock deadline."""
 
     if (
@@ -1376,7 +1398,9 @@ def bounded_current_race_index(
         ):
             raise CaptureOneRejected("CURRENT_INDEX_INVALID")
         age_seconds = (current_time - source_generated_at).total_seconds()
-        if age_seconds < 0 or age_seconds > max_age_seconds:
+        if age_seconds < 0 or (
+            not return_verified_view and age_seconds > max_age_seconds
+        ):
             raise CaptureOneRejected(
                 "CURRENT_INDEX_STALE",
                 age_seconds=age_seconds,
@@ -1384,6 +1408,7 @@ def bounded_current_race_index(
             )
         source_locator = str(packet["source_refresh_report_path"])
         source_path = Path(source_locator)
+        publication_raw = state_raw = report_raw = None
         if packet.get("schema_version") == CURRENT_RACE_INDEX_SCHEMA:
             if source_path.is_absolute() or not source_locator or any(
                 part in {"", ".", ".."} for part in source_path.parts
@@ -1497,8 +1522,26 @@ def bounded_current_race_index(
                 publication=publication,
                 current_time=current_time,
                 max_age_seconds=max_age_seconds,
+                enforce_max_age=not return_verified_view,
             )
         snapshot.validate()
+        if return_verified_view:
+            if packet["schema_version"] != CURRENT_RACE_INDEX_SCHEMA:
+                raise CaptureOneRejected("CURRENT_INDEX_CATALOG_INELIGIBLE")
+            assert publication_raw is not None and state_raw is not None and report_raw is not None
+            return VerifiedCurrentRaceIndex(
+                schema_version=packet["schema_version"],
+                run_id=packet["run_id"],
+                source_generated_at=packet["source_generated_at"],
+                packet_sha256=sha256_bytes(packet_raw),
+                packet_bytes=packet_raw,
+                races=tuple(expected_races),
+                source_refresh_report_path=packet["source_refresh_report_path"],
+                source_refresh_report_sha256=packet["source_refresh_report_sha256"],
+                publication_sha256=sha256_bytes(publication_raw),
+                state_sha256=sha256_bytes(state_raw),
+                report_sha256=sha256_bytes(report_raw),
+            )
         return expected_races
     except _DiscoveryTimedOut as exc:
         raise CaptureOneRejected(

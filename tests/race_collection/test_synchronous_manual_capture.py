@@ -390,6 +390,38 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
         evidence_root=evidence_root,
         max_age_seconds=900,
     )[0]["race_id"] == "Race 5 - GUNN - 2026-07-19"
+    verified_view = bounded_current_race_index(
+        current_time=index_now, timeout_seconds=1, index_path=index_path,
+        evidence_root=evidence_root, max_age_seconds=900,
+        return_verified_view=True,
+    )
+    assert isinstance(verified_view, capture.VerifiedCurrentRaceIndex)
+    assert verified_view.packet_bytes == original
+    assert verified_view.packet_sha256 == sha256_bytes(original)
+    assert verified_view.races[0]["race_id"] == "Race 5 - GUNN - 2026-07-19"
+    assert verified_view.races[0]["runners"][0]["source_native_runner_id"] is None
+
+    boundary = index_now + timedelta(seconds=1200)
+    assert bounded_current_race_index(
+        current_time=boundary, timeout_seconds=1, index_path=index_path,
+        evidence_root=evidence_root, max_age_seconds=1200,
+    )[0]["race_id"] == "Race 5 - GUNN - 2026-07-19"
+    over_boundary = boundary + timedelta(microseconds=1)
+    with pytest.raises(CaptureOneRejected) as stale:
+        bounded_current_race_index(
+            current_time=over_boundary, timeout_seconds=1,
+            index_path=index_path, evidence_root=evidence_root,
+            max_age_seconds=1200,
+        )
+    assert stale.value.code == "CURRENT_INDEX_STALE"
+    retained_stale = bounded_current_race_index(
+        current_time=over_boundary, timeout_seconds=1,
+        index_path=index_path, evidence_root=evidence_root,
+        max_age_seconds=1200, return_verified_view=True,
+    )
+    assert isinstance(retained_stale, capture.VerifiedCurrentRaceIndex)
+    assert retained_stale.packet_bytes == original
+    assert retained_stale.packet_sha256 == sha256_bytes(original)
 
     real_validate = capture._RetainedSafeFiles.validate
 
