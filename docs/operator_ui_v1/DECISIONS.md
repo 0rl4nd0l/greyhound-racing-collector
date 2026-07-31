@@ -353,7 +353,8 @@ supersession.
   `20260731T100618Z-8db34fe53a-a6a1cc`, session
   `019fb7a3-c1d4-7da1-946e-291651763774`, verdict `ACCEPT_GHU_021`.
   Classifier selected `full_forecasting` because paths default unknown-to-full;
-  the exact 551-test broad gate is `RUNNING` without a terminal result.
+  the exact 551-test broad gate subsequently passed `551 passed in 1653.94s
+  (0:27:33)`, exit 0.
 - Consequences: `GHU-021` remains closed and accepted. No push, PR,
   default-branch merge, deployment, runtime mutation, or live proof occurred.
 - Supersession: None; append-only accepted integration record.
@@ -420,6 +421,21 @@ supersession.
   service/browser/collector/runtime action or lock action beyond the fixed
   producer index-update lock, training, promotion, EV,
   staking or betting is authorized. `GHU-021` remains accepted; its broad gate
-  is still `RUNNING`, not terminal.
+  passed `551 passed in 1653.94s (0:27:33)`, exit 0.
 - Supersession: Additively refines only the prediction-bundle source contract
   for `GHU-023`; preserves all accepted history and current v1 replay evidence.
+
+## 2026-07-31 — DEC-GHU-021V-BROAD-GATE-TERMINAL-GREEN
+
+- Context: The already-running classifier-selected `GHU-021` broad gate
+  reached a terminal result after `GHU-021` acceptance and integration.
+- Decision: Record the terminal validation truth without reopening `GHU-021`
+  or changing programme ticket counts, statuses, dependencies, or scope.
+- Evidence: Exact command
+  `PYTHONDONTWRITEBYTECODE=1 TMPDIR=/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/operator-ui-validation-tmp/ghu021-8db34-full uv run --no-project --with-requirements requirements/all.in python -m pytest -q --noconftest tests/race_collection`
+  exited 0 with `551 passed in 1653.94s (0:27:33)`. The validation caused no
+  repository, product, runtime, or data mutation.
+- Consequences: `GHU-021` remains accepted and integrated. This is validation
+  evidence only; product scope and all accepted ticket histories are unchanged.
+- Supersession: Additively closes only the previously running exact `GHU-021`
+  551-test broad-gate record.

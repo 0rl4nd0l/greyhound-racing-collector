@@ -14,7 +14,7 @@ product checkpoint remains preserved in the history below):
 | Counts | 19 accepted tickets, 2 ready, 0 active, 0 review, 13 blocked, 2 deferred, 17 planned (plus accepted audit milestone `GHU-000A`) |
 | Assignment | No active ticket; independent bounded `GHU-022P` and `GHU-023P` work may proceed in parallel |
 | Next safe action | Preserve accepted/integrated `GHU-020A` and `GHU-021`; assign fresh bounded implementers for ready `GHU-022P` and/or `GHU-023P`, then independently review and parent-integrate each before its dependent ticket. |
-| Validation | `GHU-021` parent focused gate passed `254 passed in 39.77s`; reviewer verdict `ACCEPT_GHU_021`. Classifier selected `full_forecasting`; the exact 551-test broad gate remains `RUNNING`, with no terminal result claimed. |
+| Validation | `GHU-021` parent focused gate passed `254 passed in 39.77s`; reviewer verdict `ACCEPT_GHU_021`. The classifier-selected `full_forecasting` exact 551-test broad gate passed `551 passed in 1653.94s (0:27:33)`, exit 0. |
 
 `GHU-000B` audit run `20260730T172346Z-1bacc67937-3c5f6b`, session
 `019fb40d-e8ed-7d40-8ab2-8ad2b156552c`, child
@@ -558,9 +558,10 @@ Parent authoritative focused gate passed `254 passed in 39.77s`. Final reviewer
 run `20260731T100618Z-8db34fe53a-a6a1cc`, session
 `019fb7a3-c1d4-7da1-946e-291651763774`, returned `ACCEPT_GHU_021`.
 Classifier selected `full_forecasting` because paths default unknown-to-full;
-the exact 551-test broad gate is `RUNNING` and no terminal result is known or
-claimed. Push, PR, default-branch merge, deployment, runtime mutation, and live
-proof remain `NOT_OCCURRED`.
+the exact 551-test broad gate passed `551 passed in 1653.94s (0:27:33)`, exit
+0. The validation caused no repository, product, runtime, or data mutation.
+Push, PR, default-branch merge, deployment, runtime mutation, and live proof
+remain `NOT_OCCURRED`.
 
 Read-only audit run `20260731T095910Z-d71857e232-648124`, session
 `019fb79d-352a-7c62-88a7-588974824079`, returned
@@ -584,7 +585,7 @@ race/model/config/time/stage contract. The result's absolute bundle path is
 not UI authority. `GHU-023P` owns only the smallest producer/index/verifier v2
 prerequisite. Legacy/unindexed v1 remains replay-compatible, catalog-ineligible
 and unchanged. This does not reopen `GHU-021`; its exact 551-test broad gate
-remains `RUNNING` with no terminal result claimed.
+passed `551 passed in 1653.94s (0:27:33)`, exit 0.
 
 Independent correction review further requires `GHU-023P` to serialize index
 replacement with its one fixed producer-owned bounded lock, failing closed and
