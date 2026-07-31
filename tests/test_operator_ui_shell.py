@@ -1,11 +1,41 @@
 import ast
+from html.parser import HTMLParser
 from pathlib import Path
 from unittest.mock import patch
 
-from bs4 import BeautifulSoup
-
 import app as dashboard_app
 from utils import module_monitor
+
+
+class _PrototypeMarkerParser(HTMLParser):
+    wrapper_classes = ("fixture-value", "status")
+    void_elements = {
+        "area", "base", "br", "col", "embed", "hr", "img", "input",
+        "link", "meta", "param", "source", "track", "wbr",
+    }
+
+    def __init__(self):
+        super().__init__()
+        self.wrappers = {class_name: [] for class_name in self.wrapper_classes}
+        self._stack = []
+
+    def handle_starttag(self, tag, attrs):
+        classes = dict(attrs).get("class", "").split()
+        if "prototype-marker" in classes and self._stack:
+            for class_name, index in self._stack[-1][1]:
+                self.wrappers[class_name][index] = True
+
+        frame = []
+        for class_name in self.wrapper_classes:
+            if class_name in classes:
+                frame.append((class_name, len(self.wrappers[class_name])))
+                self.wrappers[class_name].append(False)
+        if tag not in self.void_elements:
+            self._stack.append((tag, frame))
+
+    def handle_endtag(self, tag):
+        assert self._stack[-1][0] == tag
+        self._stack.pop()
 
 
 def _unexpected_call(*_args, **_kwargs):
@@ -33,20 +63,12 @@ def test_operator_ui_get_is_fixture_only_and_has_persistent_boundaries():
         _html("/operator-ui/prototype")
         monitor_log.assert_not_called()
 
-    document = BeautifulSoup(html, "html.parser")
-    fixture_values = document.select(".fixture-value")
-    statuses = document.select(".status")
-    assert fixture_values
-    assert statuses
-    assert all(
-        value.find(class_="prototype-marker", recursive=False)
-        for value in fixture_values
-    )
-    assert all(
-        status.find(class_="prototype-marker", recursive=False) for status in statuses
-    )
-    assert len(document.select(".fixture-value > .prototype-marker")) == len(fixture_values)
-    assert len(document.select(".status > .prototype-marker")) == len(statuses)
+    document = _PrototypeMarkerParser()
+    document.feed(html)
+    assert document.wrappers["fixture-value"]
+    assert document.wrappers["status"]
+    assert all(document.wrappers["fixture-value"])
+    assert all(document.wrappers["status"])
     assert html.count("RESEARCH ONLY — NOT FOR BETTING") >= 3
     assert "<form" not in html
     assert "onclick=" not in html
