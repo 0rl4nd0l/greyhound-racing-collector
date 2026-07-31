@@ -377,7 +377,7 @@ def _safe_files_bytes(
         raise CaptureOneRejected(missing_code, path=str(paths[0] if paths else root)) from exc
     try:
         payloads: list[bytes] = []
-        for path, _, _, file_fd, opened in file_records:
+        for path, parent_key, name, file_fd, opened in file_records:
             if opened.st_size <= 0 or opened.st_size > MAX_CURRENT_INDEX_BYTES:
                 raise CaptureOneRejected("CURRENT_INDEX_SIZE_INVALID", path=str(path), size_bytes=opened.st_size, max_bytes=MAX_CURRENT_INDEX_BYTES)
             chunks: list[bytes] = []
@@ -389,6 +389,28 @@ def _safe_files_bytes(
                 chunks.append(chunk)
                 remaining -= len(chunk)
             raw = b"".join(chunks)
+            try:
+                named_after_read = os.stat(
+                    name,
+                    dir_fd=directory_fds[parent_key],
+                    follow_symlinks=False,
+                )
+            except OSError as exc:
+                raise CaptureOneRejected(
+                    "CURRENT_INDEX_PATH_UNSAFE",
+                    path=str(path),
+                    reason="path_replaced",
+                ) from exc
+            if (
+                not stat.S_ISREG(named_after_read.st_mode)
+                or (named_after_read.st_dev, named_after_read.st_ino)
+                != (opened.st_dev, opened.st_ino)
+            ):
+                raise CaptureOneRejected(
+                    "CURRENT_INDEX_PATH_UNSAFE",
+                    path=str(path),
+                    reason="path_replaced",
+                )
             after = os.fstat(file_fd)
             if (
                 not stat.S_ISREG(after.st_mode)
@@ -596,7 +618,7 @@ def _v2_runner_rows(
         for item in detailed_participants
         if isinstance(item, Mapping)
     }
-    canonical_active = []
+    canonical_active_projection = []
     for item in detailed_participants:
         if not isinstance(item, Mapping):
             raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_status_missing_or_inactive")
@@ -609,14 +631,31 @@ def _v2_runner_rows(
             raise CaptureOneRejected(
                 "CURRENT_INDEX_SOURCE_INVALID", reason="runner_status_missing_or_inactive"
             )
-        canonical_active.append(
-            {
-                "box_number": item.get("box_number"),
-                "dog_name": item.get("dog_name"),
-                "scratch_state": "ACTIVE",
-            }
+        canonical_active_projection.append(
+            (item.get("box_number"), item.get("dog_name"))
         )
-    if canonical_active != participants or len(canonical_active) != len(detailed_participants):
+    participant_projection = []
+    for item in participants:
+        if not isinstance(item, Mapping):
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_SOURCE_INVALID", reason="runner_status_ambiguous"
+            )
+        listed_states = [
+            item[key]
+            for key in ("scratch_state", "activity_state", "status")
+            if key in item
+        ]
+        if any(value != "ACTIVE" for value in listed_states):
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_SOURCE_INVALID", reason="runner_status_ambiguous"
+            )
+        participant_projection.append(
+            (item.get("box_number"), item.get("dog_name"))
+        )
+    if (
+        canonical_active_projection != participant_projection
+        or len(canonical_active_projection) != len(detailed_participants)
+    ):
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_status_ambiguous")
 
     rows: list[dict[str, Any]] = []
