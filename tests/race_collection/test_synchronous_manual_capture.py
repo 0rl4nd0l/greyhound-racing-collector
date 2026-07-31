@@ -589,8 +589,9 @@ def test_current_race_index_rejects_stale_or_changed_source(tmp_path: Path):
     assert changed.value.code == "CURRENT_INDEX_SOURCE_CHANGED"
 
 
-def test_producer_rejects_identical_byte_refresh_replacement_at_final_validation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize("existing_pair", [False, True])
+def test_final_validation_rejection_never_publishes_new_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, existing_pair: bool,
 ):
     evidence_root = tmp_path / "evidence"
     state = evidence_root / "runtime/odds_capture_state.json"
@@ -604,17 +605,32 @@ def test_producer_rejects_identical_byte_refresh_replacement_at_final_validation
         "selected_count": 1, "selected_races": [{
             "date": "2026-07-19", "jump_datetime": "2026-07-19T13:00:00+10:00",
             "race_id": "Race 5 - GUNN - 2026-07-19",
-            "race_id_aliases": ["Race 5 - GUNN - 2026-07-19"],
+            "race_id_aliases": [
+                "Race 5 - GUNN - 2026-07-19",
+                "Race 5 - GUNNEDAH - 2026-07-19",
+            ],
             "race_number": 5, "race_time": "13:00", "race_url": race_url,
             "venue": "GUNN",
         }],
     }))
     index_path = current_race_index_path(state)
     publication_path = index_path.parent / capture.CURRENT_RACE_INDEX_PUBLICATION_FILENAME
+    prior_index = prior_publication = None
+    if existing_pair:
+        prior = publish_current_race_index(
+            state_path=state, evidence_root=evidence_root,
+            source_refresh_report_path=source, run_id="prior",
+        )
+        assert prior["status"] == "PUBLISHED"
+        prior_index = index_path.read_bytes()
+        prior_publication = publication_path.read_bytes()
     real_validate = capture._RetainedSafeFiles.validate
 
     def replace_refresh_at_final_boundary(retained: Any) -> None:
-        assert index_path.exists() and publication_path.exists()
+        assert index_path.exists()
+        assert publication_path.exists() is existing_pair
+        if prior_publication is not None:
+            assert publication_path.read_bytes() == prior_publication
         replacement = source.with_name("replacement.json")
         replacement.write_bytes(source.read_bytes())
         os.replace(replacement, source)
@@ -623,6 +639,10 @@ def test_producer_rejects_identical_byte_refresh_replacement_at_final_validation
     monkeypatch.setattr(
         capture._RetainedSafeFiles, "validate", replace_refresh_at_final_boundary
     )
+    monkeypatch.setattr(
+        Path, "unlink",
+        lambda *args, **kwargs: (_ for _ in ()).throw(OSError("cleanup denied")),
+    )
     rejected = publish_current_race_index(
         state_path=state, evidence_root=evidence_root,
         source_refresh_report_path=source, run_id="adversarial",
@@ -630,8 +650,50 @@ def test_producer_rejects_identical_byte_refresh_replacement_at_final_validation
 
     assert rejected["status"] == "REJECTED"
     assert rejected["reason"] == "CURRENT_INDEX_PATH_UNSAFE"
-    assert not index_path.exists()
-    assert not publication_path.exists()
+    assert index_path.exists()
+    if existing_pair:
+        assert prior_index is not None and index_path.read_bytes() != prior_index
+        assert prior_publication is not None
+        assert publication_path.read_bytes() == prior_publication
+        assert json.loads(prior_publication)["packet_sha256"] != sha256_bytes(
+            index_path.read_bytes()
+        )
+    else:
+        assert not publication_path.exists()
+
+
+@pytest.mark.parametrize("case", ["duplicate", "conflict"])
+def test_v2_runner_seal_rejects_native_id_collisions(
+    tmp_path: Path, case: str,
+):
+    evidence_root = tmp_path / "evidence"
+    race_url = "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
+    observed = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
+    coverage = _runner_coverage(evidence_root, race_url, observed)
+    sidecar_path = Path(coverage["races"][0]["sidecar_path"])
+    sidecar = json.loads(sidecar_path.read_bytes())
+    detailed = sidecar["runner_completeness_after_canonical_alignment"]["participants"]
+    shadow = sidecar["prejump_shadow_metadata"]["runner_box_name_list"]
+    if case == "duplicate":
+        detailed[0]["source_native_runner_id"] = "native-1"
+        detailed[1]["source_native_runner_id"] = "native-1"
+    else:
+        detailed[0]["source_native_runner_id"] = "native-detailed"
+        shadow[0]["source_native_runner_id"] = "native-shadow"
+    sidecar_path.write_bytes(canonical_bytes(sidecar))
+
+    with pytest.raises(CaptureOneRejected) as rejected:
+        capture._v2_runner_rows(
+            {
+                "date": "2026-07-19", "jump_datetime": "2026-07-19T13:00:00+10:00",
+                "race_number": 5, "race_url": race_url, "venue": "GUNN",
+            },
+            {"generated_at": observed.isoformat(), "sidecar_metadata_coverage": coverage},
+            evidence_root=evidence_root,
+        )
+
+    expected = "runner_id_duplicate" if case == "duplicate" else "runner_id_conflict"
+    assert rejected.value.details["reason"] == expected
 
 
 def test_retained_inputs_survive_expected_atomic_publication(tmp_path: Path):
@@ -766,6 +828,34 @@ def test_current_index_requires_time_and_normalizes_producer_time():
         capture._normalize_current_index_rows(
             {"selected_count": 1, "selected_races": [row]}, max_races=32
         )
+
+
+@pytest.mark.parametrize("mutation", ["arbitrary", "extra", "substitution", "omission"])
+def test_current_index_rejects_noncanonical_aliases(mutation: str):
+    row = race_window_record(
+        {
+            "date": "2026-07-19",
+            "race_number": 5,
+            "race_time": "1:00 PM",
+            "url": "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5",
+            "venue": "GUNN",
+        },
+        now=datetime.fromisoformat("2026-07-19T12:00:00+10:00"),
+    )
+    canonical = row["race_id_aliases"]
+    row["race_id_aliases"] = {
+        "arbitrary": ["ARBITRARY"],
+        "extra": [*canonical, "ARBITRARY"],
+        "substitution": ["ARBITRARY", *canonical[1:]],
+        "omission": canonical[:-1],
+    }[mutation]
+
+    with pytest.raises(CaptureOneRejected) as rejected:
+        capture._normalize_current_index_rows(
+            {"selected_count": 1, "selected_races": [row]}, max_races=32
+        )
+
+    assert rejected.value.code == "CURRENT_INDEX_INVALID"
 
 
 def test_safe_file_bytes_reads_one_stable_descriptor(tmp_path: Path):
@@ -1377,8 +1467,22 @@ def test_sigterm_cancellation_reaps_collector_browser_process_group(tmp_path: Pa
         "time.sleep(60)"
     )
 
-    timer = threading.Timer(0.25, os.kill, args=(os.getpid(), signal.SIGTERM))
-    timer.start()
+    readiness_errors: list[str] = []
+
+    def signal_after_child_pid_is_published() -> None:
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            try:
+                int(child_pid_path.read_text())
+            except (FileNotFoundError, ValueError):
+                time.sleep(0.01)
+                continue
+            os.kill(os.getpid(), signal.SIGTERM)
+            return
+        readiness_errors.append("child.pid was not published before the readiness deadline")
+
+    signal_thread = threading.Thread(target=signal_after_child_pid_is_published)
+    signal_thread.start()
     try:
         with pytest.raises(CaptureOneRejected, match="CANCELLED"):
             invoke_capture_one(
@@ -1386,8 +1490,9 @@ def test_sigterm_cancellation_reaps_collector_browser_process_group(tmp_path: Pa
                 timeout_seconds=10,
             )
     finally:
-        timer.cancel()
+        signal_thread.join()
 
+    assert not readiness_errors
     child_pid = int(child_pid_path.read_text())
     deadline = time.monotonic() + 2
     while Path(f"/proc/{child_pid}").exists() and time.monotonic() < deadline:

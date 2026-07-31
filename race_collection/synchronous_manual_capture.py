@@ -685,7 +685,7 @@ def _normalize_current_index_rows(
             selected_count=selected_count,
             max_races=max_races,
         )
-    from scripts.refresh_prejump_upcoming import stable_race_id
+    from scripts.refresh_prejump_upcoming import stable_race_id, stable_race_id_variants
     from utils.csv_metadata import canonical_thedogs_race_identity
 
     normalized: list[dict[str, Any]] = []
@@ -752,8 +752,10 @@ def _normalize_current_index_rows(
             "venue": venue,
         }
         alias_set = set(aliases)
+        canonical_aliases = sorted(stable_race_id_variants(row))
         if (
             stable_race_id(row) != race_id
+            or aliases != canonical_aliases
             or race_id in identities
             or len(alias_set) != len(aliases)
             or alias_set & identities
@@ -830,12 +832,25 @@ def _v2_runner_rows(
     ):
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_status_missing_or_inactive")
     detailed_participants = aligned_details["participants"]
-    native_ids = {
-        (item.get("box_number"), normalise_runner_name(item.get("dog_name"))):
-        item.get("source_native_runner_id", item.get("runner_id"))
+    detailed_by_runner = {
+        (item.get("box_number"), normalise_runner_name(item.get("dog_name"))): item
         for item in detailed_participants
         if isinstance(item, Mapping)
     }
+
+    def admitted_native_id(item: Mapping[str, Any]) -> str | None:
+        value = item.get("source_native_runner_id", item.get("runner_id"))
+        if value is None:
+            return None
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (str, int))
+            or not str(value).strip()
+        ):
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_SOURCE_INVALID", reason="runner_id_invalid"
+            )
+        return str(value).strip()
     canonical_active_projection = []
     for item in detailed_participants:
         if not isinstance(item, Mapping):
@@ -879,6 +894,7 @@ def _v2_runner_rows(
     rows: list[dict[str, Any]] = []
     boxes: set[int] = set()
     identities: set[str] = set()
+    native_identities: set[str] = set()
     for item in participants:
         if not isinstance(item, Mapping):
             raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_invalid")
@@ -895,15 +911,27 @@ def _v2_runner_rows(
         identity = normalise_runner_name(name)
         if box <= 0 or not name or box in boxes or identity in identities:
             raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_duplicate_or_invalid")
-        native_id = item.get(
-            "source_native_runner_id",
-            item.get("runner_id", native_ids.get((box, identity))),
-        )
-        if native_id is not None and (isinstance(native_id, bool) or not isinstance(native_id, (str, int)) or not str(native_id).strip()):
-            raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_id_invalid")
+        shadow_native_id = admitted_native_id(item)
+        detailed = detailed_by_runner.get((box, identity))
+        detailed_native_id = admitted_native_id(detailed) if detailed is not None else None
+        if (
+            shadow_native_id is not None
+            and detailed_native_id is not None
+            and shadow_native_id != detailed_native_id
+        ):
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_SOURCE_INVALID", reason="runner_id_conflict"
+            )
+        native_id = shadow_native_id or detailed_native_id
+        if native_id is not None and native_id in native_identities:
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_SOURCE_INVALID", reason="runner_id_duplicate"
+            )
         boxes.add(box)
         identities.add(identity)
-        rows.append({"box": box, "display_name": name, "identity": identity, "scratch_state": "ACTIVE", "source_native_runner_id": str(native_id).strip() if native_id is not None else None})
+        if native_id is not None:
+            native_identities.add(native_id)
+        rows.append({"box": box, "display_name": name, "identity": identity, "scratch_state": "ACTIVE", "source_native_runner_id": native_id})
     if rows != sorted(rows, key=lambda item: (item["box"], item["identity"])):
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_order_noncanonical")
 
@@ -992,7 +1020,8 @@ def _v2_runner_rows(
 
 
 def _atomic_replace_canonical(
-    path: Path, payload: Mapping[str, Any], *, evidence_root: Path
+    path: Path, payload: Mapping[str, Any], *, evidence_root: Path,
+    _pre_replace: Callable[[], None] | None = None,
 ) -> None:
     root = evidence_root.absolute()
     target = path.absolute()
@@ -1056,6 +1085,10 @@ def _atomic_replace_canonical(
                 raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path), reason="publish_temp_invalid")
             identities[-1] = os.fstat(parent_fd)
             _recheck_directory_chain(root_parent_fd, root_name, relative.parts[:-1], descriptors, identities, root_parent_identity, path)
+            if _pre_replace is not None:
+                _pre_replace()
+                identities[-1] = os.fstat(parent_fd)
+                _recheck_directory_chain(root_parent_fd, root_name, relative.parts[:-1], descriptors, identities, root_parent_identity, path)
             os.replace(temporary, relative.parts[-1], src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
             identities[-1] = os.fstat(parent_fd)
             published = os.stat(relative.parts[-1], dir_fd=parent_fd, follow_symlinks=False)
@@ -1129,7 +1162,6 @@ def publish_current_race_index(
         "source_refresh_report_path": str(source_refresh_report_path),
         "run_id": run_id,
     }
-    publication_started = False
     try:
         with _RetainedSafeFiles(evidence_root) as retained:
             source_raw = retained.read(
@@ -1174,7 +1206,6 @@ def publish_current_race_index(
                 "races": sealed_races,
             }
             _atomic_replace_canonical(index_path, packet, evidence_root=evidence_root)
-            publication_started = True
             packet_raw = canonical_bytes(packet)
             publication = {
                 "schema_version": "collector_current_race_index_publication_v1",
@@ -1204,8 +1235,8 @@ def publish_current_race_index(
                 index_path.parent / CURRENT_RACE_INDEX_PUBLICATION_FILENAME,
                 publication,
                 evidence_root=evidence_root,
+                _pre_replace=retained.validate,
             )
-            retained.validate()
     except (
         CaptureOneRejected,
         KeyError,
@@ -1214,15 +1245,6 @@ def publish_current_race_index(
         ValueError,
         json.JSONDecodeError,
     ) as exc:
-        if publication_started:
-            for published_path in (
-                index_path,
-                index_path.parent / CURRENT_RACE_INDEX_PUBLICATION_FILENAME,
-            ):
-                try:
-                    published_path.unlink(missing_ok=True)
-                except OSError:
-                    pass
         report["reason"] = (
             exc.code if isinstance(exc, CaptureOneRejected) else type(exc).__name__
         )
