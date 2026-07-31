@@ -49,6 +49,13 @@ CANONICAL_SIDECAR_TARGET_SOURCES = {
     "sidecar_target_metadata",
 }
 THEDOGS_MEETING_CARD_GRADE_SOURCE = "thedogs_meeting_card_exact_race"
+THEDOGS_EXACT_RACE_PAGE_GRADE_SOURCE = "thedogs_exact_race_page"
+THEDOGS_EXACT_GRADE_SOURCES = frozenset(
+    {
+        THEDOGS_MEETING_CARD_GRADE_SOURCE,
+        THEDOGS_EXACT_RACE_PAGE_GRADE_SOURCE,
+    }
+)
 THEDOGS_VENUE_CODE_OVERRIDES = {
     "ALBION": "ALBION",
     "ALBIONPARK": "ALBION",
@@ -728,13 +735,14 @@ def _safe_int(value: Any) -> Optional[int]:
         return None
 
 
-def _meeting_card_grade_provenance_is_valid(
+def _exact_grade_provenance_is_valid(
     payload: Mapping[str, Any],
     *,
+    grade_source: str,
     canonical_race_url: Any,
     grade_value: Any,
 ) -> bool:
-    """Validate every field required by the exact live meeting-card grade source."""
+    """Validate every field required by an exact hash-bound live grade source."""
 
     race_info = (
         payload.get("race_info")
@@ -765,10 +773,34 @@ def _meeting_card_grade_provenance_is_valid(
     ).strip().lower()
     requested_identity = canonical_thedogs_race_identity(canonical_race_url)
     target_identity = canonical_thedogs_race_identity(target_race_url)
+    grade_source_identity = canonical_thedogs_race_identity(grade_source_url)
     normalized_exact = normalize_exact_target_grade(exact_value)
     normalized_grade = normalize_exact_target_grade(grade_value)
+    expected_schema = {
+        THEDOGS_MEETING_CARD_GRADE_SOURCE: "thedogs_meeting_card_exact_race_v1",
+        THEDOGS_EXACT_RACE_PAGE_GRADE_SOURCE: "thedogs_exact_race_page_v1",
+    }.get(grade_source)
+    source_url_is_valid = bool(
+        (
+            grade_source == THEDOGS_MEETING_CARD_GRADE_SOURCE
+            and requested_identity is not None
+            and canonical_thedogs_meeting_card_url(
+                grade_source_url,
+                race_date=str(requested_identity["race_date"]),
+            )
+            is not None
+        )
+        or (
+            grade_source == THEDOGS_EXACT_RACE_PAGE_GRADE_SOURCE
+            and requested_identity is not None
+            and grade_source_identity is not None
+            and grade_source_identity["canonical_url"]
+            == requested_identity["canonical_url"]
+        )
+    )
     if (
-        schema != "thedogs_meeting_card_exact_race_v1"
+        expected_schema is None
+        or schema != expected_schema
         or requested_identity is None
         or target_identity is None
         or target_identity["canonical_url"] != requested_identity["canonical_url"]
@@ -780,11 +812,7 @@ def _meeting_card_grade_provenance_is_valid(
         or normalized_grade != normalized_exact
         or declared_key != target_grade_equivalence_key(exact_value)
         or re.fullmatch(r"[0-9a-f]{64}", grade_source_sha256) is None
-        or canonical_thedogs_meeting_card_url(
-            grade_source_url,
-            race_date=str(requested_identity["race_date"]),
-        )
-        is None
+        or not source_url_is_valid
     ):
         return False
     race_dates = [
@@ -835,9 +863,10 @@ def _grade_source_is_safe(
     canonical: bool = False,
 ) -> bool:
     text = str(source or "").strip()
-    if text == THEDOGS_MEETING_CARD_GRADE_SOURCE:
-        return _meeting_card_grade_provenance_is_valid(
+    if text in THEDOGS_EXACT_GRADE_SOURCES:
+        return _exact_grade_provenance_is_valid(
             payload,
+            grade_source=text,
             canonical_race_url=canonical_race_url,
             grade_value=grade_value,
         )
@@ -935,7 +964,7 @@ def verify_canonical_sidecar_payload(
     grade_value = payload_dict.get("target_grade")
     grade = (
         normalize_exact_target_grade(grade_value)
-        if grade_source == THEDOGS_MEETING_CARD_GRADE_SOURCE
+        if grade_source in THEDOGS_EXACT_GRADE_SOURCES
         else normalize_target_grade(grade_value)
     )
     leakage_safe = payload_dict.get("metadata_is_leakage_safe") is True
@@ -1094,7 +1123,7 @@ def build_safe_target_metadata_payload(
     distance = normalize_target_distance(distance_value)
     grade = (
         normalize_exact_target_grade(grade_value)
-        if grade_source == THEDOGS_MEETING_CARD_GRADE_SOURCE
+        if grade_source in THEDOGS_EXACT_GRADE_SOURCES
         else normalize_target_grade(grade_value)
     )
     payload: Dict[str, Any] = {
@@ -1606,7 +1635,7 @@ def build_prejump_shadow_metadata_payload(payload: Mapping[str, Any]) -> Dict[st
     target_grade_value = payload.get("target_grade")
     target_grade = (
         normalize_exact_target_grade(target_grade_value)
-        if grade_source == THEDOGS_MEETING_CARD_GRADE_SOURCE
+        if grade_source in THEDOGS_EXACT_GRADE_SOURCES
         else normalize_target_grade(target_grade_value)
     )
     participants = _participant_box_name_list(payload)
@@ -1978,7 +2007,7 @@ def load_safe_sidecar_target_metadata(csv_path: Union[str, os.PathLike]) -> Dict
     )
     grade = (
         normalize_exact_target_grade(grade_value)
-        if grade_source == THEDOGS_MEETING_CARD_GRADE_SOURCE
+        if grade_source in THEDOGS_EXACT_GRADE_SOURCES
         else normalize_target_grade(grade_value)
     )
     if grade and leakage_safe and _grade_source_is_safe(

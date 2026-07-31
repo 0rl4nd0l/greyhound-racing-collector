@@ -34,6 +34,7 @@ from utils.runner_completeness import (
     quarantine_existing_file,
 )
 from utils.csv_metadata import (
+    THEDOGS_EXACT_RACE_PAGE_GRADE_SOURCE,
     build_csv_download_provenance_payload,
     build_safe_weather_track_metadata_payload,
     build_safe_target_metadata_payload,
@@ -1442,7 +1443,9 @@ class UpcomingRaceBrowser:
             return None
         return None
 
-    def _extract_safe_target_metadata_from_page(self, soup, race_url):
+    def _extract_safe_target_metadata_from_page(
+        self, soup, race_url, *, source_sha256=None
+    ):
         """Extract only explicit current-race distance/grade from a canonical race page."""
 
         if soup is None:
@@ -1478,15 +1481,18 @@ class UpcomingRaceBrowser:
             grade_without_distance = re.sub(
                 r"\b\d{3,4}\s*m\b", "", grade_text, flags=re.I
             ).strip(" -–—|")
-            grade = normalize_target_grade(grade_without_distance) or normalize_target_grade(
-                grade_text
-            ) or normalize_target_grade(name_text)
+            explicit_grade = normalize_target_grade(
+                grade_without_distance
+            ) or normalize_target_grade(grade_text)
+            grade = explicit_grade or normalize_target_grade(name_text)
 
             header_found = {}
             if distance:
                 header_found["distance"] = distance
             if grade:
                 header_found["grade"] = grade
+            if explicit_grade:
+                header_found["_grade_from_explicit_field"] = True
             return header_found
 
         found.update(_extract_current_race_header_metadata())
@@ -1538,6 +1544,7 @@ class UpcomingRaceBrowser:
                             grade = normalize_target_grade(value)
                             if grade and "grade" not in found:
                                 found["grade"] = grade
+                                found["_grade_from_explicit_field"] = True
                         if normalized_key in {"name", "title"} and "grade" not in found:
                             grade = normalize_target_grade(value)
                             if grade:
@@ -1647,9 +1654,40 @@ class UpcomingRaceBrowser:
             )
             if grade:
                 found["grade"] = grade
+                found["_grade_from_explicit_field"] = True
 
         if not any(key in found for key in ("distance", "grade")):
             return {}
+
+        identity = canonical_thedogs_race_identity(race_url)
+        source_hash = str(source_sha256 or "").strip().lower()
+        exact_grade = normalize_exact_target_grade(found.get("grade"))
+        exact_grade_key = target_grade_equivalence_key(found.get("grade"))
+        if (
+            identity is not None
+            and found.get("_grade_from_explicit_field") is True
+            and exact_grade is not None
+            and exact_grade_key is not None
+            and re.fullmatch(r"[0-9a-f]{64}", source_hash)
+        ):
+            found.update(
+                {
+                    "grade": exact_grade,
+                    "target_grade": exact_grade,
+                    "target_grade_source": THEDOGS_EXACT_RACE_PAGE_GRADE_SOURCE,
+                    "target_grade_context_schema": "thedogs_exact_race_page_v1",
+                    "target_grade_equivalence_key": exact_grade_key,
+                    "target_grade_exact_value": exact_grade,
+                    "target_grade_race_date": identity["race_date"],
+                    "target_grade_race_number": identity["race_number"],
+                    "target_grade_race_url": identity["canonical_url"],
+                    "target_grade_source_url": identity["canonical_url"],
+                    "target_grade_source_sha256": source_hash,
+                    "target_grade_venue": self._canonical_hint_venue(
+                        identity["venue_slug"]
+                    ),
+                }
+            )
 
         metadata = build_safe_target_metadata_payload(
             found,
@@ -1667,6 +1705,21 @@ class UpcomingRaceBrowser:
                 "target_grade_source": metadata.get("target_grade_source"),
                 "metadata_is_leakage_safe": metadata.get("metadata_is_leakage_safe"),
                 "metadata_source_url": metadata.get("metadata_source_url"),
+                "target_grade_context_schema": found.get(
+                    "target_grade_context_schema"
+                ),
+                "target_grade_equivalence_key": found.get(
+                    "target_grade_equivalence_key"
+                ),
+                "target_grade_exact_value": found.get("target_grade_exact_value"),
+                "target_grade_race_date": found.get("target_grade_race_date"),
+                "target_grade_race_number": found.get("target_grade_race_number"),
+                "target_grade_race_url": found.get("target_grade_race_url"),
+                "target_grade_source_url": found.get("target_grade_source_url"),
+                "target_grade_source_sha256": found.get(
+                    "target_grade_source_sha256"
+                ),
+                "target_grade_venue": found.get("target_grade_venue"),
             }.items()
             if value not in (None, "", "default_missing_target")
         }
@@ -1964,7 +2017,9 @@ class UpcomingRaceBrowser:
 
                 if bs4 is None:
                     raise RuntimeError("BeautifulSoup (bs4) is required. Install with 'pip install beautifulsoup4'.")
-                soup = bs4.BeautifulSoup(response.content, "html.parser")
+                race_page_content = response.content
+                race_page_sha256 = hashlib.sha256(race_page_content).hexdigest()
+                soup = bs4.BeautifulSoup(race_page_content, "html.parser")
             finally:
                 if response is not None:
                     try:
@@ -1978,7 +2033,7 @@ class UpcomingRaceBrowser:
             if not race_info:
                 return {"success": False, "error": "Could not extract race information"}
             page_target_metadata = self._extract_safe_target_metadata_from_page(
-                soup, race_url
+                soup, race_url, source_sha256=race_page_sha256
             )
             hinted_target_grade = self._extract_safe_target_grade_from_hint(
                 race_info_hint, race_url
