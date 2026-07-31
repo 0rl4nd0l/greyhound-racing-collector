@@ -9,7 +9,7 @@ Observed 2026-07-31 at the frozen accepted R1 product checkpoint:
 | HEAD / tree | `51fe070ba2a0778bca0b0334c00cae9d75561952` / `0c2b82a391b8dd0a1dcc525cf4203edc910843c1` |
 | Baseline cleanliness | clean |
 | Historical/upstream source | Actual historical merge parent `51a5287d05c790e3855e5b74ce7117a29340135e`; later `origin/master` drift `f38a125f6364b8a60d17ae9c971b0ce172874eea`, tree `408a8adbfa2bd436132bc4d2c63e952aeb57c5a5`, parent `51a5287d05c790e3855e5b74ce7117a29340135e`; local merge `0b08966b31c15d8b459b9c6b60a48b19030a9ce4` |
-| Current release / ticket | R1 accepted: `GHU-012`–`GHU-016` are accepted at the integrated checkpoint; `GHU-016A` is the active ledger-only closeout candidate |
+| Current release / ticket | R1 accepted: `GHU-012`–`GHU-016` are accepted at the integrated checkpoint; `GHU-016A` is the current in-review ledger-only closeout candidate |
 | Counts | 14 accepted tickets, 1 ready, 1 review, 10 blocked, 2 deferred, 19 planned (plus accepted audit milestone `GHU-000A`) |
 | Assignment | `GHU-016A` documentation correction is assigned to this fresh bounded implementer |
 | Next safe action | Independently review this four-file closeout candidate; parent then decides acceptance/integration. `GHU-020` is ready only after that closeout is parent-integrated. |
@@ -413,6 +413,21 @@ failures being timestamped-path `_safe_operational_path` rejections in
 from the stable detached path. No UI/product assertion failed. Visual hashes:
 desktop `fc181de498c5ae287343cfc6026ef4e0dafcb9bb51ac91a605af37fab8d06ba6`,
 mobile `e841e7953ea63cfb278837511ded73a1298c78159a7f575f92fac4b00962896d`.
+
+`GHU-016B` is a review correction record, not a new formal ticket. The rejected
+`GHU-016A` ledger candidate/source `978c4c92514701453f7c8a3252ca33880352764b`,
+tree `4914a4d73cb150440bf3e54a3c8b84234f22ec15`, with base-to-candidate
+diff SHA-256
+`38032b6f50966c924e01dce1ee143e73d0613f2a9413dfbe687d135a7f4ca022`,
+is preserved. Independent reviewer run
+`20260731T015703Z-978c4c9251-84738f`, session
+`019fb5e3-d4a1-7541-811f-b330dc0ebdf4`, returned `PRODUCT REJECT` and `GATE
+REJECT`. Its two blocking findings were stale current-action pointers in three
+accepted tickets and a `GHU-020` title/outcome/acceptance/validation contract
+that still claimed broad source adapters and display fields despite its
+foundational-primitives-only scope. This two-file correction candidate repairs
+only those findings and does not preclaim independent-review or parent
+acceptance/integration.
 
 The frozen UX contract is **RESEARCH ONLY — NOT FOR BETTING** and
 **PROTOTYPE DATA**; navigation is Dashboard, Race, Lifecycle, Result,

@@ -62,7 +62,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Documentation/read-only repository evidence; parent accepts and integrates.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Preserve the accepted integration evidence; `GHU-010` is dependency-ready and assigned to its fresh bounded implementer.
+- Next safe action: Independently review and parent-integrate the corrected R1 ledger closeout, then proceed to `GHU-020`.
 - Closeout evidence: Parent accepted correction `GHU-002A` after independent review. Accepted integration commit `73f1e5d041f8d78ee0f48ce13e008f71c20090ca`; parent `aa4b45a004b1f897fc5d4cd06b0a741be6cd2446`; tree `d68116ba72b28f149707d7610821aea02cb35781`; frozen/reviewed base-to-result diff SHA-256 `34bbf4d1b6e6286b143d296183d35064909a614f8bef9dc90553c639b787fdd3`; implementer session `019fb27d-891e-75f1-aea2-fac1565f1db4`; independent reviewer session `019fb285-4b56-7202-a298-206855e4c875`, verdict `ACCEPT_GHU_002A`. Parent decision: accepted the exact reviewed four-file delta, committed it mechanically, and fast-forward integrated it into the clean canonical branch on 2026-07-30. Accepted file SHA-256: `PLAN.md` `6fba2ff2d028f0ae92ee85fe0acb556d4bd70fb19b5129db8b6a5a83828c5e0e`; `TICKETS.md` `9148ed8b3df8ac51d3e157ee1454ae9979d4113c79b3612186de640806c02e92`; `STATUS.md` `e77e671e786da138ee80f157e36ec91235508d12c9ff0921e29329e8465be208`; `DECISIONS.md` `107c05734e4d1ff780c136270afb2331eea69c32ed930ff9cbebf1347656c3bf`. Publication, PR, merge to the repository default branch, deployment, and runtime proof: `NOT_OCCURRED`.
 
 ## GHU-000B — Correct collector-owned current-race-index source drift
@@ -188,7 +188,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Accepted source prerequisite; no runtime/deployment claim.
 - Claims supported: Exact accepted correction and deterministic path-replacement rejection.
 - Claims unsupported: Portable non-Linux equivalence or same-inode mutation detection.
-- Next safe action: Preserve accepted evidence; `GHU-000B3` is the current documentation-ledger correction.
+- Next safe action: Independently review and parent-integrate the corrected R1 ledger closeout, then proceed to `GHU-020`.
 - Closeout evidence: Implementer run `20260730T173227Z-3e9f639dff-b1c869`, session `019fb415-e17b-7761-84b9-97a96a8fb58d`, child `a1704231395179acca71854ce5ba7acb`, correction diff identity `86567b5e32177ed0028940cb11158fee6e34a5f876f0903a4ef151458e1e59aa`; reviewer run `20260730T173456Z-04c32c37fe-4018cf`, session `019fb418-1b23-7fa1-985d-48f0219864e1`, child `6132758c7ecce3222bbf0f2059b29c77`, verdict `ACCEPT_GHU_000C1`. Parent accepted final integration `c77b3be5ad4aa78b70a9ba89f25ee801d50f27c0`, tree `fe5115435d18cbce6be055cf452acdba65518a76`, accepted staged diff identity `26886b3fba57cce1369dc45794f563a5ba250fbeadb9f7585bdf3f731ddbe373`.
 
 ## GHU-010 — Design tokens and responsive application shell
@@ -209,7 +209,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Level 1 fixture UI only; no operational mutation.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Preserve accepted evidence; the accepted `GHU-011` fixture dashboard hands off to atomic `GHU-012`–`GHU-015`.
+- Next safe action: Independently review and parent-integrate the corrected R1 ledger closeout, then proceed to `GHU-020`.
 - Closeout evidence: On 2026-07-30, after the accepted `GHU-002` integration above was verified as candidate base commit/tree, transitioned in order `planned -> ready -> active` and assigned to fresh Codex X launcher run `20260730T101930Z-73f1e5d041-380183`, child identity `c03a66e899ab18c04d650cd106c1598e` (no separate Codex session UUID exposed). Base commit `73f1e5d041f8d78ee0f48ce13e008f71c20090ca`; base tree `d68116ba72b28f149707d7610821aea02cb35781`. After the candidate was frozen, transitioned `active -> review`. The original attempt's static checks passed, while its unprovisioned focused pytest and browser coverage did not execute; the preserved `GHU-010A`, `GHU-010B`, and `GHU-010C` blocked history and the independently accepted-for-diagnostic `GHU-010D` review below record the subsequent correction path. Authoritative current candidate evidence is focused pytest `2 passed` and Playwright `3 passed in 2.1s`. The original broad suite remains failed and is not relabeled passed: `24 failed, 518 passed, 40 subtests passed in 4527.96s`. Stable diagnostic of only those 24 nodes recorded untouched base `24 passed in 709.55s`; the exact uncommitted candidate `21 passed` plus 3 dirty-release-identity failures in `704.25s`; and those same 3 nodes passing in `6.73s` when the exact eight-file candidate was frozen validation-only as commit `eda152192e96f7f89ccfc4ab3e89d5965cbc4055`, tree `ae2a32a5371f8fe73dc83d4e8daab5bcee9b37d6`. This establishes no candidate regression among those nodes without claiming the original broad command passed. Parent accepted `GHU-010` and `GHU-010F` after exact independent review of the eight-file delta in run `20260730T133751Z-73f1e5d041-0d30ea`, session `019fb33f-0f5a-7650-bc0c-1de8cc391704`, child `dbdaf9f23daee7c986a0a59c61aea562`, verdict `ACCEPT_GHU_010F` with no blocking findings. Exact integrated commit `13cf3a3b54a4a411465ac570e5ecb65b1669cdc3`; parent `73f1e5d041f8d78ee0f48ce13e008f71c20090ca`; tree `cf80477be77676f4e8eec54a8aa23d2fd6917896`; accepted cached diff SHA-256 `f6b25bc07f7f1a385154acdb87d1357399d4361c72b338abefc68fbbf2cd6cc8`. Parent decision: accepted the exact reviewed eight-file delta and mechanically committed it on the clean integration branch on 2026-07-30. The medium limitation remains non-blocking: focused coverage does not instrument generic filesystem writes or pre-existing request telemetry. Low delivery fact: both ignored templates were force-staged with verified bytes. Publication, PR, merge to the repository default branch, deployment, and runtime proof: `NOT_OCCURRED`.
 
 ## GHU-010A — Isolate operator shell response assets
@@ -524,7 +524,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Next safe action: Independent review of this four-file candidate; parent then decides acceptance/integration.
 - Closeout evidence: Candidate transition `planned -> ready -> active -> review` in this run; no parent decision preclaimed.
 
-## GHU-020 — Read-only source adapters and freshness contract
+## GHU-020 — Finite evidence and read-only foundations
 
 - Release: `R2`
 - Priority: `P2`
@@ -532,11 +532,11 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Dependencies: `GHU-016`, `GHU-016A` (effective only after parent integration of the closeout)
 - Model routing: GPT-5.6 Sol; fallback GPT-5.6 Terra
 - Session role: Fresh Codex X implementation session
-- Outcome: Creates pure, testable adapters from current artifacts/services to truthful UI view models.
+- Outcome: Provides only the finite evidence envelope, freshness/status vocabulary, server-owned allowlisted no-path reads, hashing/schema/fail-closed mapping, and a read-only DB helper.
 - Scope: Own only the foundational finite evidence envelope, freshness/status vocabulary, server-owned allowlisted no-path observation/read primitives, hashing/schema/fail-closed mapping, and a read-only DB helper.; Do not duplicate downstream adapter ownership.
 - Non-goals: No UI actions, service calls that mutate state, canonical writes or new evidence construction.
-- Acceptance: Adapters are deterministic and pure where possible.; Every displayed field carries provenance/freshness metadata.; Malformed artifacts fail closed.
-- Validation: Focused unit tests with valid, missing, stale, malformed and conflicting fixtures.; Read-only filesystem/DB assertions.
+- Acceptance: The finite envelope and freshness/status vocabulary are deterministic.; Server-owned allowlisted reads accept no caller-supplied path and bind evidence to hashes and schemas.; Missing, stale, malformed, conflicting, or unavailable evidence fails closed.; The DB helper cannot perform writes.
+- Validation: Focused unit tests prove finite-envelope bounds, freshness/status mapping, hashing/schema checks, and fail-closed states.; Negative tests prove that callers cannot supply arbitrary paths and that filesystem and DB helpers remain read-only.
 - Risks: Material risk: Stop if an intended metric has no truthful authoritative source; remove it from the live UI rather than synthesize it. Missing, stale, malformed, conflicting, or unavailable evidence must fail closed.
 - Stop conditions: Stop if an intended metric has no truthful authoritative source; remove it from the live UI rather than synthesize it.
 - Authority: Authenticated Level 1 GET/read-only authority with mandatory access audit.
