@@ -34,7 +34,8 @@ from src.predictor.on_demand import (
 
 ROOT = Path(__file__).resolve().parents[1]
 HANDOFF_SCHEMA = "on_demand_verified_collector_capture_v2"
-CURRENT_RACE_INDEX_SCHEMA = "collector_current_race_index_v1"
+CURRENT_RACE_INDEX_V1_SCHEMA = "collector_current_race_index_v1"
+CURRENT_RACE_INDEX_SCHEMA = "collector_current_race_index_v2"
 CURRENT_RACE_INDEX_FILENAME = "manual_prediction_current_race_index.json"
 MAX_CURRENT_INDEX_RACES = 32
 MAX_CURRENT_INDEX_BYTES = 2 * 1024 * 1024
@@ -283,20 +284,29 @@ def _safe_file_bytes(
     evidence_root: Path,
     missing_code: str,
 ) -> bytes:
-    root = evidence_root.resolve()
+    root = evidence_root.resolve(strict=True)
     logical = path.absolute()
     try:
-        resolved = logical.resolve(strict=True)
-    except OSError as exc:
-        raise CaptureOneRejected(missing_code, path=str(path)) from exc
-    if not resolved.is_relative_to(root):
+        relative = logical.relative_to(root)
+    except ValueError as exc:
         raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path))
-    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
-    flags |= getattr(os, "O_NOFOLLOW", 0)
+    if not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
+        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path))
+    directory_flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    directory_flags |= getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(root, directory_flags)
     try:
-        descriptor = os.open(logical, flags)
+        for component in relative.parts[:-1]:
+            child = os.open(component, directory_flags, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+        file_descriptor = os.open(relative.parts[-1], flags, dir_fd=descriptor)
     except OSError as exc:
+        os.close(descriptor)
         raise CaptureOneRejected(missing_code, path=str(path)) from exc
+    os.close(descriptor)
+    descriptor = file_descriptor
     try:
         opened = os.fstat(descriptor)
         if not stat.S_ISREG(opened.st_mode):
@@ -311,9 +321,7 @@ def _safe_file_bytes(
 
         def reject_replaced_path() -> None:
             try:
-                descriptor_path = Path(
-                    f"/proc/self/fd/{descriptor}"
-                ).resolve(strict=True)
+                descriptor_path = Path(f"/proc/self/fd/{descriptor}").resolve(strict=True)
                 named = os.stat(logical, follow_symlinks=False)
             except OSError as exc:
                 raise CaptureOneRejected(
@@ -435,6 +443,108 @@ def _normalize_current_index_rows(
     return normalized
 
 
+def _v2_runner_rows(
+    race: Mapping[str, Any], source: Mapping[str, Any], *, evidence_root: Path
+) -> tuple[list[dict[str, Any]], dict[str, Any], str]:
+    coverage = source.get("sidecar_metadata_coverage")
+    if not isinstance(coverage, Mapping) or coverage.get("schema_version") != "prejump_sidecar_metadata_coverage_v1":
+        raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_coverage_missing")
+    matches = [
+        item for item in coverage.get("races", [])
+        if isinstance(item, Mapping) and item.get("race_url") == race["race_url"]
+    ]
+    if len(matches) != 1:
+        raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_source_misaligned")
+    record = matches[0]
+    csv_path = Path(str(record.get("csv_path") or ""))
+    sidecar_path = Path(str(record.get("sidecar_path") or ""))
+    if sidecar_path != csv_path.with_name(csv_path.name + ".metadata.json"):
+        raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", reason="sidecar_not_adjacent")
+    csv_raw = _safe_file_bytes(csv_path, evidence_root=evidence_root, missing_code="CURRENT_INDEX_SOURCE_MISSING")
+    sidecar_raw = _safe_file_bytes(sidecar_path, evidence_root=evidence_root, missing_code="CURRENT_INDEX_SOURCE_MISSING")
+    try:
+        sidecar = json.loads(sidecar_raw)
+    except json.JSONDecodeError as exc:
+        raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID") from exc
+    if not isinstance(sidecar, Mapping):
+        raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="sidecar_invalid")
+    shadow = sidecar.get("prejump_shadow_metadata")
+    if not isinstance(shadow, Mapping) or shadow.get("status") != "PASS" or shadow.get("metadata_is_leakage_safe") is not True:
+        raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_source_not_accepted")
+    alignment = shadow.get("canonical_final_runner_alignment")
+    if not isinstance(alignment, Mapping) or alignment.get("status") != "aligned" or alignment.get("canonical_runner_set_status") != "available":
+        raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_source_not_aligned")
+    if shadow.get("source_url") != race["race_url"] or shadow.get("race_date") != race["date"] or shadow.get("venue") != race["venue"] or shadow.get("race_number") != race["race_number"]:
+        raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_race_identity_mismatch")
+    observed = datetime.fromisoformat(str(shadow.get("metadata_captured_at") or ""))
+    if observed.tzinfo is None or observed.utcoffset() is None:
+        raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_observation_invalid")
+    generated = datetime.fromisoformat(str(source.get("generated_at") or ""))
+    jump = datetime.fromisoformat(str(race["jump_datetime"]))
+    source_age = (generated - observed).total_seconds()
+    if source_age < -60 or source_age > 1200 or observed >= jump:
+        raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_source_stale_or_postjump")
+    participants = shadow.get("runner_box_name_list")
+    if not isinstance(participants, list) or not participants:
+        raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_set_empty")
+    aligned_details = sidecar.get("runner_completeness_after_canonical_alignment")
+    detailed_participants = (
+        aligned_details.get("participants")
+        if isinstance(aligned_details, Mapping)
+        and isinstance(aligned_details.get("participants"), list)
+        else []
+    )
+    native_ids = {
+        (item.get("box_number"), str(item.get("dog_name") or "").strip()):
+        item.get("source_native_runner_id", item.get("runner_id"))
+        for item in detailed_participants
+        if isinstance(item, Mapping)
+    }
+    rows: list[dict[str, Any]] = []
+    boxes: set[int] = set()
+    identities: set[str] = set()
+    for item in participants:
+        if not isinstance(item, Mapping):
+            raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_invalid")
+        try:
+            box_value = item["box_number"]
+            if isinstance(box_value, bool):
+                raise ValueError("boolean box")
+            box = int(box_value)
+            if isinstance(box_value, float) and box_value != box:
+                raise ValueError("fractional box")
+        except (KeyError, TypeError, ValueError) as exc:
+            raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_box_invalid") from exc
+        name = str(item.get("dog_name") or "").strip()
+        identity = " ".join(name.split()).upper()
+        if box <= 0 or not name or box in boxes or identity in identities:
+            raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_duplicate_or_invalid")
+        native_id = item.get(
+            "source_native_runner_id",
+            item.get("runner_id", native_ids.get((box, name))),
+        )
+        if native_id is not None and (isinstance(native_id, bool) or not isinstance(native_id, (str, int)) or not str(native_id).strip()):
+            raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_id_invalid")
+        boxes.add(box)
+        identities.add(identity)
+        rows.append({"box": box, "display_name": name, "identity": identity, "scratch_state": "ACTIVE", "source_native_runner_id": str(native_id).strip() if native_id is not None else None})
+    if rows != sorted(rows, key=lambda item: (item["box"], item["identity"])):
+        raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_order_noncanonical")
+    from src.predictor.on_demand import runner_set_sha256
+    protocol_rows = [{"box_number": item["box"], "identity": item["identity"]} for item in rows]
+    runner_hash = runner_set_sha256(protocol_rows)
+    root = evidence_root.resolve(strict=True)
+    provenance = {
+        "source_url": str(shadow["source_url"]),
+        "observed_at": observed.isoformat(),
+        "csv_path": csv_path.resolve(strict=True).relative_to(root).as_posix(),
+        "csv_sha256": sha256_bytes(csv_raw),
+        "sidecar_path": sidecar_path.resolve(strict=True).relative_to(root).as_posix(),
+        "sidecar_sha256": sha256_bytes(sidecar_raw),
+    }
+    return rows, provenance, runner_hash
+
+
 def _atomic_replace_canonical(path: Path, payload: Mapping[str, Any]) -> None:
     if path.is_symlink():
         raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path))
@@ -473,7 +583,7 @@ def publish_current_race_index(
 
     index_path = current_race_index_path(state_path)
     report: dict[str, Any] = {
-        "schema_version": "collector_current_race_index_publish_v1",
+        "schema_version": "collector_current_race_index_publish_v2",
         "status": "REJECTED",
         "index_path": str(index_path),
         "source_refresh_report_path": str(source_refresh_report_path),
@@ -488,6 +598,8 @@ def publish_current_race_index(
         source = json.loads(source_raw)
         if not isinstance(source, Mapping):
             raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
+        if source.get("status") != "SUCCESS" or source.get("dry_run") is True:
+            raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="refresh_not_accepted_success")
         source_generated_at = datetime.fromisoformat(str(source["generated_at"]))
         if (
             source_generated_at.tzinfo is None
@@ -495,6 +607,19 @@ def publish_current_race_index(
         ):
             raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
         races = _normalize_current_index_rows(source, max_races=max_races)
+        sealed_races = []
+        for race in races:
+            runners, runner_source, runner_hash = _v2_runner_rows(
+                race, source, evidence_root=evidence_root
+            )
+            sealed_races.append(
+                {
+                    **race,
+                    "runners": runners,
+                    "runner_set_sha256": runner_hash,
+                    "runner_source": runner_source,
+                }
+            )
         packet = {
             "schema_version": CURRENT_RACE_INDEX_SCHEMA,
             "run_id": run_id,
@@ -503,7 +628,7 @@ def publish_current_race_index(
             "source_refresh_report_sha256": sha256_bytes(source_raw),
             "race_count": len(races),
             "max_races": max_races,
-            "races": races,
+            "races": sealed_races,
         }
         root = evidence_root.resolve()
         if not index_path.absolute().parent.resolve().is_relative_to(root):
@@ -511,6 +636,7 @@ def publish_current_race_index(
                 "CURRENT_INDEX_PATH_UNSAFE", path=str(index_path)
             )
         _atomic_replace_canonical(index_path, packet)
+        packet_raw = canonical_bytes(packet)
     except (
         CaptureOneRejected,
         KeyError,
@@ -526,11 +652,16 @@ def publish_current_race_index(
     report.update(
         {
             "status": "PUBLISHED",
-            "race_count": len(races),
+            "schema_version": "collector_current_race_index_publish_v2",
+            "packet_schema_version": CURRENT_RACE_INDEX_SCHEMA,
+            "packet_sha256": sha256_bytes(packet_raw),
+            "race_count": len(sealed_races),
             "source_generated_at": source_generated_at.isoformat(),
             "source_refresh_report_sha256": packet[
                 "source_refresh_report_sha256"
             ],
+            "runner_set_sha256": [race["runner_set_sha256"] for race in sealed_races],
+            "runner_sources": [race["runner_source"] for race in sealed_races],
         }
     )
     return report
@@ -573,11 +704,17 @@ def bounded_current_race_index(
             missing_code="CURRENT_INDEX_UNAVAILABLE",
         )
         packet = json.loads(packet_raw)
+        packet_keys = {
+            "schema_version", "run_id", "source_generated_at",
+            "source_refresh_report_path", "source_refresh_report_sha256",
+            "race_count", "max_races", "races",
+        }
         if (
             not isinstance(packet, Mapping)
-            or packet.get("schema_version") != CURRENT_RACE_INDEX_SCHEMA
+            or packet.get("schema_version") not in {CURRENT_RACE_INDEX_V1_SCHEMA, CURRENT_RACE_INDEX_SCHEMA}
             or canonical_bytes(packet) != packet_raw
             or packet.get("max_races") != max_races
+            or set(packet) != packet_keys
         ):
             raise CaptureOneRejected("CURRENT_INDEX_INVALID")
         source_generated_at = datetime.fromisoformat(
@@ -606,8 +743,21 @@ def bounded_current_race_index(
         source = json.loads(source_raw)
         if not isinstance(source, Mapping):
             raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
+        if packet.get("schema_version") == CURRENT_RACE_INDEX_SCHEMA and (
+            source.get("status") != "SUCCESS" or source.get("dry_run") is True
+        ):
+            raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
         races = _normalize_current_index_rows(source, max_races=max_races)
-        if packet.get("race_count") != len(races) or packet.get("races") != races:
+        expected_races: list[Mapping[str, Any]] = races
+        if packet.get("schema_version") == CURRENT_RACE_INDEX_SCHEMA:
+            sealed = []
+            for race in races:
+                runners, runner_source, runner_hash = _v2_runner_rows(
+                    race, source, evidence_root=evidence_root
+                )
+                sealed.append({**race, "runners": runners, "runner_set_sha256": runner_hash, "runner_source": runner_source})
+            expected_races = sealed
+        if packet.get("race_count") != len(expected_races) or packet.get("races") != expected_races:
             raise CaptureOneRejected("CURRENT_INDEX_INVALID")
     except _DiscoveryTimedOut as exc:
         raise CaptureOneRejected(
@@ -618,7 +768,7 @@ def bounded_current_race_index(
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous_handler)
-    return races
+    return expected_races
 
 
 def release_owned_collector_lock(lock: Any) -> None:

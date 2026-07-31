@@ -53,6 +53,23 @@ NOW = datetime.fromisoformat("2026-07-19T12:00:00+10:00")
 RACE_ID = "Race 5 - GUNN - 2026-07-19"
 
 
+def _current_index_runner_coverage(evidence_root: Path, race_url: str) -> dict[str, Any]:
+    form = evidence_root / "upcoming/gunnedah-r5.csv"
+    form.parent.mkdir(parents=True, exist_ok=True)
+    form.write_bytes(b"box|dog_name\n1|Alpha\n2|Beta\n")
+    sidecar = form.with_name(form.name + ".metadata.json")
+    sidecar.write_bytes(canonical_bytes({"prejump_shadow_metadata": {
+        "status": "PASS", "metadata_is_leakage_safe": True,
+        "race_date": "2026-07-19", "venue": "GUNN", "race_number": 5,
+        "source_url": race_url, "metadata_captured_at": NOW.isoformat(),
+        "runner_box_name_list": [{"box_number": 1, "dog_name": "Alpha"}, {"box_number": 2, "dog_name": "Beta"}],
+        "canonical_final_runner_alignment": {"status": "aligned", "canonical_runner_set_status": "available"},
+    }}))
+    return {"schema_version": "prejump_sidecar_metadata_coverage_v1", "races": [{
+        "race_url": race_url, "csv_path": str(form), "sidecar_path": str(sidecar)
+    }]}
+
+
 def race(race_time: str = "13:00") -> dict[str, Any]:
     return {
         "venue": "GUNN",
@@ -464,7 +481,12 @@ def test_default_schedule_reads_only_collector_owned_bounded_index(
     source.write_bytes(
         canonical_bytes(
             {
+                "status": "SUCCESS",
                 "generated_at": NOW.isoformat(),
+                "sidecar_metadata_coverage": _current_index_runner_coverage(
+                    evidence_root,
+                    "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5",
+                ),
                 "selected_count": 1,
                 "selected_races": [
                     {

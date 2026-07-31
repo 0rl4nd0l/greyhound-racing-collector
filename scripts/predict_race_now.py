@@ -180,13 +180,18 @@ def _default_schedule(
         bounded_current_race_index,
     )
 
-    return bounded_current_race_index(
+    races = bounded_current_race_index(
         current_time=current_time,
         timeout_seconds=timeout_seconds,
         index_path=index_path,
         evidence_root=evidence_root,
         max_age_seconds=max_age_seconds,
     )
+    legacy_fields = (
+        "date", "jump_datetime", "race_id", "race_id_aliases", "race_number",
+        "race_time", "race_url", "venue",
+    )
+    return [{key: race[key] for key in legacy_fields} for race in races]
 
 
 def discover_capture_handoff(

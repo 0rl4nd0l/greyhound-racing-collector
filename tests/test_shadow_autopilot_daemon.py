@@ -7,6 +7,24 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from scripts import shadow_autopilot_daemon as daemon
+from src.predictor.on_demand import canonical_bytes
+
+
+def _write_current_index_runner_sources(evidence_root: Path, race_url: str) -> dict:
+    form = evidence_root / "upcoming/healesville-r1.csv"
+    form.parent.mkdir(parents=True, exist_ok=True)
+    form.write_bytes(b"box|dog_name\n1|Alpha\n2|Beta\n")
+    sidecar = form.with_name(form.name + ".metadata.json")
+    sidecar.write_bytes(canonical_bytes({"prejump_shadow_metadata": {
+        "status": "PASS", "metadata_is_leakage_safe": True,
+        "race_date": "2026-06-12", "venue": "HEA", "race_number": 1,
+        "source_url": race_url, "metadata_captured_at": "2026-06-12T00:01:01+10:00",
+        "runner_box_name_list": [{"box_number": 1, "dog_name": "Alpha"}, {"box_number": 2, "dog_name": "Beta"}],
+        "canonical_final_runner_alignment": {"status": "aligned", "canonical_runner_set_status": "available"},
+    }}))
+    return {"schema_version": "prejump_sidecar_metadata_coverage_v1", "races": [{
+        "race_url": race_url, "csv_path": str(form), "sidecar_path": str(sidecar)
+    }]}
 
 
 def test_daemon_default_min_joined_races_matches_review_target():
@@ -2243,6 +2261,10 @@ def test_run_odds_capture_once_uses_lock_and_writes_compact_report(tmp_path, mon
             {
                 "status": "SUCCESS",
                 "generated_at": "2026-06-12T00:01:01+10:00",
+                "sidecar_metadata_coverage": _write_current_index_runner_sources(
+                    evidence_root,
+                    "https://www.thedogs.com.au/racing/healesville/2026-06-12/1",
+                ),
                 "selected_count": 1,
                 "selected_races": [
                     {
