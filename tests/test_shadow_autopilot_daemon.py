@@ -873,12 +873,14 @@ def test_run_once_defer_observes_result_before_odds_priority_return(
     evidence_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
     output_dir = evidence_root / "shadow_autopilot_daemonization_v1_observer_defer"
     odds_state_path = tmp_path / "runtime" / "odds_capture_state.json"
+    lock_path = tmp_path / "runtime" / "shadow_autopilot.lock"
     corpus_root = tmp_path / "forward-corpus"
     observed = {
         "status": "COMPLETED",
         "attempted_race_ids": ["race-1"],
         "counts": {"observed": 1},
     }
+    defer_times = []
 
     monkeypatch.setattr(daemon, "ROOT", tmp_path)
     monkeypatch.setattr(daemon, "copy_if_exists", lambda source, dest: None)
@@ -898,10 +900,10 @@ def test_run_once_defer_observes_result_before_odds_priority_return(
     monkeypatch.setattr(
         daemon,
         "full_daemon_odds_window_defer_decision",
-        lambda odds_state, current_time: {
-            "should_defer": True,
-            "reason": "test_fixed_window_open",
-        },
+        lambda odds_state, current_time: (
+            defer_times.append(current_time)
+            or {"should_defer": True, "reason": "test_fixed_window_open"}
+        ),
     )
     monkeypatch.setattr(
         daemon,
@@ -922,6 +924,8 @@ def test_run_once_defer_observes_result_before_odds_priority_return(
             str(output_dir),
             "--current-time",
             "2026-06-13T15:17:11+10:00",
+            "--lock-path",
+            str(lock_path),
             "--enable-forward-official-result-observer",
             "--forward-corpus-root",
             str(corpus_root),
@@ -934,13 +938,23 @@ def test_run_once_defer_observes_result_before_odds_priority_return(
     report = daemon.run_once(args)
 
     assert report["final_verdict"] == "DAEMON_DEFERRED_TO_ODDS_CAPTURE_ONLY"
+    assert defer_times == [datetime.fromisoformat("2026-06-13T15:17:11+10:00")]
     assert report["forward_official_result_observer"] == observed | {
-        "run_id": "observer_defer"
+        "run_id": "observer_defer",
+        "shared_lock": {
+            "lock_path": daemon.relpath(lock_path),
+            "phase": "forward_official_result_observer",
+            "acquisition_policy": "forward_official_result_observer_no_steal_v1",
+            "release": {
+                "released": True,
+                "reason": "released_by_observer_owner",
+            },
+        },
     }
     assert report["no_write_guarantees"]["official_result_evidence_write"] is True
     assert json.loads(
         (output_dir / "forward_official_result_observer.json").read_text()
-    ) == observed | {"run_id": "observer_defer"}
+    ) == report["forward_official_result_observer"]
 
 
 def test_run_once_observer_failure_stops_before_odds_defer_and_full_lock(
@@ -949,6 +963,7 @@ def test_run_once_observer_failure_stops_before_odds_defer_and_full_lock(
     evidence_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
     output_dir = evidence_root / "shadow_autopilot_daemonization_v1_observer_failed"
     state_path = tmp_path / "runtime" / "state.json"
+    lock_path = tmp_path / "runtime" / "shadow_autopilot.lock"
     failed = {
         "status": "COMPLETED_WITH_ERRORS",
         "attempted_race_ids": ["race-1"],
@@ -995,6 +1010,8 @@ def test_run_once_observer_failure_stops_before_odds_defer_and_full_lock(
             str(output_dir),
             "--state-path",
             str(state_path),
+            "--lock-path",
+            str(lock_path),
             "--enable-forward-official-result-observer",
             "--forward-corpus-root",
             str(tmp_path / "forward-corpus"),
@@ -1005,13 +1022,163 @@ def test_run_once_observer_failure_stops_before_odds_defer_and_full_lock(
     report = daemon.run_once(args)
 
     assert report["final_verdict"] == "PARTIAL_DAEMONIZATION"
-    assert report["lock_validation_status"] == "NOT_ACQUIRED_OBSERVER_FAILED"
+    assert report["lock_validation_status"] == "OBSERVER_LOCK_RELEASED_AFTER_FAILURE"
     assert report["forward_official_result_observer"] == failed | {
-        "run_id": "observer_failed"
+        "run_id": "observer_failed",
+        "shared_lock": {
+            "lock_path": daemon.relpath(lock_path),
+            "phase": "forward_official_result_observer",
+            "acquisition_policy": "forward_official_result_observer_no_steal_v1",
+            "release": {
+                "released": True,
+                "reason": "released_by_observer_owner",
+            },
+        },
     }
     assert json.loads(state_path.read_text())[
         "forward_official_result_observer"
-    ] == failed | {"run_id": "observer_failed"}
+    ] == report["forward_official_result_observer"]
+
+
+def test_live_shared_lock_defers_before_observer_service_or_corpus_mutation(
+    tmp_path, monkeypatch
+):
+    evidence_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
+    output_dir = evidence_root / "shadow_autopilot_daemonization_v1_lock_busy"
+    lock_path = tmp_path / "runtime" / "shadow_autopilot.lock"
+    corpus_root = tmp_path / "forward-corpus"
+    lock_path.parent.mkdir(parents=True)
+    corpus_root.mkdir()
+    sentinel = corpus_root / "immutable.json"
+    sentinel.write_bytes(b'{"immutable":true}\n')
+    lock_bytes = json.dumps(
+        {
+            "schema_version": "shadow_autopilot_daemon_lock_v1",
+            "run_id": "active_odds_capture",
+            "pid": os.getpid(),
+            "hostname": "test-host",
+            "started_at": "2026-06-13T15:16:00+10:00",
+            "output_dir": "/runtime/active-odds",
+            "phase": "odds_capture",
+        },
+        sort_keys=True,
+    ).encode()
+    lock_path.write_bytes(lock_bytes)
+
+    monkeypatch.setattr(daemon, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        daemon,
+        "write_service_files",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("live shared owner must prevent service mutation")
+        ),
+    )
+    monkeypatch.setattr(
+        daemon,
+        "run_forward_official_result_observer",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("live shared owner must prevent observer I/O")
+        ),
+    )
+    args = daemon.parse_args(
+        [
+            "run-once",
+            "--run-id",
+            "lock-busy",
+            "--evidence-root",
+            str(evidence_root),
+            "--output-dir",
+            str(output_dir),
+            "--lock-path",
+            str(lock_path),
+            "--enable-forward-official-result-observer",
+            "--forward-corpus-root",
+            str(corpus_root),
+        ]
+    )
+
+    report = daemon.run_once(args)
+
+    assert report["status"] == "SKIPPED_LOCK_HELD"
+    assert report["runtime_action"] == "DEFER_FORWARD_OBSERVER_SHARED_LOCK_HELD"
+    assert report["lock_owner_phase"] == "odds_capture"
+    assert report["lock_owner_pid"] == os.getpid()
+    assert report["forward_official_result_observer"]["attempted_race_ids"] == []
+    assert lock_path.read_bytes() == lock_bytes
+    assert list(corpus_root.iterdir()) == [sentinel]
+    assert sentinel.read_bytes() == b'{"immutable":true}\n'
+
+
+def test_observer_completion_refreshes_wall_time_before_odds_defer(
+    tmp_path, monkeypatch
+):
+    evidence_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
+    output_dir = evidence_root / "shadow_autopilot_daemonization_v1_time_crossing"
+    lock_path = tmp_path / "runtime" / "shadow_autopilot.lock"
+    odds_state_path = tmp_path / "runtime" / "odds_capture_state.json"
+    before = datetime.fromisoformat("2026-06-13T15:09:59+10:00")
+    after = datetime.fromisoformat("2026-06-13T15:10:01+10:00")
+    wall_times = iter((before, after))
+
+    monkeypatch.setattr(daemon, "ROOT", tmp_path)
+    monkeypatch.setattr(daemon, "wall_clock_now", lambda: next(wall_times))
+    monkeypatch.setattr(daemon, "copy_if_exists", lambda source, dest: None)
+    monkeypatch.setattr(
+        daemon,
+        "write_service_files",
+        lambda **kwargs: {
+            "status": "SERVICE_FILES_WRITTEN",
+            "systemd_deployment_ready": True,
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "run_forward_official_result_observer",
+        lambda args, run_id: {"status": "COMPLETED", "attempted_race_ids": []},
+    )
+
+    def decide(_odds_state, current_time):
+        assert current_time == after
+        return {"should_defer": True, "reason": "crossed_into_defer_horizon"}
+
+    monkeypatch.setattr(daemon, "full_daemon_odds_window_defer_decision", decide)
+    monkeypatch.setattr(
+        daemon,
+        "acquire_lock_with_odds_capture_retry",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("refreshed defer must remain before the full lock")
+        ),
+    )
+    args = daemon.parse_args(
+        [
+            "run-once",
+            "--run-id",
+            "time-crossing",
+            "--evidence-root",
+            str(evidence_root),
+            "--output-dir",
+            str(output_dir),
+            "--lock-path",
+            str(lock_path),
+            "--enable-forward-official-result-observer",
+            "--forward-corpus-root",
+            str(tmp_path / "forward-corpus"),
+            "--enable-autonomous-odds-capture",
+            "--odds-capture-state-path",
+            str(odds_state_path),
+        ]
+    )
+
+    report = daemon.run_once(args)
+
+    assert report["final_verdict"] == "DAEMON_DEFERRED_TO_ODDS_CAPTURE_ONLY"
+    assert report["odds_capture_defer_decision"]["reason"] == (
+        "crossed_into_defer_horizon"
+    )
+    assert report["forward_official_result_observer"]["shared_lock"]["release"][
+        "released"
+    ] is True
+    assert not lock_path.exists()
 
 
 def test_run_once_defers_before_lock_when_t2_window_recomputed_due(
@@ -9899,10 +10066,12 @@ def test_forward_observer_opt_in_invokes_owned_cycle(monkeypatch, tmp_path):
 
 
 def test_full_service_generator_emits_forward_opt_in_only_when_declared(tmp_path):
+    lock_path = Path("/runtime/shared-shadow-autopilot.lock")
     default = daemon.service_file_text(repo_path=tmp_path, timeout_seconds=840)
     enabled = daemon.service_file_text(
         repo_path=tmp_path,
         timeout_seconds=840,
+        lock_path=lock_path,
         forward_corpus_root=Path("/runtime/forward-corpus"),
     )
     assert "--enable-forward-official-result-observer" not in default
@@ -9911,13 +10080,16 @@ def test_full_service_generator_emits_forward_opt_in_only_when_declared(tmp_path
         "--enable-forward-official-result-observer "
         '--forward-corpus-root "/runtime/forward-corpus"'
     ) in enabled
+    assert "--lock-path /runtime/shared-shadow-autopilot.lock" in enabled
     generated = daemon.write_service_files(
         service_dir=tmp_path / "systemd",
         repo_path=tmp_path,
         timeout_seconds=840,
+        lock_path=lock_path,
         forward_corpus_root=Path("/runtime/forward-corpus"),
     )
     assert generated["forward_corpus_root"] == "/runtime/forward-corpus"
+    assert generated["lock_path"] == "/runtime/shared-shadow-autopilot.lock"
     assert '--forward-corpus-root "/runtime/forward-corpus"' in (
         tmp_path / "systemd" / daemon.SERVICE_NAME
     ).read_text()

@@ -193,6 +193,8 @@ def acquire_collector_lock_no_steal(
     *,
     run_id: str,
     output_dir: Path,
+    phase: str = "manual_capture_one",
+    acquisition_policy: str = "collector_capture_one_no_steal_v1",
 ) -> OwnedCollectorLock:
     lock_path = lock_path.absolute()
     if (
@@ -208,8 +210,8 @@ def acquire_collector_lock_no_steal(
         "hostname": socket.gethostname(),
         "started_at": datetime.now().astimezone().isoformat(),
         "output_dir": str(output_dir.resolve()),
-        "phase": "manual_capture_one",
-        "acquisition_policy": "collector_capture_one_no_steal_v1",
+        "phase": phase,
+        "acquisition_policy": acquisition_policy,
     }
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
     flags |= getattr(os, "O_NOFOLLOW", 0)

@@ -35,6 +35,38 @@ STATUS_SCHEMA = "forward-sealed-corpus-status-v1"
 OFFICIAL_RESULT_SOURCE = "thedogs-official"
 PREJUMP_SOURCE = "thedogs-race-card"
 RESPONSE_STAGE_SCHEMA = "official-result-response-stage-v1"
+OBSERVATION_SCHEMA_V1 = "official-result-observation-v1"
+OBSERVATION_SCHEMA_V2 = "official-result-observation-v2"
+PARENT_NORMALIZATION_VERSION = "official-result-normalization-exact-v1"
+CURRENT_NORMALIZATION_VERSION = "official-result-normalization-terminal-nbt-v2"
+PARENT_IMPLEMENTATION_HASH = (
+    "sha256:9f05e9b29d90ec274d7d1c8c5c992dcbf41f38d61258f9f836ec935062829819"
+)
+
+_OBSERVATION_FIELDS_V1 = {
+    "schema_version",
+    "race_id",
+    "collector_id",
+    "session_id",
+    "run_id",
+    "request_id",
+    "source_name",
+    "request_url",
+    "final_url",
+    "http_status",
+    "content_type",
+    "source_document_last_modified",
+    "request_started_at",
+    "response_received_at",
+    "observed_at",
+    "raw_response_checksum",
+    "normalized_result_checksum",
+    "runner_set_hash",
+    "parser_hash",
+    "schema_hash",
+    "implementation_hash",
+}
+_OBSERVATION_FIELDS_V2 = _OBSERVATION_FIELDS_V1 | {"normalization_version"}
 
 _RESULT_DERIVED_KEYS = {
     "finish_order",
@@ -221,9 +253,15 @@ def _bounded_id(value: Any, name: str) -> str:
     return result
 
 
-def _normalization_identity() -> tuple[str, str, str]:
+def _normalization_identity(
+    normalization_version: str = CURRENT_NORMALIZATION_VERSION,
+) -> tuple[str, str, str]:
     parser_hash = str(_checksum(inspect.getsource(parse_thedogs_result_html_runner_rows).encode()))
     schema_hash = str(_checksum(RESULT_SCHEMA.encode()))
+    if normalization_version == PARENT_NORMALIZATION_VERSION:
+        return parser_hash, schema_hash, PARENT_IMPLEMENTATION_HASH
+    if normalization_version != CURRENT_NORMALIZATION_VERSION:
+        raise ForwardCorpusRejected("official result normalization version is unsupported")
     implementation = (
         inspect.getsource(_normalize_official_result).encode()
         + inspect.getsource(parse_thedogs_result_html_runner_rows).encode()
@@ -231,6 +269,111 @@ def _normalization_identity() -> tuple[str, str, str]:
         + RESULT_SCHEMA.encode()
     )
     return parser_hash, schema_hash, str(_checksum(implementation))
+
+
+def _normalization_version_from_observation(observation: Mapping[str, Any]) -> str:
+    schema_version = observation.get("schema_version")
+    if schema_version == OBSERVATION_SCHEMA_V1 and set(observation) == (
+        _OBSERVATION_FIELDS_V1
+    ):
+        implementation_hash = observation.get("implementation_hash")
+        if implementation_hash == PARENT_IMPLEMENTATION_HASH:
+            return PARENT_NORMALIZATION_VERSION
+        if implementation_hash == _normalization_identity()[2]:
+            return CURRENT_NORMALIZATION_VERSION
+    elif (
+        schema_version == OBSERVATION_SCHEMA_V2
+        and set(observation) == _OBSERVATION_FIELDS_V2
+        and observation.get("normalization_version") == CURRENT_NORMALIZATION_VERSION
+    ):
+        return CURRENT_NORMALIZATION_VERSION
+    raise ForwardCorpusRejected("official observation envelope or normalization is invalid")
+
+
+def _normalize_official_result_parent_v1(
+    raw_response_bytes: bytes,
+    *,
+    race_id: str,
+    frozen_runners: Sequence[Mapping[str, Any]],
+) -> bytes:
+    """Reconstruct immutable observations emitted before terminal NBT handling."""
+    if type(raw_response_bytes) is not bytes or not raw_response_bytes:
+        raise ForwardCorpusRejected("immutable official-result response bytes are required")
+    try:
+        markup = raw_response_bytes.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ForwardCorpusRejected("official result is not supported UTF-8 HTML") from error
+    try:
+        parsed = parse_thedogs_result_html_runner_rows(markup)
+    except (TypeError, ValueError) as error:
+        raise ForwardCorpusRejected("official result parser rejected response") from error
+    if not parsed:
+        raise ForwardCorpusRejected("official result HTML contains no result rows")
+    by_box = {row["box_number"]: row for row in parsed if type(row) is dict}
+    if len(by_box) != len(parsed) or set(by_box) != {
+        runner["box_number"] for runner in frozen_runners
+    }:
+        raise ForwardCorpusRejected("official result runner box/rug identity mismatch")
+    normalized = []
+    positions = []
+    for runner in sorted(frozen_runners, key=lambda item: item["box_number"]):
+        parsed_row = by_box[runner["box_number"]]
+        if parsed_row.get("dog_name") != runner["name"]:
+            raise ForwardCorpusRejected("official result runner name identity mismatch")
+        position = parsed_row.get("finish_position")
+        status = parsed_row.get("status")
+        if (position is None) == (status is None):
+            raise ForwardCorpusRejected("official finish/status combination is inconsistent")
+        if position is not None:
+            if type(position) is not int or not 1 <= position <= len(frozen_runners):
+                raise ForwardCorpusRejected("official finish position is out of range")
+            positions.append(position)
+        elif status not in {"SCRATCHED", "DNF", "DQ"}:
+            raise ForwardCorpusRejected("official terminal status is unsupported")
+        normalized.append(
+            {
+                "source_native_runner_id": runner["source_native_runner_id"],
+                "box_number": runner["box_number"],
+                "name": runner["name"],
+                "finish_position": position,
+                "status": status,
+            }
+        )
+    if not finish_positions_follow_competition_ranking(positions):
+        raise ForwardCorpusRejected("official finishes do not use competition ranking")
+    runner_set_hash = str(_checksum(canonical_json(list(frozen_runners))))
+    return canonical_json(
+        {
+            "schema_version": RESULT_SCHEMA,
+            "race_id": race_id,
+            "runner_set_hash": runner_set_hash,
+            "runners": normalized,
+        }
+    )
+
+
+def _normalize_official_result_for_version(
+    raw_response_bytes: bytes,
+    *,
+    race_id: str,
+    frozen_runners: Sequence[Mapping[str, Any]],
+    normalization_version: str,
+) -> bytes:
+    normalizer = (
+        _normalize_official_result_parent_v1
+        if normalization_version == PARENT_NORMALIZATION_VERSION
+        else _normalize_official_result
+    )
+    if normalization_version not in {
+        PARENT_NORMALIZATION_VERSION,
+        CURRENT_NORMALIZATION_VERSION,
+    }:
+        raise ForwardCorpusRejected("official result normalization version is unsupported")
+    return normalizer(
+        raw_response_bytes,
+        race_id=race_id,
+        frozen_runners=frozen_runners,
+    )
 
 
 def _normalize_official_result(
@@ -1157,33 +1300,7 @@ class ForwardSealedCorpus:
         pre: Mapping[str, Any],
         observation: Mapping[str, Any],
     ) -> bytes:
-        expected_keys = {
-            "schema_version",
-            "race_id",
-            "collector_id",
-            "session_id",
-            "run_id",
-            "request_id",
-            "source_name",
-            "request_url",
-            "final_url",
-            "http_status",
-            "content_type",
-            "source_document_last_modified",
-            "request_started_at",
-            "response_received_at",
-            "observed_at",
-            "raw_response_checksum",
-            "normalized_result_checksum",
-            "runner_set_hash",
-            "parser_hash",
-            "schema_hash",
-            "implementation_hash",
-        }
-        if set(observation) != expected_keys or observation.get("schema_version") != (
-            "official-result-observation-v1"
-        ):
-            raise ForwardCorpusRejected("official observation envelope is invalid")
+        normalization_version = _normalization_version_from_observation(observation)
         if observation.get("race_id") != pre["race_id"]:
             raise ForwardCorpusRejected("official observation race identity mismatch")
         for field in ("collector_id", "session_id", "run_id", "request_id"):
@@ -1228,12 +1345,15 @@ class ForwardSealedCorpus:
             self._read_artifact(pre["source_capture_checksum"], "source capture"),
             "source capture",
         )
-        rebuilt = _normalize_official_result(
+        rebuilt = _normalize_official_result_for_version(
             raw,
             race_id=pre["race_id"],
             frozen_runners=source_capture["runners"],
+            normalization_version=normalization_version,
         )
-        parser_hash, schema_hash, implementation_hash = _normalization_identity()
+        parser_hash, schema_hash, implementation_hash = _normalization_identity(
+            normalization_version
+        )
         runner_set_hash = str(_checksum(canonical_json(source_capture["runners"])))
         if (
             rebuilt != normalized
@@ -1381,7 +1501,8 @@ class ForwardSealedCorpus:
         ).checksum
         parser_hash, schema_hash, implementation_hash = _normalization_identity()
         observation = {
-            "schema_version": "official-result-observation-v1",
+            "schema_version": OBSERVATION_SCHEMA_V2,
+            "normalization_version": CURRENT_NORMALIZATION_VERSION,
             "race_id": race_id,
             "collector_id": collector_id,
             "session_id": session_id,
@@ -1448,17 +1569,7 @@ class ForwardSealedCorpus:
         self._observation_inventory(pre, observations)
         if not observations:
             return
-        identities = {
-            (
-                item["normalized_result_checksum"],
-                item["runner_set_hash"],
-                item["parser_hash"],
-                item["schema_hash"],
-                item["implementation_hash"],
-                item["source_name"],
-            )
-            for item in observations
-        }
+        identities = {self._observation_identity(item) for item in observations}
         if len(identities) > 1:
             conflict = {
                 "schema_version": "official-result-conflict-v1",
@@ -1527,9 +1638,6 @@ class ForwardSealedCorpus:
         return (
             observation["normalized_result_checksum"],
             observation["runner_set_hash"],
-            observation["parser_hash"],
-            observation["schema_hash"],
-            observation["implementation_hash"],
             observation["source_name"],
         )
 
