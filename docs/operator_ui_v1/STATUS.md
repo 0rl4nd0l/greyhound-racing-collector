@@ -724,3 +724,7 @@ Independent C2 reviewer session `019fba90-d645-7361-a1f2-2ddf993b732b` returned 
 ## GHU-032C4 correction implementation
 
 Implemented locally for parent review: sealed-v2 disclosure now requires the retained authenticated protocol and history-cutoff members; connected authority responses use finite endpoint validators; reconnect recovery ends after 6 + 3 GET failures without dropping the job; and repository-v1 validates the finite GHU-036 generated-binding identity. Python behavioral execution remains gated by the unavailable `pytest` dependency in this bounded environment.
+
+## GHU-032C4/C5 rejection and C6 correction status
+
+C4 and C5 remain rejected. Frozen C5 is commit `90502a360a184a6ba9b301245c93b818494647cd`, tree `f16d12db919fd749b5118ea3b800db21eb2aaec4`, session `019fbacc-623e-7e71-bce6-ee79e646dec5`, exact delta SHA-256 `c3eec6356d23becdfadaa1e38c7c5c368c9514743d43d556c6438d2bc53ce168`. C6 is a local correction candidate: exact real sealed protocol validation, bounded coherent collector snapshot evidence, generated-binding hardening, and shared pure browser authority validators are implemented for parent inspection. C6 is not accepted, integrated, deployed, or runtime-proven.

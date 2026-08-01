@@ -493,3 +493,10 @@ supersession.
 Probability disclosure authority is the descriptor-retained sealed-v2 bundle alone. The bundle contains and independently binds the complete collector protocol chain and authenticated cutoff/history snapshot; mutable collector roots and the live database are not disclosure inputs.
 
 The repository-v1 binding is output of the finite GHU-036 generator contract and binds generator identity, deployment identity, the checked-in profile digest, and fixed artifact hashes.
+
+## 2026-08-01 — DEC-GHU-032C4-C5-REJECTED-C6-CORRECTION
+
+- Context: Parent review rejected C5 only for a request-schema downgrade, incomplete coherent-snapshot and mutation evidence, incomplete generated-binding behavior, and connected-only untested validators.
+- Decision: Preserve accepted C5 ownership/bootstrap/job-worker boundaries and correct only those residuals as C6. Require exact real protocol objects unconditionally, fixed bounded descriptor-retained snapshot enumeration, pure shared endpoint validators, and exact generated identity syntax.
+- Evidence: Frozen C5 commit `90502a360a184a6ba9b301245c93b818494647cd`, tree `f16d12db919fd749b5118ea3b800db21eb2aaec4`, session `019fbacc-623e-7e71-bce6-ee79e646dec5`, delta SHA-256 `c3eec6356d23becdfadaa1e38c7c5c368c9514743d43d556c6438d2bc53ce168`. C6 validation is recorded in implementer closeout, not self-approval.
+- Consequences: C6 remains an unaccepted local candidate pending independent parent inspection and review. No runtime action, deployment, outcome access, training, promotion, or wagering output is authorized or claimed.

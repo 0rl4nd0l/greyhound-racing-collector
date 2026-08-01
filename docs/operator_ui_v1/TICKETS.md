@@ -1147,3 +1147,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 ## GHU-032C4 — C3 correction
 
 Status: implemented locally, awaiting independent parent review. No service generator or deployment is included; GHU-036 remains responsible for producing the now-finite repository-v1 binding.
+
+## GHU-032C6 — C5 residual correction
+
+Status: implementation candidate, awaiting parent inspection and independent review. Scope is limited to unconditional exact retained protocol validation, coherent bounded collector snapshot behavior/tests, exhaustive sealed mutation coverage, generated-binding validation/tests, shared pure connected validators and behavioral recovery accessibility evidence, plus append-only ledger history. C4/C5 remain rejected; no acceptance, commit, integration, publication, deployment, live action, outcome access, training, promotion, or wagering claim is made.

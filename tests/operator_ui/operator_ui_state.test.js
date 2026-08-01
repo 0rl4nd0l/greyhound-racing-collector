@@ -2,7 +2,8 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createOperatorState, readAuthorityResponse } = require("../../static/js/operator-ui-state.js");
+const { createOperatorState, readAuthorityResponse, resourceEnvelope, csrfEnvelope,
+  capabilityEnvelope, errorEnvelope, jobEnvelope } = require("../../static/js/operator-ui-state.js");
 
 function storage(initial = {}) {
   const values = new Map(Object.entries(initial));
@@ -162,4 +163,38 @@ test("every authority response failure class loses capability before disclosure"
     if(item.ok&&!item.invalid&&item.type.includes("json"))continue;
     await assert.rejects(()=>readAuthorityResponse(response,()=>{losses+=1},value=>value.schema==="expected"));assert.equal(losses,1);
   }
+});
+
+test("pure endpoint validators accept only exact authority envelopes", () => {
+  const resource={schema:"operator_ui_level_1_api_v1",api_version:"v1",resource:"overview",classification:"AVAILABLE/FRESH",stale:false,server_observed_at:"2026-08-01T00:00:00Z",evidence:{source:"fixed"},data:{}};
+  assert.equal(resourceEnvelope(resource,"overview"),true);
+  assert.equal(resourceEnvelope({...resource,extra:true},"overview"),false);
+  assert.equal(resourceEnvelope([resource],"overview"),false);
+  assert.equal(csrfEnvelope({classification:"CSRF_TOKEN",csrf_token:"token"}),true);
+  assert.equal(csrfEnvelope({classification:"CSRF_TOKEN"}),false);
+  assert.equal(capabilityEnvelope({schema:"operator_ui_r3_capability_v1",authorized:true,runtime_configured:true,level:2}),true);
+  assert.equal(capabilityEnvelope({schema:"operator_ui_r3_capability_v1",authorized:true,runtime_configured:true,level:1}),false);
+  assert.equal(errorEnvelope({schema:"operator_ui_prediction_error_v1",classification:"SELECTION_NOT_ALLOWLISTED"}),true);
+});
+
+test("job validator rejects every malformed disclosure-bearing class", () => {
+  const event={event_id:"event-1",phase:"SUBMITTED",event_at:"2026-08-01T00:00:00Z",status:"SUBMITTED",reason:"accepted",event_hash:"a".repeat(64),facts:{}};
+  const job={schema:"operator_ui_prediction_job_response_v1",job_id:"job_0123456789abcdef0123456789abcdef",phase:"SUBMITTED",terminal:false,race_id:"race-1",jump_timestamp:"2026-08-01T01:00:00Z",runner_set_sha256:"b".repeat(64),model_id:"model-1",resolved_model_identity:"model-1",config_id:"config-1",odds_source_id:"receipt",timeline:[event],result:null};
+  assert.equal(jobEnvelope(job),true);
+  const mutations=[
+    value=>{value.extra=true;}, value=>{delete value.phase;}, value=>{value.job_id="bad";},
+    value=>{value.phase="UNKNOWN";}, value=>{value.terminal=true;}, value=>{value.timeline={};},
+    value=>{value.timeline[0].event_hash="bad";}, value=>{value.result={};},
+  ];
+  for(const mutate of mutations){const value=structuredClone(job);mutate(value);assert.equal(jobEnvelope(value),false);}
+  const ready=structuredClone(job);ready.phase="PREDICTION_READY";ready.terminal=true;ready.blocker="VERIFIED_RESULT_UNAVAILABLE";
+  assert.equal(jobEnvelope(ready),true);
+  ready.result={};assert.equal(jobEnvelope(ready),false);
+});
+
+test("malformed 2xx loses authority before any consumer can observe it", async () => {
+  const order=[];
+  const response={status:200,ok:true,headers:{get:()=>"application/json"},json:async()=>({schema:"wrong"})};
+  await assert.rejects(()=>readAuthorityResponse(response,()=>order.push("loss"),value=>{order.push("validate");return jobEnvelope(value);}).then(()=>order.push("disclose")));
+  assert.deepEqual(order,["validate","loss"]);
 });

@@ -592,3 +592,7 @@ execute training/promotion, emit betting guidance, or widen exposure.
 ## GHU-032C4 finite generated binding
 
 `operator_ui_repository_binding_v1` has exact top-level `schema_version`, `profile_id`, `generator`, `deployment`, `profile_sha256`, `artifacts`, and `roots` members. The generator identity is `GHU-036-repository-v1-generator` / `operator_ui_repository_binding_generator_v1` / version `1`. Deployment identity must equal the fixed repository-v1 profile, and all five fixed prediction artifact hashes and the checked-in profile hash must match bounded, no-follow retained reads.
+
+## GHU-032C6 exact retained authority
+
+A ready disclosure requires exact real schemas and exact members for request, claim, attempt, response, receipt, consume, and authenticated exact-receipt index. No request-controlled schema downgrade or synthetic disclosure protocol exists. The retained bundle alone binds the complete hash/identity/timestamp/handoff/artifact chain and authenticated cutoff. Collector snapshot enumeration has a fixed finite member size and exact-receipt entry count, including non-JSON entries, with one attempt and no retry. Connected endpoint validation uses the same exported pure validators exercised by Node tests before any disclosure or state clearing.

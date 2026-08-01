@@ -127,6 +127,38 @@ def test_repository_profile_binds_authoritative_sources_and_separate_operations_
     assert canonical.read_bytes()==before and not (operations/"canonical.sqlite3").exists()
 
 
+@pytest.mark.parametrize("field",[
+    "source_commit","source_tree","ui_version","profile_id","profile_sha256",
+    "prediction_script","prediction_config","model_artifact","model_manifest","model_schema",
+    "generator_id","generator_schema","generator_version","source_root",
+])
+def test_repository_binding_rejects_each_generated_identity_mismatch(tmp_path,monkeypatch,field):
+    repo,*_=repository_binding_fixture(tmp_path,monkeypatch)
+    path=repo/"var/operator_ui/generated/repository-v1.binding.json"
+    binding=json.loads(path.read_text())
+    if field in {"source_commit","source_tree","ui_version","profile_id"}:binding["deployment"][field]="WRONG"
+    elif field=="profile_sha256":binding[field]="f"*64
+    elif field in binding["artifacts"]:binding["artifacts"][field]="f"*64
+    elif field=="source_root":binding["roots"][field]=str(tmp_path.absolute())
+    else:
+        key={"generator_id":"generator_id","generator_schema":"schema_version","generator_version":"version"}[field]
+        binding["generator"][key]="WRONG"
+    path.write_text(json.dumps(binding))
+    app=Flask(__name__);app.config[R3_PROFILE_KEY]="repository-v1"
+    with pytest.raises(RuntimeError,match="generated repository-v1|fixed R3"):
+        bootstrap_module.configure_r3_startup(app)
+
+
+@pytest.mark.parametrize("member",["profile","binding"])
+def test_repository_profile_and_binding_are_bounded(tmp_path,monkeypatch,member):
+    repo,*_=repository_binding_fixture(tmp_path,monkeypatch)
+    path=repo/("configs/operator_ui/repository-v1.toml" if member=="profile" else "var/operator_ui/generated/repository-v1.binding.json")
+    path.write_bytes(b"x"*(256*1024+1))
+    app=Flask(__name__);app.config[R3_PROFILE_KEY]="repository-v1"
+    with pytest.raises(RuntimeError,match="oversized|invalid"):
+        bootstrap_module.configure_r3_startup(app)
+
+
 @pytest.mark.parametrize("unsafe",["missing_index","missing_model","symlink_index","symlink_python","unsafe_evidence","unsafe_producer"])
 def test_repository_profile_missing_or_unsafe_authoritative_sources_fail_closed(tmp_path,monkeypatch,unsafe):
     repo,evidence,producer,_operations,_canonical=repository_binding_fixture(tmp_path,monkeypatch);index=evidence/"shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json"

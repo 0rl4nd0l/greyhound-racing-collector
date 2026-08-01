@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import json
 import ast
 import os
 import threading
@@ -135,19 +136,25 @@ def make_bundle(root: Path, result: dict[str, Any] | None = None) -> tuple[Path,
         "config.json": b"{}\n",
         "model/config.schema.json": b"{}\n",
     }
-    protocol_request={"request_id":"request-1","race":{"race_id":result["race"]["race_id"],"jump_timestamp":result["race"]["jump_timestamp"]},"expected_runner_set_sha256":result["evidence"]["runner_set_sha256"]}
+    protocol_race={key:result["race"][key] for key in ("race_id","url","venue","race_number","race_date","jump_timestamp")}
+    protocol_runners=[{"box_number":row["box_number"],"dog_name":row["dog_name"],"identity":row["identity"]} for row in (result.get("prediction") or {"predictions":ready_result()["prediction"]["predictions"]})["predictions"]]
+    protocol_request={"schema_version":"manual-prediction-collector-request-v1","request_id":"request-1","created_at":"2026-07-19T11:55:00+10:00","expires_at":"2026-07-19T12:30:00+10:00","race":protocol_race,"expected_runners":protocol_runners,"expected_runner_set_sha256":result["evidence"]["runner_set_sha256"],"requested_output":"normalized_odds_receipt","research_only":True,"attempt_authority":"one_attempt"}
     protocol={"request":protocol_request}
-    protocol["claim"]={"request_id":"request-1","request_sha256":sha256_bytes(canonical_bytes(protocol["request"]))}
-    protocol["attempt"]={"request_id":"request-1","request_sha256":protocol["claim"]["request_sha256"],"claim_sha256":sha256_bytes(canonical_bytes(protocol["claim"]))}
-    receipt={"request_id":"request-1","request_sha256":protocol["claim"]["request_sha256"],"race":protocol_request["race"],"runner_set_sha256":result["evidence"]["runner_set_sha256"],"sealed_handoff":{"race_id":result["race"]["race_id"]}}
+    protocol["claim"]={"schema_version":"manual-prediction-collector-claim-v1","request_id":"request-1","request_sha256":sha256_bytes(canonical_bytes(protocol["request"])),"collector_run_id":"collector-1","claimed_at":"2026-07-19T12:00:00+10:00","safe_boundary":True}
+    protocol["attempt"]={"schema_version":"manual-prediction-collector-attempt-v1","request_id":"request-1","request_sha256":protocol["claim"]["request_sha256"],"claim_sha256":sha256_bytes(canonical_bytes(protocol["claim"])),"collector_run_id":"collector-1","attempt_number":1,"started_at":"2026-07-19T12:01:00+10:00"}
+    sealed_handoff={"schema_version":"on_demand_verified_collector_capture_v2","race_id":result["race"]["race_id"],"race":protocol_race,"runner_set_sha256":result["evidence"]["runner_set_sha256"],"append_timestamp":"2026-07-19T12:02:00+10:00","source_report_sha256":"2"*64,"source_form_sha256":"3"*64,"source_sidecar_sha256":"4"*64,"capture_attempt_sha256":"5"*64,"append_report_sha256":"6"*64}
+    source_evidence={"source_url":"https://example.invalid/source","source_report_sha256":"2"*64,"source_form_sha256":"3"*64,"source_sidecar_sha256":"4"*64,"capture_attempt_sha256":"5"*64,"append_report_sha256":"6"*64}
+    receipt={"schema_version":"manual-prediction-collector-receipt-v1","request_id":"request-1","request_sha256":protocol["claim"]["request_sha256"],"race":protocol_race,"runners":protocol_runners,"runner_set_sha256":result["evidence"]["runner_set_sha256"],"captured_at":"2026-07-19T12:02:00+10:00","emitted_at":"2026-07-19T12:03:00+10:00","source_evidence":source_evidence,"sealed_handoff":sealed_handoff}
     receipt_sha=sha256_bytes(canonical_bytes(receipt))
-    protocol["response"]={"request_id":"request-1","request_sha256":protocol["claim"]["request_sha256"],"claim_sha256":protocol["attempt"]["claim_sha256"],"attempt_sha256":sha256_bytes(canonical_bytes(protocol["attempt"])),"status":"RECEIPT_READY","receipt":{"sha256":receipt_sha}}
+    receipt_reference={"schema_version":"manual-prediction-collector-receipt-v1","path":"receipts/request-1.json","sha256":receipt_sha}
+    protocol["response"]={"schema_version":"manual-prediction-collector-response-v1","request_id":"request-1","request_sha256":protocol["claim"]["request_sha256"],"claim_sha256":protocol["attempt"]["claim_sha256"],"attempt_sha256":sha256_bytes(canonical_bytes(protocol["attempt"])),"race":protocol_race,"status":"RECEIPT_READY","reason":None,"responded_at":"2026-07-19T12:03:00+10:00","receipt":receipt_reference}
     protocol["receipt"]=receipt
-    protocol["consume"]={"request_id":"request-1","response_sha256":sha256_bytes(canonical_bytes(protocol["response"])),"status":"RECEIPT_READY","consume_once":True}
-    protocol["authenticated_receipt"]={"request_id":"request-1","race_id":result["race"]["race_id"],"receipt":{"sha256":receipt_sha}}
+    protocol["consume"]={"schema_version":"manual-prediction-collector-consume-v1","request_id":"request-1","response_sha256":sha256_bytes(canonical_bytes(protocol["response"])),"status":"RECEIPT_READY","consumed_at":"2026-07-19T12:04:00+10:00","consume_once":True}
+    artifacts={"report":{"path":"capture/report.json","sha256":"2"*64},"form":{"path":"capture/form.csv","sha256":"3"*64},"sidecar":{"path":"capture/sidecar.json","sha256":"4"*64}}
+    protocol["authenticated_receipt"]={"schema_version":"manual-prediction-exact-receipt-index-v1","request_id":"request-1","race_id":result["race"]["race_id"],"receipt":receipt_reference,"artifacts":artifacts,"form_name":"form.csv"}
     for name,value in protocol.items():files[f"protocol/{name}.json"]=canonical_bytes(value)
     sealed_db=b"sealed fixture database"
-    history={"schema_version":"sealed_prediction_history_v1","cutoff_timestamp":result["race"]["jump_timestamp"],"source_sha256":"1"*64,"sealed_sha256":sha256_bytes(sealed_db),"target_rows_materialized":0,"at_or_after_cutoff_rows_materialized":0}
+    history={"schema_version":"sealed_prediction_history_v1","cutoff_timestamp":result["race"]["jump_timestamp"],"source_sha256":"1"*64,"sealed_sha256":sha256_bytes(sealed_db),"target_race_id":result["race"]["race_id"],"target_rows_materialized":0,"at_or_after_cutoff_rows_materialized":0,"excluded_target_metadata_rows":0,"excluded_at_or_after_cutoff_metadata_rows":0}
     files["features/sealed_history.db"]=sealed_db;files["features/history_seal.json"]=canonical_bytes(history)
     result["evidence"]["protocol_chain"]={"request_id":"request-1",**{f"{name}_sha256":sha256_bytes(files[f"protocol/{name}.json"]) for name in ("request","claim","attempt","response","receipt","consume")},"authenticated_receipt_sha256":sha256_bytes(files["protocol/authenticated_receipt.json"])}
     result["evidence"]["authenticated_cutoff"]={"history_seal_sha256":sha256_bytes(files["features/history_seal.json"]),"cutoff_timestamp":result["race"]["jump_timestamp"],"source_sha256":history["source_sha256"],"sealed_sha256":history["sealed_sha256"]}
@@ -203,6 +210,26 @@ def test_publish_verify_index_and_detail_positive(tmp_path: Path):
     assert isinstance(view, sealed.VerifiedPredictionBundleIndex)
     assert view.sha256 == sha256_bytes(view.canonical_bytes)
     assert datetime.fromisoformat(view.published_at).tzinfo is not None
+
+
+def test_request_schema_downgrade_blocks_after_attacker_reseals_entire_chain(tmp_path: Path):
+    bundle,_entry=make_bundle(tmp_path)
+    result=json.loads((bundle/"result.json").read_bytes())
+    values={name:json.loads((bundle/f"protocol/{name}.json").read_bytes()) for name in ("request","claim","attempt","response","receipt","consume","authenticated_receipt")}
+    values["request"]["schema_version"]="synthetic-fallback-v1"
+    raws={"request":canonical_bytes(values["request"])}
+    request_sha=sha256_bytes(raws["request"])
+    values["claim"]["request_sha256"]=request_sha;raws["claim"]=canonical_bytes(values["claim"]);claim_sha=sha256_bytes(raws["claim"])
+    values["attempt"].update(request_sha256=request_sha,claim_sha256=claim_sha);raws["attempt"]=canonical_bytes(values["attempt"]);attempt_sha=sha256_bytes(raws["attempt"])
+    values["receipt"]["request_sha256"]=request_sha;raws["receipt"]=canonical_bytes(values["receipt"]);receipt_sha=sha256_bytes(raws["receipt"])
+    reference={"schema_version":"manual-prediction-collector-receipt-v1","path":"receipts/request-1.json","sha256":receipt_sha}
+    values["response"].update(request_sha256=request_sha,claim_sha256=claim_sha,attempt_sha256=attempt_sha,receipt=reference);raws["response"]=canonical_bytes(values["response"]);response_sha=sha256_bytes(raws["response"])
+    values["consume"]["response_sha256"]=response_sha;raws["consume"]=canonical_bytes(values["consume"])
+    values["authenticated_receipt"]["receipt"]=reference;raws["authenticated_receipt"]=canonical_bytes(values["authenticated_receipt"])
+    contents={path.relative_to(bundle).as_posix():path.read_bytes() for path in bundle.rglob("*") if path.is_file()}
+    contents.update({f"protocol/{name}.json":raw for name,raw in raws.items()})
+    result["evidence"]["protocol_chain"]={"request_id":"request-1",**{f"{name}_sha256":sha256_bytes(raws[name]) for name in ("request","claim","attempt","response","receipt","consume")},"authenticated_receipt_sha256":sha256_bytes(raws["authenticated_receipt"])}
+    assert_blocked(sealed._validate_sealed_protocol,contents,result)
 
 
 def test_operator_disclosure_binds_authenticated_request_odds_and_runner_projection(tmp_path: Path):

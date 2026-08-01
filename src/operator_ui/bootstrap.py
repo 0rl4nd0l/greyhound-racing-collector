@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import queue
+import re
 import stat
 import sys
 import threading
@@ -42,6 +43,12 @@ _DEPLOYMENT_KEYS={"source_commit","source_tree","ui_version","profile_id"}
 _PROFILE_DEPLOYMENT_KEYS={"ui_version","profile_id"}
 _ARTIFACT_KEYS={"prediction_script","prediction_config","model_artifact","model_manifest","model_schema"}
 _MAX_CONTROL_BYTES=256*1024
+_HEX40_RE=re.compile(r"^[0-9a-f]{40}$")
+_HEX64_RE=re.compile(r"^[0-9a-f]{64}$")
+
+
+def _finite_text(value:Any)->bool:
+    return isinstance(value,str) and 0<len(value)<=512 and value==value.strip() and all(ord(character)>=32 and ord(character)!=127 for character in value)
 
 
 def bind_configured_live_evidence(app: Flask) -> bool:
@@ -143,7 +150,7 @@ def _repository_layout()->dict[str,Any]:
     profile_raw=_retained_read(profile_path)
     try:profile=tomllib.loads(profile_raw.decode("utf-8"))
     except (OSError,UnicodeDecodeError,tomllib.TOMLDecodeError) as exc:raise RuntimeError("repository-v1 profile invalid") from exc
-    if set(profile)!=_PROFILE_KEYS or profile["schema_version"]!="operator_ui_repository_profile_v1" or profile["profile_id"]!="repository-v1" or type(profile["locators"]) is not dict or set(profile["locators"])!=_LOCATOR_KEYS or type(profile["deployment"]) is not dict or set(profile["deployment"])!=_PROFILE_DEPLOYMENT_KEYS:raise RuntimeError("repository-v1 profile invalid")
+    if set(profile)!=_PROFILE_KEYS or any(not _finite_text(value) for value in (profile.get("schema_version"),profile.get("profile_id"),profile.get("generated_binding"))) or profile["schema_version"]!="operator_ui_repository_profile_v1" or profile["profile_id"]!="repository-v1" or type(profile["locators"]) is not dict or set(profile["locators"])!=_LOCATOR_KEYS or any(not _finite_text(value) for value in profile["locators"].values()) or type(profile["deployment"]) is not dict or set(profile["deployment"])!=_PROFILE_DEPLOYMENT_KEYS or any(not _finite_text(value) for value in profile["deployment"].values()):raise RuntimeError("repository-v1 profile invalid")
     locators={name:_relative(value,f"repository-v1 locator {name}") for name,value in profile["locators"].items()}
     binding_path=(_REPOSITORY_ROOT/_relative(profile["generated_binding"],"generated binding locator")).absolute()
     try:binding=_object(binding_path,"generated repository-v1 binding")
@@ -151,7 +158,7 @@ def _repository_layout()->dict[str,Any]:
         if not binding_path.exists():raise RuntimeError("generated repository-v1 binding unavailable") from exc
         raise
     deployment=binding.get("deployment")
-    if set(binding)!=_BINDING_KEYS or binding["schema_version"]!="operator_ui_repository_binding_v1" or binding["profile_id"]!="repository-v1" or type(binding["roots"]) is not dict or set(binding["roots"])!=_ROOT_KEYS or type(binding["generator"]) is not dict or set(binding["generator"])!=_GENERATOR_KEYS or binding["generator"]!={"generator_id":"GHU-036-repository-v1-generator","schema_version":"operator_ui_repository_binding_generator_v1","version":"1"} or type(deployment) is not dict or set(deployment)!=_DEPLOYMENT_KEYS or any(deployment[key]!=profile["deployment"][key] for key in _PROFILE_DEPLOYMENT_KEYS) or binding["profile_sha256"]!=hashlib.sha256(profile_raw).hexdigest() or type(binding["artifacts"]) is not dict or set(binding["artifacts"])!=_ARTIFACT_KEYS:raise RuntimeError("generated repository-v1 binding invalid")
+    if set(binding)!=_BINDING_KEYS or binding["schema_version"]!="operator_ui_repository_binding_v1" or binding["profile_id"]!="repository-v1" or type(binding["roots"]) is not dict or set(binding["roots"])!=_ROOT_KEYS or type(binding["generator"]) is not dict or set(binding["generator"])!=_GENERATOR_KEYS or binding["generator"]!={"generator_id":"GHU-036-repository-v1-generator","schema_version":"operator_ui_repository_binding_generator_v1","version":"1"} or any(not _finite_text(value) for value in binding["generator"].values()) or type(deployment) is not dict or set(deployment)!=_DEPLOYMENT_KEYS or not _HEX40_RE.fullmatch(deployment.get("source_commit","") or "") or not _HEX40_RE.fullmatch(deployment.get("source_tree","") or "") or any(not _finite_text(deployment.get(key)) for key in ("ui_version","profile_id")) or any(deployment[key]!=profile["deployment"][key] for key in _PROFILE_DEPLOYMENT_KEYS) or not _HEX64_RE.fullmatch(binding.get("profile_sha256","") or "") or binding["profile_sha256"]!=hashlib.sha256(profile_raw).hexdigest() or type(binding["artifacts"]) is not dict or set(binding["artifacts"])!=_ARTIFACT_KEYS or any(not isinstance(value,str) or _HEX64_RE.fullmatch(value) is None for value in binding["artifacts"].values()):raise RuntimeError("generated repository-v1 binding invalid")
     roots={}
     for name,value in binding["roots"].items():
         path=Path(value) if isinstance(value,str) else Path("")

@@ -56,8 +56,10 @@ def test_prediction_intent_and_reconnect_are_durable_and_bounded():
 
 def test_connected_authority_uses_finite_endpoint_validators():
     source = SCRIPT.read_text(encoding="utf-8")
+    state = (ROOT / "static/js/operator-ui-state.js").read_text(encoding="utf-8")
     for validator in ("resourceEnvelope", "csrfEnvelope", "capabilityEnvelope", "jobEnvelope"):
-        assert f"function {validator}" in source
+        assert f"function {validator}" in state
+        assert validator in source
     assert "authorityPayload(response);" not in source
     assert "validate=value=>" not in source
 

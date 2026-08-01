@@ -67,6 +67,111 @@ def ready_handoff():
     }
 
 
+def retained_handoff(tmp_path):
+    handoff = ready_handoff()
+    handoff["schema_version"] = "on_demand_verified_collector_capture_v2"
+    handoff["race"] = RACE
+    handoff["runner_set_sha256"] = runner_set_sha256(RUNNERS)
+    handoff["capture_attempt_sha256"] = "c" * 64
+    handoff["append_report_sha256"] = "a" * 64
+    for label in ("report", "form", "sidecar"):
+        path = tmp_path / f"capture.{label}"
+        path.write_bytes(handoff[f"_{label}_bytes"])
+        handoff[f"_{label}_path"] = path.absolute()
+    handoff["_form_name"] = "capture.form"
+    return handoff
+
+
+def completed_snapshot_protocol(tmp_path):
+    store = protocol(tmp_path)
+    context = claim(store)
+    store.begin_attempt(context, now=NOW + timedelta(seconds=1), collector_run_id="collector-1")
+    handoff = retained_handoff(tmp_path)
+    store.publish_receipt_ready(
+        context, now=NOW + timedelta(seconds=5), handoff=handoff,
+        normalized_receipt=ready_receipt(),
+    )
+    store.consume_response(context.request["request_id"], now=NOW + timedelta(seconds=6))
+    return store, {key: value for key, value in handoff.items() if not key.startswith("_")}
+
+
+def test_snapshot_authenticated_handoff_reads_one_coherent_real_chain(tmp_path):
+    store, handoff = completed_snapshot_protocol(tmp_path)
+    chain, contents = store.snapshot_authenticated_handoff(handoff)
+    assert chain["request_id"] == "00000000-0000-4000-8000-000000000001"
+    assert set(contents) == {"request", "claim", "attempt", "response", "receipt", "consume", "authenticated_receipt"}
+
+
+def test_snapshot_counts_non_json_entries_before_filtering(tmp_path):
+    store, handoff = completed_snapshot_protocol(tmp_path)
+    exact = store.exact_receipt_directory(RACE["race_id"])
+    for index in range(32):
+        (exact / f"ignored-{index}").write_bytes(b"")
+    with pytest.raises(ProtocolRejected, match="EXACT_RECEIPT_INDEX_UNBOUNDED"):
+        store.snapshot_authenticated_handoff(handoff)
+
+
+def test_snapshot_rejects_oversized_member(tmp_path):
+    store, handoff = completed_snapshot_protocol(tmp_path)
+    store.request_path("00000000-0000-4000-8000-000000000001").write_bytes(b"x" * (1024 * 1024 + 1))
+    with pytest.raises(ProtocolRejected, match="PROTOCOL_MEMBER_OVERSIZED"):
+        store.snapshot_authenticated_handoff(handoff)
+
+
+def test_snapshot_rejects_intermediate_symlink(tmp_path):
+    store, handoff = completed_snapshot_protocol(tmp_path)
+    real = store.root.with_name("requests-real")
+    store.root.rename(real)
+    store.root.symlink_to(real, target_is_directory=True)
+    with pytest.raises(ProtocolRejected, match="PROTOCOL_PATH_UNSAFE"):
+        store.snapshot_authenticated_handoff(handoff)
+
+
+@pytest.mark.parametrize("member",["requests","claims","attempts","responses","receipts","consumed","exact-receipts"])
+def test_snapshot_rejects_each_retained_member_changing_after_read(tmp_path,monkeypatch,member):
+    store,handoff=completed_snapshot_protocol(tmp_path)
+    original=os.read;changed=False
+    def changing_read(descriptor,size):
+        nonlocal changed
+        chunk=original(descriptor,size)
+        target=os.readlink(f"/proc/self/fd/{descriptor}")
+        selected=(f"/{member}/" in target if member!="exact-receipts" else "/exact-receipts/" in target)
+        if chunk and selected and not changed:
+            changed=True
+            with open(target,"ab") as handle:handle.write(b" ")
+        return chunk
+    monkeypatch.setattr(os,"read",changing_read)
+    with pytest.raises(ProtocolRejected,match="PROTOCOL_MEMBER_CHANGED"):
+        store.snapshot_authenticated_handoff(handoff)
+
+
+def test_snapshot_rejects_exact_receipt_directory_replacement(tmp_path,monkeypatch):
+    store,handoff=completed_snapshot_protocol(tmp_path);exact=store.exact_receipt_directory(RACE["race_id"])
+    original=os.listdir;changed=False
+    def replacing_listdir(descriptor):
+        nonlocal changed
+        names=original(descriptor)
+        if not changed:
+            changed=True;old=exact.with_name(exact.name+"-old");exact.rename(old);exact.mkdir()
+        return names
+    monkeypatch.setattr(os,"listdir",replacing_listdir)
+    with pytest.raises(ProtocolRejected,match="PROTOCOL_DIRECTORY_CHANGED"):
+        store.snapshot_authenticated_handoff(handoff)
+
+
+def test_snapshot_rejects_ambiguous_authenticated_matches(tmp_path):
+    store,handoff=completed_snapshot_protocol(tmp_path)
+    second="00000000-0000-4000-8000-000000000002"
+    publish(store,request_id=second,created_at=NOW+timedelta(minutes=11),expires_at=NOW+timedelta(minutes=20))
+    context=store.prepare_collector_request(now=NOW+timedelta(minutes=11),collector_run_id="collector-2",active_capture=False)
+    assert context is not None
+    store.begin_attempt(context,now=NOW+timedelta(minutes=11,seconds=1),collector_run_id="collector-2")
+    store.publish_receipt_ready(context,now=NOW+timedelta(minutes=11,seconds=5),handoff=retained_handoff(tmp_path),normalized_receipt=ready_receipt())
+    store.consume_response(second,now=NOW+timedelta(minutes=11,seconds=6))
+    with pytest.raises(ProtocolRejected,match="PROTOCOL_CHAIN_AMBIGUOUS"):
+        store.snapshot_authenticated_handoff(handoff)
+
+
 def ready_receipt():
     return {
         "schema_version": "on_demand_odds_receipt_v1",

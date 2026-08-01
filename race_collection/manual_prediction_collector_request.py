@@ -59,6 +59,8 @@ _REQUEST_KEYS = {
     "expected_runner_set_sha256",
 }
 _HASH_RE = re.compile(r"^[0-9a-f]{64}$")
+_SNAPSHOT_MEMBER_MAX_BYTES = 1024 * 1024
+_EXACT_RECEIPT_ENTRY_LIMIT = 32
 
 
 class ProtocolRejected(ValueError):
@@ -239,7 +241,7 @@ class ManualPredictionCollectorProtocol:
         return self.exact_receipt_directory(race_id) / f"{request_id}.json"
 
     def snapshot_authenticated_handoff(
-        self, public_handoff: Mapping[str, Any], *, maximum_bytes: int = 1024 * 1024
+        self, public_handoff: Mapping[str, Any]
     ) -> tuple[dict[str, str], dict[str, bytes]]:
         """Return one descriptor-retained snapshot of the exact sealed protocol chain."""
         race_id = public_handoff.get("race_id")
@@ -277,11 +279,14 @@ class ManualPredictionCollectorProtocol:
             chunks: list[bytes] = []
             total = 0
             while True:
-                chunk = os.read(descriptor, min(65536, maximum_bytes + 1 - total))
+                chunk = os.read(
+                    descriptor,
+                    min(65536, _SNAPSHOT_MEMBER_MAX_BYTES + 1 - total),
+                )
                 if not chunk:
                     break
                 total += len(chunk)
-                if total > maximum_bytes:
+                if total > _SNAPSHOT_MEMBER_MAX_BYTES:
                     raise ProtocolRejected("PROTOCOL_MEMBER_OVERSIZED")
                 chunks.append(chunk)
             if identity(descriptor) != expected:
@@ -302,9 +307,10 @@ class ManualPredictionCollectorProtocol:
             exact_fd = child(
                 exact_root, hashlib.sha256(race_id.encode()).hexdigest(), directory=True
             )
-            names = sorted(name for name in os.listdir(exact_fd) if name.endswith(".json"))
-            if len(names) > 32:
+            entries = os.listdir(exact_fd)
+            if len(entries) > _EXACT_RECEIPT_ENTRY_LIMIT:
                 raise ProtocolRejected("EXACT_RECEIPT_INDEX_UNBOUNDED")
+            names = sorted(name for name in entries if name.endswith(".json"))
             matches: list[tuple[dict[str, str], dict[str, bytes]]] = []
             for filename in names:
                 request_id = filename.removesuffix(".json")
