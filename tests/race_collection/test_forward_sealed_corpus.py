@@ -317,18 +317,76 @@ def test_result_strips_only_established_terminal_nbt_non_name_badge(tmp_path):
         corpus._read_artifact(receipt["normalized_result_checksum"], "normalized result")
     )
     assert normalized["runners"][1]["name"] == "Dog 1 B"
-
-    rejected = ForwardSealedCorpus(
-        tmp_path / "rejected",
-        clock=Clock(_dt("09:45"), _dt("10:06"), _dt("10:06"), _dt("10:06")),
+    assert receipt["schema_version"] == corpus_module.OBSERVATION_SCHEMA_V2
+    assert (
+        receipt["normalization_version"]
+        == corpus_module.CURRENT_NORMALIZATION_VERSION
     )
-    rejected.capture_prejump(**fixture())
-    with pytest.raises(ForwardCorpusRejected, match="name identity mismatch"):
-        _capture(
-            rejected,
-            "request-1",
-            Transport(_html().replace(b"Dog 1 B", b"Dog 1 B NBTX")),
+    assert corpus.artifacts.read(
+        corpus.artifacts.checksum(_html().replace(b"Dog 1 B", b"Dog 1 B NBT"))
+    ) == _html().replace(b"Dog 1 B", b"Dog 1 B NBT")
+
+    for index, near_match in enumerate(
+        (b"Dog 1 B NBTX", b"Dog NBT 1 B", b"Dog 1 B NBT (R)"),
+        start=1,
+    ):
+        rejected = ForwardSealedCorpus(
+            tmp_path / f"rejected-{index}",
+            clock=Clock(_dt("09:45"), _dt("10:06"), _dt("10:06"), _dt("10:06")),
         )
+        rejected.capture_prejump(**fixture())
+        with pytest.raises(ForwardCorpusRejected, match="name identity mismatch"):
+            _capture(
+                rejected,
+                "request-1",
+                Transport(_html().replace(b"Dog 1 B", near_match)),
+            )
+
+
+def test_parent_observation_verifies_closes_and_is_admissible_after_upgrade(tmp_path):
+    corpus = ForwardSealedCorpus(
+        tmp_path,
+        clock=Clock(
+            _dt("09:45"),
+            _dt("10:06"),
+            _dt("10:06"),
+            _dt("10:06"),
+            _dt("10:21"),
+            _dt("10:21"),
+            _dt("10:21"),
+            _dt("10:22"),
+        ),
+    )
+    corpus.capture_prejump(**fixture())
+    _capture(corpus, "request-1", Transport(_html()))
+    first_path = corpus._request_directory(tmp_path, "race-1", "request-1") / (
+        "observation.json"
+    )
+    parent = json.loads(first_path.read_bytes())
+    raw_checksum = parent["raw_response_checksum"]
+    normalized_checksum = parent["normalized_result_checksum"]
+    parent.pop("normalization_version")
+    parent["schema_version"] = corpus_module.OBSERVATION_SCHEMA_V1
+    parent["implementation_hash"] = corpus_module.PARENT_IMPLEMENTATION_HASH
+    parent_bytes = canonical_json(parent)
+    first_path.write_bytes(parent_bytes)
+    corpus.artifacts.put(parent_bytes, media_type="application/json")
+
+    assert corpus.status()["races"][0]["state"] == "RESULT_FIRST_OBSERVED"
+    second = _capture(corpus, "request-2", Transport(_html()))
+    assert second["normalization_version"] == corpus_module.CURRENT_NORMALIZATION_VERSION
+    assert second["raw_response_checksum"] == raw_checksum
+    assert second["normalized_result_checksum"] == normalized_checksum
+    assert corpus.status()["races"][0]["state"] == "RESULT_STABILITY_CONFIRMED"
+
+    package = close(corpus)
+    admitted = json.loads(
+        admit_historical_source(package.package_bytes, artifacts=package.artifacts)
+    )
+    assert admitted["admission_decision"] == "TRAINING_ADMISSIBLE"
+    assert corpus.artifacts.read(
+        corpus.artifacts.checksum(_html())
+    ) == _html()
 
 
 def test_result_history_uses_exact_race_id_request_root(tmp_path):
@@ -552,6 +610,7 @@ def test_api_cannot_accept_forged_normalization_timestamps_or_hashes():
         "parser_hash",
         "schema_hash",
         "implementation_hash",
+        "normalization_version",
     }
     assert forbidden.isdisjoint(inspect.signature(ForwardSealedCorpus.capture_result).parameters)
 

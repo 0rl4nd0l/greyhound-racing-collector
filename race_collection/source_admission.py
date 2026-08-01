@@ -666,7 +666,8 @@ def _admit_official_first(
     from .forward_sealed_corpus import (
         ForwardCorpusRejected,
         _normalization_identity,
-        _normalize_official_result,
+        _normalization_version_from_observation,
+        _normalize_official_result_for_version,
     )
 
     manifest = package["manifest"]
@@ -718,7 +719,6 @@ def _admit_official_first(
         or missingness.get("feature_contract_version") != SUPPORTED_FEATURE_CONTRACT
     ):
         raise SourceAdmissionRejected("official-first feature contract is unsupported")
-    parser_hash, schema_hash, implementation_hash = _normalization_identity()
     admitted_races = []
     try:
         for race in races:
@@ -1014,34 +1014,11 @@ def _admit_official_first(
                         "official observation has no retained response stage"
                     ) from error
                 raw_checksum = stage["raw_response_checksum"]
-                expected_observation_fields = {
-                    "schema_version",
-                    "race_id",
-                    "collector_id",
-                    "session_id",
-                    "run_id",
-                    "request_id",
-                    "source_name",
-                    "request_url",
-                    "final_url",
-                    "http_status",
-                    "content_type",
-                    "source_document_last_modified",
-                    "request_started_at",
-                    "response_received_at",
-                    "observed_at",
-                    "raw_response_checksum",
-                    "normalized_result_checksum",
-                    "runner_set_hash",
-                    "parser_hash",
-                    "schema_hash",
-                    "implementation_hash",
-                }
+                normalization_version = _normalization_version_from_observation(
+                    observation
+                )
                 if (
-                    set(observation) != expected_observation_fields
-                    or observation.get("schema_version")
-                    != "official-result-observation-v1"
-                    or observation.get("source_name") != OFFICIAL_RESULT_SOURCE
+                    observation.get("source_name") != OFFICIAL_RESULT_SOURCE
                     or type(observation.get("http_status")) is not int
                     or not 200 <= observation["http_status"] < 300
                 ):
@@ -1079,6 +1056,7 @@ def _admit_official_first(
                         "parser_hash",
                         "schema_hash",
                         "implementation_hash",
+                        "normalization_version",
                     }
                 }
                 expected_stage["schema_version"] = "official-result-response-stage-v1"
@@ -1089,10 +1067,14 @@ def _admit_official_first(
                         "official response-stage/observation inventory binding disagrees"
                     )
                 raw = _artifact(artifacts, raw_checksum, "raw official response")
-                rebuilt = _normalize_official_result(
+                rebuilt = _normalize_official_result_for_version(
                     raw,
                     race_id=race["race_id"],
                     frozen_runners=frozen_runners,
+                    normalization_version=normalization_version,
+                )
+                parser_hash, schema_hash, implementation_hash = _normalization_identity(
+                    normalization_version
                 )
                 if (
                     observation.get("race_id") != race["race_id"]
@@ -1132,9 +1114,6 @@ def _admit_official_first(
                 (
                     observation["normalized_result_checksum"],
                     observation["runner_set_hash"],
-                    observation["parser_hash"],
-                    observation["schema_hash"],
-                    observation["implementation_hash"],
                     observation["source_name"],
                 )
                 for observation in observations

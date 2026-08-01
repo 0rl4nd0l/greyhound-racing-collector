@@ -36,6 +36,11 @@ ROOT_STR = str(ROOT)
 sys.path = [path for path in sys.path if path != ROOT_STR]
 sys.path.insert(0, ROOT_STR)
 
+from race_collection.synchronous_manual_capture import (  # noqa: E402
+    CollectorBusy,
+    acquire_collector_lock_no_steal,
+    release_owned_collector_lock,
+)
 from scripts import shadow_autopilot_v1 as autopilot  # noqa: E402
 from scripts.forward_shadow_runtime_state import (  # noqa: E402
     build_runtime_state as build_forward_shadow_runtime_state,
@@ -128,6 +133,10 @@ class LockBusy(RuntimeError):
     def __init__(self, payload: Mapping[str, Any]):
         super().__init__("shadow_autopilot_daemon_lock_busy")
         self.payload = dict(payload)
+
+
+def wall_clock_now() -> datetime:
+    return datetime.now().astimezone()
 
 
 def now_id(now: datetime | None = None) -> str:
@@ -9063,7 +9072,7 @@ def build_final_summary(
 
 
 def run_once(args: argparse.Namespace) -> dict[str, Any]:
-    generated_at = datetime.now().astimezone()
+    generated_at = wall_clock_now()
     run_id = args.run_id or now_id(generated_at)
     evidence_root = args.evidence_root
     output_dir = assert_output_dir_safe(
@@ -9091,45 +9100,125 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
         ),
     )
 
-    service_info = write_service_files(
-        repo_path=ROOT,
-        timeout_seconds=args.timeout_seconds,
-        python_path=Path(sys.executable),
-        evidence_root=evidence_root,
-        shadow_model=args.shadow_model,
-        db_path=args.db,
-        lock_path=lock_path,
-        state_path=state_path,
-        odds_capture_state_path=odds_state_path,
-        forward_corpus_root=args.forward_corpus_root
-        if args.enable_forward_official_result_observer
-        else None,
-        pause_path=lock_path.parent / "pause-heavy-scheduling",
-    )
-    service_path = DEFAULT_SERVICE_DIR / SERVICE_NAME
-    timer_path = DEFAULT_SERVICE_DIR / TIMER_NAME
-    write_text(output_dir / "daemon_design.md", daemon_design_markdown())
-    write_json(output_dir / "lifecycle_diagram.json", lifecycle_diagram())
-    write_text(output_dir / "service_install.md", install_markdown(service_info))
-    copy_if_exists(service_path, output_dir / "systemd" / SERVICE_NAME)
-    copy_if_exists(timer_path, output_dir / "systemd" / TIMER_NAME)
-    write_json(output_dir / "output_manifest.json", output_manifest(output_dir))
-
     forward_official_result_observer: dict[str, Any] = {
         "status": "DISABLED",
         "attempted_race_ids": [],
     }
+    observer_shared_lock = None
     if args.enable_forward_official_result_observer:
         try:
-            forward_official_result_observer = run_forward_official_result_observer(
-                args, run_id
+            lock_path.parent.mkdir(parents=True, exist_ok=True)
+            observer_shared_lock = acquire_collector_lock_no_steal(
+                lock_path,
+                run_id=run_id,
+                output_dir=output_dir,
+                phase="forward_official_result_observer",
+                acquisition_policy="forward_official_result_observer_no_steal_v1",
             )
-        except Exception as exc:
+        except CollectorBusy as exc:
             forward_official_result_observer = {
-                "status": "FAILED",
+                "status": "SHARED_LOCK_BUSY",
                 "attempted_race_ids": [],
-                "error": f"{type(exc).__name__}: {exc}",
+                "shared_lock": dict(exc.evidence),
             }
+            result = {
+                **completed_daemon_run_report_envelope(
+                    run_id=run_id,
+                    generated_at=generated_at,
+                    current_time=current_time,
+                    output_dir=output_dir,
+                    final_verdict="PARTIAL_DAEMONIZATION",
+                ),
+                "status": "SKIPPED_LOCK_HELD",
+                "runtime_action": "DEFER_FORWARD_OBSERVER_SHARED_LOCK_HELD",
+                "readiness_decision": "WAIT_FOR_CANONICAL_SHARED_LOCK",
+                "forward_official_result_observer": forward_official_result_observer,
+                "lock_path": relpath(lock_path),
+                "lock_validation_status": "OBSERVER_NOT_ACQUIRED_SHARED_LOCK_HELD",
+                "lock_owner_phase": exc.evidence.get("lock_owner_phase"),
+                "lock_owner_run_id": exc.evidence.get("lock_owner_run_id"),
+                "lock_owner_pid": exc.evidence.get("lock_owner_pid"),
+                "lock_owner_hostname": exc.evidence.get("lock_owner_hostname"),
+                "lock_owner_started_at": exc.evidence.get("lock_owner_started_at"),
+                "lock_owner_output_dir": exc.evidence.get("lock_owner_output_dir"),
+                "protected_paths_unchanged_or_allowed": True,
+                "no_write_guarantees": dict(NO_WRITE_GUARANTEES),
+            }
+            write_json(
+                output_dir / "forward_official_result_observer.json",
+                forward_official_result_observer,
+            )
+            write_text(output_dir / "final_status.txt", "PARTIAL_DAEMONIZATION\n")
+            write_json(output_dir / "daemon_run_report.json", result)
+            write_json(output_dir / "output_manifest.json", output_manifest(output_dir))
+            return result
+
+    try:
+        service_info = write_service_files(
+            repo_path=ROOT,
+            timeout_seconds=args.timeout_seconds,
+            python_path=Path(sys.executable),
+            evidence_root=evidence_root,
+            shadow_model=args.shadow_model,
+            db_path=args.db,
+            lock_path=lock_path,
+            state_path=state_path,
+            odds_capture_state_path=odds_state_path,
+            forward_corpus_root=args.forward_corpus_root
+            if args.enable_forward_official_result_observer
+            else None,
+            pause_path=lock_path.parent / "pause-heavy-scheduling",
+        )
+        service_path = DEFAULT_SERVICE_DIR / SERVICE_NAME
+        timer_path = DEFAULT_SERVICE_DIR / TIMER_NAME
+        write_text(output_dir / "daemon_design.md", daemon_design_markdown())
+        write_json(output_dir / "lifecycle_diagram.json", lifecycle_diagram())
+        write_text(output_dir / "service_install.md", install_markdown(service_info))
+        copy_if_exists(service_path, output_dir / "systemd" / SERVICE_NAME)
+        copy_if_exists(timer_path, output_dir / "systemd" / TIMER_NAME)
+        write_json(output_dir / "output_manifest.json", output_manifest(output_dir))
+
+        if args.enable_forward_official_result_observer:
+            try:
+                forward_official_result_observer = run_forward_official_result_observer(
+                    args, run_id
+                )
+            except Exception as exc:
+                forward_official_result_observer = {
+                    "status": "FAILED",
+                    "attempted_race_ids": [],
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+    finally:
+        if observer_shared_lock is not None:
+            try:
+                release_owned_collector_lock(observer_shared_lock)
+                observer_lock_release = {
+                    "released": True,
+                    "reason": "released_by_observer_owner",
+                }
+            except Exception as exc:
+                observer_lock_release = {
+                    "released": False,
+                    "reason": "observer_lock_release_failed",
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+                forward_official_result_observer = {
+                    **forward_official_result_observer,
+                    "status": "FAILED",
+                    "error": observer_lock_release["error"],
+                }
+            forward_official_result_observer = {
+                **forward_official_result_observer,
+                "shared_lock": {
+                    "lock_path": relpath(lock_path),
+                    "phase": "forward_official_result_observer",
+                    "acquisition_policy": "forward_official_result_observer_no_steal_v1",
+                    "release": observer_lock_release,
+                },
+            }
+
+    if args.enable_forward_official_result_observer:
         write_json(
             output_dir / "forward_official_result_observer.json",
             forward_official_result_observer,
@@ -9155,7 +9244,7 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
                 "readiness_decision": "READY_FOR_RELIABILITY_REVIEW",
                 "forward_official_result_observer": forward_official_result_observer,
                 "lock_path": relpath(lock_path),
-                "lock_validation_status": "NOT_ACQUIRED_OBSERVER_FAILED",
+                "lock_validation_status": "OBSERVER_LOCK_RELEASED_AFTER_FAILURE",
                 "protected_paths_unchanged_or_allowed": False,
                 "no_write_guarantees": dict(NO_WRITE_GUARANTEES),
             }
@@ -9163,6 +9252,9 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             write_json(output_dir / "daemon_run_report.json", result)
             write_json(output_dir / "output_manifest.json", output_manifest(output_dir))
             return result
+
+        if args.current_time is None:
+            current_time = wall_clock_now().isoformat()
 
     current_dt = parse_datetime_value(current_time, default_tz=generated_at.tzinfo) or generated_at
     if args.enable_autonomous_odds_capture:
