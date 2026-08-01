@@ -596,3 +596,7 @@ execute training/promotion, emit betting guidance, or widen exposure.
 ## GHU-032C6 exact retained authority
 
 A ready disclosure requires exact real schemas and exact members for request, claim, attempt, response, receipt, consume, and authenticated exact-receipt index. No request-controlled schema downgrade or synthetic disclosure protocol exists. The retained bundle alone binds the complete hash/identity/timestamp/handoff/artifact chain and authenticated cutoff. Collector snapshot enumeration has a fixed finite member size and exact-receipt entry count, including non-JSON entries, with one attempt and no retry. Connected endpoint validation uses the same exported pure validators exercised by Node tests before any disclosure or state clearing.
+
+## GHU-032C7 adversarial authority evidence
+
+C6 is rejected because it claimed exhaustive mutation coverage without independently resealing and attacking every security-significant sealed-v2 relation, and its generated-deployment tests used syntax-invalid wrong values. C7 is an implementation candidate only. Its behavioral evidence reseals downstream protocol bytes and chain hashes after each semantic mutation and compares valid deployed/generator/artifact identities against configured and on-disk authority. Authenticated artifact paths are bounded canonical paths relative to the publisher's evidence root, not fixed fixture names; all three labels have distinct paths and `form_name` equals the form-path basename. This records no acceptance, integration, deployment, runtime proof, or live proof.

@@ -194,6 +194,213 @@ def assert_blocked(callable_: Any, *args: Any, **kwargs: Any) -> PredictionBlock
     return captured.value
 
 
+def _attacker_resealed_protocol(
+    bundle: Path,
+    *,
+    protocol_path: str | None = None,
+    value: Any = None,
+    result_path: str | None = None,
+) -> tuple[dict[str, bytes], dict[str, Any]]:
+    """Mutate one semantic relation, then authentically reseal every outer byte."""
+    names = ("request", "claim", "attempt", "response", "receipt", "consume", "authenticated_receipt")
+    values = {name: json.loads((bundle / f"protocol/{name}.json").read_bytes()) for name in names}
+    result = json.loads((bundle / "result.json").read_bytes())
+
+    def assign(root: dict[str, Any], dotted: str, replacement: Any) -> None:
+        parts = dotted.split(".")
+        target = root
+        for part in parts[:-1]:
+            target = target[int(part)] if isinstance(target, list) else target[part]
+        if replacement is _DELETE:
+            del target[parts[-1]]
+        elif replacement is _ADD:
+            target["attacker_extra"] = "resealed"
+        else:
+            if isinstance(target, list):
+                target[int(parts[-1])] = replacement
+            else:
+                target[parts[-1]] = replacement
+
+    if protocol_path is not None:
+        owner, dotted = protocol_path.split(".", 1)
+        assign(values[owner], dotted, value)
+    if result_path is not None:
+        assign(result, result_path, value)
+
+    protected = protocol_path
+    raws: dict[str, bytes] = {}
+    raws["request"] = canonical_bytes(values["request"])
+    request_sha = sha256_bytes(raws["request"])
+    for owner in ("claim", "attempt", "response", "receipt"):
+        if protected != f"{owner}.request_sha256":
+            values[owner]["request_sha256"] = request_sha
+    raws["claim"] = canonical_bytes(values["claim"])
+    claim_sha = sha256_bytes(raws["claim"])
+    for owner in ("attempt", "response"):
+        if protected != f"{owner}.claim_sha256":
+            values[owner]["claim_sha256"] = claim_sha
+    raws["attempt"] = canonical_bytes(values["attempt"])
+    attempt_sha = sha256_bytes(raws["attempt"])
+    if protected != "response.attempt_sha256":
+        values["response"]["attempt_sha256"] = attempt_sha
+    raws["receipt"] = canonical_bytes(values["receipt"])
+    receipt_sha = sha256_bytes(raws["receipt"])
+    reference = {"schema_version": "manual-prediction-collector-receipt-v1", "path": "receipts/request-1.json", "sha256": receipt_sha}
+    if protected is None or not protected.startswith("response.receipt"):
+        values["response"]["receipt"] = copy.deepcopy(reference)
+    if protected is None or not protected.startswith("authenticated_receipt.receipt"):
+        values["authenticated_receipt"]["receipt"] = copy.deepcopy(reference)
+    raws["response"] = canonical_bytes(values["response"])
+    response_sha = sha256_bytes(raws["response"])
+    if protected != "consume.response_sha256":
+        values["consume"]["response_sha256"] = response_sha
+    for name in ("consume", "authenticated_receipt"):
+        raws[name] = canonical_bytes(values[name])
+    contents = {path.relative_to(bundle).as_posix(): path.read_bytes() for path in bundle.rglob("*") if path.is_file()}
+    contents.update({f"protocol/{name}.json": raw for name, raw in raws.items()})
+    result["evidence"]["protocol_chain"] = {
+        "request_id": result["evidence"]["protocol_chain"]["request_id"],
+        **{f"{name}_sha256": sha256_bytes(raws[name]) for name in ("request", "claim", "attempt", "response", "receipt", "consume")},
+        "authenticated_receipt_sha256": sha256_bytes(raws["authenticated_receipt"]),
+    }
+    if result_path == "evidence.protocol_chain.request_id":
+        result["evidence"]["protocol_chain"]["request_id"] = value
+    return contents, result
+
+
+_DELETE = object()
+_ADD = object()
+
+
+SCHEMA_AND_MEMBERSHIP_ATTACKS = [
+    (f"{name}.schema_version", "attacker-v1")
+    for name in ("request", "claim", "attempt", "response", "receipt", "consume", "authenticated_receipt")
+] + [
+    (f"{name}.schema_version", _ADD)
+    for name in ("request", "claim", "attempt", "response", "receipt", "consume", "authenticated_receipt")
+]
+
+
+RELATION_ATTACKS = [
+    ("request.race.race_id", "wrong-race"), ("request.expected_runners.0.identity", "WRONG"),
+    ("request.expected_runner_set_sha256", "f" * 64), ("request.research_only", False),
+    ("request.attempt_authority", "retry"), ("claim.request_id", "wrong"),
+    ("attempt.request_id", "wrong"), ("response.request_id", "wrong"),
+    ("receipt.request_id", "wrong"), ("consume.request_id", "wrong"),
+    ("authenticated_receipt.request_id", "wrong"), ("claim.request_sha256", "f" * 64),
+    ("attempt.request_sha256", "f" * 64), ("response.request_sha256", "f" * 64),
+    ("receipt.request_sha256", "f" * 64), ("attempt.claim_sha256", "f" * 64),
+    ("response.claim_sha256", "f" * 64), ("response.attempt_sha256", "f" * 64),
+    ("consume.response_sha256", "f" * 64), ("claim.safe_boundary", False),
+    ("attempt.collector_run_id", "wrong-run"), ("attempt.attempt_number", 2),
+    ("request.created_at", "2026-07-19T12:00:01+10:00"),
+    ("claim.claimed_at", "2026-07-19T12:01:01+10:00"),
+    ("attempt.started_at", "2026-07-19T12:30:00+10:00"),
+    ("receipt.captured_at", "2026-07-19T12:00:59+10:00"),
+    ("receipt.emitted_at", "2026-07-19T12:03:01+10:00"),
+    ("response.responded_at", "2026-07-19T12:02:59+10:00"),
+    ("consume.consumed_at", "2026-07-19T12:30:00+10:00"),
+    ("request.expires_at", "2026-07-19T12:04:00+10:00"),
+    ("response.status", "FAILED"), ("response.reason", "attacker"),
+    ("response.receipt.schema_version", "wrong"), ("response.receipt.path", "receipts/wrong.json"),
+    ("response.receipt.sha256", "f" * 64), ("receipt.race.race_id", "wrong-race"),
+    ("receipt.runners.0.identity", "WRONG"), ("receipt.runner_set_sha256", "f" * 64),
+    ("receipt.sealed_handoff.race.race_id", "wrong-race"),
+    ("receipt.sealed_handoff.race_id", "wrong-race"),
+    ("receipt.sealed_handoff.runner_set_sha256", "f" * 64),
+] + [
+    (f"receipt.sealed_handoff.{field}", "f" * 64)
+    for field in ("source_report_sha256", "source_form_sha256", "source_sidecar_sha256", "capture_attempt_sha256", "append_report_sha256")
+] + [
+    ("authenticated_receipt.race_id", "wrong-race"),
+    ("authenticated_receipt.form_name", "wrong.csv"),
+    ("authenticated_receipt.artifacts.report", _DELETE),
+    ("authenticated_receipt.artifacts.report.attacker_extra", _ADD),
+    ("authenticated_receipt.artifacts.report.path", "../report.json"),
+    ("authenticated_receipt.artifacts.report.path", "evidence/./report.json"),
+    ("authenticated_receipt.artifacts.report.path", ""),
+    ("authenticated_receipt.artifacts.report.path", "evidence/report\n.json"),
+    ("authenticated_receipt.artifacts.form.path", "capture/not-form.csv"),
+    ("authenticated_receipt.artifacts.sidecar.path", "/tmp/sidecar.json"),
+    ("authenticated_receipt.artifacts.report.sha256", "f" * 64),
+    ("authenticated_receipt.artifacts.form.sha256", "f" * 64),
+    ("authenticated_receipt.artifacts.sidecar.sha256", "f" * 64),
+]
+
+
+@pytest.mark.parametrize(("path", "value"), SCHEMA_AND_MEMBERSHIP_ATTACKS + RELATION_ATTACKS)
+def test_each_sealed_protocol_relation_blocks_after_attacker_reseals_downstream_bytes(tmp_path: Path, path: str, value: Any):
+    bundle, _ = make_bundle(tmp_path)
+    contents, result = _attacker_resealed_protocol(bundle, protocol_path=path, value=value)
+    assert_blocked(sealed._validate_sealed_protocol, contents, result)
+
+
+def test_authenticated_receipt_accepts_real_evidence_root_relative_artifact_paths(tmp_path: Path):
+    bundle, _ = make_bundle(tmp_path)
+    contents, result = _attacker_resealed_protocol(bundle)
+    exact = json.loads(contents["protocol/authenticated_receipt.json"])
+    exact["artifacts"]["report"]["path"] = "shadow_runs/2026-07-19/request-1/report.json"
+    exact["artifacts"]["form"]["path"] = "collector/forms/request-1/thedogs-form.csv"
+    exact["artifacts"]["sidecar"]["path"] = "collector/sidecars/request-1/source.json"
+    exact["form_name"] = "thedogs-form.csv"
+    raw = canonical_bytes(exact)
+    contents["protocol/authenticated_receipt.json"] = raw
+    result["evidence"]["protocol_chain"]["authenticated_receipt_sha256"] = sha256_bytes(raw)
+    sealed._validate_sealed_protocol(contents, result)
+
+
+def test_authenticated_receipt_requires_distinct_artifact_paths(tmp_path: Path):
+    bundle, _ = make_bundle(tmp_path)
+    contents, result = _attacker_resealed_protocol(bundle)
+    exact = json.loads(contents["protocol/authenticated_receipt.json"])
+    exact["artifacts"]["sidecar"]["path"] = exact["artifacts"]["report"]["path"]
+    raw = canonical_bytes(exact)
+    contents["protocol/authenticated_receipt.json"] = raw
+    result["evidence"]["protocol_chain"]["authenticated_receipt_sha256"] = sha256_bytes(raw)
+    assert_blocked(sealed._validate_sealed_protocol, contents, result)
+
+
+@pytest.mark.parametrize(("path", "value"), [
+    ("schema_version", "wrong-v1"), ("schema_version", _ADD),
+    ("cutoff_timestamp", "2026-07-19T12:59:59+10:00"), ("source_sha256", "f" * 64),
+    ("sealed_sha256", "f" * 64), ("target_race_id", "wrong-race"),
+    ("target_rows_materialized", 1), ("at_or_after_cutoff_rows_materialized", 1),
+    ("excluded_target_metadata_rows", -1), ("excluded_target_metadata_rows", True),
+    ("excluded_at_or_after_cutoff_metadata_rows", -1), ("excluded_at_or_after_cutoff_metadata_rows", True),
+])
+def test_each_authenticated_cutoff_relation_blocks_after_attacker_reseals_history_digest(tmp_path: Path, path: str, value: Any):
+    bundle, _ = make_bundle(tmp_path)
+    contents, result = _attacker_resealed_protocol(bundle)
+    history = json.loads(contents["features/history_seal.json"])
+    if value is _ADD:
+        history["attacker_extra"] = "resealed"
+    else:
+        history[path] = value
+    contents["features/history_seal.json"] = canonical_bytes(history)
+    result["evidence"]["authenticated_cutoff"]["history_seal_sha256"] = sha256_bytes(contents["features/history_seal.json"])
+    assert_blocked(sealed._validate_sealed_protocol, contents, result)
+
+
+@pytest.mark.parametrize(("path", "value"), [
+    ("evidence.authenticated_cutoff.cutoff_timestamp", "2026-07-19T12:59:59+10:00"),
+    ("evidence.authenticated_cutoff.source_sha256", "f" * 64),
+    ("evidence.authenticated_cutoff.sealed_sha256", "f" * 64),
+    ("evidence.authenticated_cutoff.history_seal_sha256", "f" * 64),
+    ("evidence.protocol_chain.request_id", "wrong-request"),
+])
+def test_result_sealed_authority_relations_are_not_only_syntax_checked(tmp_path: Path, path: str, value: Any):
+    bundle, _ = make_bundle(tmp_path)
+    contents, result = _attacker_resealed_protocol(bundle, result_path=path, value=value)
+    assert_blocked(sealed._validate_sealed_protocol, contents, result)
+
+
+def test_authenticated_cutoff_rejects_wrong_sealed_database_digest(tmp_path: Path):
+    bundle, _ = make_bundle(tmp_path)
+    contents, result = _attacker_resealed_protocol(bundle)
+    contents["features/sealed_history.db"] = b"attacker replacement database"
+    assert_blocked(sealed._validate_sealed_protocol, contents, result)
+
+
 def test_publish_verify_index_and_detail_positive(tmp_path: Path):
     bundle, entry = make_bundle(tmp_path)
     index = sealed.publish_prediction_bundle_index_entry(tmp_path, entry)

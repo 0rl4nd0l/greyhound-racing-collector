@@ -500,3 +500,9 @@ The repository-v1 binding is output of the finite GHU-036 generator contract and
 - Decision: Preserve accepted C5 ownership/bootstrap/job-worker boundaries and correct only those residuals as C6. Require exact real protocol objects unconditionally, fixed bounded descriptor-retained snapshot enumeration, pure shared endpoint validators, and exact generated identity syntax.
 - Evidence: Frozen C5 commit `90502a360a184a6ba9b301245c93b818494647cd`, tree `f16d12db919fd749b5118ea3b800db21eb2aaec4`, session `019fbacc-623e-7e71-bce6-ee79e646dec5`, delta SHA-256 `c3eec6356d23becdfadaa1e38c7c5c368c9514743d43d556c6438d2bc53ce168`. C6 validation is recorded in implementer closeout, not self-approval.
 - Consequences: C6 remains an unaccepted local candidate pending independent parent inspection and review. No runtime action, deployment, outcome access, training, promotion, or wagering output is authorized or claimed.
+
+## 2026-08-01 — DEC-GHU-032C6-REJECTED-C7-CORRECTION
+
+- Context: Parent rejected C6 for missing independently attributable attacker-reseal evidence across sealed-v2 semantic relations and missing valid-but-wrong generated deployment identity behavior.
+- Decision: Preserve C6 as rejected and correct only that evidence gap as GHU-032C7. Production changes are allowed only where a new mutation test first demonstrates a fail-open verifier or startup-binding defect.
+- Consequences: C7 is an implementation candidate awaiting parent inspection and independent review. It is not accepted, integrated, published, deployed, runtime-proven, or live-proven.

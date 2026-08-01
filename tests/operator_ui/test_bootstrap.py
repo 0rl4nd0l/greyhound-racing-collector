@@ -127,6 +127,44 @@ def test_repository_profile_binds_authoritative_sources_and_separate_operations_
     assert canonical.read_bytes()==before and not (operations/"canonical.sqlite3").exists()
 
 
+@pytest.mark.parametrize(("binding_field", "configured_key", "wrong_value"), [
+    ("source_commit", "OPERATOR_UI_DEPLOYED_COMMIT", "a" * 40),
+    ("source_tree", "OPERATOR_UI_DEPLOYED_TREE", "b" * 40),
+    ("ui_version", "OPERATOR_UI_DEPLOYED_VERSION", "operator-ui-v999"),
+    ("profile_id", "OPERATOR_UI_DEPLOYED_PROFILE", "repository-v999"),
+])
+def test_repository_binding_rejects_valid_but_wrong_server_deployment_identity(tmp_path, monkeypatch, binding_field, configured_key, wrong_value):
+    repo, *_ = repository_binding_fixture(tmp_path, monkeypatch)
+    binding = json.loads((repo / "var/operator_ui/generated/repository-v1.binding.json").read_text())
+    app = Flask(__name__)
+    app.config.update(
+        OPERATOR_UI_DEPLOYED_COMMIT=binding["deployment"]["source_commit"],
+        OPERATOR_UI_DEPLOYED_TREE=binding["deployment"]["source_tree"],
+        OPERATOR_UI_DEPLOYED_VERSION=binding["deployment"]["ui_version"],
+        OPERATOR_UI_DEPLOYED_PROFILE=binding["deployment"]["profile_id"],
+    )
+    app.config[configured_key] = wrong_value
+    app.config[R3_PROFILE_KEY] = "repository-v1"
+    with pytest.raises(RuntimeError, match="deployment identity mismatch"):
+        bootstrap_module.configure_r3_startup(app)
+
+
+@pytest.mark.parametrize(("field", "wrong_value"), [
+    ("generator_id", "GHU-036-repository-v1-generator-wrong"),
+    ("schema_version", "operator_ui_repository_binding_generator_v999"),
+    ("version", "2"),
+])
+def test_repository_binding_rejects_finite_but_wrong_generator_identity(tmp_path, monkeypatch, field, wrong_value):
+    repo, *_ = repository_binding_fixture(tmp_path, monkeypatch)
+    path = repo / "var/operator_ui/generated/repository-v1.binding.json"
+    binding = json.loads(path.read_text())
+    binding["generator"][field] = wrong_value
+    path.write_text(json.dumps(binding))
+    app = Flask(__name__); app.config[R3_PROFILE_KEY] = "repository-v1"
+    with pytest.raises(RuntimeError, match="generated repository-v1 binding invalid"):
+        bootstrap_module.configure_r3_startup(app)
+
+
 @pytest.mark.parametrize("field",[
     "source_commit","source_tree","ui_version","profile_id","profile_sha256",
     "prediction_script","prediction_config","model_artifact","model_manifest","model_schema",

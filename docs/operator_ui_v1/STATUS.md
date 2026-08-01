@@ -728,3 +728,7 @@ Implemented locally for parent review: sealed-v2 disclosure now requires the ret
 ## GHU-032C4/C5 rejection and C6 correction status
 
 C4 and C5 remain rejected. Frozen C5 is commit `90502a360a184a6ba9b301245c93b818494647cd`, tree `f16d12db919fd749b5118ea3b800db21eb2aaec4`, session `019fbacc-623e-7e71-bce6-ee79e646dec5`, exact delta SHA-256 `c3eec6356d23becdfadaa1e38c7c5c368c9514743d43d556c6438d2bc53ce168`. C6 is a local correction candidate: exact real sealed protocol validation, bounded coherent collector snapshot evidence, generated-binding hardening, and shared pure browser authority validators are implemented for parent inspection. C6 is not accepted, integrated, deployed, or runtime-proven.
+
+## GHU-032C7 correction status
+
+C6 is rejected because its tests did not independently mutate and attacker-reseal every security-significant sealed-v2 relation, and generated deployment mismatch cases relied on syntax rejection. C7 is an implementation candidate supplying attributable table-driven reseal tests and valid-but-wrong deployment/generator identity tests. New tests exposed and narrowly repaired history-seal exact-schema/membership and exact-receipt artifact-path verifier defects. Artifact paths accept genuine bounded evidence-root-relative publisher output while rejecting unsafe, mismatched, or duplicate paths. No acceptance, integration, publication, deployment, runtime/data mutation, runtime proof, or live proof is claimed.

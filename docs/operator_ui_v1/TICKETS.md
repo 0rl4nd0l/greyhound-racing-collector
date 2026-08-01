@@ -1151,3 +1151,7 @@ Status: implemented locally, awaiting independent parent review. No service gene
 ## GHU-032C6 — C5 residual correction
 
 Status: implementation candidate, awaiting parent inspection and independent review. Scope is limited to unconditional exact retained protocol validation, coherent bounded collector snapshot behavior/tests, exhaustive sealed mutation coverage, generated-binding validation/tests, shared pure connected validators and behavioral recovery accessibility evidence, plus append-only ledger history. C4/C5 remain rejected; no acceptance, commit, integration, publication, deployment, live action, outcome access, training, promotion, or wagering claim is made.
+
+## GHU-032C7 — Final parent acceptance-gap correction
+
+Status: implementation candidate, awaiting parent inspection and independent review. C6 is rejected for missing attributable attacker-reseal coverage of every security-significant sealed-v2 relation and for generated deployment mismatch tests that proved syntax rejection rather than comparison to configured identity. C7 is limited to adversarial verifier and deployment-identity behavioral evidence, test-first repair of defects those tests expose, and truthful append-only ledger entries. No acceptance, integration, publication, deployment, runtime/data mutation, runtime proof, live proof, outcome access, training, promotion, EV, staking, or betting claim is made.
