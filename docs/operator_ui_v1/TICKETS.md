@@ -1155,3 +1155,7 @@ Status: implementation candidate, awaiting parent inspection and independent rev
 ## GHU-032C7 — Final parent acceptance-gap correction
 
 Status: implementation candidate, awaiting parent inspection and independent review. C6 is rejected for missing attributable attacker-reseal coverage of every security-significant sealed-v2 relation and for generated deployment mismatch tests that proved syntax rejection rather than comparison to configured identity. C7 is limited to adversarial verifier and deployment-identity behavioral evidence, test-first repair of defects those tests expose, and truthful append-only ledger entries. No acceptance, integration, publication, deployment, runtime/data mutation, runtime proof, live proof, outcome access, training, promotion, EV, staking, or betting claim is made.
+
+## GHU-032C8 — Authentic history-seal producer/verifier coherence
+
+Status: correction candidate, awaiting parent inspection and independent review. C7 is rejected because the authentic 13-member `sealed_prediction_history_v1` producer object was rejected by its reduced nine-member verifier schema. C8 is limited to exact producer/verifier/test coherence and preserves all other C3-C7 security boundaries. No acceptance, integration, publication, deployment, runtime/data mutation, runtime proof, live proof, outcome access, training, promotion, EV, staking, or betting claim is made.

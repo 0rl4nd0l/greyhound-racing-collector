@@ -600,3 +600,7 @@ A ready disclosure requires exact real schemas and exact members for request, cl
 ## GHU-032C7 adversarial authority evidence
 
 C6 is rejected because it claimed exhaustive mutation coverage without independently resealing and attacking every security-significant sealed-v2 relation, and its generated-deployment tests used syntax-invalid wrong values. C7 is an implementation candidate only. Its behavioral evidence reseals downstream protocol bytes and chain hashes after each semantic mutation and compares valid deployed/generator/artifact identities against configured and on-disk authority. Authenticated artifact paths are bounded canonical paths relative to the publisher's evidence root, not fixed fixture names; all three labels have distinct paths and `form_name` equals the form-path basename. This records no acceptance, integration, deployment, runtime proof, or live proof.
+
+## GHU-032C8 authentic history-seal coherence
+
+C7 is rejected because its verifier admitted a reduced nine-member history-seal fixture while the producer publishes the authentic 13-member `sealed_prediction_history_v1` object. C8 is a correction candidate only. The verifier requires the producer's exact schema and cutoff basis, nonnegative non-boolean integer counts, exact hashes/cutoff/target identity, and zero target or at/after-cutoff materialization. Missing, extra, mistyped, boolean, or wrong values fail closed. No other C3-C7 boundary is changed.

@@ -506,3 +506,9 @@ The repository-v1 binding is output of the finite GHU-036 generator contract and
 - Context: Parent rejected C6 for missing independently attributable attacker-reseal evidence across sealed-v2 semantic relations and missing valid-but-wrong generated deployment identity behavior.
 - Decision: Preserve C6 as rejected and correct only that evidence gap as GHU-032C7. Production changes are allowed only where a new mutation test first demonstrates a fail-open verifier or startup-binding defect.
 - Consequences: C7 is an implementation candidate awaiting parent inspection and independent review. It is not accepted, integrated, published, deployed, runtime-proven, or live-proven.
+
+## 2026-08-01 — DEC-GHU-032C7-REJECTED-C8-CORRECTION
+
+- Context: Independent review session `019fbb00-37f9-7291-8741-8ca19878cf1a` found that the authentic 13-member history seal published by `seal_history_database` could not pass the reduced nine-member verifier schema.
+- Decision: Preserve C7 as rejected for producer/verifier schema divergence and correct only that coherence defect as `GHU-032C8`.
+- Consequences: C8 is a candidate awaiting parent inspection and independent review. C3-C7 security boundaries remain authoritative. No acceptance, integration, publication, deployment, runtime/data mutation, outcome access, training, promotion, EV, staking, or betting is claimed.

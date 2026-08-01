@@ -732,3 +732,7 @@ C4 and C5 remain rejected. Frozen C5 is commit `90502a360a184a6ba9b301245c93b818
 ## GHU-032C7 correction status
 
 C6 is rejected because its tests did not independently mutate and attacker-reseal every security-significant sealed-v2 relation, and generated deployment mismatch cases relied on syntax rejection. C7 is an implementation candidate supplying attributable table-driven reseal tests and valid-but-wrong deployment/generator identity tests. New tests exposed and narrowly repaired history-seal exact-schema/membership and exact-receipt artifact-path verifier defects. Artifact paths accept genuine bounded evidence-root-relative publisher output while rejecting unsafe, mismatched, or duplicate paths. No acceptance, integration, publication, deployment, runtime/data mutation, runtime proof, or live proof is claimed.
+
+## GHU-032C8 correction status
+
+C7 is rejected for producer/verifier history-seal schema divergence. C8 is a bounded correction candidate: a real `seal_history_database` object now crosses the sealed verifier seam, fixtures use the authentic 13-member schema, and exact membership, cutoff basis, counts, hashes, cutoff, and target/materialization relations fail closed under mutation. No acceptance, integration, publication, deployment, runtime/data mutation, runtime proof, live proof, outcome access, training, promotion, EV, staking, or betting is claimed.

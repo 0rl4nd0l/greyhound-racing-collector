@@ -4,6 +4,7 @@ import copy
 import json
 import ast
 import os
+import sqlite3
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -154,7 +155,7 @@ def make_bundle(root: Path, result: dict[str, Any] | None = None) -> tuple[Path,
     protocol["authenticated_receipt"]={"schema_version":"manual-prediction-exact-receipt-index-v1","request_id":"request-1","race_id":result["race"]["race_id"],"receipt":receipt_reference,"artifacts":artifacts,"form_name":"form.csv"}
     for name,value in protocol.items():files[f"protocol/{name}.json"]=canonical_bytes(value)
     sealed_db=b"sealed fixture database"
-    history={"schema_version":"sealed_prediction_history_v1","cutoff_timestamp":result["race"]["jump_timestamp"],"source_sha256":"1"*64,"sealed_sha256":sha256_bytes(sealed_db),"target_race_id":result["race"]["race_id"],"target_rows_materialized":0,"at_or_after_cutoff_rows_materialized":0,"excluded_target_metadata_rows":0,"excluded_at_or_after_cutoff_metadata_rows":0}
+    history={"schema_version":"sealed_prediction_history_v1","cutoff_timestamp":result["race"]["jump_timestamp"],"source_sha256":"1"*64,"sealed_sha256":sha256_bytes(sealed_db),"target_race_id":result["race"]["race_id"],"cutoff_basis":"race_date_strictly_before_target_jump_date","safe_race_count":0,"safe_dog_row_count":0,"excluded_target_metadata_rows":0,"excluded_at_or_after_cutoff_metadata_rows":0,"excluded_ambiguous_date_metadata_rows":0,"target_rows_materialized":0,"at_or_after_cutoff_rows_materialized":0}
     files["features/sealed_history.db"]=sealed_db;files["features/history_seal.json"]=canonical_bytes(history)
     result["evidence"]["protocol_chain"]={"request_id":"request-1",**{f"{name}_sha256":sha256_bytes(files[f"protocol/{name}.json"]) for name in ("request","claim","attempt","response","receipt","consume")},"authenticated_receipt_sha256":sha256_bytes(files["protocol/authenticated_receipt.json"])}
     result["evidence"]["authenticated_cutoff"]={"history_seal_sha256":sha256_bytes(files["features/history_seal.json"]),"cutoff_timestamp":result["race"]["jump_timestamp"],"source_sha256":history["source_sha256"],"sealed_sha256":history["sealed_sha256"]}
@@ -360,13 +361,63 @@ def test_authenticated_receipt_requires_distinct_artifact_paths(tmp_path: Path):
     assert_blocked(sealed._validate_sealed_protocol, contents, result)
 
 
+def test_authentic_history_seal_is_accepted_by_sealed_protocol_verifier(tmp_path: Path):
+    bundle, _ = make_bundle(tmp_path)
+    contents, result = _attacker_resealed_protocol(bundle)
+    source = tmp_path / "authentic-source.db"
+    connection = sqlite3.connect(source)
+    connection.execute(
+        "CREATE TABLE race_metadata (race_id TEXT, race_date TEXT)"
+    )
+    connection.execute(
+        "CREATE TABLE dog_race_data (race_id TEXT, dog_name TEXT)"
+    )
+    connection.execute(
+        "INSERT INTO race_metadata VALUES (?, ?)", ("past", "2026-07-18")
+    )
+    connection.execute(
+        "INSERT INTO dog_race_data VALUES (?, ?)", ("past", "ONE")
+    )
+    connection.commit()
+    connection.close()
+    sealed_db = tmp_path / "authentic-sealed.db"
+    history = sealed.seal_history_database(
+        source=source,
+        target=sealed_db,
+        target_race_id=result["race"]["race_id"],
+        cutoff=datetime.fromisoformat(result["race"]["jump_timestamp"]),
+        runner_names=["ONE", "TWO"],
+    )
+    contents["features/sealed_history.db"] = sealed_db.read_bytes()
+    contents["features/history_seal.json"] = canonical_bytes(history)
+    result["evidence"]["authenticated_cutoff"] = {
+        "history_seal_sha256": sha256_bytes(contents["features/history_seal.json"]),
+        "cutoff_timestamp": history["cutoff_timestamp"],
+        "source_sha256": history["source_sha256"],
+        "sealed_sha256": history["sealed_sha256"],
+    }
+
+    sealed._validate_sealed_protocol(contents, result)
+
+
 @pytest.mark.parametrize(("path", "value"), [
     ("schema_version", "wrong-v1"), ("schema_version", _ADD),
     ("cutoff_timestamp", "2026-07-19T12:59:59+10:00"), ("source_sha256", "f" * 64),
     ("sealed_sha256", "f" * 64), ("target_race_id", "wrong-race"),
+    ("cutoff_basis", "target_jump_timestamp"),
     ("target_rows_materialized", 1), ("at_or_after_cutoff_rows_materialized", 1),
-    ("excluded_target_metadata_rows", -1), ("excluded_target_metadata_rows", True),
-    ("excluded_at_or_after_cutoff_metadata_rows", -1), ("excluded_at_or_after_cutoff_metadata_rows", True),
+    *((field, value) for field in (
+        "safe_race_count", "safe_dog_row_count", "excluded_target_metadata_rows",
+        "excluded_at_or_after_cutoff_metadata_rows", "excluded_ambiguous_date_metadata_rows",
+        "target_rows_materialized", "at_or_after_cutoff_rows_materialized",
+    ) for value in (-1, True, 1.5, "0")),
+    *((field, _DELETE) for field in (
+        "schema_version", "cutoff_timestamp", "source_sha256", "sealed_sha256",
+        "target_race_id", "cutoff_basis", "safe_race_count", "safe_dog_row_count",
+        "excluded_target_metadata_rows", "excluded_at_or_after_cutoff_metadata_rows",
+        "excluded_ambiguous_date_metadata_rows", "target_rows_materialized",
+        "at_or_after_cutoff_rows_materialized",
+    )),
 ])
 def test_each_authenticated_cutoff_relation_blocks_after_attacker_reseals_history_digest(tmp_path: Path, path: str, value: Any):
     bundle, _ = make_bundle(tmp_path)
@@ -374,6 +425,8 @@ def test_each_authenticated_cutoff_relation_blocks_after_attacker_reseals_histor
     history = json.loads(contents["features/history_seal.json"])
     if value is _ADD:
         history["attacker_extra"] = "resealed"
+    elif value is _DELETE:
+        del history[path]
     else:
         history[path] = value
     contents["features/history_seal.json"] = canonical_bytes(history)
