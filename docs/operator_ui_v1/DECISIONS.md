@@ -488,3 +488,8 @@ supersession.
 - Context: Independent C2 review session `019fba90-d645-7361-a1f2-2ddf993b732b` returned five residual defects.
 - Decision: Preserve original/C1 rejection and C2 candidate history; correct only those five defects as `GHU-032C3` through `GHU-034C3`.
 - Consequences: C3 is an unaccepted review candidate. Parent retains acceptance, integration, publication, deployment, and runtime-proof authority.
+## GHU-032C4 retained disclosure authority
+
+Probability disclosure authority is the descriptor-retained sealed-v2 bundle alone. The bundle contains and independently binds the complete collector protocol chain and authenticated cutoff/history snapshot; mutable collector roots and the live database are not disclosure inputs.
+
+The repository-v1 binding is output of the finite GHU-036 generator contract and binds generator identity, deployment identity, the checked-in profile digest, and fixed artifact hashes.

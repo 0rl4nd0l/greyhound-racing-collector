@@ -507,6 +507,26 @@ def _validate_request_binding(raw: bytes, result: Mapping[str, Any]) -> dict[str
     return dict(request)
 
 
+def _validate_sealed_protocol(contents: Mapping[str, bytes], result: Mapping[str, Any]) -> None:
+    names = ("request", "claim", "attempt", "response", "receipt", "consume", "authenticated_receipt")
+    required = {f"protocol/{name}.json" for name in names} | {"features/history_seal.json", "features/sealed_history.db"}
+    if not required.issubset(contents): raise _blocked("PREDICTION_BUNDLE_INVALID", reason="sealed_protocol_required")
+    chain = result["evidence"]["protocol_chain"]
+    values = {name: _canonical_json(contents[f"protocol/{name}.json"], max_bytes=BUNDLE_CONTROL_MAX_BYTES, label=f"protocol.{name}") for name in names}
+    for name in names:
+        hash_name = "authenticated_receipt_sha256" if name == "authenticated_receipt" else f"{name}_sha256"
+        if sha256_bytes(contents[f"protocol/{name}.json"]) != chain[hash_name] or values[name].get("request_id") != chain["request_id"]: raise _blocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH", field=f"protocol.{name}")
+    request, claim, attempt, response, receipt, consume, exact = (values[name] for name in names)
+    if request.get("race", {}).get("race_id") != result["race"]["race_id"] or request.get("race", {}).get("jump_timestamp") != result["race"]["jump_timestamp"] or request.get("expected_runner_set_sha256") != result["evidence"]["runner_set_sha256"]: raise _blocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH", field="protocol.request")
+    if claim.get("request_sha256") != chain["request_sha256"] or attempt.get("request_sha256") != chain["request_sha256"] or attempt.get("claim_sha256") != chain["claim_sha256"] or response.get("request_sha256") != chain["request_sha256"] or response.get("claim_sha256") != chain["claim_sha256"] or response.get("attempt_sha256") != chain["attempt_sha256"]: raise _blocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH", field="protocol.hash_chain")
+    reference = response.get("receipt")
+    if not isinstance(reference, Mapping) or reference.get("sha256") != chain["receipt_sha256"] or receipt.get("request_sha256") != chain["request_sha256"] or receipt.get("race") != request.get("race") or receipt.get("runner_set_sha256") != result["evidence"]["runner_set_sha256"] or consume.get("response_sha256") != chain["response_sha256"] or consume.get("consume_once") is not True or consume.get("status") != response.get("status"): raise _blocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH", field="protocol.receipt_chain")
+    if exact.get("race_id") != result["race"]["race_id"] or exact.get("receipt", {}).get("sha256") != chain["receipt_sha256"] or receipt.get("sealed_handoff") is None: raise _blocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH", field="protocol.authenticated_receipt")
+    cutoff = result["evidence"]["authenticated_cutoff"]; history_raw = contents["features/history_seal.json"]
+    history = _canonical_json(history_raw, max_bytes=BUNDLE_CONTROL_MAX_BYTES, label="history_seal")
+    if sha256_bytes(history_raw) != cutoff["history_seal_sha256"] or sha256_bytes(contents["features/sealed_history.db"]) != history.get("sealed_sha256") or history.get("sealed_sha256") != cutoff["sealed_sha256"] or history.get("source_sha256") != cutoff["source_sha256"] or history.get("cutoff_timestamp") != result["race"]["jump_timestamp"] or cutoff["cutoff_timestamp"] != result["race"]["jump_timestamp"] or history.get("target_rows_materialized") != 0 or history.get("at_or_after_cutoff_rows_materialized") != 0: raise _blocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH", field="authenticated_cutoff")
+
+
 class PredictionBlocked(RuntimeError):
     """Fail-closed operator result with one stable blocker code."""
 
@@ -1414,6 +1434,8 @@ def verify_indexed_prediction_bundle(
         if sha256_bytes(contents["config.json"]) != result["config"]["sha256"]:
             raise _blocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH", field="config")
         request = _validate_request_binding(contents["request.json"], result)
+        if result["status"] == "PREDICTION_READY":
+            _validate_sealed_protocol(contents, result)
         if sha256_bytes(contents[result["evidence"]["model_schema"]]) != result["model"]["schema_sha256"]:
             raise _blocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH", field="model_schema")
         for key, hash_key in (("model_artifact", "artifact_sha256"), ("model_manifest", "artifact_manifest_sha256")):

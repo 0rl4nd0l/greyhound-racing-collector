@@ -50,6 +50,16 @@ def test_prediction_intent_and_reconnect_are_durable_and_bounded():
     assert "modelCatalog" in source
     assert "prediction-retransmit" in source and "retransmitButton.type='button'" in source
     assert "retransmitButton.addEventListener('click'" in source
+    assert "onAuthorizationExhausted" in source and "form.hidden=!available" in source
+    assert "predictionSection.hidden=false" in source and "predictionSection.removeAttribute('aria-hidden')" in source
+
+
+def test_connected_authority_uses_finite_endpoint_validators():
+    source = SCRIPT.read_text(encoding="utf-8")
+    for validator in ("resourceEnvelope", "csrfEnvelope", "capabilityEnvelope", "jobEnvelope"):
+        assert f"function {validator}" in source
+    assert "authorityPayload(response);" not in source
+    assert "validate=value=>" not in source
 
 
 def test_connected_template_default_off_and_prototype_are_distinct():

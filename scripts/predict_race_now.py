@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 import uuid
@@ -491,29 +492,52 @@ def _sealed_result(
     }
 
 
-def _selected_protocol_chain(protocol: ManualPredictionCollectorProtocol, handoff: Mapping[str, Any]) -> dict[str, str]:
+def _snapshot_file(path:Path)->bytes:
+    descriptors=[];descriptor=os.open("/",os.O_RDONLY|os.O_DIRECTORY);descriptors.append(descriptor)
+    try:
+        for offset,component in enumerate(path.absolute().parts[1:]):
+            flags=os.O_RDONLY|os.O_NOFOLLOW
+            if offset<len(path.absolute().parts)-2:flags|=os.O_DIRECTORY
+            descriptor=os.open(component,flags,dir_fd=descriptor);descriptors.append(descriptor)
+        before=os.fstat(descriptor);raw=b""
+        while True:
+            chunk=os.read(descriptor,65536)
+            if not chunk:break
+            raw+=chunk
+            if len(raw)>1024*1024:raise PredictionBlocked("COLLECTOR_PROTOCOL_INVALID",reason="PROTOCOL_MEMBER_OVERSIZED")
+        after=os.fstat(descriptor)
+        if (before.st_dev,before.st_ino,before.st_size,before.st_mtime_ns)!=(after.st_dev,after.st_ino,after.st_size,after.st_mtime_ns):raise PredictionBlocked("COLLECTOR_PROTOCOL_INVALID",reason="PROTOCOL_MEMBER_CHANGED")
+        return raw
+    except OSError as exc:raise PredictionBlocked("COLLECTOR_PROTOCOL_INVALID",reason="PROTOCOL_PATH_UNSAFE") from exc
+    finally:
+        for item in reversed(descriptors):os.close(item)
+
+
+def _selected_protocol_chain(protocol: ManualPredictionCollectorProtocol, handoff: Mapping[str, Any]) -> tuple[dict[str, str],dict[str,bytes]]:
     """Bind the already-validated exact handoff to its immutable protocol chain."""
     public={str(key):value for key,value in handoff.items() if not str(key).startswith("_")}
     directory=protocol.exact_receipt_directory(str(public.get("race_id")))
-    paths=sorted(directory.glob("*.json"),reverse=True)
-    if len(paths)>32:raise PredictionBlocked("COLLECTOR_PROTOCOL_INVALID",reason="EXACT_RECEIPT_INDEX_UNBOUNDED")
+    try:names=sorted((name for name in os.listdir(directory) if name.endswith(".json")),reverse=True)
+    except OSError as exc:raise PredictionBlocked("COLLECTOR_PROTOCOL_INVALID",reason="PROTOCOL_PATH_UNSAFE") from exc
+    if len(names)>32:raise PredictionBlocked("COLLECTOR_PROTOCOL_INVALID",reason="EXACT_RECEIPT_INDEX_UNBOUNDED")
     matches=[]
-    for exact_path in paths:
-        exact_raw=exact_path.read_bytes(); exact=json.loads(exact_raw)
+    for name in names:
+        if Path(name).name!=name:raise PredictionBlocked("COLLECTOR_PROTOCOL_INVALID",reason="PROTOCOL_PATH_UNSAFE")
+        exact_raw=_snapshot_file(directory/name); exact=json.loads(exact_raw)
         request_id=exact.get("request_id") if isinstance(exact,dict) else None
         if not isinstance(request_id,str):continue
-        receipt_raw=protocol.receipt_path(request_id).read_bytes(); receipt=json.loads(receipt_raw)
+        receipt_raw=_snapshot_file(protocol.receipt_path(request_id)); receipt=json.loads(receipt_raw)
         if receipt.get("sealed_handoff")!=public:continue
         named={
             "request":protocol.request_path(request_id),"claim":protocol.claim_path(request_id),
             "attempt":protocol.attempt_path(request_id),"response":protocol.response_path(request_id),
             "receipt":protocol.receipt_path(request_id),"consume":protocol.consumed_path(request_id),
         }
-        raws={name:path.read_bytes() for name,path in named.items()}
+        raws={name:_snapshot_file(path) for name,path in named.items()};raws["authenticated_receipt"]=exact_raw
         response=json.loads(raws["response"]); consume=json.loads(raws["consume"])
         chain={"request_id":request_id,**{f"{name}_sha256":sha256_bytes(raw) for name,raw in raws.items()},"authenticated_receipt_sha256":sha256_bytes(exact_raw)}
         if response.get("request_sha256")!=chain["request_sha256"] or response.get("claim_sha256")!=chain["claim_sha256"] or response.get("attempt_sha256")!=chain["attempt_sha256"] or consume.get("response_sha256")!=chain["response_sha256"] or response.get("receipt",{}).get("sha256")!=chain["receipt_sha256"]:raise PredictionBlocked("COLLECTOR_PROTOCOL_INVALID",reason="HASH_DRIFT")
-        matches.append(chain)
+        matches.append((chain,raws))
     if len(matches)!=1:raise PredictionBlocked("COLLECTOR_PROTOCOL_INVALID",reason="PROTOCOL_CHAIN_AMBIGUOUS")
     return matches[0]
 
@@ -1028,7 +1052,8 @@ def _run_prediction(
             fetch_timeout_seconds=float(args.fetch_timeout_seconds),
         )
     if handoff is not None:
-        state["protocol_chain"]=_selected_protocol_chain(protocol,handoff)
+        state["protocol_chain"],protocol_members=_selected_protocol_chain(protocol,handoff)
+        for member,raw in protocol_members.items():write_exact_bytes(bundle/"protocol"/(member+".json"),raw)
         receipt, capture_raw, form_raw, sidecar_raw = receipt_from_handoff(
             handoff,
             current_time=receipt_validation_time,

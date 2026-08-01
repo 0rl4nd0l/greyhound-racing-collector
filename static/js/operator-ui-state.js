@@ -29,6 +29,7 @@
     const onJob = options.onJob || (() => {});
     const onCapability = options.onCapability || (() => {});
     const onExhausted = options.onExhausted || (() => {});
+    const onAuthorizationExhausted = options.onAuthorizationExhausted || (() => {});
     const maximum = 6;
     let capability = false;
     let timer = null;
@@ -89,7 +90,7 @@
           recoveryAttempts=0;attempts=0;recoveryInFlight=false;reconnect(id);
         } catch (_) {
           recoveryAttempts+=1;recoveryInFlight=false;
-          if(recoveryAttempts<3)recoverAuthority(id);
+          if(recoveryAttempts<3)recoverAuthority(id);else onAuthorizationExhausted();
         }
       },Math.min(12000,1500*(2**recoveryAttempts)));
     }

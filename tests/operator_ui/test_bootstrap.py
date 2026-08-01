@@ -106,7 +106,10 @@ def repository_binding_fixture(tmp_path,monkeypatch):
     (evidence/"shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json").write_bytes(b"{}")
     python=tmp_path/"pinned-python";python.write_bytes(b"runtime");python.chmod(0o700)
     canonical=tmp_path/"canonical.sqlite3";canonical.write_bytes(b"canonical-read-only");canonical.chmod(0o400)
-    binding={"schema_version":"operator_ui_repository_binding_v1","profile_id":"repository-v1","roots":{"source_root":str(repo.absolute()),"pinned_python":str(python.absolute()),"evidence_root":str(evidence.absolute()),"producer_root":str(producer.absolute()),"canonical_db":str(canonical.absolute()),"operations_root":str(operations.absolute())}}
+    profile_raw=(repo/"configs/operator_ui/repository-v1.toml").read_bytes()
+    deployment={"source_commit":"21e7b02e60e82da9c4dbbb796ea435bc120e9862","source_tree":"2cfc75cd8a2af1a9e5da4986c969cb668b93af62","ui_version":"operator-ui-v1","profile_id":"repository-v1"}
+    artifact_paths={"prediction_script":repo/"scripts/predict_race_now.py","prediction_config":repo/"configs/prediction/manual-default.json","model_artifact":repo/model.model_path.relative_to(source_root),"model_manifest":repo/model.manifest_path.relative_to(source_root),"model_schema":repo/model.schema_path.relative_to(source_root)}
+    binding={"schema_version":"operator_ui_repository_binding_v1","profile_id":"repository-v1","generator":{"generator_id":"GHU-036-repository-v1-generator","schema_version":"operator_ui_repository_binding_generator_v1","version":"1"},"deployment":deployment,"profile_sha256":hashlib.sha256(profile_raw).hexdigest(),"artifacts":{name:hashlib.sha256(path.read_bytes()).hexdigest() for name,path in artifact_paths.items()},"roots":{"source_root":str(repo.absolute()),"pinned_python":str(python.absolute()),"evidence_root":str(evidence.absolute()),"producer_root":str(producer.absolute()),"canonical_db":str(canonical.absolute()),"operations_root":str(operations.absolute())}}
     target=repo/"var/operator_ui/generated/repository-v1.binding.json";target.parent.mkdir(parents=True);target.write_text(json.dumps(binding),encoding="utf-8")
     monkeypatch.setattr(bootstrap_module,"_REPOSITORY_ROOT",repo)
     return repo,evidence,producer,operations,canonical
@@ -114,7 +117,7 @@ def repository_binding_fixture(tmp_path,monkeypatch):
 
 def test_repository_profile_binds_authoritative_sources_and_separate_operations_without_canonical_write(tmp_path,monkeypatch):
     repo,evidence,producer,operations,canonical=repository_binding_fixture(tmp_path,monkeypatch);before=canonical.read_bytes()
-    app=Flask(__name__);app.config.update(TESTING=True,OPERATOR_UI_CONNECTED_MODE=True,OPERATOR_UI_SECRET_KEY="repository-secret-"+"x"*40,OPERATOR_UI_USERNAME="operator",OPERATOR_UI_PASSWORD_HASH=generate_password_hash("correct horse"),OPERATOR_UI_LEVEL=2,OPERATOR_UI_DEPLOYED_COMMIT="c"*40,OPERATOR_UI_DEPLOYED_TREE="d"*40,OPERATOR_UI_DEPLOYED_VERSION="repository")
+    app=Flask(__name__);app.config.update(TESTING=True,OPERATOR_UI_CONNECTED_MODE=True,OPERATOR_UI_SECRET_KEY="repository-secret-"+"x"*40,OPERATOR_UI_USERNAME="operator",OPERATOR_UI_PASSWORD_HASH=generate_password_hash("correct horse"),OPERATOR_UI_LEVEL=2,OPERATOR_UI_DEPLOYED_COMMIT="21e7b02e60e82da9c4dbbb796ea435bc120e9862",OPERATOR_UI_DEPLOYED_TREE="2cfc75cd8a2af1a9e5da4986c969cb668b93af62",OPERATOR_UI_DEPLOYED_VERSION="operator-ui-v1",OPERATOR_UI_DEPLOYED_PROFILE="repository-v1")
     app.config[R3_PROFILE_KEY]="repository-v1";assert bootstrap_module.configure_r3_startup(app) is True
     assert Path(app.config["OPERATOR_UI_AUDIT_DB_PATH"]).parent==operations and Path(app.config["DATABASE_PATH"])==canonical
     install_connected_mode(app);assert bind_configured_r3(app) is True

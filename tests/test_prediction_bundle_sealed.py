@@ -74,7 +74,7 @@ def ready_result(*, job_id: str | None = None) -> dict[str, Any]:
             "runner_set_sha256": sealed.sealed_runner_set_sha256(race, runners),
             "prediction_output_sha256": sha256_bytes(canonical_bytes(predictions)),
             "protocol_chain": {"request_id":"request-1","request_sha256":ZERO_SHA,"claim_sha256":ZERO_SHA,"attempt_sha256":ZERO_SHA,"response_sha256":ZERO_SHA,"receipt_sha256":ZERO_SHA,"consume_sha256":ZERO_SHA,"authenticated_receipt_sha256":ZERO_SHA},
-            "authenticated_cutoff": {"history_seal_sha256":ZERO_SHA,"cutoff_timestamp":"2026-07-19T12:30:00+10:00","source_sha256":ZERO_SHA,"sealed_sha256":ZERO_SHA},
+            "authenticated_cutoff": {"history_seal_sha256":ZERO_SHA,"cutoff_timestamp":"2026-07-19T13:00:00+10:00","source_sha256":ZERO_SHA,"sealed_sha256":ZERO_SHA},
         },
         "prediction": {
             "predictions": predictions
@@ -135,6 +135,22 @@ def make_bundle(root: Path, result: dict[str, Any] | None = None) -> tuple[Path,
         "config.json": b"{}\n",
         "model/config.schema.json": b"{}\n",
     }
+    protocol_request={"request_id":"request-1","race":{"race_id":result["race"]["race_id"],"jump_timestamp":result["race"]["jump_timestamp"]},"expected_runner_set_sha256":result["evidence"]["runner_set_sha256"]}
+    protocol={"request":protocol_request}
+    protocol["claim"]={"request_id":"request-1","request_sha256":sha256_bytes(canonical_bytes(protocol["request"]))}
+    protocol["attempt"]={"request_id":"request-1","request_sha256":protocol["claim"]["request_sha256"],"claim_sha256":sha256_bytes(canonical_bytes(protocol["claim"]))}
+    receipt={"request_id":"request-1","request_sha256":protocol["claim"]["request_sha256"],"race":protocol_request["race"],"runner_set_sha256":result["evidence"]["runner_set_sha256"],"sealed_handoff":{"race_id":result["race"]["race_id"]}}
+    receipt_sha=sha256_bytes(canonical_bytes(receipt))
+    protocol["response"]={"request_id":"request-1","request_sha256":protocol["claim"]["request_sha256"],"claim_sha256":protocol["attempt"]["claim_sha256"],"attempt_sha256":sha256_bytes(canonical_bytes(protocol["attempt"])),"status":"RECEIPT_READY","receipt":{"sha256":receipt_sha}}
+    protocol["receipt"]=receipt
+    protocol["consume"]={"request_id":"request-1","response_sha256":sha256_bytes(canonical_bytes(protocol["response"])),"status":"RECEIPT_READY","consume_once":True}
+    protocol["authenticated_receipt"]={"request_id":"request-1","race_id":result["race"]["race_id"],"receipt":{"sha256":receipt_sha}}
+    for name,value in protocol.items():files[f"protocol/{name}.json"]=canonical_bytes(value)
+    sealed_db=b"sealed fixture database"
+    history={"schema_version":"sealed_prediction_history_v1","cutoff_timestamp":result["race"]["jump_timestamp"],"source_sha256":"1"*64,"sealed_sha256":sha256_bytes(sealed_db),"target_rows_materialized":0,"at_or_after_cutoff_rows_materialized":0}
+    files["features/sealed_history.db"]=sealed_db;files["features/history_seal.json"]=canonical_bytes(history)
+    result["evidence"]["protocol_chain"]={"request_id":"request-1",**{f"{name}_sha256":sha256_bytes(files[f"protocol/{name}.json"]) for name in ("request","claim","attempt","response","receipt","consume")},"authenticated_receipt_sha256":sha256_bytes(files["protocol/authenticated_receipt.json"])}
+    result["evidence"]["authenticated_cutoff"]={"history_seal_sha256":sha256_bytes(files["features/history_seal.json"]),"cutoff_timestamp":result["race"]["jump_timestamp"],"source_sha256":history["source_sha256"],"sealed_sha256":history["sealed_sha256"]}
     result["config"]["sha256"] = sha256_bytes(files["config.json"])
     result["model"]["schema_sha256"] = sha256_bytes(files["model/config.schema.json"])
     if result["model"]["resolved"] != "market_only_v1":

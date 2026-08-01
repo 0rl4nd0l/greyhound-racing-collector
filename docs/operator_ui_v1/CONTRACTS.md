@@ -589,3 +589,6 @@ Fail closed. Never fabricate or downgrade a status, reuse stale evidence as
 fresh, bypass a gate, broaden an input, retry, substitute a race, invoke an
 adjacent legacy endpoint, authorize canonical writes or pre-closure outcomes,
 execute training/promotion, emit betting guidance, or widen exposure.
+## GHU-032C4 finite generated binding
+
+`operator_ui_repository_binding_v1` has exact top-level `schema_version`, `profile_id`, `generator`, `deployment`, `profile_sha256`, `artifacts`, and `roots` members. The generator identity is `GHU-036-repository-v1-generator` / `operator_ui_repository_binding_generator_v1` / version `1`. Deployment identity must equal the fixed repository-v1 profile, and all five fixed prediction artifact hashes and the checked-in profile hash must match bounded, no-follow retained reads.

@@ -137,6 +137,17 @@ test("exhaustion fails closed and bounded GET-only capability recovery resumes t
   assert.equal(reads,7);assert.equal(state.transportAttempts(),0);
 });
 
+test("six transport and three authorization failures preserve the same job and finish accessibly", async () => {
+  const timers=[]; const job="job_0123456789abcdef0123456789abcdef"; let reads=0, capabilityReads=0, final=0, posts=0;
+  const state=createOperatorState({storage:storage({operatorUiJobV1:job}),randomUUID:()=>{posts+=1;return "unused";},
+    setTimer:(fn,delay)=>(timers.push({fn,delay}),timers.length),clearTimer:()=>{},
+    getJob:async()=>{reads+=1;throw new Error("offline");},getCapability:async()=>{capabilityReads+=1;throw new Error("denied");},
+    onAuthorizationExhausted:()=>{final+=1;}});
+  state.setCapability({authorized:true,runtime_configured:true,level:2});state.reconnect();
+  while(timers.length||reads<6||capabilityReads<3){const timer=timers.shift();assert.ok(timer);await timer.fn();}
+  assert.equal(reads,6);assert.equal(capabilityReads,3);assert.equal(final,1);assert.equal(state.jobId(),job);assert.equal(posts,0);assert.equal(timers.length,0);
+});
+
 test("every authority response failure class loses capability before disclosure", async()=>{
   const cases=[
     {status:401,ok:false,type:"application/json",json:async()=>({classification:"AUTH"})},

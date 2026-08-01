@@ -721,3 +721,6 @@ The original coupled candidate at commit `8262553eafc1dc3513efebe6f0f1d68cc58e04
 ## GHU-032C3 through GHU-034C3 correction candidate
 
 Independent C2 reviewer session `019fba90-d645-7361-a1f2-2ddf993b732b` returned five residual findings. C3 preserves all rejected history and corrects only recoverable durable dispatch, full producer protocol/receipt/cutoff result binding, unified fail-closed browser authority handling, accessible bounded GET-only reconnect recovery to the same job, and finite authoritative default-off `repository-v1` composition through a checked-in locator profile plus one fixed repo-generator binding with separate UI operations storage. Historical host literals are not application configuration; missing or unsafe generated binding fails closed. C3 remains `REVIEW`, not accepted, integrated, deployed, or runtime-proven.
+## GHU-032C4 correction implementation
+
+Implemented locally for parent review: sealed-v2 disclosure now requires the retained authenticated protocol and history-cutoff members; connected authority responses use finite endpoint validators; reconnect recovery ends after 6 + 3 GET failures without dropping the job; and repository-v1 validates the finite GHU-036 generated-binding identity. Python behavioral execution remains gated by the unavailable `pytest` dependency in this bounded environment.

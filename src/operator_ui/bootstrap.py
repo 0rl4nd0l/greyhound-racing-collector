@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import queue
 import stat
 import sys
@@ -32,10 +33,14 @@ _PROFILES = {
     "repository-v1": "configs/operator_ui/repository-v1.toml",
     "fixture-v1": "tests/operator_ui/fixtures/r3_runtime",
 }
-_PROFILE_KEYS={"schema_version","profile_id","generated_binding","locators"}
+_PROFILE_KEYS={"schema_version","profile_id","generated_binding","deployment","locators"}
 _LOCATOR_KEYS={"prediction_script","prediction_config","model_artifact","model_manifest","model_schema","current_index","collector_protocol","prediction_bundles","audit_store","job_store"}
-_BINDING_KEYS={"schema_version","profile_id","roots"}
+_BINDING_KEYS={"schema_version","profile_id","generator","deployment","profile_sha256","artifacts","roots"}
 _ROOT_KEYS={"source_root","pinned_python","evidence_root","producer_root","canonical_db","operations_root"}
+_GENERATOR_KEYS={"generator_id","schema_version","version"}
+_DEPLOYMENT_KEYS={"source_commit","source_tree","ui_version","profile_id"}
+_ARTIFACT_KEYS={"prediction_script","prediction_config","model_artifact","model_manifest","model_schema"}
+_MAX_CONTROL_BYTES=256*1024
 
 
 def bind_configured_live_evidence(app: Flask) -> bool:
@@ -55,31 +60,59 @@ def bind_configured_live_evidence(app: Flask) -> bool:
     return True
 
 
+def _retained_read(path:Path,*,maximum:int=_MAX_CONTROL_BYTES)->bytes:
+    """Bounded component-wise no-follow read with stable retained identity."""
+    parts=path.absolute().parts; descriptor=os.open("/",os.O_RDONLY|os.O_DIRECTORY); opened=[descriptor]
+    try:
+        for offset,component in enumerate(parts[1:]):
+            flags=os.O_RDONLY|os.O_NOFOLLOW
+            if offset<len(parts)-2:flags|=os.O_DIRECTORY
+            child=os.open(component,flags,dir_fd=descriptor);opened.append(child);descriptor=child
+        before=os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode) or stat.S_IMODE(before.st_mode)&0o022:raise RuntimeError("fixed R3 runtime unsafe")
+        chunks=[];total=0
+        while True:
+            chunk=os.read(descriptor,min(65536,maximum+1-total))
+            if not chunk:break
+            total+=len(chunk)
+            if total>maximum:raise RuntimeError("fixed R3 runtime oversized")
+            chunks.append(chunk)
+        after=os.fstat(descriptor)
+        if (before.st_dev,before.st_ino,before.st_size,before.st_mtime_ns)!=(after.st_dev,after.st_ino,after.st_size,after.st_mtime_ns):raise RuntimeError("fixed R3 runtime changed")
+        return b"".join(chunks)
+    except OSError as exc:raise RuntimeError("fixed R3 runtime unavailable") from exc
+    finally:
+        for item in reversed(opened):os.close(item)
+
+
 def _regular(path: Path) -> None:
-    try: info=path.lstat()
-    except OSError as exc: raise RuntimeError("fixed R3 runtime unavailable") from exc
-    if path.is_symlink() or not stat.S_ISREG(info.st_mode):raise RuntimeError("fixed R3 runtime unsafe")
+    _retained_read(path)
 
 
 def _directory(path: Path) -> None:
-    try: info=path.lstat()
-    except OSError as exc: raise RuntimeError("fixed R3 runtime unavailable") from exc
-    if path.is_symlink() or not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode)&0o022:raise RuntimeError("fixed R3 runtime unsafe")
+    descriptor=os.open("/",os.O_RDONLY|os.O_DIRECTORY);opened=[descriptor]
+    try:
+        for component in path.absolute().parts[1:]:
+            descriptor=os.open(component,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=descriptor);opened.append(descriptor)
+        info=os.fstat(descriptor)
+        if not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode)&0o022:raise RuntimeError("fixed R3 runtime unsafe")
+    except OSError as exc:raise RuntimeError("fixed R3 runtime unavailable") from exc
+    finally:
+        for item in reversed(opened):os.close(item)
 
 
 def _sha(path: Path) -> str:
-    _regular(path); return hashlib.sha256(path.read_bytes()).hexdigest()
+    return hashlib.sha256(_retained_read(path)).hexdigest()
 
 
 def _object(path:Path,label:str)->dict[str,Any]:
-    _regular(path)
     def exact(pairs):
         value={}
         for key,item in pairs:
             if key in value:raise ValueError("duplicate key")
             value[key]=item
         return value
-    try:value=json.loads(path.read_bytes(),parse_constant=lambda value:(_ for _ in ()).throw(ValueError(value)),object_pairs_hook=exact)
+    try:value=json.loads(_retained_read(path),parse_constant=lambda value:(_ for _ in ()).throw(ValueError(value)),object_pairs_hook=exact)
     except (OSError,UnicodeDecodeError,json.JSONDecodeError,ValueError) as exc:raise RuntimeError(f"{label} invalid") from exc
     if type(value) is not dict:raise RuntimeError(f"{label} invalid")
     return value
@@ -92,17 +125,17 @@ def _relative(value:Any,label:str)->Path:
 
 def _repository_layout()->dict[str,Any]:
     profile_path=(_REPOSITORY_ROOT/_PROFILES["repository-v1"]).absolute()
-    _regular(profile_path)
-    try:profile=tomllib.loads(profile_path.read_text(encoding="utf-8"))
+    profile_raw=_retained_read(profile_path)
+    try:profile=tomllib.loads(profile_raw.decode("utf-8"))
     except (OSError,UnicodeDecodeError,tomllib.TOMLDecodeError) as exc:raise RuntimeError("repository-v1 profile invalid") from exc
-    if set(profile)!=_PROFILE_KEYS or profile["schema_version"]!="operator_ui_repository_profile_v1" or profile["profile_id"]!="repository-v1" or type(profile["locators"]) is not dict or set(profile["locators"])!=_LOCATOR_KEYS:raise RuntimeError("repository-v1 profile invalid")
+    if set(profile)!=_PROFILE_KEYS or profile["schema_version"]!="operator_ui_repository_profile_v1" or profile["profile_id"]!="repository-v1" or type(profile["locators"]) is not dict or set(profile["locators"])!=_LOCATOR_KEYS or type(profile["deployment"]) is not dict or set(profile["deployment"])!=_DEPLOYMENT_KEYS:raise RuntimeError("repository-v1 profile invalid")
     locators={name:_relative(value,f"repository-v1 locator {name}") for name,value in profile["locators"].items()}
     binding_path=(_REPOSITORY_ROOT/_relative(profile["generated_binding"],"generated binding locator")).absolute()
     try:binding=_object(binding_path,"generated repository-v1 binding")
     except RuntimeError as exc:
         if not binding_path.exists():raise RuntimeError("generated repository-v1 binding unavailable") from exc
         raise
-    if set(binding)!=_BINDING_KEYS or binding["schema_version"]!="operator_ui_repository_binding_v1" or binding["profile_id"]!="repository-v1" or type(binding["roots"]) is not dict or set(binding["roots"])!=_ROOT_KEYS:raise RuntimeError("generated repository-v1 binding invalid")
+    if set(binding)!=_BINDING_KEYS or binding["schema_version"]!="operator_ui_repository_binding_v1" or binding["profile_id"]!="repository-v1" or type(binding["roots"]) is not dict or set(binding["roots"])!=_ROOT_KEYS or type(binding["generator"]) is not dict or set(binding["generator"])!=_GENERATOR_KEYS or binding["generator"]!={"generator_id":"GHU-036-repository-v1-generator","schema_version":"operator_ui_repository_binding_generator_v1","version":"1"} or binding["deployment"]!=profile["deployment"] or binding["profile_sha256"]!=hashlib.sha256(profile_raw).hexdigest() or type(binding["artifacts"]) is not dict or set(binding["artifacts"])!=_ARTIFACT_KEYS:raise RuntimeError("generated repository-v1 binding invalid")
     roots={}
     for name,value in binding["roots"].items():
         path=Path(value) if isinstance(value,str) else Path("")
@@ -119,10 +152,13 @@ def _repository_layout()->dict[str,Any]:
     paths={"audit.sqlite3":operations/locators["audit_store"],"jobs.sqlite3":operations/locators["job_store"],"canonical.sqlite3":roots["canonical_db"],"current_index.json":roots["evidence_root"]/locators["current_index"]}
     dirs={"current_evidence":roots["evidence_root"],"prediction_bundles":roots["producer_root"]/locators["prediction_bundles"],"collector_requests":roots["evidence_root"]/locators["collector_protocol"],"capture_evidence_a":roots["evidence_root"]}
     artifacts={"script":roots["source_root"]/locators["prediction_script"],"config":roots["source_root"]/locators["prediction_config"],"model":roots["source_root"]/locators["model_artifact"],"manifest":roots["source_root"]/locators["model_manifest"],"schema":roots["source_root"]/locators["model_schema"]}
+    if roots["source_root"]!=_REPOSITORY_ROOT:raise RuntimeError("generated repository-v1 source identity mismatch")
     _regular(paths["current_index.json"])
     for path in dirs.values():_directory(path)
     for path in artifacts.values():_regular(path)
-    return {"base":operations,"paths":paths,"dirs":dirs,"artifacts":artifacts,"source_root":roots["source_root"],"pinned_python":roots["pinned_python"]}
+    artifact_binding={"prediction_script":artifacts["script"],"prediction_config":artifacts["config"],"model_artifact":artifacts["model"],"model_manifest":artifacts["manifest"],"model_schema":artifacts["schema"]}
+    if any(binding["artifacts"].get(name)!=_sha(path) for name,path in artifact_binding.items()):raise RuntimeError("generated repository-v1 artifact identity mismatch")
+    return {"base":operations,"paths":paths,"dirs":dirs,"artifacts":artifacts,"source_root":roots["source_root"],"pinned_python":roots["pinned_python"],"deployment":dict(profile["deployment"])}
 
 
 def _runner(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -246,6 +282,8 @@ def configure_r3_startup(app: Flask) -> bool:
     if selector=="fixture-v1" and app.config.get("TESTING") is not True:raise ValueError("fixture-v1 requires TESTING")
     if selector=="repository-v1":
         layout=_repository_layout(); audit=layout["paths"]["audit.sqlite3"]; canonical=layout["paths"]["canonical.sqlite3"]
+        deployed=layout["deployment"]
+        if (app.config.get("OPERATOR_UI_DEPLOYED_COMMIT"),app.config.get("OPERATOR_UI_DEPLOYED_TREE"),app.config.get("OPERATOR_UI_DEPLOYED_VERSION"),app.config.get("OPERATOR_UI_DEPLOYED_PROFILE")) != (deployed["source_commit"],deployed["source_tree"],deployed["ui_version"],deployed["profile_id"]):raise RuntimeError("generated repository-v1 deployment identity mismatch")
     else:
         base=(_REPOSITORY_ROOT/_PROFILES[selector]).absolute(); audit=base/"audit.sqlite3"; canonical=base/"canonical.sqlite3"
     app.config["OPERATOR_UI_AUDIT_DB_PATH"]=str(audit)

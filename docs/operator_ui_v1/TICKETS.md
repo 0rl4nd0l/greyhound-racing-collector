@@ -1144,3 +1144,6 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
 - Next safe action: Remain deferred pending a new contract and separate authority.
 - Closeout evidence: PENDING: exact base/head/tree/path/diff identities, commands/exits, focused tests, reviewer identity/verdict, parent decision, and applicable commit/PR/merge/deploy/proof fields.
+## GHU-032C4 — C3 correction
+
+Status: implemented locally, awaiting independent parent review. No service generator or deployment is included; GHU-036 remains responsible for producing the now-finite repository-v1 binding.
