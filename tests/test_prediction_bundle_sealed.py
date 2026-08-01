@@ -73,6 +73,8 @@ def ready_result(*, job_id: str | None = None) -> dict[str, Any]:
             "model_manifest": None,
             "runner_set_sha256": sealed.sealed_runner_set_sha256(race, runners),
             "prediction_output_sha256": sha256_bytes(canonical_bytes(predictions)),
+            "protocol_chain": {"request_id":"request-1","request_sha256":ZERO_SHA,"claim_sha256":ZERO_SHA,"attempt_sha256":ZERO_SHA,"response_sha256":ZERO_SHA,"receipt_sha256":ZERO_SHA,"consume_sha256":ZERO_SHA,"authenticated_receipt_sha256":ZERO_SHA},
+            "authenticated_cutoff": {"history_seal_sha256":ZERO_SHA,"cutoff_timestamp":"2026-07-19T12:30:00+10:00","source_sha256":ZERO_SHA,"sealed_sha256":ZERO_SHA},
         },
         "prediction": {
             "predictions": predictions
@@ -196,10 +198,27 @@ def test_operator_disclosure_binds_authenticated_request_odds_and_runner_project
     def job(odds):
         inp=JobInput(verified.result["race"]["race_id"],verified.result["race"]["jump_timestamp"],verified.result["evidence"]["runner_set_sha256"],"latest-research",model["resolved"],model["artifact_sha256"],model["artifact_manifest_sha256"],model["schema_sha256"],"manual-default",verified.result["config"]["sha256"],odds,ordered)
         return Job(job_id,"operator",2,"manual_prediction","0"*64,inp,"2026-07-19T01:00:00Z",Phase.PREDICTION_READY,"2026-07-19T02:00:00Z","READY","verified",None,None,True)
-    assert _verified_result(job("auto"),verified) is None
-    disclosed=_verified_result(job("receipt"),verified)
+    chain=verified.result["evidence"]["protocol_chain"]; cutoff=verified.result["evidence"]["authenticated_cutoff"]
+    events=[{"phase":"CLAIMED","facts":{"attempt_id":"attempt-1"}},{"phase":"RESPONSE_RECORDED","facts":{"attempt_id":"attempt-1","protocol_chain":chain,"authenticated_cutoff":cutoff}},{"phase":"PRODUCER_COMPLETED","facts":{"attempt_id":"attempt-1","protocol_chain":chain,"authenticated_cutoff":cutoff}}]
+    assert _verified_result(job("auto"),verified,events) is None
+    disclosed=_verified_result(job("receipt"),verified,events)
     assert disclosed is not None
     assert {(row["box"],row["runner_id"]) for row in disclosed["probabilities"]}=={(1,"ONE"),(2,"TWO")}
+
+
+@pytest.mark.parametrize("identity",["request_sha256","claim_sha256","attempt_sha256","response_sha256","receipt_sha256","consume_sha256","authenticated_receipt_sha256","cutoff_timestamp"])
+def test_operator_disclosure_rejects_each_mutated_protocol_or_cutoff_identity(tmp_path:Path,identity:str):
+    job_id="job_"+"1"*32; result=operator_result(job_id); _bundle,entry=make_bundle(tmp_path,result)
+    sealed.publish_prediction_bundle_index_entry(tmp_path,entry); verified=sealed.verify_indexed_prediction_bundle(tmp_path,entry)
+    request=verified.request; model=verified.result["model"]; assert request is not None
+    ordered=tuple({"box":row["box_number"],"name":row["display_name"],"identity":row["identity"],"source_native_runner_id":row["source_native_runner_id"]} for row in request["runners"])
+    inp=JobInput(verified.result["race"]["race_id"],verified.result["race"]["jump_timestamp"],verified.result["evidence"]["runner_set_sha256"],"latest-research",model["resolved"],model["artifact_sha256"],model["artifact_manifest_sha256"],model["schema_sha256"],"manual-default",verified.result["config"]["sha256"],"receipt",ordered)
+    durable_job=Job(job_id,"operator",2,"manual_prediction","0"*64,inp,"2026-07-19T01:00:00Z",Phase.PREDICTION_READY,"2026-07-19T02:00:00Z","READY","verified",None,None,True)
+    chain=copy.deepcopy(verified.result["evidence"]["protocol_chain"]); cutoff=copy.deepcopy(verified.result["evidence"]["authenticated_cutoff"])
+    if identity=="cutoff_timestamp":cutoff[identity]="2026-07-19T12:31:00+10:00"
+    else:chain[identity]="f"*64
+    events=[{"phase":"CLAIMED","facts":{"attempt_id":"attempt-1"}},{"phase":"RESPONSE_RECORDED","facts":{"attempt_id":"attempt-1","protocol_chain":chain,"authenticated_cutoff":cutoff}},{"phase":"PRODUCER_COMPLETED","facts":{"attempt_id":"attempt-1","protocol_chain":chain,"authenticated_cutoff":cutoff}}]
+    assert _verified_result(durable_job,verified,events) is None
 
 
 def test_empty_index_publication_has_producer_owned_aware_time(tmp_path: Path):

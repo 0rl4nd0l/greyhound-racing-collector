@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { createOperatorState } = require("../../static/js/operator-ui-state.js");
+const { createOperatorState, readAuthorityResponse } = require("../../static/js/operator-ui-state.js");
 
 function storage(initial = {}) {
   const values = new Map(Object.entries(initial));
@@ -91,7 +91,7 @@ test("transport backoff is bounded and exhausts after six exact-job reads", asyn
     getJob: async id => { reads.push(id); throw new Error("offline"); } });
   state.setCapability({ authorized: true, runtime_configured: true, level: 2 }); state.reconnect();
   while (timers.length) await timers.shift()();
-  assert.deepEqual(delays, [0, 1500, 3000, 6000, 12000, 12000]);
+  assert.deepEqual(delays, [0, 1500, 3000, 6000, 12000, 12000, 1500, 3000, 6000]);
   assert.deepEqual(reads, Array(6).fill(job));
   assert.equal(state.transportAttempts(), 6);
 });
@@ -118,5 +118,37 @@ test("stable auth or not-found response stops timers and disables without substi
     state.setCapability({ authorized: true, runtime_configured: true, level: 2 }); state.reconnect();
     await timers.shift()();
     assert.equal(timers.length, 0); assert.equal(state.canSubmit(A), false); assert.equal(state.jobId(), job);
+  }
+});
+
+test("exhaustion fails closed and bounded GET-only capability recovery resumes the same job", async () => {
+  const timers=[]; const job="job_0123456789abcdef0123456789abcdef"; let exhausted=0, refreshes=0, reads=0;
+  const state=createOperatorState({storage:storage({operatorUiJobV1:job}),randomUUID:()=>"unused",
+    setTimer:(fn,delay)=>(timers.push({fn,delay}),timers.length),clearTimer:()=>{},
+    getJob:async id=>{reads+=1;if(reads<=6)throw new Error("offline");return{job_id:id,terminal:false};},
+    getCapability:async()=>{refreshes+=1;return{authorized:true,runtime_configured:true,level:2};},
+    onExhausted:()=>{exhausted+=1;}});
+  state.setCapability({authorized:true,runtime_configured:true,level:2});state.reconnect();
+  for(let i=0;i<6;i++)await timers.shift().fn();
+  assert.equal(exhausted,1);assert.equal(state.canSubmit(A),false);assert.equal(state.jobId(),job);
+  while(timers.length&&refreshes===0)await timers.shift().fn();
+  assert.equal(refreshes,1);assert.equal(state.jobId(),job);
+  await timers.shift().fn();
+  assert.equal(reads,7);assert.equal(state.transportAttempts(),0);
+});
+
+test("every authority response failure class loses capability before disclosure", async()=>{
+  const cases=[
+    {status:401,ok:false,type:"application/json",json:async()=>({classification:"AUTH"})},
+    {status:403,ok:false,type:"application/json",json:async()=>({classification:"DENIED"})},
+    {status:404,ok:false,type:"application/json",json:async()=>({classification:"MISSING"})},
+    {status:500,ok:false,type:"application/json",json:async()=>({classification:"FAILED"})},
+    {status:200,ok:true,type:"text/html",json:async()=>({})},
+    {status:200,ok:true,type:"application/json",json:async()=>{throw new Error("malformed");}},
+    {status:200,ok:true,type:"application/json",json:async()=>({schema:"wrong"}),invalid:true},
+  ];
+  for(const item of cases){let losses=0;const response={status:item.status,ok:item.ok,headers:{get:()=>item.type},json:item.json};
+    if(item.ok&&!item.invalid&&item.type.includes("json"))continue;
+    await assert.rejects(()=>readAuthorityResponse(response,()=>{losses+=1},value=>value.schema==="expected"));assert.equal(losses,1);
   }
 });

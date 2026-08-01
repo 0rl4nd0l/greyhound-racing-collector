@@ -2,6 +2,7 @@ import pytest
 import shutil
 import hashlib
 import time
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from flask import Flask
@@ -86,6 +87,56 @@ def test_r3_startup_is_default_off_and_has_no_service_callback_or_path_injection
     app.config[R3_PROFILE_KEY] = "../../arbitrary"
     with pytest.raises(ValueError, match="finite R3 profile"):
         bind_configured_r3(app)
+
+
+def test_repository_profile_fails_closed_without_generated_binding(tmp_path):
+    app=installed_app(tmp_path); app.config[R3_PROFILE_KEY]="repository-v1"
+    with pytest.raises(RuntimeError,match="generated repository-v1 binding unavailable"):
+        bootstrap_module.configure_r3_startup(app)
+
+
+def repository_binding_fixture(tmp_path,monkeypatch):
+    repo=tmp_path/"deployed-source"; source_root=Path(__file__).parents[2]; model=resolve_model("latest-research")
+    profile_source=source_root/"configs/operator_ui/repository-v1.toml"
+    copies={profile_source:repo/"configs/operator_ui/repository-v1.toml",source_root/"configs/prediction/manual-default.json":repo/"configs/prediction/manual-default.json",source_root/"scripts/predict_race_now.py":repo/"scripts/predict_race_now.py",model.model_path:repo/model.model_path.relative_to(source_root),model.manifest_path:repo/model.manifest_path.relative_to(source_root),model.schema_path:repo/model.schema_path.relative_to(source_root)}
+    for source,target in copies.items():target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,target)
+    evidence=tmp_path/"authoritative-evidence"; producer=tmp_path/"producer"; operations=tmp_path/"operator-ui-operations"
+    (evidence/"shadow_autopilot_daemon_runtime").mkdir(parents=True);(evidence/"manual_prediction_collector_requests_v1").mkdir();(producer/"artifacts/on_demand_prediction_runs").mkdir(parents=True);operations.mkdir()
+    for directory in (repo,evidence,producer,operations,evidence/"manual_prediction_collector_requests_v1",producer/"artifacts/on_demand_prediction_runs"):directory.chmod(0o700)
+    (evidence/"shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json").write_bytes(b"{}")
+    python=tmp_path/"pinned-python";python.write_bytes(b"runtime");python.chmod(0o700)
+    canonical=tmp_path/"canonical.sqlite3";canonical.write_bytes(b"canonical-read-only");canonical.chmod(0o400)
+    binding={"schema_version":"operator_ui_repository_binding_v1","profile_id":"repository-v1","roots":{"source_root":str(repo.absolute()),"pinned_python":str(python.absolute()),"evidence_root":str(evidence.absolute()),"producer_root":str(producer.absolute()),"canonical_db":str(canonical.absolute()),"operations_root":str(operations.absolute())}}
+    target=repo/"var/operator_ui/generated/repository-v1.binding.json";target.parent.mkdir(parents=True);target.write_text(json.dumps(binding),encoding="utf-8")
+    monkeypatch.setattr(bootstrap_module,"_REPOSITORY_ROOT",repo)
+    return repo,evidence,producer,operations,canonical
+
+
+def test_repository_profile_binds_authoritative_sources_and_separate_operations_without_canonical_write(tmp_path,monkeypatch):
+    repo,evidence,producer,operations,canonical=repository_binding_fixture(tmp_path,monkeypatch);before=canonical.read_bytes()
+    app=Flask(__name__);app.config.update(TESTING=True,OPERATOR_UI_CONNECTED_MODE=True,OPERATOR_UI_SECRET_KEY="repository-secret-"+"x"*40,OPERATOR_UI_USERNAME="operator",OPERATOR_UI_PASSWORD_HASH=generate_password_hash("correct horse"),OPERATOR_UI_LEVEL=2,OPERATOR_UI_DEPLOYED_COMMIT="c"*40,OPERATOR_UI_DEPLOYED_TREE="d"*40,OPERATOR_UI_DEPLOYED_VERSION="repository")
+    app.config[R3_PROFILE_KEY]="repository-v1";assert bootstrap_module.configure_r3_startup(app) is True
+    assert Path(app.config["OPERATOR_UI_AUDIT_DB_PATH"]).parent==operations and Path(app.config["DATABASE_PATH"])==canonical
+    install_connected_mode(app);assert bind_configured_r3(app) is True
+    worker=app.extensions["operator_ui_r3_services"].launch_once._worker
+    assert worker.repository_root==repo and worker.current_index_evidence_root==evidence and worker.output_root==producer/"artifacts/on_demand_prediction_runs"
+    assert worker.canonical_db==canonical and worker.collector_request_root==evidence/"manual_prediction_collector_requests_v1"
+    assert canonical.read_bytes()==before and not (operations/"canonical.sqlite3").exists()
+
+
+@pytest.mark.parametrize("unsafe",["missing_index","missing_model","symlink_index","symlink_python","unsafe_evidence","unsafe_producer"])
+def test_repository_profile_missing_or_unsafe_authoritative_sources_fail_closed(tmp_path,monkeypatch,unsafe):
+    repo,evidence,producer,_operations,_canonical=repository_binding_fixture(tmp_path,monkeypatch);index=evidence/"shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json"
+    if unsafe=="missing_index":index.unlink()
+    elif unsafe=="missing_model":(repo/"artifacts/frozen_models/market_form_residual_v1/model.json").unlink()
+    elif unsafe=="symlink_index":index.unlink();index.symlink_to(evidence/"missing")
+    elif unsafe=="symlink_python":
+        binding=json.loads((repo/"var/operator_ui/generated/repository-v1.binding.json").read_text());python=Path(binding["roots"]["pinned_python"]);target=python.with_name("python-target");python.rename(target);python.symlink_to(target)
+    elif unsafe=="unsafe_evidence":evidence.chmod(0o777)
+    else:producer.chmod(0o777)
+    app=Flask(__name__);app.config[R3_PROFILE_KEY]="repository-v1"
+    with pytest.raises(RuntimeError,match="generated repository-v1 binding|fixed R3 runtime"):
+        bootstrap_module.configure_r3_startup(app)
 
 
 def test_finite_testing_fixture_profile_builds_real_repository_composition(tmp_path, monkeypatch):

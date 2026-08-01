@@ -484,9 +484,38 @@ def _sealed_result(
             "model_manifest": "model/manifest.json" if model.manifest_path else None,
             "runner_set_sha256": state["runner_set_sha256"],
             "prediction_output_sha256": sha256_bytes(canonical_bytes(rows)) if ready else None,
+            "protocol_chain": state.get("protocol_chain"),
+            "authenticated_cutoff": state.get("authenticated_cutoff"),
         },
         "prediction": None if not ready else {"predictions": rows},
     }
+
+
+def _selected_protocol_chain(protocol: ManualPredictionCollectorProtocol, handoff: Mapping[str, Any]) -> dict[str, str]:
+    """Bind the already-validated exact handoff to its immutable protocol chain."""
+    public={str(key):value for key,value in handoff.items() if not str(key).startswith("_")}
+    directory=protocol.exact_receipt_directory(str(public.get("race_id")))
+    paths=sorted(directory.glob("*.json"),reverse=True)
+    if len(paths)>32:raise PredictionBlocked("COLLECTOR_PROTOCOL_INVALID",reason="EXACT_RECEIPT_INDEX_UNBOUNDED")
+    matches=[]
+    for exact_path in paths:
+        exact_raw=exact_path.read_bytes(); exact=json.loads(exact_raw)
+        request_id=exact.get("request_id") if isinstance(exact,dict) else None
+        if not isinstance(request_id,str):continue
+        receipt_raw=protocol.receipt_path(request_id).read_bytes(); receipt=json.loads(receipt_raw)
+        if receipt.get("sealed_handoff")!=public:continue
+        named={
+            "request":protocol.request_path(request_id),"claim":protocol.claim_path(request_id),
+            "attempt":protocol.attempt_path(request_id),"response":protocol.response_path(request_id),
+            "receipt":protocol.receipt_path(request_id),"consume":protocol.consumed_path(request_id),
+        }
+        raws={name:path.read_bytes() for name,path in named.items()}
+        response=json.loads(raws["response"]); consume=json.loads(raws["consume"])
+        chain={"request_id":request_id,**{f"{name}_sha256":sha256_bytes(raw) for name,raw in raws.items()},"authenticated_receipt_sha256":sha256_bytes(exact_raw)}
+        if response.get("request_sha256")!=chain["request_sha256"] or response.get("claim_sha256")!=chain["claim_sha256"] or response.get("attempt_sha256")!=chain["attempt_sha256"] or consume.get("response_sha256")!=chain["response_sha256"] or response.get("receipt",{}).get("sha256")!=chain["receipt_sha256"]:raise PredictionBlocked("COLLECTOR_PROTOCOL_INVALID",reason="HASH_DRIFT")
+        matches.append(chain)
+    if len(matches)!=1:raise PredictionBlocked("COLLECTOR_PROTOCOL_INVALID",reason="PROTOCOL_CHAIN_AMBIGUOUS")
+    return matches[0]
 
 
 def _seal_and_publish_v2(state: dict[str, Any], result: Mapping[str, Any]) -> None:
@@ -975,21 +1004,16 @@ def _run_prediction(
         _copy_exact(model.model_path, bundle / "model" / "model.json")
         _copy_exact(model.manifest_path, bundle / "model" / "manifest.json")
 
+    protocol=ManualPredictionCollectorProtocol(
+            Path(getattr(args,"collector_request_root",DEFAULT_COLLECTOR_REQUEST_ROOT))
+        )
     (
         handoff,
         rejected_receipts,
         receipt_validation_time,
     ) = _acquire_or_reuse(
         dependencies,
-        protocol=ManualPredictionCollectorProtocol(
-            Path(
-                getattr(
-                    args,
-                    "collector_request_root",
-                    DEFAULT_COLLECTOR_REQUEST_ROOT,
-                )
-            )
-        ),
+        protocol=protocol,
         target=target,
         odds_source=args.odds_source,
         evidence_roots=evidence_roots,
@@ -1004,6 +1028,7 @@ def _run_prediction(
             fetch_timeout_seconds=float(args.fetch_timeout_seconds),
         )
     if handoff is not None:
+        state["protocol_chain"]=_selected_protocol_chain(protocol,handoff)
         receipt, capture_raw, form_raw, sidecar_raw = receipt_from_handoff(
             handoff,
             current_time=receipt_validation_time,
@@ -1052,6 +1077,7 @@ def _run_prediction(
         or history.get("at_or_after_cutoff_rows_materialized") != 0
     ):
         raise PredictionBlocked("TARGET_EXCLUSION_WEAK")
+    state["authenticated_cutoff"]={"history_seal_sha256":sha256_file(history_path),"cutoff_timestamp":str(history["cutoff_timestamp"]),"source_sha256":str(history["source_sha256"]),"sealed_sha256":str(history["sealed_sha256"])}
 
     score_time = dependencies.now()
     if score_time >= jump:

@@ -410,6 +410,14 @@ Where applicable, timestamps satisfy
 One lifecycle is exactly one request, claim, attempt, response, optional
 receipt, and consume. There is no retry or race substitution.
 
+For R3 probability disclosure, the producer-owned v2 bundle additionally
+seals the selected protocol request, claim, attempt, response, receipt,
+consume, authenticated exact-receipt, and history-cutoff identities. The UI
+store persists that exact producer chain with the sole claimed attempt's
+response and completion events. Disclosure requires one unique durable chain
+and exact equality with verified request/result/index/manifest bytes; absence,
+duplication, ambiguity, or mutation withholds probabilities.
+
 ## 7. Release actions
 
 | Release | Level | Permitted action |
@@ -492,6 +500,16 @@ Generated deployment requires separate Level 4 owner authority after
 independent exact-head review: repository-generated unit/config, private bind,
 secret handling, feature flag default-off, reversible disable/rollback without
 evidence deletion, and matching deployed commit/tree/unit/config hashes.
+
+The finite `repository-v1` composition is default-off. Its checked-in profile
+defines exact relative locators and the one fixed generated-binding location;
+the later repository-owned deployment generator must bind the deployed source,
+pinned regular Python, authoritative collector DB/evidence/current-index,
+producer bundle/protocol root, and separate writable Operator UI operations
+root. A missing, malformed, symlinked, permission-unsafe, overlapping, or
+incomplete binding/source fails startup. The application accepts no binding
+path or arbitrary path, root, executable, command, lock, time, or model
+location from environment, operator, API, or browser input.
 
 One bounded live proof requires separate explicit live-action authority. It
 observes exact deployed/generated identity and one natural collector cycle,

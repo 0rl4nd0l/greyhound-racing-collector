@@ -482,3 +482,9 @@ supersession.
 - Decision: Repair only GET-observed WAITING recovery, authenticated sealed-request binding, executable reconnect/accessibility coverage, fixed job-store object safety, and cleanup/ledger truth. Preserve the single terminal broad result as environment/path-gate evidence on rejected bytes; it is not an owner blocker and is not rerun.
 - Evidence: Focused Python `564 passed`; executable Node state machine `7 passed`; updated full Operator UI `814 passed in 88.84s`; Python/Node syntax and `git diff --check` passed. The preserved broad invocation exited 2 after `1 failed, 389 passed in 650.55s` when the race-collection operator rejected the run-worktree basetemp, then ended with `KeyboardInterrupt`.
 - Consequences: C2 may enter `REVIEW` only as an unaccepted candidate. Independent review and parent acceptance/integration remain pending; no deployment, runtime proof, live action, training, promotion, EV, staking, or betting is authorized or claimed.
+
+## 2026-08-01 — DEC-GHU-032C2-034C2-REJECTED-C3-CORRECTION
+
+- Context: Independent C2 review session `019fba90-d645-7361-a1f2-2ddf993b732b` returned five residual defects.
+- Decision: Preserve original/C1 rejection and C2 candidate history; correct only those five defects as `GHU-032C3` through `GHU-034C3`.
+- Consequences: C3 is an unaccepted review candidate. Parent retains acceptance, integration, publication, deployment, and runtime-proof authority.

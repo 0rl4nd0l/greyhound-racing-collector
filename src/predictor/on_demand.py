@@ -400,7 +400,7 @@ def validate_prediction_result_v2(value: Any) -> dict[str, Any]:
     _sha(model["schema_sha256"], "result.model.schema_sha256")
     config = _exact_fields(result["config"], {"sha256"}, "result.config")
     _sha(config["sha256"], "result.config.sha256")
-    evidence = _exact_fields(result["evidence"], {"request", "config", "model_schema", "model_artifact", "model_manifest", "runner_set_sha256", "prediction_output_sha256"}, "result.evidence")
+    evidence = _exact_fields(result["evidence"], {"request", "config", "model_schema", "model_artifact", "model_manifest", "runner_set_sha256", "prediction_output_sha256", "protocol_chain", "authenticated_cutoff"}, "result.evidence")
     for name in ("request", "config", "model_schema"):
         _relative_name(evidence[name])
     for name in ("model_artifact", "model_manifest"):
@@ -415,6 +415,12 @@ def validate_prediction_result_v2(value: Any) -> dict[str, Any]:
         raise _blocked("PREDICTION_BUNDLE_INVALID", field="result.evidence.model")
     status, stage, blocker, prediction = result["status"], result["blocker_stage"], result["blocker"], result["prediction"]
     if status == "PREDICTION_READY":
+        chain=_exact_fields(evidence["protocol_chain"],{"request_id","request_sha256","claim_sha256","attempt_sha256","response_sha256","receipt_sha256","consume_sha256","authenticated_receipt_sha256"},"result.evidence.protocol_chain")
+        if not isinstance(chain["request_id"],str) or not chain["request_id"]:raise _blocked("PREDICTION_BUNDLE_INVALID",field="result.evidence.protocol_chain.request_id")
+        for name in set(chain)-{"request_id"}:_sha(chain[name],f"result.evidence.protocol_chain.{name}")
+        cutoff=_exact_fields(evidence["authenticated_cutoff"],{"history_seal_sha256","cutoff_timestamp","source_sha256","sealed_sha256"},"result.evidence.authenticated_cutoff")
+        _timestamp(cutoff["cutoff_timestamp"],"result.evidence.authenticated_cutoff.cutoff_timestamp")
+        for name in ("history_seal_sha256","source_sha256","sealed_sha256"):_sha(cutoff[name],f"result.evidence.authenticated_cutoff.{name}")
         if stage is not None or blocker is not None or not isinstance(prediction, Mapping):
             raise _blocked("PREDICTION_BUNDLE_INVALID", field="result.terminal")
         rows = prediction.get("predictions")

@@ -39,6 +39,7 @@ PUBLIC_FACTS = frozenset(
         "runner_set_sha256", "model_sha256", "model_manifest_sha256",
         "model_schema_sha256", "config_sha256", "verification_status", "blocker",
         "producer_status", "research_only", "production_persisted", "betting_output",
+        "protocol_chain", "authenticated_cutoff",
     }
 )
 
@@ -115,7 +116,7 @@ def _public_facts(value: Mapping[str, Any]) -> dict[str, Any]:
     return {name: value[name] for name in PUBLIC_FACTS if name in value}
 
 
-def _verified_result(job: Job, value: Any) -> dict[str, Any] | None:
+def _verified_result(job: Job, value: Any, events: list[Mapping[str,Any]] | None = None) -> dict[str, Any] | None:
     if not isinstance(value, VerifiedPredictionBundle):
         return None
     result=value.result; entry=value.index_entry; manifest=value.manifest
@@ -124,6 +125,17 @@ def _verified_result(job: Job, value: Any) -> dict[str, Any] | None:
         return None
     if result.get("status") != "PREDICTION_READY" or entry.get("status") != "PREDICTION_READY":
         return None
+    chain=result.get("evidence",{}).get("protocol_chain"); cutoff=result.get("evidence",{}).get("authenticated_cutoff")
+    if not isinstance(chain,Mapping) or not isinstance(cutoff,Mapping):return None
+    if not isinstance(events,list):return None
+    claimed=[event.get("facts",{}).get("attempt_id") for event in events if event.get("phase")==Phase.CLAIMED.value]
+    response_events=[event for event in events if event.get("phase")==Phase.RESPONSE_RECORDED.value]
+    completed=[event for event in events if event.get("phase")==Phase.PRODUCER_COMPLETED.value]
+    if len(claimed)!=1 or len(response_events)!=1 or len(completed)!=1:return None
+    attempt=claimed[0]
+    for event in (*response_events,*completed):
+        facts=event.get("facts",{})
+        if facts.get("attempt_id")!=attempt or facts.get("protocol_chain")!=chain or facts.get("authenticated_cutoff")!=cutoff:return None
     if (entry.get("job_id"),result.get("job_id"),manifest.get("job_id")) != (job.job_id,job.job_id,job.job_id):
         return None
     if (entry.get("prediction_id"),manifest.get("prediction_id")) != (result.get("prediction_id"),result.get("prediction_id")):
@@ -170,7 +182,7 @@ def _job_payload(store: JobStore, job: Job, result_reader: Callable[[Job], Mappi
         "timeline": timeline, "result": None,
     }
     if job.phase is Phase.PREDICTION_READY:
-        result = _verified_result(job, result_reader(job))
+        result = _verified_result(job, result_reader(job), events)
         if result is None:
             payload["blocker"] = "VERIFIED_RESULT_UNAVAILABLE"
         else:
@@ -191,8 +203,6 @@ def install_r3_api(app: Flask, services: R3Services | None = None) -> bool:
         raise RuntimeError("R3 requires the installed connected security boundary")
     app.extensions["operator_ui_r3_services"] = services
     limiter = _ActorRateLimit(services.rate_limit, services.rate_window_seconds)
-    dispatched: set[str] = set()
-    dispatch_lock = threading.Lock()
 
     def authority() -> tuple[str, int] | None:
         actor = authenticate()
@@ -237,10 +247,7 @@ def install_r3_api(app: Flask, services: R3Services | None = None) -> bool:
         if job.phase is not Phase.WAITING_FOR_CLAIM or job.attempt_claimed:
             return job
         try:
-            with dispatch_lock:
-                if job.job_id not in dispatched:
-                    services.launch_once(job.job_id, confirm_audit)
-                    dispatched.add(job.job_id)
+            services.launch_once(job.job_id, confirm_audit)
         except Exception as exc:
             current = services.job_store.get(job.job_id)
             if current.phase is Phase.WAITING_FOR_CLAIM and not current.attempt_claimed:

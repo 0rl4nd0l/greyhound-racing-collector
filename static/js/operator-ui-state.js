@@ -8,19 +8,35 @@
   const JOB_KEY = "operatorUiJobV1";
   const JOB_RE = /^job_[0-9a-f]{32}$/;
 
+  async function readAuthorityResponse(response,onLoss,validate=()=>true) {
+    let lost=false;const lose=()=>{if(!lost){lost=true;onLoss();}};
+    if([401,403,404].includes(response.status))lose();
+    const contentType=response.headers.get("content-type")||"";
+    if(!contentType.toLowerCase().includes("application/json")){lose();throw Object.assign(new Error("INVALID_RESPONSE_MEDIA"),{stable:true});}
+    let payload;try{payload=await response.json();}catch(_){lose();throw Object.assign(new Error("INVALID_RESPONSE_JSON"),{stable:true});}
+    if(!response.ok)lose();
+    if(!validate(payload)){lose();throw Object.assign(new Error("INVALID_AUTHORITY_SCHEMA"),{stable:true});}
+    return payload;
+  }
+
   function createOperatorState(options) {
     const storage = options.storage;
     const randomUUID = options.randomUUID;
     const setTimer = options.setTimer || setTimeout;
     const clearTimer = options.clearTimer || clearTimeout;
     const getJob = options.getJob || (async () => { throw new Error("JOB_READER_UNAVAILABLE"); });
+    const getCapability = options.getCapability || (async () => { throw new Error("CAPABILITY_READER_UNAVAILABLE"); });
     const onJob = options.onJob || (() => {});
     const onCapability = options.onCapability || (() => {});
+    const onExhausted = options.onExhausted || (() => {});
     const maximum = 6;
     let capability = false;
     let timer = null;
     let inFlight = false;
     let attempts = 0;
+    let recoveryTimer = null;
+    let recoveryInFlight = false;
+    let recoveryAttempts = 0;
 
     function parseIntent() {
       try {
@@ -38,7 +54,8 @@
       onCapability(capability);
       return capability;
     }
-    function loseCapability() { capability = false; stopReconnect(); onCapability(false); }
+    function stopRecovery() { if (recoveryTimer !== null) clearTimer(recoveryTimer); recoveryTimer=null; recoveryInFlight=false; }
+    function loseCapability() { capability = false; stopReconnect(); stopRecovery(); onCapability(false); }
     function canSubmit() { return capability && intent() === null && jobId() === null; }
     function beginSubmission(selection) {
       if (!capability) throw new Error("CAPABILITY_UNAVAILABLE");
@@ -62,6 +79,21 @@
     function stableRejection() { storage.removeItem(INTENT_KEY); }
     function clearTerminalJob() { storage.removeItem(JOB_KEY); stopReconnect(); }
     function stopReconnect() { if (timer !== null) clearTimer(timer); timer = null; inFlight = false; }
+    function recoverAuthority(id) {
+      if (recoveryTimer!==null||recoveryInFlight||recoveryAttempts>=3||!JOB_RE.test(id)) return;
+      recoveryTimer=setTimer(async()=>{
+        recoveryTimer=null;if(recoveryInFlight)return;recoveryInFlight=true;
+        try {
+          const envelope=await getCapability();
+          if (!setCapability(envelope)) throw new Error("CAPABILITY_DENIED");
+          recoveryAttempts=0;attempts=0;recoveryInFlight=false;reconnect(id);
+        } catch (_) {
+          recoveryAttempts+=1;recoveryInFlight=false;
+          if(recoveryAttempts<3)recoverAuthority(id);
+        }
+      },Math.min(12000,1500*(2**recoveryAttempts)));
+    }
+    function exhaust(id) { capability=false;stopReconnect();onCapability(false);onExhausted();recoverAuthority(id); }
     function schedule(id, delay) {
       if (!capability || timer !== null || inFlight || attempts >= maximum || !JOB_RE.test(id)) return;
       timer = setTimer(async () => {
@@ -76,6 +108,7 @@
         } catch (error) {
           attempts += 1;
           if (error && error.stable) loseCapability();
+          else if(attempts>=maximum) { inFlight=false; exhaust(id); }
           else { inFlight = false; schedule(id, Math.min(12000, 750 * (2 ** attempts))); }
         } finally { inFlight = false; }
       }, delay);
@@ -85,5 +118,5 @@
       responseLost, retransmission, associateJob, stableRejection, clearTerminalJob,
       reconnect, stopReconnect, transportAttempts: () => attempts };
   }
-  return { createOperatorState, INTENT_KEY, JOB_KEY };
+  return { createOperatorState, readAuthorityResponse, INTENT_KEY, JOB_KEY };
 });

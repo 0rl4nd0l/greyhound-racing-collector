@@ -196,7 +196,7 @@ def hash_idempotency_key(key:str)->str:
     if not isinstance(key,str) or not 16<=len(key.encode())<=256: raise ValueError("idempotency key must contain 16..256 UTF-8 bytes")
     return _sha(key.encode())
 
-_PROCESS_FACTS=frozenset({"attempt_id","pid","exit_code","stdout_complete","stdout_reader_error","stdout_length","stdout_sha256","stdout_prefix_length","stdout_prefix_sha256","stdout_bytes","stderr_complete","stderr_reader_error","stderr_length","stderr_sha256","stderr_prefix_length","stderr_prefix_sha256","stderr_bytes","predictor_status","prediction_id","producer_job_id","producer_blocker","error"})
+_PROCESS_FACTS=frozenset({"attempt_id","pid","exit_code","stdout_complete","stdout_reader_error","stdout_length","stdout_sha256","stdout_prefix_length","stdout_prefix_sha256","stdout_bytes","stderr_complete","stderr_reader_error","stderr_length","stderr_sha256","stderr_prefix_length","stderr_prefix_sha256","stderr_bytes","predictor_status","prediction_id","producer_job_id","producer_blocker","protocol_chain","authenticated_cutoff","error"})
 _STREAM_REQUIRED=frozenset({"attempt_id","pid","exit_code","stdout_complete","stdout_prefix_length","stdout_prefix_sha256","stderr_complete","stderr_prefix_length","stderr_prefix_sha256"})
 _STREAM_OPTIONAL=frozenset({"stdout_reader_error","stdout_bytes","stdout_length","stdout_sha256","stderr_reader_error","stderr_bytes","stderr_length","stderr_sha256"})
 _VERIFIER_FACTS=frozenset({"prediction_id","job_id","race_id","jump_timestamp","runner_set_sha256","resolved_model_identity","model_sha256","model_manifest_sha256","model_schema_sha256","config_id","config_sha256","index_sha256","result_sha256","manifest_sha256","logical_bundle_sha256","bundle_locator","producer_status","research_only","production_persisted","betting_output","verification_status","blocker"})
@@ -212,8 +212,8 @@ def _event_contracts():
       (Phase.WAITING_FOR_CLAIM,Phase.CLAIMED,"CLAIMED","unique_attempt_claimed"):(claim,empty,"claim"),
       (Phase.CLAIMED,Phase.ATTEMPT_STARTED,"RUNNING","predictor_started"):(start,empty,"start"),
       (Phase.CLAIMED,Phase.FAILED,"FAILED","PROCESS_LAUNCH_FAILED"):(frozenset({"attempt_id","error"}),empty,"prelaunch"),
-      (Phase.ATTEMPT_STARTED,Phase.RESPONSE_RECORDED,"RECORDED","bounded_process_response"):(process,_STREAM_OPTIONAL|{"predictor_status","prediction_id","producer_job_id","producer_blocker"},"process"),
-      (Phase.RESPONSE_RECORDED,Phase.PRODUCER_COMPLETED,"PRODUCER_COMPLETED","PRODUCER_PREDICTION_READY"):(producer,_STREAM_OPTIONAL,"producer_ready"),
+      (Phase.ATTEMPT_STARTED,Phase.RESPONSE_RECORDED,"RECORDED","bounded_process_response"):(process,_STREAM_OPTIONAL|{"predictor_status","prediction_id","producer_job_id","producer_blocker","protocol_chain","authenticated_cutoff"},"process"),
+      (Phase.RESPONSE_RECORDED,Phase.PRODUCER_COMPLETED,"PRODUCER_COMPLETED","PRODUCER_PREDICTION_READY"):(producer,_STREAM_OPTIONAL|{"protocol_chain","authenticated_cutoff"},"producer_ready"),
       (Phase.PRODUCER_COMPLETED,Phase.PREDICTION_READY,"READY","verified"):(_VERIFIER_FACTS,empty,"verifier_ready"),
       (Phase.PRODUCER_COMPLETED,Phase.FAILED,"FAILED","verification_failed"):(_VERIFIER_FACTS,empty,"verifier_failed"),
       (Phase.PRODUCER_COMPLETED,Phase.REJECTED,"REJECTED","verification_rejected"):(_VERIFIER_FACTS,empty,"verifier_rejected"),
@@ -228,7 +228,7 @@ def _event_contracts():
       contracts[(Phase.RESPONSE_RECORDED,Phase.FAILED,"FAILED",reason)]=(process,_STREAM_OPTIONAL|{"predictor_status","prediction_id","producer_job_id","producer_blocker"},"process")
     from src.predictor.on_demand import BLOCKER_STAGE_BY_CODE
     for code in BLOCKER_STAGE_BY_CODE:
-      contracts[(Phase.RESPONSE_RECORDED,Phase.PRODUCER_COMPLETED,"PRODUCER_COMPLETED",f"PRODUCER_PREDICTION_BLOCKED:{code}")]=(process|{"predictor_status","prediction_id","producer_job_id","producer_blocker"},_STREAM_OPTIONAL,"producer_blocker")
+      contracts[(Phase.RESPONSE_RECORDED,Phase.PRODUCER_COMPLETED,"PRODUCER_COMPLETED",f"PRODUCER_PREDICTION_BLOCKED:{code}")]=(process|{"predictor_status","prediction_id","producer_job_id","producer_blocker"},_STREAM_OPTIONAL|{"protocol_chain","authenticated_cutoff"},"producer_blocker")
     for code in set(BLOCKER_STAGE_BY_CODE)|{"BUSY"}:
       contracts[(Phase.RESPONSE_RECORDED,Phase.REJECTED,"REJECTED",f"PREDICTOR_BLOCKER:{code}")]=(process|{"predictor_status","producer_blocker"},_STREAM_OPTIONAL|{"prediction_id","producer_job_id"},"producer_blocker")
     return contracts

@@ -985,6 +985,19 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Claims unsupported: Acceptance, integration, publication, deployment, runtime proof, live prediction, outcome access, training, promotion, EV, staking, or betting.
 - Next safe action: Freeze the intended delta and assign a fresh independent exact-delta review; parent retains acceptance and integration authority.
 
+## GHU-032C3 through GHU-034C3 — Correct five residual C2 findings
+
+- Release: `R3`
+- Priority: `P0`
+- Status: `review`
+- Dependencies: accepted/integrated `GHU-030`, `GHU-031`; rejected original/C1 and unaccepted C2 history
+- Outcome: Correct only durable WAITING dispatch recovery, complete producer protocol/receipt/cutoff result binding, fail-closed authority responses, visible bounded reconnect recovery, and finite authoritative `repository-v1` composition.
+- Scope: A persisted claim or terminal closure is the only dispatch outcome; transient notification state clears. Verified disclosure requires exact durable equality for request/claim/attempt/response/receipt/consume/authenticated-receipt/cutoff plus job/race/runner/model/config. Browser authority loss and reconnect exhaustion disable operational controls; recovery is bounded GET-only for the same job. Production composition uses a checked-in finite locator profile and one fixed repo-generator binding contract for authoritative sources and a separate UI operations store; absent or unsafe binding fails closed.
+- Non-goals: No redesign, retry, race substitution, deployment, service/runtime/data/lock/browser action, canonical write, training, model change, EV, staking, or betting.
+- Claims supported: Uncommitted C3 review candidate only; no acceptance or integration claim.
+- Claims unsupported: Acceptance, integration, publication, deployment, runtime proof, or live prediction.
+- Next safe action: Freeze and independently review the exact C3 delta; parent retains acceptance and integration authority.
+
 ## GHU-036 — Feature-flagged generated deployment package
 
 - Release: `R3`

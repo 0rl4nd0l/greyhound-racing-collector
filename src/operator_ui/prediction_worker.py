@@ -271,7 +271,7 @@ def _evidence(stdout,stdout_len,stdout_hash,stderr,stderr_len,stderr_hash,return
 
 def _bounded_result(job:Job,stdout:bytes,stdout_len:int,stdout_hash:str,stderr:bytes,stderr_len:int,stderr_hash:str,returncode:int):
     facts=_evidence(stdout,stdout_len,stdout_hash,stderr,stderr_len,stderr_hash,returncode)
-    def semantics(): return {name:facts[name] for name in ("predictor_status","prediction_id","producer_job_id","producer_blocker") if name in facts}
+    def semantics(): return {name:facts[name] for name in ("predictor_status","prediction_id","producer_job_id","producer_blocker","protocol_chain","authenticated_cutoff") if name in facts}
     if stdout_len>MAX_STDOUT_BYTES or stderr_len>MAX_STDERR_BYTES:return Phase.FAILED,"PROCESS_OUTPUT_OVERSIZED",{}
     try:
         value=json.loads(stdout,parse_constant=lambda value: (_ for _ in ()).throw(ValueError("nonfinite JSON")))
@@ -286,6 +286,7 @@ def _bounded_result(job:Job,stdout:bytes,stdout_len:int,stdout_hash:str,stderr:b
             prediction_id=value["prediction_id"]
             if not isinstance(prediction_id,str) or not prediction_id or len(prediction_id)>128:raise ValueError
             facts.update({"predictor_status":status,"prediction_id":prediction_id,"producer_job_id":value["job_id"]})
+            facts.update({"protocol_chain":value["evidence"]["protocol_chain"],"authenticated_cutoff":value["evidence"]["authenticated_cutoff"]})
             if status=="PREDICTION_BLOCKED":
                 code=value["blocker"]["code"]
                 facts["producer_blocker"]={"code":code,"stage":value["blocker_stage"]}

@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from flask import Flask
 from werkzeug.security import generate_password_hash
 
-from src.operator_ui.job_store import JobInput, JobStore
+from src.operator_ui.job_store import JobInput, JobStore, JobStoreError, Phase
 from src.operator_ui.r3_api import R3Rejected, R3Services, ResolvedSubmission, install_r3_api
 from src.operator_ui.security import install_connected_mode
 
@@ -62,7 +62,7 @@ def test_level2_csrf_exact_schema_idempotency_poll_and_actor_isolation(tmp_path)
     first = client.post("/operator-ui/api/v1/prediction-jobs", base_url="https://localhost", json=body(), headers={"X-CSRF-Token": token})
     assert first.status_code == 202 and first.get_json()["phase"] == "WAITING_FOR_CLAIM" and len(launched) == 1
     duplicate = client.post("/operator-ui/api/v1/prediction-jobs", base_url="https://localhost", json=body(), headers={"X-CSRF-Token": token})
-    assert duplicate.status_code == 200 and duplicate.get_json()["job_id"] == first.get_json()["job_id"] and len(launched) == 1
+    assert duplicate.status_code == 200 and duplicate.get_json()["job_id"] == first.get_json()["job_id"] and len(launched) == 2
     job_id = first.get_json()["job_id"]
     assert client.get(f"/operator-ui/api/v1/prediction-jobs/{job_id}", base_url="https://localhost").get_json()["timeline"][-1]["phase"] == "WAITING_FOR_CLAIM"
     with client.session_transaction() as session:
@@ -153,6 +153,22 @@ def test_restart_get_alone_dispatches_and_claims_waiting_job_once(tmp_path):
     assert calls == [job_id]
     assert restarted.get(job_id).phase.value == "CLAIMED"
     assert restarted.verify()
+
+
+def test_same_process_get_renotifies_when_dispatch_has_no_durable_outcome(tmp_path):
+    launches=[]
+    def launch(job_id, _confirm):
+        launches.append(job_id)
+        # The asynchronous worker failed before claim and its FAILED closure
+        # also failed: the only durable truth remains WAITING_FOR_CLAIM.
+    app,store,_=application(tmp_path,launch=launch)
+    client=app.test_client(); token=login(client)
+    response=client.post("/operator-ui/api/v1/prediction-jobs",base_url="https://localhost",json=body(),headers={"X-CSRF-Token":token})
+    assert response.status_code==202
+    job_id=response.get_json()["job_id"]
+    assert store.get(job_id).phase is Phase.WAITING_FOR_CLAIM
+    assert client.get(f"/operator-ui/api/v1/prediction-jobs/{job_id}",base_url="https://localhost").status_code==200
+    assert launches==[job_id,job_id]
 
 
 def test_exact_ordered_runners_are_persisted_with_job_input(tmp_path):
