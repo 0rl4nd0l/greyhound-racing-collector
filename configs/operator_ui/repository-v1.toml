@@ -3,8 +3,6 @@ profile_id = "repository-v1"
 generated_binding = "var/operator_ui/generated/repository-v1.binding.json"
 
 [deployment]
-source_commit = "21e7b02e60e82da9c4dbbb796ea435bc120e9862"
-source_tree = "2cfc75cd8a2af1a9e5da4986c969cb668b93af62"
 ui_version = "operator-ui-v1"
 profile_id = "repository-v1"
 

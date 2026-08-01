@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import sys
 import uuid
@@ -492,54 +491,13 @@ def _sealed_result(
     }
 
 
-def _snapshot_file(path:Path)->bytes:
-    descriptors=[];descriptor=os.open("/",os.O_RDONLY|os.O_DIRECTORY);descriptors.append(descriptor)
-    try:
-        for offset,component in enumerate(path.absolute().parts[1:]):
-            flags=os.O_RDONLY|os.O_NOFOLLOW
-            if offset<len(path.absolute().parts)-2:flags|=os.O_DIRECTORY
-            descriptor=os.open(component,flags,dir_fd=descriptor);descriptors.append(descriptor)
-        before=os.fstat(descriptor);raw=b""
-        while True:
-            chunk=os.read(descriptor,65536)
-            if not chunk:break
-            raw+=chunk
-            if len(raw)>1024*1024:raise PredictionBlocked("COLLECTOR_PROTOCOL_INVALID",reason="PROTOCOL_MEMBER_OVERSIZED")
-        after=os.fstat(descriptor)
-        if (before.st_dev,before.st_ino,before.st_size,before.st_mtime_ns)!=(after.st_dev,after.st_ino,after.st_size,after.st_mtime_ns):raise PredictionBlocked("COLLECTOR_PROTOCOL_INVALID",reason="PROTOCOL_MEMBER_CHANGED")
-        return raw
-    except OSError as exc:raise PredictionBlocked("COLLECTOR_PROTOCOL_INVALID",reason="PROTOCOL_PATH_UNSAFE") from exc
-    finally:
-        for item in reversed(descriptors):os.close(item)
-
-
 def _selected_protocol_chain(protocol: ManualPredictionCollectorProtocol, handoff: Mapping[str, Any]) -> tuple[dict[str, str],dict[str,bytes]]:
     """Bind the already-validated exact handoff to its immutable protocol chain."""
     public={str(key):value for key,value in handoff.items() if not str(key).startswith("_")}
-    directory=protocol.exact_receipt_directory(str(public.get("race_id")))
-    try:names=sorted((name for name in os.listdir(directory) if name.endswith(".json")),reverse=True)
-    except OSError as exc:raise PredictionBlocked("COLLECTOR_PROTOCOL_INVALID",reason="PROTOCOL_PATH_UNSAFE") from exc
-    if len(names)>32:raise PredictionBlocked("COLLECTOR_PROTOCOL_INVALID",reason="EXACT_RECEIPT_INDEX_UNBOUNDED")
-    matches=[]
-    for name in names:
-        if Path(name).name!=name:raise PredictionBlocked("COLLECTOR_PROTOCOL_INVALID",reason="PROTOCOL_PATH_UNSAFE")
-        exact_raw=_snapshot_file(directory/name); exact=json.loads(exact_raw)
-        request_id=exact.get("request_id") if isinstance(exact,dict) else None
-        if not isinstance(request_id,str):continue
-        receipt_raw=_snapshot_file(protocol.receipt_path(request_id)); receipt=json.loads(receipt_raw)
-        if receipt.get("sealed_handoff")!=public:continue
-        named={
-            "request":protocol.request_path(request_id),"claim":protocol.claim_path(request_id),
-            "attempt":protocol.attempt_path(request_id),"response":protocol.response_path(request_id),
-            "receipt":protocol.receipt_path(request_id),"consume":protocol.consumed_path(request_id),
-        }
-        raws={name:_snapshot_file(path) for name,path in named.items()};raws["authenticated_receipt"]=exact_raw
-        response=json.loads(raws["response"]); consume=json.loads(raws["consume"])
-        chain={"request_id":request_id,**{f"{name}_sha256":sha256_bytes(raw) for name,raw in raws.items()},"authenticated_receipt_sha256":sha256_bytes(exact_raw)}
-        if response.get("request_sha256")!=chain["request_sha256"] or response.get("claim_sha256")!=chain["claim_sha256"] or response.get("attempt_sha256")!=chain["attempt_sha256"] or consume.get("response_sha256")!=chain["response_sha256"] or response.get("receipt",{}).get("sha256")!=chain["receipt_sha256"]:raise PredictionBlocked("COLLECTOR_PROTOCOL_INVALID",reason="HASH_DRIFT")
-        matches.append((chain,raws))
-    if len(matches)!=1:raise PredictionBlocked("COLLECTOR_PROTOCOL_INVALID",reason="PROTOCOL_CHAIN_AMBIGUOUS")
-    return matches[0]
+    try:
+        return protocol.snapshot_authenticated_handoff(public)
+    except ProtocolRejected as exc:
+        raise PredictionBlocked("COLLECTOR_PROTOCOL_INVALID",reason=exc.code) from exc
 
 
 def _seal_and_publish_v2(state: dict[str, Any], result: Mapping[str, Any]) -> None:

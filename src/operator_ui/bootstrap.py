@@ -39,6 +39,7 @@ _BINDING_KEYS={"schema_version","profile_id","generator","deployment","profile_s
 _ROOT_KEYS={"source_root","pinned_python","evidence_root","producer_root","canonical_db","operations_root"}
 _GENERATOR_KEYS={"generator_id","schema_version","version"}
 _DEPLOYMENT_KEYS={"source_commit","source_tree","ui_version","profile_id"}
+_PROFILE_DEPLOYMENT_KEYS={"ui_version","profile_id"}
 _ARTIFACT_KEYS={"prediction_script","prediction_config","model_artifact","model_manifest","model_schema"}
 _MAX_CONTROL_BYTES=256*1024
 
@@ -60,16 +61,38 @@ def bind_configured_live_evidence(app: Flask) -> bool:
     return True
 
 
-def _retained_read(path:Path,*,maximum:int=_MAX_CONTROL_BYTES)->bytes:
-    """Bounded component-wise no-follow read with stable retained identity."""
+def _open_fixed(path:Path,*,directory:bool)->tuple[list[int],list[tuple[int,int,int,int]],list[tuple[int,str,tuple[int,int]]]]:
+    """Open and retain every component, enforcing the fixed-path trust policy."""
     parts=path.absolute().parts; descriptor=os.open("/",os.O_RDONLY|os.O_DIRECTORY); opened=[descriptor]
     try:
+        named=[]
         for offset,component in enumerate(parts[1:]):
             flags=os.O_RDONLY|os.O_NOFOLLOW
-            if offset<len(parts)-2:flags|=os.O_DIRECTORY
+            final=offset==len(parts)-2
+            if not final or directory:flags|=os.O_DIRECTORY
             child=os.open(component,flags,dir_fd=descriptor);opened.append(child);descriptor=child
-        before=os.fstat(descriptor)
-        if not stat.S_ISREG(before.st_mode) or stat.S_IMODE(before.st_mode)&0o022:raise RuntimeError("fixed R3 runtime unsafe")
+            info=os.fstat(child);named.append((opened[-2],component,(info.st_dev,info.st_ino)))
+        identities=[]; owner=os.geteuid()
+        for item in opened:
+            info=os.fstat(item);mode=stat.S_IMODE(info.st_mode)
+            if mode&0o002 and not (stat.S_ISDIR(info.st_mode) and mode&stat.S_ISVTX):raise RuntimeError("fixed R3 runtime unsafe")
+            if mode&0o020 and info.st_uid!=owner:raise RuntimeError("fixed R3 runtime unsafe")
+            identities.append((info.st_dev,info.st_ino,info.st_size,info.st_mtime_ns))
+        final_info=os.fstat(descriptor)
+        if directory != stat.S_ISDIR(final_info.st_mode) or (not directory and not stat.S_ISREG(final_info.st_mode)):raise RuntimeError("fixed R3 runtime unsafe")
+        return opened,identities,named
+    except OSError as exc:
+        for item in reversed(opened):os.close(item)
+        raise RuntimeError("fixed R3 runtime unavailable") from exc
+    except BaseException:
+        for item in reversed(opened):os.close(item)
+        raise
+
+
+def _retained_read(path:Path,*,maximum:int=_MAX_CONTROL_BYTES)->bytes:
+    """Bounded read for a small fixed control/artifact file only."""
+    opened,identities,named=_open_fixed(path,directory=False);descriptor=opened[-1]
+    try:
         chunks=[];total=0
         while True:
             chunk=os.read(descriptor,min(65536,maximum+1-total))
@@ -77,28 +100,20 @@ def _retained_read(path:Path,*,maximum:int=_MAX_CONTROL_BYTES)->bytes:
             total+=len(chunk)
             if total>maximum:raise RuntimeError("fixed R3 runtime oversized")
             chunks.append(chunk)
-        after=os.fstat(descriptor)
-        if (before.st_dev,before.st_ino,before.st_size,before.st_mtime_ns)!=(after.st_dev,after.st_ino,after.st_size,after.st_mtime_ns):raise RuntimeError("fixed R3 runtime changed")
+        if any((value.st_dev,value.st_ino,value.st_size,value.st_mtime_ns)!=expected for value,expected in zip(map(os.fstat,opened),identities)) or any((value.st_dev,value.st_ino)!=expected for parent,name,expected in named for value in (os.stat(name,dir_fd=parent,follow_symlinks=False),)):raise RuntimeError("fixed R3 runtime changed")
         return b"".join(chunks)
-    except OSError as exc:raise RuntimeError("fixed R3 runtime unavailable") from exc
     finally:
         for item in reversed(opened):os.close(item)
 
 
 def _regular(path: Path) -> None:
-    _retained_read(path)
+    opened,_,_=_open_fixed(path,directory=False)
+    for item in reversed(opened):os.close(item)
 
 
 def _directory(path: Path) -> None:
-    descriptor=os.open("/",os.O_RDONLY|os.O_DIRECTORY);opened=[descriptor]
-    try:
-        for component in path.absolute().parts[1:]:
-            descriptor=os.open(component,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=descriptor);opened.append(descriptor)
-        info=os.fstat(descriptor)
-        if not stat.S_ISDIR(info.st_mode) or stat.S_IMODE(info.st_mode)&0o022:raise RuntimeError("fixed R3 runtime unsafe")
-    except OSError as exc:raise RuntimeError("fixed R3 runtime unavailable") from exc
-    finally:
-        for item in reversed(opened):os.close(item)
+    opened,_,_=_open_fixed(path,directory=True)
+    for item in reversed(opened):os.close(item)
 
 
 def _sha(path: Path) -> str:
@@ -128,14 +143,15 @@ def _repository_layout()->dict[str,Any]:
     profile_raw=_retained_read(profile_path)
     try:profile=tomllib.loads(profile_raw.decode("utf-8"))
     except (OSError,UnicodeDecodeError,tomllib.TOMLDecodeError) as exc:raise RuntimeError("repository-v1 profile invalid") from exc
-    if set(profile)!=_PROFILE_KEYS or profile["schema_version"]!="operator_ui_repository_profile_v1" or profile["profile_id"]!="repository-v1" or type(profile["locators"]) is not dict or set(profile["locators"])!=_LOCATOR_KEYS or type(profile["deployment"]) is not dict or set(profile["deployment"])!=_DEPLOYMENT_KEYS:raise RuntimeError("repository-v1 profile invalid")
+    if set(profile)!=_PROFILE_KEYS or profile["schema_version"]!="operator_ui_repository_profile_v1" or profile["profile_id"]!="repository-v1" or type(profile["locators"]) is not dict or set(profile["locators"])!=_LOCATOR_KEYS or type(profile["deployment"]) is not dict or set(profile["deployment"])!=_PROFILE_DEPLOYMENT_KEYS:raise RuntimeError("repository-v1 profile invalid")
     locators={name:_relative(value,f"repository-v1 locator {name}") for name,value in profile["locators"].items()}
     binding_path=(_REPOSITORY_ROOT/_relative(profile["generated_binding"],"generated binding locator")).absolute()
     try:binding=_object(binding_path,"generated repository-v1 binding")
     except RuntimeError as exc:
         if not binding_path.exists():raise RuntimeError("generated repository-v1 binding unavailable") from exc
         raise
-    if set(binding)!=_BINDING_KEYS or binding["schema_version"]!="operator_ui_repository_binding_v1" or binding["profile_id"]!="repository-v1" or type(binding["roots"]) is not dict or set(binding["roots"])!=_ROOT_KEYS or type(binding["generator"]) is not dict or set(binding["generator"])!=_GENERATOR_KEYS or binding["generator"]!={"generator_id":"GHU-036-repository-v1-generator","schema_version":"operator_ui_repository_binding_generator_v1","version":"1"} or binding["deployment"]!=profile["deployment"] or binding["profile_sha256"]!=hashlib.sha256(profile_raw).hexdigest() or type(binding["artifacts"]) is not dict or set(binding["artifacts"])!=_ARTIFACT_KEYS:raise RuntimeError("generated repository-v1 binding invalid")
+    deployment=binding.get("deployment")
+    if set(binding)!=_BINDING_KEYS or binding["schema_version"]!="operator_ui_repository_binding_v1" or binding["profile_id"]!="repository-v1" or type(binding["roots"]) is not dict or set(binding["roots"])!=_ROOT_KEYS or type(binding["generator"]) is not dict or set(binding["generator"])!=_GENERATOR_KEYS or binding["generator"]!={"generator_id":"GHU-036-repository-v1-generator","schema_version":"operator_ui_repository_binding_generator_v1","version":"1"} or type(deployment) is not dict or set(deployment)!=_DEPLOYMENT_KEYS or any(deployment[key]!=profile["deployment"][key] for key in _PROFILE_DEPLOYMENT_KEYS) or binding["profile_sha256"]!=hashlib.sha256(profile_raw).hexdigest() or type(binding["artifacts"]) is not dict or set(binding["artifacts"])!=_ARTIFACT_KEYS:raise RuntimeError("generated repository-v1 binding invalid")
     roots={}
     for name,value in binding["roots"].items():
         path=Path(value) if isinstance(value,str) else Path("")
@@ -158,7 +174,7 @@ def _repository_layout()->dict[str,Any]:
     for path in artifacts.values():_regular(path)
     artifact_binding={"prediction_script":artifacts["script"],"prediction_config":artifacts["config"],"model_artifact":artifacts["model"],"model_manifest":artifacts["manifest"],"model_schema":artifacts["schema"]}
     if any(binding["artifacts"].get(name)!=_sha(path) for name,path in artifact_binding.items()):raise RuntimeError("generated repository-v1 artifact identity mismatch")
-    return {"base":operations,"paths":paths,"dirs":dirs,"artifacts":artifacts,"source_root":roots["source_root"],"pinned_python":roots["pinned_python"],"deployment":dict(profile["deployment"])}
+    return {"base":operations,"paths":paths,"dirs":dirs,"artifacts":artifacts,"source_root":roots["source_root"],"pinned_python":roots["pinned_python"],"deployment":dict(deployment)}
 
 
 def _runner(row: Mapping[str, Any]) -> dict[str, Any]:
