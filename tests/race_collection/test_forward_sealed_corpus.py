@@ -331,6 +331,40 @@ def test_result_strips_only_established_terminal_nbt_non_name_badge(tmp_path):
         )
 
 
+def test_result_history_uses_exact_race_id_request_root(tmp_path):
+    race_id = "Race 1 - SAN - 2026-07-29"
+    value = fixture()
+    evidence = json.loads(value["sealed_evidence_bytes"])
+    evidence["race_id"] = race_id
+    value["race_id"] = race_id
+    value["sealed_evidence_bytes"] = canonical_json(evidence)
+    corpus = ForwardSealedCorpus(
+        tmp_path,
+        clock=Clock(_dt("09:45"), _dt("10:06"), _dt("10:06"), _dt("10:06")),
+    )
+    corpus.capture_prejump(**value)
+    corpus.capture_result(
+        race_id=race_id,
+        collector_id="collector-1",
+        session_id="session-1",
+        run_id="run-1",
+        request_id="request-1",
+        request_url="https://www.thedogs.com.au/racing/test/results",
+        transport=Transport(_html()),
+    )
+
+    assert corpus._official_request_root(tmp_path, race_id) != (
+        corpus._race_directory(race_id) / "official-requests"
+    )
+    assert corpus.status()["races"] == [
+        {
+            "race_id": race_id,
+            "state": "RESULT_FIRST_OBSERVED",
+            "result_observation_count": 1,
+        }
+    ]
+
+
 def test_unknown_or_naive_result_timestamps_fail_closed(tmp_path):
     corpus = ForwardSealedCorpus(tmp_path, clock=lambda: datetime(2026, 7, 29, 10, 6))
     corpus._clock = lambda: _dt("09:45")

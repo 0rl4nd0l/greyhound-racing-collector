@@ -1012,11 +1012,15 @@ class ForwardSealedCorpus:
             if observation is not None
         ]
 
+    @staticmethod
+    def _official_request_root(root: Path, race_id: str) -> Path:
+        return root / "races" / hashlib.sha256(race_id.encode()).hexdigest() / "official-requests"
+
     def _official_response_history(
         self, pre: Mapping[str, Any]
     ) -> list[tuple[dict[str, Any], dict[str, Any] | None]]:
         race_id = pre["race_id"]
-        directory = self._race_directory(race_id) / "official-requests"
+        directory = self._official_request_root(self.root, race_id)
         if not directory.exists():
             return []
         if directory.is_symlink() or not directory.is_dir():
@@ -1087,10 +1091,7 @@ class ForwardSealedCorpus:
     @staticmethod
     def _request_directory(root: Path, race_id: str, request_id: str) -> Path:
         return (
-            root
-            / "races"
-            / hashlib.sha256(race_id.encode()).hexdigest()
-            / "official-requests"
+            ForwardSealedCorpus._official_request_root(root, race_id)
             / hashlib.sha256(request_id.encode()).hexdigest()
         )
 
