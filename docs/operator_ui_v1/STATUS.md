@@ -892,3 +892,17 @@ contracts. Its identity is owned by the parent packet and is not asserted here.
 No install, service action, deployment, publication, push, merge, runtime/data/
 model mutation, live prediction, collector/browser action, outcomes, training,
 promotion, EV, betting, acceptance, integration, or runtime proof is claimed.
+
+## GHU-036 C9 correction status
+
+C8 at base commit `2a6f22da174c5081ee9c24c4fa2f28fdf895b8be`, tree
+`c4e75f5fc15d79cd6d32e223b021c26b4728da73`, retained mutable directory
+metadata and therefore rejected unrelated ancestor activity. C9 compares only
+device, inode, and file type for retained directories while preserving full
+content-sensitive leaf identity, no-follow descriptor-relative traversal,
+retained descriptors, bounded reads, source Git re-verification, cleanup, and
+no output on rejection. Deterministic coverage permits unrelated ancestor
+churn and exercises leaf replacement, component replacement, in-place
+mutation, and oversize rejection for all six authority files. C9 remains an
+unstaged, uncommitted `REVIEW` candidate; no acceptance, integration,
+deployment, or runtime proof is claimed.

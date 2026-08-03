@@ -167,12 +167,32 @@ def test_generator_rejects_authority_replacement_during_retained_read_without_ou
     assert all(not target.exists() for target in generated_targets(values))
 
 
+def test_generator_allows_unrelated_ancestor_directory_churn(tmp_path, monkeypatch):
+    values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
+    real_read = os.read
+    churned = False
+
+    def read(descriptor, size):
+        nonlocal churned
+        if not churned:
+            churned = True
+            (values["source_root"].parent / "unrelated-activity").write_text("unrelated")
+        return real_read(descriptor, size)
+
+    monkeypatch.setattr("src.operator_ui.deployment.os.read", read)
+
+    assert generate_package(**values)["enabled"] is False
+    assert all(target.exists() for target in generated_targets(values))
+
+
+@pytest.mark.parametrize("relative", AUTHORITY_RELATIVES)
 def test_generator_rejects_in_place_authority_change_during_retained_read_without_output(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, relative
 ):
     values = deployment_inputs(tmp_path)
     git_identity(monkeypatch)
-    victim = values["source_root"] / AUTHORITY_RELATIVES[0]
+    victim = values["source_root"] / relative
     identity = (victim.stat().st_dev, victim.stat().st_ino)
     real_read = os.read
     changed = False
@@ -193,10 +213,11 @@ def test_generator_rejects_in_place_authority_change_during_retained_read_withou
     assert all(not target.exists() for target in generated_targets(values))
 
 
-def test_authority_reads_are_bounded_and_close_every_descriptor(tmp_path, monkeypatch):
+@pytest.mark.parametrize("relative", AUTHORITY_RELATIVES)
+def test_authority_reads_are_bounded_and_close_every_descriptor(tmp_path, monkeypatch, relative):
     values = deployment_inputs(tmp_path)
     git_identity(monkeypatch)
-    (values["source_root"] / AUTHORITY_RELATIVES[0]).write_bytes(b"x" * (256 * 1024 + 1))
+    (values["source_root"] / relative).write_bytes(b"x" * (256 * 1024 + 1))
     descriptors_before = len(tuple(Path("/proc/self/fd").iterdir()))
 
     with pytest.raises(DeploymentRejected, match="oversized"):

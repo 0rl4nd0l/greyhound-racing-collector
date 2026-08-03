@@ -107,6 +107,12 @@ def _file_identity(info: os.stat_result) -> tuple[int, ...]:
     )
 
 
+def _authority_identity(info: os.stat_result, *, directory: bool) -> tuple[int, ...]:
+    if directory:
+        return (info.st_dev, info.st_ino, stat.S_IFMT(info.st_mode))
+    return _file_identity(info)
+
+
 @contextmanager
 def _retained_authority_reads(
     source: Path, relatives: tuple[str, ...], maximum: int = 256 * 1024
@@ -125,7 +131,7 @@ def _retained_authority_reads(
             except BaseException:
                 os.close(descriptor)
                 raise
-            retained.append((descriptor, Path(parts[0]), _file_identity(info), True))
+            retained.append((descriptor, Path(parts[0]), _authority_identity(info, directory=True), True))
             current = Path(parts[0])
             for index, component in enumerate(parts[1:]):
                 current /= component
@@ -144,7 +150,7 @@ def _retained_authority_reads(
                     raise DeploymentRejected(f"authority component has wrong type: {current}")
                 if not directory and not stat.S_ISREG(info.st_mode):
                     raise DeploymentRejected(f"authority input has wrong type: {current}")
-                retained.append((descriptor, current, _file_identity(info), directory))
+                retained.append((descriptor, current, _authority_identity(info, directory=directory), directory))
             leaves[relative] = descriptor
 
         def verify_unchanged() -> None:
@@ -153,8 +159,8 @@ def _retained_authority_reads(
                 path_info = os.stat(path, follow_symlinks=False)
                 expected_type = stat.S_ISDIR if directory else stat.S_ISREG
                 if (
-                    _file_identity(descriptor_info) != identity
-                    or _file_identity(path_info) != identity
+                    _authority_identity(descriptor_info, directory=directory) != identity
+                    or _authority_identity(path_info, directory=directory) != identity
                     or not expected_type(path_info.st_mode)
                 ):
                     raise DeploymentRejected(f"authority identity changed during retained read: {path}")
