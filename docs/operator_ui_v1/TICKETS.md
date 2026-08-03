@@ -1222,3 +1222,16 @@ Status: correction candidate, awaiting parent inspection and independent review.
 - Claims supported: Unstaged/uncommitted GHU-035C4 review candidate pending parent executable validation and independent review only.
 - Next safe action: Parent freezes and runs exact executable validation, then assigns independent exact-delta review.
 - Rejected C3 evidence: Commit `e3c2405804a03484de9a92e7d92a6379e870b8d2`, tree `dd11aa8e6dec356f1e9581239839cc9790311033`; run `20260803T074017Z-b8cd217e34-b4650b`, child `c08d284522fbd047033d5d2afbaf8df9`, session `019fc691-42a1-7a43-920a-38dec213ccf3`. Parent focused pytest returned `1 failed, 1 passed`; `sealed_blocked` still produced `FAILED / PROCESS_OUTPUT_INVALID`, and isolated validation reported `PREDICTION_BUNDLE_INVALID` at `result.race.identity` because C3's synthetic identity cannot satisfy the producer's stable identity contract.
+
+## GHU-035C5 — Make cleanup-deadline evidence deterministic under load
+
+- Release: `R3`
+- Priority: `P0`
+- Status: `review`
+- Dependencies: rejected `GHU-035C4`; accepted/integrated `GHU-032C8` through `GHU-034C8`
+- Outcome: Preserve C4's canonical stable-race correction while replacing two load-sensitive whole-worker wall-clock assertions with direct evidence that pipe cleanup uses the configured shared deadline.
+- Scope: Test only: observe closer-thread join budgets, prove a blocked close remains blocked when the worker returns, and retain durable closer-start-failure classification. Preserve all 23 genuine fixture bindings and every worker/product invariant.
+- Non-goals: Production timeout or safety relaxation, GHU-036, deployment, live prediction, collector/browser action, runtime/data/model mutation, outcome access, training, promotion, EV, betting, staging, commit, push, or merge.
+- Validation: Run the two corrected focused tests once; Python compile, `git diff --check`, and fixture binding.
+- Claims supported: Unstaged/uncommitted GHU-035C5 review candidate pending parent validation and independent review only.
+- Rejected C4 evidence: Commit `29742e3c4c8309830400da4e9fa22a7fe9f1bb9a`, tree `331dd738e56ddf0952b6925d8b2fcd21555bf4bf`; run `20260803T075059Z-e3c2405804-c77d64`, session `019fc69b-b181-7751-a623-55b18442d5e9`. Parent focused validation passed 3 tests. Parent's one-time eight-module bound suite returned `2 failed, 611 passed, 1 warning in 360.40s`; only the two whole-`run_once` `<0.5s` assertions failed (`0.862093s` and `0.573822s`). The broad suite is preserved and must not be rerun unchanged.

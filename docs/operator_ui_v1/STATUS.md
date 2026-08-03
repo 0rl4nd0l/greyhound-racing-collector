@@ -802,3 +802,31 @@ job, authority, lifecycle, hash, and immutable-chain validation. No security
 policy, authentication, CSRF, audit immutability, idempotency, collector
 ownership, stable identity, or leakage control is weakened. No acceptance,
 integration, deployment, runtime/live proof, or prohibited action is claimed.
+
+## GHU-035C4 rejection and C5 correction status
+
+C4 is rejected at commit `29742e3c4c8309830400da4e9fa22a7fe9f1bb9a`,
+tree `331dd738e56ddf0952b6925d8b2fcd21555bf4bf`; run
+`20260803T075059Z-e3c2405804-c77d64`, session
+`019fc69b-b181-7751-a623-55b18442d5e9`. Parent focused validation passed 3
+tests. Its single full bound suite over eight explicit modules completed with
+`2 failed, 611 passed, 1 warning in 360.40s`; only the two cleanup tests failed,
+at `0.862093s` and `0.573822s` against whole-call `<0.5s` assertions. That
+unchanged broad suite is terminal evidence and was not rerun.
+
+Inspection found no reachable product deadline defect: cleanup establishes one
+absolute deadline, supplies only its remainder to process and thread joins, and
+runs pipe close on daemon closer threads. The failed tests included unrelated
+SQLite/audit persistence and scheduler delay in their wall clock. C5 is an
+unstaged `REVIEW` test-only correction that directly records the closer join
+budget, proves return while a close remains blocked, and preserves durable
+closer-start-failure truth. Production code and all 23 fixture bindings remain
+unchanged. No acceptance, integration, deployment, runtime/live proof, or
+prohibited action is claimed.
+
+C5 bounded validation: `uv run --with-requirements requirements/all.in pytest
+-q` with only the two corrected node IDs exited `127` before pytest because
+`uv` is unavailable; `/tmp/ghu010-validation-73f1e5d/bin/python` is also
+absent, so no focused test executed and no pass is claimed. Direct Python
+compilation of the two affected test modules, `git diff --check`, and the AST
+fixture-binding check all exited 0; the binding check resolved all 23 names.

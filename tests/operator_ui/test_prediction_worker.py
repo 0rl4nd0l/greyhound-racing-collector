@@ -111,16 +111,25 @@ def test_timeout_reap_truth_is_durable_and_never_retries(tmp_path,confirmed,phas
     with pytest.raises(WorkerRejected):run_once(store,job.job_id,cfg,now=lambda:NOW,confirm_audit=CONFIRM,popen=lambda *a,**k:calls.append(1),reader=lambda **_:view())
     assert len(calls)==1
 
-def test_blocking_pipe_close_cannot_exceed_shared_cleanup_deadline(tmp_path):
+def test_blocking_pipe_close_cannot_exceed_shared_cleanup_deadline(tmp_path,monkeypatch):
     cfg,store,job=setup(tmp_path); cfg=replace(cfg,cancellation_grace_seconds=.02)
-    release=threading.Event()
+    release=threading.Event(); close_joins=[]; real_thread=threading.Thread
     class BlockingClose(io.BytesIO):
         def close(self): release.wait()
+    class ObservedThread:
+        def __init__(self,*args,**kwargs): self.inner=real_thread(*args,**kwargs); self.closer=kwargs.get("name","").endswith("-close")
+        def start(self): self.inner.start()
+        def join(self,timeout=None):
+            if self.closer: close_joins.append((timeout,self.inner.is_alive()))
+            return self.inner.join(timeout)
+        def is_alive(self): return self.inner.is_alive()
+    monkeypatch.setattr("src.operator_ui.prediction_worker.threading.Thread",ObservedThread)
     proc=Process(); proc.stdout=BlockingClose(ready(job)); proc.stderr=io.BytesIO()
-    started=time.monotonic()
     result=run_once(store,job.job_id,cfg,now=lambda:NOW,confirm_audit=CONFIRM,popen=lambda *a,**k:proc,reader=lambda **_:view())
-    elapsed=time.monotonic()-started; release.set()
-    assert elapsed<.5 and result.phase is Phase.FAILED
+    assert result.phase is Phase.FAILED
+    assert close_joins and all(timeout is not None and 0<=timeout<=cfg.cancellation_grace_seconds for timeout,_ in close_joins)
+    assert any(was_alive for _,was_alive in close_joins) and not release.is_set()
+    release.set()
     with sqlite3.connect(store.path) as db:
         facts=json.loads(db.execute("SELECT facts_json FROM job_events ORDER BY sequence DESC LIMIT 1").fetchone()[0])
     assert facts["stdout_reader_error"]=="CLOSE_ERROR"
@@ -138,10 +147,10 @@ def test_pipe_closer_start_failure_is_bounded_and_durably_reported(tmp_path,monk
         if name=="predictor-stdout-close": return StartFailingCloser(*args,**kwargs)
         return real_thread(*args,**kwargs)
     monkeypatch.setattr("src.operator_ui.prediction_worker.threading.Thread",thread)
-    began=time.monotonic()
     result=run_once(store,job.job_id,cfg,now=lambda:NOW,confirm_audit=CONFIRM,popen=lambda *a,**k:proc,reader=lambda **_:view())
-    assert time.monotonic()-began<.5 and result.phase is Phase.FAILED
+    assert result.phase is Phase.FAILED
     assert constructed[:2]==["predictor-stdout","predictor-stderr"]
+    assert "predictor-stdout-close" in constructed
     with sqlite3.connect(store.path) as db:
         facts=json.loads(db.execute("SELECT facts_json FROM job_events ORDER BY sequence DESC LIMIT 1").fetchone()[0])
     assert facts["stdout_reader_error"]=="CLOSE_ERROR"
