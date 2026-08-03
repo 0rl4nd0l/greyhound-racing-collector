@@ -2596,7 +2596,10 @@ def test_run_odds_capture_once_uses_lock_and_writes_compact_report(tmp_path, mon
                         "date": "2026-06-12",
                         "jump_datetime": "2026-06-12T10:48:00+10:00",
                         "race_id": "Race 1 - HEA - 2026-06-12",
-                        "race_id_aliases": ["HEA-R1-20260612"],
+                        "race_id_aliases": [
+                            "Race 1 - HEA - 2026-06-12",
+                            "Race 1 - HEALESVILLE - 2026-06-12",
+                        ],
                         "race_number": 1,
                         "race_time": "10:48",
                         "race_url": (
