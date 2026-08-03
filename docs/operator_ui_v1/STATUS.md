@@ -5,11 +5,11 @@ Current review state observed 2026-08-03:
 | Field | State |
 |---|---|
 | Accepted programme base | `GHU-035` accepted at commit `881a3cee0c7f93dd26f5ece9185052f59c4c1aed`, tree `226dae42ebc4deea7ce1c7954e8da74fabd37f7a` |
-| Rejected documentation candidate | Mechanically frozen `GHU-036 C6` candidate `bd95d7affc6b4b10c9b4b5445ad841d72d773e51`, tree `92cb955331961e0cdc12c9a99ee0725a84b76c04`, was rejected in review session `019fc6fc-b9e8-76f3-9cb9-d3a1867db428` because `DEPLOYMENT.md` described at-least-three rather than exact-three secret assignments and this opening table still presented obsolete `GHU-032C3` identity, counts, and assignment as current. |
-| Current ticket | Documentation-only `GHU-036 C7` is in `REVIEW`; no acceptance, integration, deployment, or runtime proof is claimed. |
-| Product candidate | `GHU-036 C5` remains the mechanically frozen product candidate at commit `61567704a812969abc39df07c92eb5ab7e858710`, tree `254fbcd541b37d6904a8000391da5488fefa3e26`; deployment-generator validation passed exactly `54/54`. |
-| Prior validation | `124` focused tests passed; the broad run passed `854` tests and had `13` `/tmp` harness failures; owner-safe bootstrap validation passed `39/39`. These are preserved prior results, not rerun C7 claims. |
-| Next safe action | Independently review the exact documentation-only C7 delta; the parent retains acceptance and integration authority. |
+| Rejected correction candidate | `GHU-036 C7` commit `ffad974a0ce0bcd0a47752d66ff768c223a8580e`, tree `0d215c3d5f567167d7a4f16b1984bf39205f44ea`, was rejected in independent review session `019fc704-0419-7943-a284-dd8208d0d98a` because its checked-in profile and five artifact hashes were reopened by pathname after validation instead of coming from bounded, no-follow retained reads. |
+| Current ticket | Unstaged, uncommitted `GHU-036 C8` is in `REVIEW`; no self-identity, acceptance, integration, deployment, or runtime proof is claimed. |
+| Product candidate | C8 changes only the profile/five-artifact authority-read seam and deterministic adversarial tests; all transactional output, external-secret, startup, systemd, and default-off boundaries are preserved. |
+| Prior validation | `124` focused tests passed; the broad run passed `854` tests and had `13` `/tmp` harness failures; owner-safe bootstrap validation passed `39/39`. These are preserved prior results, not rerun C8 claims. |
+| Next safe action | Independently review the exact unstaged C8 delta; the parent retains freeze, acceptance, and integration authority. |
 
 ## Historical detailed record
 

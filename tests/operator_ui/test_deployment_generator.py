@@ -21,6 +21,14 @@ SECRET_LINES = (
     "OPERATOR_UI_USERNAME=operator@example.test",
     "OPERATOR_UI_PASSWORD_HASH=scrypt:32768:8:1$saltsalt$0123456789abcdef",
 )
+AUTHORITY_RELATIVES = (
+    "configs/operator_ui/repository-v1.toml",
+    "scripts/predict_race_now.py",
+    "configs/prediction/manual-default.json",
+    "artifacts/frozen_models/market_form_residual_v1/model.json",
+    "artifacts/frozen_models/market_form_residual_v1/manifest.json",
+    "configs/prediction/schemas/market_form_residual_v1.schema.json",
+)
 
 
 def deployment_inputs(tmp_path: Path) -> dict[str, object]:
@@ -76,6 +84,31 @@ def generated_targets(values: dict[str, object]) -> tuple[Path, ...]:
     )
 
 
+def replace_during_authority_read(monkeypatch, victim: Path, *, component: bool) -> None:
+    identity = (victim.stat().st_dev, victim.stat().st_ino)
+    real_read = os.read
+    replaced = False
+
+    def read(descriptor, size):
+        nonlocal replaced
+        info = os.fstat(descriptor)
+        if not replaced and (info.st_dev, info.st_ino) == identity:
+            replaced = True
+            if component:
+                parent = victim.parent
+                displaced = parent.with_name(parent.name + "-displaced")
+                parent.rename(displaced)
+                parent.mkdir()
+                (parent / victim.name).write_bytes(b"attacker component replacement")
+            else:
+                displaced = victim.with_name(victim.name + "-displaced")
+                victim.rename(displaced)
+                victim.write_bytes(b"attacker leaf replacement")
+        return real_read(descriptor, size)
+
+    monkeypatch.setattr("src.operator_ui.deployment.os.read", read)
+
+
 def git_identity(monkeypatch, *, commit=COMMIT, tree=TREE, dirty=False):
     def run(command, **kwargs):
         if "status" in command:
@@ -115,6 +148,62 @@ def test_default_off_package_binds_identity_hashes_private_service_and_external_
     assert f"EnvironmentFile={values['secrets_file']}" in service
     assert "actual-secret" not in service + environment
     assert result["enabled"] is False
+
+
+@pytest.mark.parametrize("relative", AUTHORITY_RELATIVES)
+@pytest.mark.parametrize("component", [False, True], ids=["leaf", "component"])
+def test_generator_rejects_authority_replacement_during_retained_read_without_output(
+    tmp_path, monkeypatch, relative, component
+):
+    values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
+    replace_during_authority_read(
+        monkeypatch, values["source_root"] / relative, component=component
+    )
+
+    with pytest.raises(DeploymentRejected, match="authority.*changed|identity"):
+        generate_package(**values)
+
+    assert all(not target.exists() for target in generated_targets(values))
+
+
+def test_generator_rejects_in_place_authority_change_during_retained_read_without_output(
+    tmp_path, monkeypatch
+):
+    values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
+    victim = values["source_root"] / AUTHORITY_RELATIVES[0]
+    identity = (victim.stat().st_dev, victim.stat().st_ino)
+    real_read = os.read
+    changed = False
+
+    def read(descriptor, size):
+        nonlocal changed
+        info = os.fstat(descriptor)
+        if not changed and (info.st_dev, info.st_ino) == identity:
+            changed = True
+            victim.write_bytes(b"in-place attacker change")
+        return real_read(descriptor, size)
+
+    monkeypatch.setattr("src.operator_ui.deployment.os.read", read)
+
+    with pytest.raises(DeploymentRejected, match="authority.*changed"):
+        generate_package(**values)
+
+    assert all(not target.exists() for target in generated_targets(values))
+
+
+def test_authority_reads_are_bounded_and_close_every_descriptor(tmp_path, monkeypatch):
+    values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
+    (values["source_root"] / AUTHORITY_RELATIVES[0]).write_bytes(b"x" * (256 * 1024 + 1))
+    descriptors_before = len(tuple(Path("/proc/self/fd").iterdir()))
+
+    with pytest.raises(DeploymentRejected, match="oversized"):
+        generate_package(**values)
+
+    assert len(tuple(Path("/proc/self/fd").iterdir())) == descriptors_before
+    assert all(not target.exists() for target in generated_targets(values))
 
 
 @pytest.mark.parametrize(

@@ -10,8 +10,9 @@ import re
 import stat
 import subprocess
 import sys
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 
 class DeploymentRejected(RuntimeError):
@@ -97,6 +98,95 @@ def _read(path: Path, maximum: int = 256 * 1024) -> bytes:
     if len(data) > maximum:
         raise DeploymentRejected(f"bounded deployment input oversized: {path}")
     return data
+
+
+def _file_identity(info: os.stat_result) -> tuple[int, ...]:
+    return (
+        info.st_dev, info.st_ino, info.st_mode, info.st_size,
+        info.st_mtime_ns, info.st_ctime_ns,
+    )
+
+
+@contextmanager
+def _retained_authority_reads(
+    source: Path, relatives: tuple[str, ...], maximum: int = 256 * 1024
+) -> Iterator[dict[str, bytes]]:
+    """Read fixed source files through retained, no-follow component descriptors."""
+    retained: list[tuple[int, Path, tuple[int, ...], bool]] = []
+    leaves: dict[str, int] = {}
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW
+    try:
+        for relative in relatives:
+            target = source / relative
+            parts = target.absolute().parts
+            descriptor = os.open(parts[0], flags | os.O_DIRECTORY)
+            try:
+                info = os.fstat(descriptor)
+            except BaseException:
+                os.close(descriptor)
+                raise
+            retained.append((descriptor, Path(parts[0]), _file_identity(info), True))
+            current = Path(parts[0])
+            for index, component in enumerate(parts[1:]):
+                current /= component
+                directory = index < len(parts[1:]) - 1
+                descriptor = os.open(
+                    component,
+                    flags | (os.O_DIRECTORY if directory else 0),
+                    dir_fd=descriptor,
+                )
+                try:
+                    info = os.fstat(descriptor)
+                except BaseException:
+                    os.close(descriptor)
+                    raise
+                if directory and not stat.S_ISDIR(info.st_mode):
+                    raise DeploymentRejected(f"authority component has wrong type: {current}")
+                if not directory and not stat.S_ISREG(info.st_mode):
+                    raise DeploymentRejected(f"authority input has wrong type: {current}")
+                retained.append((descriptor, current, _file_identity(info), directory))
+            leaves[relative] = descriptor
+
+        def verify_unchanged() -> None:
+            for descriptor, path, identity, directory in retained:
+                descriptor_info = os.fstat(descriptor)
+                path_info = os.stat(path, follow_symlinks=False)
+                expected_type = stat.S_ISDIR if directory else stat.S_ISREG
+                if (
+                    _file_identity(descriptor_info) != identity
+                    or _file_identity(path_info) != identity
+                    or not expected_type(path_info.st_mode)
+                ):
+                    raise DeploymentRejected(f"authority identity changed during retained read: {path}")
+
+        verify_unchanged()
+        contents: dict[str, bytes] = {}
+        for relative, descriptor in leaves.items():
+            chunks: list[bytes] = []
+            remaining = maximum + 1
+            while remaining:
+                chunk = os.read(descriptor, min(64 * 1024, remaining))
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            data = b"".join(chunks)
+            if len(data) > maximum:
+                raise DeploymentRejected(f"bounded deployment input oversized: {source / relative}")
+            contents[relative] = data
+        verify_unchanged()
+        yield contents
+        verify_unchanged()
+    except DeploymentRejected:
+        raise
+    except OSError as error:
+        raise DeploymentRejected("authority input changed or became unavailable") from error
+    finally:
+        for descriptor, _, _, _ in reversed(retained):
+            try:
+                os.close(descriptor)
+            except OSError:
+                pass
 
 
 def _validate_secrets_file(path: Path) -> None:
@@ -253,15 +343,21 @@ def generate_package(*, source_root: Path, pinned_python: Path, evidence_root: P
     artifact_paths = {name: _safe_existing(source / relative, directory=False) for name, relative in _ARTIFACTS.items()}
     _validate_secrets_file(secrets)
 
-    binding = {
-        "schema_version": "operator_ui_repository_binding_v1",
-        "profile_id": profile_id,
-        "generator": {"generator_id": "GHU-036-repository-v1-generator", "schema_version": "operator_ui_repository_binding_generator_v1", "version": "1"},
-        "deployment": {"source_commit": source_commit, "source_tree": source_tree, "ui_version": ui_version, "profile_id": profile_id},
-        "profile_sha256": hashlib.sha256(_read(profile_path)).hexdigest(),
-        "artifacts": {name: hashlib.sha256(_read(path)).hexdigest() for name, path in artifact_paths.items()},
-        "roots": {"source_root": str(source), "pinned_python": str(python), "evidence_root": str(evidence), "producer_root": str(producer), "canonical_db": str(database), "operations_root": str(operations)},
-    }
+    authority_relatives = ("configs/operator_ui/repository-v1.toml", *_ARTIFACTS.values())
+    with _retained_authority_reads(source, authority_relatives) as authority_bytes:
+        _verify_source_identity(source, source_commit, source_tree)
+        binding = {
+            "schema_version": "operator_ui_repository_binding_v1",
+            "profile_id": profile_id,
+            "generator": {"generator_id": "GHU-036-repository-v1-generator", "schema_version": "operator_ui_repository_binding_generator_v1", "version": "1"},
+            "deployment": {"source_commit": source_commit, "source_tree": source_tree, "ui_version": ui_version, "profile_id": profile_id},
+            "profile_sha256": hashlib.sha256(authority_bytes["configs/operator_ui/repository-v1.toml"]).hexdigest(),
+            "artifacts": {
+                name: hashlib.sha256(authority_bytes[relative]).hexdigest()
+                for name, relative in _ARTIFACTS.items()
+            },
+            "roots": {"source_root": str(source), "pinned_python": str(python), "evidence_root": str(evidence), "producer_root": str(producer), "canonical_db": str(database), "operations_root": str(operations)},
+        }
     active = bool(enabled)
     environment = "\n".join((
         f"OPERATOR_UI_CONNECTED_MODE={int(active)}",
