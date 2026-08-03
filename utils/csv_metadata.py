@@ -18,6 +18,7 @@ from config.venue_mapping import normalize_venue
 from utils.runner_completeness import (
     align_csv_text_to_canonical_final_runner_set,
     analyze_csv_text_runner_completeness,
+    normalise_runner_name,
 )
 
 # Optional heavy dependency - make pandas optional in constrained test envs
@@ -1614,7 +1615,10 @@ def _participant_box_name_list(payload: Mapping[str, Any]) -> list[Dict[str, Any
             dog_name = str(participant.get("dog_name") or participant.get("name") or "").strip()
             if box_number is None or not dog_name:
                 continue
-            rows.append({"box_number": box_number, "dog_name": dog_name})
+            row = {"box_number": box_number, "dog_name": dog_name}
+            if participant.get("scratch_state") == "ACTIVE":
+                row["scratch_state"] = "ACTIVE"
+            rows.append(row)
         if rows:
             return rows
     return []
@@ -1809,6 +1813,30 @@ def normalize_verified_thedogs_export_content(
                 content_for_normalization,
                 source=str(accepted_csv_path),
             ).as_dict()
+            canonical_active = {
+                (
+                    _safe_int(participant.get("box_number")),
+                    normalise_runner_name(participant.get("dog_name") or ""),
+                )
+                for participant in canonical_runner_set.get(
+                    "final_runner_participants", []
+                )
+                if isinstance(participant, Mapping)
+            }
+            for participant in effective_runner_completeness.get("participants", []):
+                if not isinstance(participant, dict):
+                    continue
+                identity = (
+                    _safe_int(participant.get("box_number") or participant.get("box")),
+                    normalise_runner_name(
+                        participant.get("dog_name") or participant.get("name") or ""
+                    ),
+                )
+                if identity in canonical_active:
+                    # This is not inferred from CSV presence.  The canonical
+                    # pre-race producer explicitly excluded scratched and
+                    # unpromoted reserve rows before reporting this active set.
+                    participant["scratch_state"] = "ACTIVE"
             base["runner_completeness_after_canonical_alignment"] = (
                 dict(effective_runner_completeness)
             )
