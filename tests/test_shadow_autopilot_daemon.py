@@ -1526,6 +1526,7 @@ def test_odds_capture_only_autopilot_command_is_narrow_and_append_only():
         odds_capture_refresh_limit=8,
         timeout_seconds=600,
         state_path=Path("/runtime/odds_capture_state.json"),
+        forward_corpus_root=Path("/evidence/forward-corpus"),
     )
 
     assert "scripts/shadow_autopilot_v1.py" in command[1]
@@ -1545,6 +1546,9 @@ def test_odds_capture_only_autopilot_command_is_narrow_and_append_only():
     )
     assert command[command.index("--current-race-index-state-path") + 1] == (
         "/runtime/odds_capture_state.json"
+    )
+    assert command[command.index("--forward-corpus-root") + 1] == (
+        "/evidence/forward-corpus"
     )
     assert "--enable-autonomous-result-capture" not in command
 
@@ -4695,6 +4699,7 @@ def test_odds_capture_service_and_timer_define_minutely_locked_lane():
         db_path=Path("/data/greyhound_racing_data.db"),
         lock_path=Path("/runtime/shared-shadow-autopilot.lock"),
         state_path=Path("/runtime/odds_capture_state.json"),
+        forward_corpus_root=Path("/runtime/forward-corpus"),
         refresh_limit=8,
     )
     timer = daemon.odds_capture_timer_file_text()
@@ -4710,6 +4715,7 @@ def test_odds_capture_service_and_timer_define_minutely_locked_lane():
     assert "--db /data/greyhound_racing_data.db" in service
     assert "--lock-path /runtime/shared-shadow-autopilot.lock" in service
     assert "--state-path /runtime/odds_capture_state.json" in service
+    assert '--forward-corpus-root "/runtime/forward-corpus"' in service
     assert "--odds-capture-refresh-limit 8" in service
     assert "--require-safe-refresh-metadata" in service
     assert "--skip-primary-refresh" in service
@@ -4733,6 +4739,7 @@ def test_write_odds_capture_service_files_preserves_db_and_lock(tmp_path):
         db_path=Path("/data/greyhound_racing_data.db"),
         lock_path=Path("/runtime/shared-shadow-autopilot.lock"),
         state_path=Path("/runtime/odds_capture_state.json"),
+        forward_corpus_root=Path("/runtime/forward-corpus"),
         refresh_limit=8,
     )
 
@@ -4749,6 +4756,7 @@ def test_write_odds_capture_service_files_preserves_db_and_lock(tmp_path):
     )
     assert result["db_path"] == "/data/greyhound_racing_data.db"
     assert result["lock_path"] == "/runtime/shared-shadow-autopilot.lock"
+    assert result["forward_corpus_root"] == "/runtime/forward-corpus"
     assert "ExecStart=/runtime/.venv/bin/python" in service
     assert (
         "--evidence-root /runtime/artifacts/full_evidence_orchestration_20260525"
@@ -4757,6 +4765,7 @@ def test_write_odds_capture_service_files_preserves_db_and_lock(tmp_path):
     assert service.index("--evidence-root") < service.index("--days-ahead")
     assert "--db /data/greyhound_racing_data.db" in service
     assert "--lock-path /runtime/shared-shadow-autopilot.lock" in service
+    assert '--forward-corpus-root "/runtime/forward-corpus"' in service
     assert f"OnCalendar={daemon.DEFAULT_ODDS_CAPTURE_ONLY_TIMER_ON_CALENDAR}" in timer
     assert "OnUnitActiveSec" not in timer
 
@@ -10069,6 +10078,23 @@ def test_forward_observer_defaults_off_and_requires_root():
     }
     with pytest.raises(SystemExit):
         daemon.parse_args(["run-once", "--enable-forward-official-result-observer"])
+
+
+def test_forward_corpus_root_is_required_in_installed_service_identity():
+    args = daemon.parse_args(
+        [
+            "run-once",
+            "--enable-forward-official-result-observer",
+            "--forward-corpus-root",
+            "/runtime/forward-corpus",
+        ]
+    )
+
+    fragments = daemon.expected_service_exec_fragments_for_run(args)
+
+    assert fragments[fragments.index("--forward-corpus-root") + 1] == (
+        "/runtime/forward-corpus"
+    )
 
 
 def test_forward_observer_opt_in_invokes_owned_cycle(monkeypatch, tmp_path):

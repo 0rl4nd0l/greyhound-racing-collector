@@ -2588,6 +2588,7 @@ def execute_capture_plan(
     fetch_timeout_seconds: float = DEFAULT_FETCH_TIMEOUT_SECONDS,
     progress_dir: Path | None = None,
     receipt_publisher: Callable[..., Mapping[str, Any]] | None = None,
+    forward_corpus_admitter: Callable[..., Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     time_provider = current_time_provider or (lambda: datetime.now().astimezone())
     attempts: list[dict[str, Any]] = []
@@ -2648,6 +2649,25 @@ def execute_capture_plan(
             capture_window_minutes=parse_int_value(item.get("capture_window_minutes")),
         )
         if block_or_skip_existing_capture_attempt(attempt, existing_status):
+            if (
+                attempt.get("status") == "SKIPPED_ALREADY_CAPTURED"
+                and forward_corpus_admitter is not None
+            ):
+                try:
+                    attempt["forward_corpus_admission"] = dict(
+                        forward_corpus_admitter(
+                            plan_item=item,
+                            attempt=None,
+                            receipt_publish=None,
+                            emitted_at=time_provider(),
+                        )
+                    )
+                except Exception as exc:
+                    attempt["forward_corpus_admission"] = {
+                        "schema_version": "scheduled-forward-corpus-admission-v1",
+                        "status": "REJECTED",
+                        "reason": type(exc).__name__,
+                    }
             attempts.append(attempt)
             flush_attempt_progress(progress_dir, attempts=attempts)
             continue
@@ -2717,6 +2737,25 @@ def execute_capture_plan(
             capture_window_minutes=parse_int_value(item.get("capture_window_minutes")),
         )
         if block_or_skip_existing_capture_attempt(attempt, existing_status):
+            if (
+                attempt.get("status") == "SKIPPED_ALREADY_CAPTURED"
+                and forward_corpus_admitter is not None
+            ):
+                try:
+                    attempt["forward_corpus_admission"] = dict(
+                        forward_corpus_admitter(
+                            plan_item=item,
+                            attempt=None,
+                            receipt_publish=None,
+                            emitted_at=time_provider(),
+                        )
+                    )
+                except Exception as exc:
+                    attempt["forward_corpus_admission"] = {
+                        "schema_version": "scheduled-forward-corpus-admission-v1",
+                        "status": "REJECTED",
+                        "reason": type(exc).__name__,
+                    }
             attempts.append(attempt)
             flush_attempt_progress(progress_dir, attempts=attempts)
             continue
@@ -2743,11 +2782,12 @@ def execute_capture_plan(
             else "APPEND_FAILED"
         )
         if attempt["status"] == "APPENDED" and receipt_publisher is not None:
+            sealed_attempt = dict(attempt)
             try:
                 attempt["collector_exact_receipt_publish"] = dict(
                     receipt_publisher(
                         plan_item=item,
-                        attempt=dict(attempt),
+                        attempt=sealed_attempt,
                         emitted_at=time_provider(),
                     )
                 )
@@ -2757,6 +2797,28 @@ def execute_capture_plan(
                     "status": "REJECTED",
                     "reason": type(exc).__name__,
                 }
+            if (
+                attempt["collector_exact_receipt_publish"].get("status")
+                == "PUBLISHED"
+                and forward_corpus_admitter is not None
+            ):
+                try:
+                    attempt["forward_corpus_admission"] = dict(
+                        forward_corpus_admitter(
+                            plan_item=item,
+                            attempt=sealed_attempt,
+                            receipt_publish=attempt[
+                                "collector_exact_receipt_publish"
+                            ],
+                            emitted_at=time_provider(),
+                        )
+                    )
+                except Exception as exc:
+                    attempt["forward_corpus_admission"] = {
+                        "schema_version": "scheduled-forward-corpus-admission-v1",
+                        "status": "REJECTED",
+                        "reason": type(exc).__name__,
+                    }
         attempts.append(attempt)
         flush_attempt_progress(progress_dir, attempts=attempts)
 
@@ -2790,6 +2852,16 @@ def execute_capture_plan(
     )
     receipt_publish_failure_count = sum(
         1 for result in receipt_publish_results if result.get("status") != "PUBLISHED"
+    )
+    forward_corpus_results = [
+        attempt["forward_corpus_admission"]
+        for attempt in attempts
+        if isinstance(attempt.get("forward_corpus_admission"), Mapping)
+    ]
+    forward_corpus_success_count = sum(
+        1
+        for result in forward_corpus_results
+        if result.get("status") in {"PREJUMP_CAPTURED", "EXACT_REPLAY"}
     )
     ready_race_ids = [
         str(item.get("race_id"))
@@ -2837,6 +2909,10 @@ def execute_capture_plan(
         "collector_exact_receipt_publish_count": receipt_publish_count,
         "collector_exact_receipt_publish_failure_count": (
             receipt_publish_failure_count
+        ),
+        "forward_corpus_admission_success_count": forward_corpus_success_count,
+        "forward_corpus_admission_failure_count": (
+            len(forward_corpus_results) - forward_corpus_success_count
         ),
         "fetch_timeout_seconds": fetch_timeout_seconds,
         **next_action,
@@ -2947,6 +3023,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--manual-request-id")
     parser.add_argument("--collector-receipt-root", type=Path)
     parser.add_argument("--collector-run-id")
+    parser.add_argument("--forward-corpus-root", type=Path)
     return parser.parse_args(argv)
 
 
@@ -2981,6 +3058,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             allow_auto_scrape_odds=args.allow_auto_scrape_odds,
         )
     receipt_publisher = None
+    receipt_protocol = None
     if args.collector_receipt_root is not None:
         if (
             not args.collector_run_id
@@ -3005,6 +3083,23 @@ def main(argv: Sequence[str] | None = None) -> int:
                 **values,
             )
 
+    forward_corpus_admitter = None
+    if args.forward_corpus_root is not None:
+        if receipt_protocol is None or not args.collector_run_id:
+            raise ValueError("forward_corpus_scheduled_receipt_authority_missing")
+        from race_collection.scheduled_forward_corpus import (
+            admit_scheduled_capture,
+        )
+
+        def forward_corpus_admitter(**values: Any) -> Mapping[str, Any]:
+            return admit_scheduled_capture(
+                protocol=receipt_protocol,
+                evidence_root=evidence_root,
+                corpus_root=args.forward_corpus_root,
+                collector_run_id=args.collector_run_id,
+                **values,
+            )
+
     report = execute_capture_plan(
         plan,
         db_path=args.db,
@@ -3014,6 +3109,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         fetch_timeout_seconds=args.fetch_timeout_seconds,
         progress_dir=output_dir,
         receipt_publisher=receipt_publisher,
+        forward_corpus_admitter=forward_corpus_admitter,
     )
     report = {
         **capture_report_identity_fields(output_dir),

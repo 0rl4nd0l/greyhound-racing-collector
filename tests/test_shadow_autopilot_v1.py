@@ -556,6 +556,7 @@ def test_autonomous_live_odds_capture_command_requires_explicit_execute_flags():
         allow_auto_scrape_odds=True,
         collector_receipt_root=Path("collector-requests"),
         collector_run_id="scheduled-run-1",
+        forward_corpus_root=Path("forward-corpus"),
     )
 
     assert receipt_enabled[
@@ -564,6 +565,9 @@ def test_autonomous_live_odds_capture_command_requires_explicit_execute_flags():
     assert receipt_enabled[
         receipt_enabled.index("--collector-run-id") + 1
     ] == "scheduled-run-1"
+    assert receipt_enabled[
+        receipt_enabled.index("--forward-corpus-root") + 1
+    ] == "forward-corpus"
     with pytest.raises(ValueError, match="collector_receipt_authority_missing"):
         autopilot.autonomous_live_odds_capture_command(
             input_dirs=[Path("upcoming_a")],
@@ -576,6 +580,20 @@ def test_autonomous_live_odds_capture_command_requires_explicit_execute_flags():
             allow_auto_scrape_odds=False,
             collector_receipt_root=Path("collector-requests"),
             collector_run_id="scheduled-run-1",
+        )
+    with pytest.raises(
+        ValueError, match="forward_corpus_scheduled_receipt_authority_missing"
+    ):
+        autopilot.autonomous_live_odds_capture_command(
+            input_dirs=[Path("upcoming_a")],
+            evidence_root=Path("artifacts/full_evidence_orchestration_20260525"),
+            capture_dir=Path("autonomous_live_odds_capture_x"),
+            db_path=Path("greyhound_racing_data.db"),
+            current_time="2026-06-10T14:00:00+10:00",
+            limit=16,
+            execute=True,
+            allow_auto_scrape_odds=True,
+            forward_corpus_root=Path("forward-corpus"),
         )
 
 

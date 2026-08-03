@@ -280,11 +280,27 @@ def test_prepjump_stage_rejects_late_capture_and_result_leakage(tmp_path):
 
 
 def test_first_receipt_must_be_published_before_jump_but_exact_retry_remains_idempotent(tmp_path):
-    late = ForwardSealedCorpus(tmp_path / "late", clock=lambda: _dt("10:00"))
+    late_root = tmp_path / "late"
+    late = ForwardSealedCorpus(late_root, clock=lambda: _dt("10:00"))
     with pytest.raises(ForwardCorpusRejected, match="prospectively"):
         late.capture_prejump(**fixture())
+    assert not [path for path in late_root.rglob("*") if path.is_file()]
     corpus = ForwardSealedCorpus(tmp_path / "ok", clock=lambda: _dt("09:45"))
     assert corpus.capture_prejump(**fixture()) == corpus.capture_prejump(**fixture())
+    before = {
+        path.relative_to(corpus.root): path.read_bytes()
+        for path in corpus.root.rglob("*")
+        if path.is_file()
+    }
+    conflicting = fixture()
+    conflicting["meeting_metadata"] = {"meeting_code": "changed"}
+    with pytest.raises(ForwardCorpusRejected, match="append-only receipt conflict"):
+        corpus.capture_prejump(**conflicting)
+    assert {
+        path.relative_to(corpus.root): path.read_bytes()
+        for path in corpus.root.rglob("*")
+        if path.is_file()
+    } == before
 
 
 def test_prepjump_requires_exact_bundle_and_source_binding_contracts(tmp_path):
