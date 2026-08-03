@@ -4644,6 +4644,7 @@ def test_service_and_timer_define_15_minute_oneshot_cycle():
     assert "TimeoutStartSec=3360" in service
     assert "GREYHOUND_ALLOW_TGR=0" in service
     assert "/home/l4nd0/.local/bin" in service
+    assert "OnActiveSec=15min" in timer
     assert "OnUnitInactiveSec=15min" in timer
     assert "OnCalendar" not in timer
     assert "AccuracySec=30s" in timer
