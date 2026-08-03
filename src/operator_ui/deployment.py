@@ -210,6 +210,8 @@ def _live_authority(path: Path) -> dict[str, Any]:
         if refresh_path.name != "odds_capture_refresh_report.json":
             raise ValueError
         if output_dir is None:
+            if not isinstance(odds_report.get("generated_at"), str):
+                raise ValueError
             generated_at = __import__("datetime").datetime.fromisoformat(
                 odds_report["generated_at"].replace("Z", "+00:00")
             )
