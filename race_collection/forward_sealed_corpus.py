@@ -634,9 +634,7 @@ class ForwardSealedCorpus:
         ):
             raise ForwardCorpusRejected("sealed evidence runner identity is ambiguous")
 
-        raw_source = self.artifacts.put(
-            raw_source_bytes, media_type="application/octet-stream"
-        ).checksum
+        raw_source = _checksum(raw_source_bytes)
         provenance = evidence.get("field_provenance")
         required_bindings = {"runner_set", "runner_identity", "runner_features"}
         if type(provenance) is not list or not provenance:
@@ -674,15 +672,9 @@ class ForwardSealedCorpus:
             raise ForwardCorpusRejected(
                 "runner feature evidence is not bound to the preserved raw source bytes"
             )
-        sealed_evidence = self.artifacts.put(
-            sealed_evidence_bytes, media_type="application/json"
-        ).checksum
-        feature_schema = self.artifacts.put(
-            feature_schema_bytes, media_type="application/json"
-        ).checksum
-        missingness_policy = self.artifacts.put(
-            missingness_policy_bytes, media_type="application/json"
-        ).checksum
+        sealed_evidence = _checksum(sealed_evidence_bytes)
+        feature_schema = _checksum(feature_schema_bytes)
+        missingness_policy = _checksum(missingness_policy_bytes)
         try:
             derived = derive_features(
                 sealed_evidence_bytes,
@@ -705,11 +697,9 @@ class ForwardSealedCorpus:
                 "rows": [list(row) for row in derived.matrix.rows],
             }
         )
-        feature_matrix = self.artifacts.put(
-            matrix_bytes,
-            media_type="application/json",
-            expected_checksum=derived.matrix.checksum,
-        ).checksum
+        feature_matrix = _checksum(matrix_bytes)
+        if feature_matrix != derived.matrix.checksum:
+            raise ForwardCorpusRejected("derived feature matrix checksum disagrees")
 
         source_capture_bytes = canonical_json(
             {
@@ -731,9 +721,7 @@ class ForwardSealedCorpus:
                 "reconstructed": False,
             }
         )
-        source_capture = self.artifacts.put(
-            source_capture_bytes, media_type="application/json"
-        ).checksum
+        source_capture = _checksum(source_capture_bytes)
         receipt = {
             "schema_version": PREJUMP_RECEIPT_SCHEMA,
             "race_id": race_id,
@@ -752,6 +740,8 @@ class ForwardSealedCorpus:
             "feature_matrix_checksum": str(feature_matrix),
         }
         existing_receipt = self._load_receipt(race_id, "prejump")
+        if existing_receipt is not None and existing_receipt != receipt:
+            raise ForwardCorpusRejected("append-only receipt conflict: prejump.json")
         if existing_receipt is None:
             captured_at = self._clock()
             try:
@@ -766,6 +756,36 @@ class ForwardSealedCorpus:
                 raise ForwardCorpusRejected(
                     "collector did not publish the pre-jump receipt prospectively"
                 )
+        self.artifacts.put(
+            raw_source_bytes,
+            media_type="application/octet-stream",
+            expected_checksum=raw_source,
+        )
+        self.artifacts.put(
+            sealed_evidence_bytes,
+            media_type="application/json",
+            expected_checksum=sealed_evidence,
+        )
+        self.artifacts.put(
+            feature_schema_bytes,
+            media_type="application/json",
+            expected_checksum=feature_schema,
+        )
+        self.artifacts.put(
+            missingness_policy_bytes,
+            media_type="application/json",
+            expected_checksum=missingness_policy,
+        )
+        self.artifacts.put(
+            matrix_bytes,
+            media_type="application/json",
+            expected_checksum=feature_matrix,
+        )
+        self.artifacts.put(
+            source_capture_bytes,
+            media_type="application/json",
+            expected_checksum=source_capture,
+        )
         self._publish_once(self._receipt_path(race_id, "prejump"), canonical_json(receipt))
         self.artifacts.put(canonical_json(receipt), media_type="application/json")
         return receipt

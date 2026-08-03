@@ -626,6 +626,7 @@ def autonomous_live_odds_capture_command(
     manual_request_id: str | None = None,
     collector_receipt_root: Path | None = None,
     collector_run_id: str | None = None,
+    forward_corpus_root: Path | None = None,
     command_prefix: Sequence[str] | None = None,
 ) -> list[str]:
     command = list(command_prefix or odds_capture_command_prefix())
@@ -663,6 +664,10 @@ def autonomous_live_odds_capture_command(
                 str(collector_receipt_root),
             ]
         )
+    if forward_corpus_root is not None:
+        if collector_receipt_root is None or collector_run_id is None:
+            raise ValueError("forward_corpus_scheduled_receipt_authority_missing")
+        command.extend(["--forward-corpus-root", str(forward_corpus_root)])
     if manual_request_id is not None:
         if manual_request_root is None or collector_run_id is None:
             raise ValueError("manual_request_collector_authority_missing")
@@ -6886,6 +6891,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
                 )
                 else None
             ),
+            forward_corpus_root=args.forward_corpus_root,
         )
         autonomous_odds_step = step_command(
             name="autonomous_live_odds_capture",
@@ -8528,6 +8534,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--evidence-root", type=Path, default=DEFAULT_EVIDENCE_ROOT)
     parser.add_argument("--collector-lock-path", type=Path)
     parser.add_argument("--current-race-index-state-path", type=Path)
+    parser.add_argument("--forward-corpus-root", type=Path)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--current-time")
     parser.add_argument("--db", type=Path, default=ROOT / "greyhound_racing_data.db")

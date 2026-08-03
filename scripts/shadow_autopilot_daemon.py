@@ -1216,6 +1216,7 @@ def odds_capture_service_file_text(
     db_path: Path | None = None,
     lock_path: Path | None = None,
     state_path: Path | None = None,
+    forward_corpus_root: Path | None = None,
     refresh_limit: int = DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT,
 ) -> str:
     script_path = repo_path / "scripts/shadow_autopilot_daemon.py"
@@ -1226,6 +1227,14 @@ def odds_capture_service_file_text(
         *optional_path_cli_args("--db", db_path),
         *optional_path_cli_args("--lock-path", lock_path),
         *optional_path_cli_args("--state-path", state_path),
+        *(
+            [
+                "--forward-corpus-root",
+                systemd_exec_argument(str(forward_corpus_root)),
+            ]
+            if forward_corpus_root is not None
+            else []
+        ),
     ]
     explicit_path_segment = " ".join(explicit_path_args)
     explicit_path_segment = f"{explicit_path_segment} " if explicit_path_segment else ""
@@ -1397,6 +1406,7 @@ def write_odds_capture_service_files(
     db_path: Path | None = None,
     lock_path: Path | None = None,
     state_path: Path | None = None,
+    forward_corpus_root: Path | None = None,
     refresh_limit: int = DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT,
 ) -> dict[str, Any]:
     service_dir.mkdir(parents=True, exist_ok=True)
@@ -1412,6 +1422,7 @@ def write_odds_capture_service_files(
             db_path=db_path,
             lock_path=lock_path,
             state_path=state_path,
+            forward_corpus_root=forward_corpus_root,
             refresh_limit=refresh_limit,
         ),
     )
@@ -1430,6 +1441,9 @@ def write_odds_capture_service_files(
         "db_path": str(db_path) if db_path is not None else None,
         "lock_path": str(lock_path) if lock_path is not None else None,
         "state_path": str(state_path) if state_path is not None else None,
+        "forward_corpus_root": (
+            str(forward_corpus_root) if forward_corpus_root is not None else None
+        ),
         "refresh_limit": refresh_limit,
     }
 
@@ -1652,6 +1666,9 @@ def expected_service_exec_fragments_for_run(args: argparse.Namespace) -> list[st
     fragments.extend(
         optional_path_cli_args("--odds-capture-state-path", args.odds_capture_state_path)
     )
+    fragments.extend(
+        optional_path_cli_args("--forward-corpus-root", args.forward_corpus_root)
+    )
     return fragments
 
 
@@ -1669,6 +1686,7 @@ def odds_capture_only_autopilot_command(
     odds_capture_refresh_limit: int,
     timeout_seconds: int,
     state_path: Path | None = None,
+    forward_corpus_root: Path | None = None,
     refresh_command_mode: str = "auto",
     require_safe_refresh_metadata: bool = True,
 ) -> list[str]:
@@ -1714,6 +1732,8 @@ def odds_capture_only_autopilot_command(
         command.append("--require-safe-refresh-metadata")
     if state_path is not None:
         command.extend(["--current-race-index-state-path", str(state_path)])
+    if forward_corpus_root is not None:
+        command.extend(["--forward-corpus-root", str(forward_corpus_root)])
     return command
 
 
@@ -3540,6 +3560,7 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
             odds_capture_refresh_limit=args.odds_capture_refresh_limit,
             timeout_seconds=args.timeout_seconds,
             state_path=args.state_path,
+            forward_corpus_root=args.forward_corpus_root,
             refresh_command_mode=args.refresh_command_mode,
             require_safe_refresh_metadata=args.require_safe_refresh_metadata,
         )
@@ -9425,6 +9446,10 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             autopilot_command.append("--allow-auto-scrape-odds")
         if args.enable_autonomous_result_capture:
             autopilot_command.append("--enable-autonomous-result-capture")
+        if args.forward_corpus_root is not None:
+            autopilot_command.extend(
+                ["--forward-corpus-root", str(args.forward_corpus_root)]
+            )
         steps.append(
             run_command(
                 name="autopilot_cycle",
@@ -13107,6 +13132,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     odds_parser.add_argument("--lock-path", type=Path)
     odds_parser.add_argument("--lock-stale-seconds", type=int, default=DEFAULT_LOCK_STALE_SECONDS)
     odds_parser.add_argument("--state-path", type=Path, default=DEFAULT_ODDS_CAPTURE_ONLY_STATE_PATH)
+    odds_parser.add_argument("--forward-corpus-root", type=Path)
 
     capture_one_parser = subparsers.add_parser(
         "capture-one",
@@ -13170,6 +13196,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     odds_service_parser.add_argument("--db", type=Path)
     odds_service_parser.add_argument("--lock-path", type=Path)
     odds_service_parser.add_argument("--state-path", type=Path)
+    odds_service_parser.add_argument("--forward-corpus-root", type=Path)
     odds_service_parser.add_argument(
         "--refresh-limit",
         type=int,
@@ -13249,6 +13276,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             db_path=args.db,
             lock_path=args.lock_path,
             state_path=args.state_path,
+            forward_corpus_root=args.forward_corpus_root,
             refresh_limit=args.refresh_limit,
         )
         print(json.dumps(result, indent=2, sort_keys=True))

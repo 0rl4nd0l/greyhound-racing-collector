@@ -1101,6 +1101,9 @@ def test_execute_capture_plan_appends_after_exact_sportsbet_validation(
             "receipt_count": 2,
         }
 
+    def reject_forward_corpus(**_values):
+        raise RuntimeError("fixture corpus unavailable")
+
     report = capture.execute_capture_plan(
         _plan(input_dir),
         db_path=tmp_path / "odds.db",
@@ -1109,6 +1112,7 @@ def test_execute_capture_plan_appends_after_exact_sportsbet_validation(
         allow_auto_scrape_odds=True,
         current_time_provider=lambda: datetime.fromisoformat("2026-06-10T14:40:00+10:00"),
         receipt_publisher=publish_receipt,
+        forward_corpus_admitter=reject_forward_corpus,
     )
 
     assert report["final_status"] == "AUTONOMOUS_LIVE_ODDS_CAPTURE_APPENDED"
@@ -1120,9 +1124,16 @@ def test_execute_capture_plan_appends_after_exact_sportsbet_validation(
     assert report["inserted_live_odds_rows"] == 4
     assert report["collector_exact_receipt_publish_count"] == 2
     assert report["collector_exact_receipt_publish_failure_count"] == 0
+    assert report["forward_corpus_admission_success_count"] == 0
+    assert report["forward_corpus_admission_failure_count"] == 1
     assert report["attempts"][0]["collector_exact_receipt_publish"]["status"] == (
         "PUBLISHED"
     )
+    assert report["attempts"][0]["forward_corpus_admission"] == {
+        "schema_version": "scheduled-forward-corpus-admission-v1",
+        "status": "REJECTED",
+        "reason": "RuntimeError",
+    }
     assert published == [
         {
             "race_id": "Race 1 - WPK - 2026-06-10",
@@ -1290,6 +1301,14 @@ def test_execute_capture_plan_skips_complete_existing_capture_without_fetch(
         raise AssertionError("fetch must not run for complete existing capture")
 
     monkeypatch.setattr(capture, "fetch_odds_for_target_race", fail_fetch)
+    replay_calls = []
+
+    def replay_forward_corpus(**values):
+        replay_calls.append(values)
+        return {
+            "schema_version": "scheduled-forward-corpus-admission-v1",
+            "status": "EXACT_REPLAY",
+        }
 
     report = capture.execute_capture_plan(
         _plan(input_dir),
@@ -1298,6 +1317,7 @@ def test_execute_capture_plan_skips_complete_existing_capture_without_fetch(
         execute=True,
         allow_auto_scrape_odds=True,
         current_time_provider=lambda: datetime.fromisoformat("2026-06-10T14:40:00+10:00"),
+        forward_corpus_admitter=replay_forward_corpus,
     )
 
     attempt = report["attempts"][0]
@@ -1305,6 +1325,10 @@ def test_execute_capture_plan_skips_complete_existing_capture_without_fetch(
     assert attempt["existing_capture_count"] == 4
     assert attempt["existing_capture"]["status"] == "COMPLETE"
     assert attempt["existing_capture"]["missing_expected_runners"] == []
+    assert attempt["forward_corpus_admission"]["status"] == "EXACT_REPLAY"
+    assert len(replay_calls) == 1
+    assert replay_calls[0]["attempt"] is None
+    assert replay_calls[0]["receipt_publish"] is None
 
 
 def test_execute_capture_plan_recaptures_complete_win_only_capture(
