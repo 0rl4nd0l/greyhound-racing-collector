@@ -512,3 +512,10 @@ The repository-v1 binding is output of the finite GHU-036 generator contract and
 - Context: Independent review session `019fbb00-37f9-7291-8741-8ca19878cf1a` found that the authentic 13-member history seal published by `seal_history_database` could not pass the reduced nine-member verifier schema.
 - Decision: Preserve C7 as rejected for producer/verifier schema divergence and correct only that coherence defect as `GHU-032C8`.
 - Consequences: C8 is a candidate awaiting parent inspection and independent review. C3-C7 security boundaries remain authoritative. No acceptance, integration, publication, deployment, runtime/data mutation, outcome access, training, promotion, EV, staking, or betting is claimed.
+
+## 2026-08-03 — DEC-GHU-035-REJECTED-C1-CORRECTION
+
+- Context: Parent rejected the GHU-035 three-path candidate from run `20260803T071516Z-3c92515a29-6015a7`, session `019fc67a-bc8c-7fe3-8ee3-e48607169c08`, child `f3da1a072215067e9f5f21a65db7d7bb`, constructed diff SHA-256 `dd047a5d1043b7472a6161389d89b79220d4c38d98ba4b11deee88d37470c5ca`.
+- Decision: Preserve GHU-035 as rejected and correct only its false blocked-state bookkeeping as `GHU-035C1`. Unavailable child pytest is `DATA_MISSING`, not a product/programme blocker. The correction binds genuine lower-level emitted classifications and fixtures to one real API/store/worker integrated seam and remains `REVIEW`.
+- Evidence: Accepted base commit `3c92515a29a566dd2136a5f954984f41236c0fdb`, tree `eba05242bf2cb665e43ed94331095130a51ff414`; C8 reviewer run `20260803T071114Z-3c92515a29-3e2573`, session `019fc676-aead-7fc0-8986-9a021dc38ca3`, verdict `ACCEPT`.
+- Consequences: No production change, GHU-036, deployment, runtime/data/model mutation, collector/browser action, outcome access, training, promotion, EV, betting, acceptance, integration, staging, or commit is claimed.

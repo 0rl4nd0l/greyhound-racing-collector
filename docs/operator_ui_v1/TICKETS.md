@@ -942,7 +942,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 
 - Release: `R3`
 - Priority: `P3`
-- Status: `planned`
+- Status: `blocked`
 - Dependencies: accepted `GHU-032C2` through `GHU-034C2`
 - Model routing: Pro (GPT-5.6 Sol Pro); fallback Extra High
 - Session role: Fresh independent review and adversarial test session
@@ -956,8 +956,25 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Authority: Level 2 only after all R3 gates; deployment/live proof require separate Level 4/explicit authority.
 - Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
 - Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Wait until every listed prerequisite is accepted/integrated, then parent may mark ready and assign one fresh bounded implementer.
-- Closeout evidence: PENDING: exact base/head/tree/path/diff identities, commands/exits, focused tests, reviewer identity/verdict, parent decision, and applicable commit/PR/merge/deploy/proof fields.
+- Next safe action: Preserve this rejected candidate; correction authority is `GHU-035C1`.
+- Closeout evidence: Rejected candidate run `20260803T071516Z-3c92515a29-6015a7`, session `019fc67a-bc8c-7fe3-8ee3-e48607169c08`, child `f3da1a072215067e9f5f21a65db7d7bb`, constructed three-path diff SHA-256 `dd047a5d1043b7472a6161389d89b79220d4c38d98ba4b11deee88d37470c5ca`. Parent rejected it solely because it falsely converted unavailable child pytest and a launcher wrapper commit-audit fault into blocked product/programme state. No product defect was established; missing child dependencies are `DATA_MISSING`.
+
+## GHU-035C1 — Correct rejected synthetic safety candidate
+
+- Release: `R3`
+- Priority: `P0`
+- Status: `review`
+- Dependencies: accepted/integrated `GHU-032C8` through `GHU-034C8`
+- Session role: Fresh bounded Codex X correction implementer
+- Outcome: Replaces only rejected `GHU-035` candidate bookkeeping and supplies one cohesive synthetic/adversarial suite over real API, store, worker, collector, index, and verifier seams.
+- Scope: Integrate one authenticated submission through the real API/store/worker seam; bind the genuine lower-level fixtures for `PUBLISHED`, `SKIPPED`, `REJECTED`, every current-index and bounded-read failure, verifier-only readiness, collector-only capture, mutation prohibitions, and security/isolation/idempotency.
+- Non-goals: No production change, invented classification, GHU-036, deployment, collector/browser invocation, runtime/data/model mutation, live outcome, training, promotion, EV, betting, commit, push, or merge.
+- Acceptance: One submission causes at most one invocation; duplicate transmission reuses the job; producer blockers cannot become `PREDICTION_READY`; genuine lower-level fixtures remain explicitly bound and executable together.
+- Validation: Python compile, `git diff --check`, the cohesive suite plus every bound lower-level module when pytest is available, and independent exact-delta review.
+- Claims supported: Unstaged/uncommitted GHU-035C1 review candidate only.
+- Claims unsupported: Acceptance, integration, deployment, runtime/live proof, product blocker from missing child dependencies, training, promotion, EV, staking, or betting.
+- Next safe action: Parent freezes and runs exact executable validation, then assigns independent exact-delta review.
+- Closeout evidence: Base commit `3c92515a29a566dd2136a5f954984f41236c0fdb`, tree `eba05242bf2cb665e43ed94331095130a51ff414`; C8 review run `20260803T071114Z-3c92515a29-3e2573`, session `019fc676-aead-7fc0-8986-9a021dc38ca3`, verdict `ACCEPT`. Constructed diff and validation identities are reported by the implementer; parent owns freeze, acceptance and mechanical commit.
 
 ## GHU-032C1 through GHU-034C1 — Rejected first correction candidate
 

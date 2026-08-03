@@ -736,3 +736,18 @@ C6 is rejected because its tests did not independently mutate and attacker-resea
 ## GHU-032C8 correction status
 
 C7 is rejected for producer/verifier history-seal schema divergence. C8 is a bounded correction candidate: a real `seal_history_database` object now crosses the sealed verifier seam, fixtures use the authentic 13-member schema, and exact membership, cutoff basis, counts, hashes, cutoff, and target/materialization relations fail closed under mutation. No acceptance, integration, publication, deployment, runtime/data mutation, runtime proof, live proof, outcome access, training, promotion, EV, staking, or betting is claimed.
+
+## GHU-035C1 correction status
+
+C8 was independently accepted in run `20260803T071114Z-3c92515a29-3e2573`,
+session `019fc676-aead-7fc0-8986-9a021dc38ca3`. The subsequent GHU-035
+candidate from run `20260803T071516Z-3c92515a29-6015a7`, session
+`019fc67a-bc8c-7fe3-8ee3-e48607169c08`, child
+`f3da1a072215067e9f5f21a65db7d7bb`, constructed diff SHA-256
+`dd047a5d1043b7472a6161389d89b79220d4c38d98ba4b11deee88d37470c5ca`,
+is rejected solely for falsely treating unavailable child pytest and a launcher
+wrapper commit-audit fault as blocked product/programme state. GHU-035C1
+corrects/replaces that candidate with an unstaged synthetic suite bound to the
+real integrated seams. It is `REVIEW`, not `BLOCKED` or `ACCEPTED`. Missing
+child pytest is `DATA_MISSING`; parent exact executable validation, freeze,
+independent review, acceptance, and mechanical commit remain pending.
