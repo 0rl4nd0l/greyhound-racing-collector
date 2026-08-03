@@ -857,18 +857,31 @@ binding check each exited 0; all 23 fixture names resolved.
 
 ## GHU-036 implementation status
 
-GHU-036 is an unstaged `REVIEW` candidate on accepted/integrated base
-`881a3cee0c7f93dd26f5ece9185052f59c4c1aed`, tree
-`226dae42ebc4deea7ce1c7954e8da74fabd37f7a`. The repository now owns one finite
-default-off generator for the binding consumed by bootstrap, a distinct private
-service/config package, external mode-0600 secret reference, guarded disabled
-entrypoint, and enable/verify/rollback documentation. Rollback retains audit,
-job, prediction, collector, protocol, current-index, and canonical evidence.
+GHU-036 C3 is in `REVIEW`. The initial candidate was frozen as
+`d1024b05bae5988b246fb8f2ae0f6e1f7d569153`, tree
+`1d767f105695d6b38b877b02f3a48bb1584f08b0`, and rejected. C1 was frozen as
+`16e2aae871e5c913d583c8cfa398e132b363d66e`, tree
+`9f3c36ef005151f2edd3a76d7594b368f0aa55fb`. C2's exact candidate was
+`913fc84368e70cb6a2161381a3ee6823812f336a`, tree
+`a211c4a593a723a0ccf2223189f5b87d00ed8f08`; fresh review session
+`019fc6df-8de0-7852-b20f-d3cb34570e49` rejected it for two residual issues:
+incomplete external secret-file authority checks and contradictory/volatile
+ledger evidence. C3 corrects only those findings. The secret reference must be
+a regular nonsymlink file outside source, evidence, producer, operations, and
+generated-output roots; distinct from the canonical database; owned by the
+current service user; and exactly mode `0600`.
+
+Recorded C2 validation is: focused suite `124 passed`; full suite `854 passed`
+plus 13 failures caused by the `/tmp` ancestor safety harness; and the same
+failing module rerun from an owner-safe fixture root `39 passed`. These are
+historical validation results, not C3 acceptance or runtime proof. The exact C3
+freeze identity belongs in the parent review packet after the review bytes are
+frozen; this ledger does not make a self-referential current commit/tree claim.
 
 No service file was installed or manually edited, no service was started or
 restarted, and no deployment, public exposure, runtime/data/model mutation,
 live prediction, collector/browser action, outcomes, training, promotion, EV,
 betting, push, merge, acceptance, integration, or runtime proof is claimed.
-Focused pytest was attempted once and could not collect because `pytest` is not
-installed in this bounded environment; final static command identities and
-exits are recorded in the implementer handoff.
+The C3 worker environment does not provide `pytest`; its attempted focused
+selection therefore exited 127 before collection. Final executable/static
+checks and the source-diff hash are recorded in the implementer handoff.

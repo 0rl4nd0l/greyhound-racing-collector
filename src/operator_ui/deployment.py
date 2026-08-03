@@ -164,11 +164,18 @@ def generate_package(*, source_root: Path, pinned_python: Path, evidence_root: P
     output = _safe_existing(output_dir, directory=True)
     database = _safe_existing(canonical_db, directory=False)
     secrets = _safe_existing(secrets_file, directory=False)
-    if stat.S_IMODE(secrets.stat().st_mode) & 0o077:
-        raise DeploymentRejected("secrets file must not be accessible by group or other")
+    secrets_info = secrets.stat()
+    if secrets_info.st_uid != os.geteuid():
+        raise DeploymentRejected("secrets file must be owned by the current service user")
+    if stat.S_IMODE(secrets_info.st_mode) != 0o600:
+        raise DeploymentRejected("secrets file must have exact mode 0600")
     _separate((source, evidence, producer, operations, output))
     if any(database == root or root in database.parents for root in (source, evidence, producer, operations, output)):
         raise DeploymentRejected("canonical database must be separate from deployment roots")
+    if secrets.samefile(database):
+        raise DeploymentRejected("secrets file must not be the canonical database")
+    if any(secrets == root or root in secrets.parents for root in (source, evidence, producer, operations, output)):
+        raise DeploymentRejected("secrets file must be separate from deployment roots")
 
     profile_path = _safe_existing(source / "configs/operator_ui/repository-v1.toml", directory=False)
     app_path = _safe_existing(source / "app.py", directory=False)

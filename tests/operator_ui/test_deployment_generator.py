@@ -124,6 +124,69 @@ def test_generator_rejects_unsafe_missing_or_overlapping_inputs_without_partial_
     assert not (values["source_root"] / "var/operator_ui/generated/repository-v1.binding.json").exists()
 
 
+@pytest.mark.parametrize(
+    "root_name",
+    ["source_root", "evidence_root", "producer_root", "operations_root", "output_dir"],
+)
+def test_generator_rejects_secrets_inside_deployment_roots_without_partial_writes(
+    tmp_path, monkeypatch, root_name
+):
+    values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
+    secrets = values[root_name] / "operator-ui.secrets"
+    secrets.write_text(values["secrets_file"].read_text())
+    secrets.chmod(0o600)
+    values["secrets_file"] = secrets
+
+    with pytest.raises(DeploymentRejected, match="secrets file must be separate"):
+        generate_package(**values)
+
+    assert not (values["output_dir"] / "greyhound-operator-ui-r3.service").exists()
+    assert not (values["source_root"] / "var/operator_ui/generated/repository-v1.binding.json").exists()
+
+
+def test_generator_rejects_canonical_database_as_secrets_without_partial_writes(tmp_path, monkeypatch):
+    values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
+    values["canonical_db"].write_text(values["secrets_file"].read_text())
+    values["canonical_db"].chmod(0o600)
+    values["secrets_file"].unlink()
+    values["secrets_file"].hardlink_to(values["canonical_db"])
+
+    with pytest.raises(DeploymentRejected, match="must not be the canonical database"):
+        generate_package(**values)
+
+    assert not (values["output_dir"] / "greyhound-operator-ui-r3.service").exists()
+    assert not (values["source_root"] / "var/operator_ui/generated/repository-v1.binding.json").exists()
+
+
+@pytest.mark.parametrize("mode", [0o400, 0o640, 0o700])
+def test_generator_rejects_any_non_0600_secrets_mode_without_partial_writes(
+    tmp_path, monkeypatch, mode
+):
+    values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
+    values["secrets_file"].chmod(mode)
+
+    with pytest.raises(DeploymentRejected, match="exact mode 0600"):
+        generate_package(**values)
+
+    assert not (values["output_dir"] / "greyhound-operator-ui-r3.service").exists()
+    assert not (values["source_root"] / "var/operator_ui/generated/repository-v1.binding.json").exists()
+
+
+def test_generator_rejects_secrets_owned_by_another_user_without_partial_writes(tmp_path, monkeypatch):
+    values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
+    monkeypatch.setattr("src.operator_ui.deployment.os.geteuid", lambda: values["secrets_file"].stat().st_uid + 1)
+
+    with pytest.raises(DeploymentRejected, match="owned by the current service user"):
+        generate_package(**values)
+
+    assert not (values["output_dir"] / "greyhound-operator-ui-r3.service").exists()
+    assert not (values["source_root"] / "var/operator_ui/generated/repository-v1.binding.json").exists()
+
+
 def test_explicit_enable_changes_only_feature_gate_and_retains_evidence_on_rollback(tmp_path, monkeypatch):
     values = deployment_inputs(tmp_path)
     git_identity(monkeypatch)
