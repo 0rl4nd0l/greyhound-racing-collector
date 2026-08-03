@@ -830,3 +830,27 @@ C5 bounded validation: `uv run --with-requirements requirements/all.in pytest
 absent, so no focused test executed and no pass is claimed. Direct Python
 compilation of the two affected test modules, `git diff --check`, and the AST
 fixture-binding check all exited 0; the binding check resolved all 23 names.
+
+## GHU-035C5 rejection and C6 correction status
+
+C5 is rejected at commit `f981cf38e919c67c18504cd4741cf761b5b8d191`, tree
+`909cbcf419db2db919a18be527b8ade91e9f2390`. Independent review run
+`20260803T081216Z-f981cf38e9-b04c26`, session
+`019fc6ae-8b20-7830-a86f-1c7726668c01`, returned
+`REJECT/CORRECTION_REQUIRED` with one blocking finding: its per-join 20ms caps
+allowed multiple fresh budgets and did not deterministically prove the shared
+absolute deadline or aggregate allowance.
+
+GHU-035C6 is an unstaged `REVIEW` test-only correction. A controlled monotonic
+clock now makes the first closer consume 12ms, proves the later closer receives
+only the decreasing 8ms remainder, and proves deterministic total consumption
+of exactly the configured 20ms while the blocking close remains blocked.
+Production, all 23 fixture bindings, canonical stable race identity, sealed
+blocker truth, audit constraints, collector authority, and one invocation/no
+retry are unchanged. No acceptance, integration, deployment, runtime/live
+proof, or prohibited action is claimed.
+
+C6 bounded validation: the two focused worker tests were attempted once but
+did not execute because neither `uv` nor an importable `pytest` was available
+(exit 127). Direct Python compilation, `git diff --check`, and the fixture
+binding check each exited 0; all 23 fixture names resolved.

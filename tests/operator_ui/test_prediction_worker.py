@@ -113,21 +113,27 @@ def test_timeout_reap_truth_is_durable_and_never_retries(tmp_path,confirmed,phas
 
 def test_blocking_pipe_close_cannot_exceed_shared_cleanup_deadline(tmp_path,monkeypatch):
     cfg,store,job=setup(tmp_path); cfg=replace(cfg,cancellation_grace_seconds=.02)
-    release=threading.Event(); close_joins=[]; real_thread=threading.Thread
+    release=threading.Event(); close_joins=[]; consumed=[]; clock=[100.0]; real_thread=threading.Thread
+    monkeypatch.setattr("src.operator_ui.prediction_worker.time.monotonic",lambda:clock[0])
     class BlockingClose(io.BytesIO):
         def close(self): release.wait()
     class ObservedThread:
         def __init__(self,*args,**kwargs): self.inner=real_thread(*args,**kwargs); self.closer=kwargs.get("name","").endswith("-close")
         def start(self): self.inner.start()
         def join(self,timeout=None):
-            if self.closer: close_joins.append((timeout,self.inner.is_alive()))
+            if self.closer:
+                close_joins.append((timeout,self.inner.is_alive()))
+                elapsed=min(timeout,.012); consumed.append(elapsed); clock[0]+=elapsed
+                return None
             return self.inner.join(timeout)
         def is_alive(self): return self.inner.is_alive()
     monkeypatch.setattr("src.operator_ui.prediction_worker.threading.Thread",ObservedThread)
     proc=Process(); proc.stdout=BlockingClose(ready(job)); proc.stderr=io.BytesIO()
     result=run_once(store,job.job_id,cfg,now=lambda:NOW,confirm_audit=CONFIRM,popen=lambda *a,**k:proc,reader=lambda **_:view())
     assert result.phase is Phase.FAILED
-    assert close_joins and all(timeout is not None and 0<=timeout<=cfg.cancellation_grace_seconds for timeout,_ in close_joins)
+    assert [timeout for timeout,_ in close_joins]==pytest.approx([.02,.008])
+    assert close_joins[1][0]<close_joins[0][0]
+    assert sum(consumed)==pytest.approx(cfg.cancellation_grace_seconds)
     assert any(was_alive for _,was_alive in close_joins) and not release.is_set()
     release.set()
     with sqlite3.connect(store.path) as db:

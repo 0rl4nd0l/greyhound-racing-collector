@@ -1235,3 +1235,16 @@ Status: correction candidate, awaiting parent inspection and independent review.
 - Validation: Run the two corrected focused tests once; Python compile, `git diff --check`, and fixture binding.
 - Claims supported: Unstaged/uncommitted GHU-035C5 review candidate pending parent validation and independent review only.
 - Rejected C4 evidence: Commit `29742e3c4c8309830400da4e9fa22a7fe9f1bb9a`, tree `331dd738e56ddf0952b6925d8b2fcd21555bf4bf`; run `20260803T075059Z-e3c2405804-c77d64`, session `019fc69b-b181-7751-a623-55b18442d5e9`. Parent focused validation passed 3 tests. Parent's one-time eight-module bound suite returned `2 failed, 611 passed, 1 warning in 360.40s`; only the two whole-`run_once` `<0.5s` assertions failed (`0.862093s` and `0.573822s`). The broad suite is preserved and must not be rerun unchanged.
+
+## GHU-035C6 — Prove one shared absolute cleanup deadline
+
+- Release: `R3`
+- Priority: `P0`
+- Status: `review`
+- Dependencies: rejected `GHU-035C5`; accepted/integrated `GHU-032C8` through `GHU-034C8`
+- Outcome: Correct only C5's insufficient test proof by deterministically consuming one controlled monotonic cleanup budget and observing decreasing closer-join remainders whose total consumption is exactly the configured 20ms.
+- Scope: Test proof and append-only ledger truth only. Production remains unchanged; all 23 genuine fixture bindings, canonical stable race identity, sealed blocker truth, audit constraints, collector sole authority, and one invocation/no retry remain unchanged.
+- Non-goals: GHU-036, deployment, live prediction or outcomes, collector/browser action, runtime/data/model mutation, training, promotion, EV, betting, staging, commit, push, or merge.
+- Claims supported: Unstaged/uncommitted GHU-035C6 `REVIEW` correction pending parent validation and independent review only.
+- Validation: The two focused worker tests were attempted once but did not execute because neither `uv` nor an importable `pytest` was available (exit 127). Python compilation, `git diff --check`, and the 23-fixture binding check exited 0.
+- Rejected C5 evidence: Commit `f981cf38e919c67c18504cd4741cf761b5b8d191`, tree `909cbcf419db2db919a18be527b8ade91e9f2390`; implementation run `20260803T080430Z-29742e3c4c-f34bc6`, session `019fc6a7-73da-7273-9c27-dde575a8c9fc`; independent review run `20260803T081216Z-f981cf38e9-b04c26`, session `019fc6ae-8b20-7830-a86f-1c7726668c01`, verdict `REJECT/CORRECTION_REQUIRED`. Its only blocking finding was that independently bounding each closer join at 20ms did not prove a shared deadline, decreasing remainder, or aggregate 20ms cleanup allowance.
