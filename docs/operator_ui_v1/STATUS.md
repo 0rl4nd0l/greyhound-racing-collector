@@ -855,11 +855,13 @@ did not execute because neither `uv` nor an importable `pytest` was available
 (exit 127). Direct Python compilation, `git diff --check`, and the fixture
 binding check each exited 0; all 23 fixture names resolved.
 
-## GHU-036 C5 correction status
+## GHU-036 C6 documentation reconciliation status
 
-GHU-036 C3 was accepted and integrated as commit
+GHU-036 C3 was mechanically frozen and committed as a rejected correction
+candidate at commit
 `1e71261bd5a469abc72d40111575fc51282723be`, tree
-`60121cc4abe3343f03a8677e1ba3ffdb601bea76`. C4 is commit
+`60121cc4abe3343f03a8677e1ba3ffdb601bea76`; it was never independently
+accepted or integrated. C4 is commit
 `dd0a87db44530a3ee98b28f9eb677f9d5be81b7f`, tree
 `aa1f754c996ecee4e05161dc1aa84fd3338c542d`; it contains only the one-line
 canonical-database secret-alias fixture correction atop C3. Its deployment
@@ -872,13 +874,19 @@ gates; four generated outputs were published independently rather than as one
 rollback-safe transaction on reported write failure; and the GHU-036 ledgers
 did not accurately record C3/C4 history and current state.
 
-C5 is an unstaged `REVIEW` correction candidate. It restricts the bounded UTF-8
+C5 is the mechanically frozen correction candidate at commit
+`61567704a812969abc39df07c92eb5ab7e858710`, tree
+`254fbcd541b37d6904a8000391da5488fefa3e26`. It restricts the bounded UTF-8
 EnvironmentFile input to exactly one each of the three required secret names,
 stages and validates all four outputs before publication, and restores every
 pre-existing output byte/mode or removes every new output after a reported
 publication failure. This is process-level rollback on a reported write
-failure, not a claim of cross-filesystem or power-loss crash atomicity. No
-self-referential C5 commit or tree identity is claimed.
+failure, not a claim of cross-filesystem or power-loss crash atomicity. Its
+deployment-generator suite passed exactly `54/54`.
+
+C6 is a documentation-only reconciliation in `REVIEW`. It corrects the C3/C5
+history and current-state record without changing product code, tests, or
+contracts. Its identity is owned by the parent packet and is not asserted here.
 
 No install, service action, deployment, publication, push, merge, runtime/data/
 model mutation, live prediction, collector/browser action, outcomes, training,
