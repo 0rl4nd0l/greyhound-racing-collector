@@ -1,4 +1,4 @@
-"""GHU-035C1 synthetic proof across the real API/store/worker seams.
+"""GHU-035C3 synthetic proof across the real API/store/worker seams.
 
 The focused invocation includes the named lower-level collector, index, worker,
 store, and verifier fixtures below. Explicit bindings prevent this suite from
@@ -9,7 +9,6 @@ from __future__ import annotations
 import ast
 import hashlib
 import io
-import json
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -21,6 +20,7 @@ from src.operator_ui.job_store import JobInput, JobStore, Phase
 from src.operator_ui.prediction_worker import ServerChoice, WorkerConfig, run_once
 from src.operator_ui.r3_api import R3Services, ResolvedSubmission, install_r3_api
 from src.operator_ui.security import install_connected_mode
+from tests.operator_ui.test_prediction_worker import sealed_blocked
 
 NOW = datetime(2026, 8, 1, tzinfo=timezone.utc)
 DIGEST = hashlib.sha256(b"ghu-035c1").hexdigest()
@@ -116,20 +116,7 @@ def test_one_authenticated_submission_reaches_real_worker_once_without_false_rea
 
     def launch(job_id, confirm):
         launches.append(job_id)
-        value = {
-            "schema_version": "on_demand_race_prediction_v2",
-            "prediction_id": "12345678-1234-4123-8123-123456789abc",
-            "job_id": job_id, "generated_at": "2026-08-01T00:00:01+00:00",
-            "status": "PREDICTION_BLOCKED", "blocker_stage": "VALIDATION",
-            "blocker": {"code": "POST_JUMP"}, "research_only": True,
-            "production_persisted": False, "betting_output": False,
-            "race": {**RACE, "venue_slug": "richmond", "race_id": RACE_ID, "jump_timestamp": "2026-08-01T01:00:00+00:00"},
-            "model": {"requested": "latest-research", "resolved": "market_form_residual_v1", "alias_resolved": True, "schema_sha256": DIGEST, "artifact_identity": "AVAILABLE", "artifact_sha256": DIGEST, "artifact_manifest_identity": "AVAILABLE", "artifact_manifest_sha256": DIGEST},
-            "config": {"sha256": DIGEST},
-            "evidence": {"request": "request.json", "config": "config.json", "model_schema": "model/config.schema.json", "model_artifact": "model/model.json", "model_manifest": "model/manifest.json", "runner_set_sha256": DIGEST, "prediction_output_sha256": None, "protocol_chain": {"request_id": "request-1", "request_sha256": DIGEST, "claim_sha256": DIGEST, "attempt_sha256": DIGEST, "response_sha256": DIGEST, "receipt_sha256": DIGEST, "consume_sha256": DIGEST, "authenticated_receipt_sha256": DIGEST}, "authenticated_cutoff": {"history_seal_sha256": DIGEST, "cutoff_timestamp": "2026-08-01T01:00:00+00:00", "source_sha256": DIGEST, "sealed_sha256": DIGEST}},
-            "prediction": None,
-        }
-        output = json.dumps(value, allow_nan=False, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
+        output = sealed_blocked(store.get(job_id), "POST_JUMP")
         run_once(store, job_id, config, now=lambda: NOW, confirm_audit=confirm,
                  popen=lambda *args, **kwargs: Process(output),
                  reader=index)
@@ -145,6 +132,7 @@ def test_one_authenticated_submission_reaches_real_worker_once_without_false_rea
     assert duplicate.get_json()["job_id"] == first.get_json()["job_id"]
     assert launches == [first.get_json()["job_id"]]
     job = store.get(first.get_json()["job_id"])
-    assert job.phase is Phase.REJECTED and job.reason == "PREDICTOR_BLOCKER:POST_JUMP"
+    assert job.phase is Phase.PRODUCER_COMPLETED
+    assert job.reason == "PRODUCER_PREDICTION_BLOCKED:POST_JUMP"
     assert all(event["phase"] != Phase.PREDICTION_READY.value for event in store.events(job.job_id))
     assert store.verify()

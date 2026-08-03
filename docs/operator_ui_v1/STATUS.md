@@ -765,5 +765,22 @@ the collector display identity `Race 5 - RICH - 2026-08-01` into the real
 Level-2 operation-audit seam, whose protocol identity contract requires a
 `race-` prefix, so the first audit append failed closed before worker dispatch.
 GHU-035C2 changes only that fixture identity and append-only ledger truth. It is
-`REVIEW`, pending parent executable validation, freeze, and independent review;
-it is not accepted, integrated, deployed, or runtime-proven.
+rejected at commit `b8cd217e3483fbbc15dc89880c6358945f903bab`, tree
+`9cc09d08b637a0f198678ec44320a5957a002836`; implementer run
+`20260803T073521Z-49cb6e5328-5b931a`, session
+`019fc68c-b1f7-7d42-beb2-0b34861510d1`. Parent executable validation returned
+exit 1 with `1 failed, 1 passed`: the first POST was 202, the duplicate was 200,
+and exactly one launch occurred, but the hand-built partial process JSON failed
+the real worker verifier as `FAILED / PROCESS_OUTPUT_INVALID`.
+
+## GHU-035C3 correction status
+
+GHU-035C3 replaces only the rejected C2 synthetic worker output with the
+existing genuine sealed-v2 blocker helper from
+`tests/operator_ui/test_prediction_worker.py`. The exact real worker seam now
+records `PRODUCER_COMPLETED / PRODUCER_PREDICTION_BLOCKED:POST_JUMP`; this is
+intentionally nonterminal because only the sealed bundle verifier may finalize
+a producer result. The 23 fixture bindings, protocol race identity, one
+submission/one invocation, duplicate reuse, blocker identity, and prohibition
+on false `PREDICTION_READY` remain unchanged. C3 is `REVIEW`; it is not
+accepted, integrated, deployed, or runtime-proven.

@@ -980,7 +980,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 
 - Release: `R3`
 - Priority: `P0`
-- Status: `review`
+- Status: `blocked`
 - Dependencies: rejected `GHU-035C1`; accepted/integrated `GHU-032C8` through `GHU-034C8`
 - Session role: Fresh bounded Codex X correction implementer
 - Outcome: Correct only the integrated proof's use of a display-form race identity where the real Level-2 operation-audit contract requires the protocol `race-` identity.
@@ -991,6 +991,22 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Claims unsupported: Acceptance, integration, deployment, runtime/live proof, or a product blocker from unavailable child dependencies.
 - Next safe action: Parent freezes and runs exact executable validation, then assigns independent exact-delta review.
 - Rejected C1 evidence: Commit `49cb6e5328c9aaa9ad3787327a770e5c7a74744f`, tree `b68d34c9310981f582706fa18144b86be9521e28`; implementer run `20260803T072530Z-3c92515a29-e984b8`, session `019fc683-afe7-7f52-92d8-ae11648ddacf`. Parent command `uv run --with-requirements requirements/all.in pytest -q tests/operator_ui/test_r3_e2e_safety.py` returned exit 1 with `1 failed, 1 passed`: `test_one_authenticated_submission_reaches_real_worker_once_without_false_ready` expected the first POST to return 202 but received 503. C1 remains rejected evidence.
+
+## GHU-035C3 — Correct rejected C2 sealed-blocker fixture
+
+- Release: `R3`
+- Priority: `P0`
+- Status: `review`
+- Dependencies: rejected `GHU-035C2`; accepted/integrated `GHU-032C8` through `GHU-034C8`
+- Session role: Fresh bounded Codex X correction implementer
+- Outcome: Replace only C2's hand-built partial process JSON with the genuine sealed-v2 blocker fixture used by the real worker verifier.
+- Scope: Preserve all 23 genuine fixture bindings, protocol race identity, one submission/one invocation, duplicate reuse, exact producer blocker truth, verifier-only finalization, and no false `PREDICTION_READY`.
+- Non-goals: Production changes, GHU-036, deployment, collector/browser invocation, runtime/data/model mutation, live outcomes, training, promotion, EV, betting, staging, commit, push, or merge.
+- Validation: Python compile, `git diff --check`, fixture binding, and the focused executable test when dependencies are available.
+- Claims supported: Unstaged/uncommitted GHU-035C3 review candidate pending parent validation and independent review only.
+- Claims unsupported: Acceptance, integration, deployment, runtime/live proof, or a product blocker from unavailable child dependencies.
+- Next safe action: Parent freezes and runs exact executable validation, then assigns independent exact-delta review.
+- Rejected C2 evidence: Commit `b8cd217e3483fbbc15dc89880c6358945f903bab`, tree `9cc09d08b637a0f198678ec44320a5957a002836`; implementer run `20260803T073521Z-49cb6e5328-5b931a`, session `019fc68c-b1f7-7d42-beb2-0b34861510d1`. Parent command `uv run --with-requirements requirements/all.in pytest -q tests/operator_ui/test_r3_e2e_safety.py` returned exit 1 with `1 failed, 1 passed`: the first POST returned 202, the duplicate returned 200, and exactly one launch occurred, but the job was `FAILED / PROCESS_OUTPUT_INVALID` because C2's hand-built process JSON was not a valid sealed producer packet. C2 remains rejected evidence.
 
 ## GHU-032C1 through GHU-034C1 — Rejected first correction candidate
 
