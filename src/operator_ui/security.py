@@ -732,6 +732,7 @@ def load_connected_environment(app: Flask) -> None:
         "OPERATOR_UI_DEPLOYED_COMMIT",
         "OPERATOR_UI_DEPLOYED_TREE",
         "OPERATOR_UI_DEPLOYED_VERSION",
+        "OPERATOR_UI_DEPLOYED_PROFILE",
         "OPERATOR_UI_INACTIVITY_SECONDS",
         "OPERATOR_UI_ABSOLUTE_SECONDS",
     )

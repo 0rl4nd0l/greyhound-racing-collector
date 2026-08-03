@@ -8,6 +8,7 @@ import json
 import os
 import re
 import stat
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -19,6 +20,7 @@ class DeploymentRejected(RuntimeError):
 
 _COMMIT = re.compile(r"^[0-9a-f]{40}$")
 _VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+_SYSTEMD_SAFE_PATH = re.compile(r"^/[A-Za-z0-9_./+-]+$")
 _ARTIFACTS = {
     "prediction_script": "scripts/predict_race_now.py",
     "prediction_config": "configs/prediction/manual-default.json",
@@ -46,6 +48,32 @@ def _safe_existing(path: Path, *, directory: bool, executable: bool = False) -> 
     if executable and not info.st_mode & 0o100:
         raise DeploymentRejected(f"pinned Python is not owner-executable: {path}")
     return path
+
+
+def _systemd_safe(path: Path) -> None:
+    if not _SYSTEMD_SAFE_PATH.fullmatch(str(path)):
+        raise DeploymentRejected(f"authority path is not systemd-safe: {path}")
+
+
+def _verify_source_identity(source: Path, commit: str, tree: str) -> None:
+    try:
+        status = subprocess.run(
+            ["git", "--no-optional-locks", "-C", str(source), "status", "--porcelain"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        identity = subprocess.run(
+            ["git", "--no-optional-locks", "-C", str(source), "rev-parse", "HEAD", "HEAD^{tree}"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise DeploymentRejected("source Git identity unavailable") from error
+    observed = identity.stdout.splitlines()
+    if status.stdout or observed != [commit, tree]:
+        raise DeploymentRejected("source Git identity is dirty or mismatched")
 
 
 def _separate(roots: tuple[Path, ...]) -> None:
@@ -121,7 +149,14 @@ def generate_package(*, source_root: Path, pinned_python: Path, evidence_root: P
     if address.is_unspecified or address.is_multicast or not (address.is_loopback or address.is_private):
         raise DeploymentRejected("bind address must be loopback or private")
 
+    for authority_path in (
+        source_root, pinned_python, evidence_root, producer_root, canonical_db,
+        operations_root, secrets_file, output_dir,
+    ):
+        _systemd_safe(Path(authority_path).absolute())
+
     source = _safe_existing(source_root, directory=True)
+    _verify_source_identity(source, source_commit, source_tree)
     python = _safe_existing(pinned_python, directory=False, executable=True)
     evidence = _safe_existing(evidence_root, directory=True)
     producer = _safe_existing(producer_root, directory=True)

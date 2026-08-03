@@ -737,8 +737,8 @@ from src.operator_ui.bootstrap import bind_configured_live_evidence, bind_config
 # inside the repository-owned factory; the authoritative default is disabled.
 app.config["OPERATOR_UI_R3_PROFILE"] = os.environ.get("OPERATOR_UI_R3_PROFILE", "disabled")
 
-configure_r3_startup(app)
 load_connected_environment(app)
+configure_r3_startup(app)
 install_connected_mode(app)
 install_level_1_api(app)
 bind_configured_live_evidence(app)

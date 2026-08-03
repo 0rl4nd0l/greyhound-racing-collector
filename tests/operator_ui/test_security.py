@@ -253,9 +253,11 @@ def test_environment_loader_is_fixed_and_default_off(monkeypatch):
     app = Flask(__name__)
     monkeypatch.setenv("OPERATOR_UI_AUDIT_DB_PATH", "/server/configured/audit.db")
     monkeypatch.setenv("CALLER_SUPPLIED_PATH", "/untrusted/request/path")
+    monkeypatch.setenv("OPERATOR_UI_DEPLOYED_PROFILE", "repository-v1")
     load_connected_environment(app)
     assert app.config["OPERATOR_UI_CONNECTED_MODE"] is False
     assert app.config["OPERATOR_UI_AUDIT_DB_PATH"] == "/server/configured/audit.db"
+    assert app.config["OPERATOR_UI_DEPLOYED_PROFILE"] == "repository-v1"
     assert "CALLER_SUPPLIED_PATH" not in app.config
 
 

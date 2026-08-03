@@ -1,10 +1,14 @@
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 import pytest
+from flask import Flask
 
 from src.operator_ui.deployment import DeploymentRejected, generate_package
+from src.operator_ui.security import load_connected_environment
+import src.operator_ui.bootstrap as bootstrap_module
 
 
 COMMIT = "881a3cee0c7f93dd26f5ece9185052f59c4c1aed"
@@ -55,8 +59,20 @@ def deployment_inputs(tmp_path: Path) -> dict[str, object]:
                 bind_address="127.0.0.1", port=5055)
 
 
-def test_default_off_package_binds_identity_hashes_private_service_and_external_secrets(tmp_path):
+def git_identity(monkeypatch, *, commit=COMMIT, tree=TREE, dirty=False):
+    def run(command, **kwargs):
+        if "status" in command:
+            output = " M app.py\n" if dirty else ""
+        else:
+            output = f"{commit}\n{tree}\n"
+        return subprocess.CompletedProcess(command, 0, output, "")
+
+    monkeypatch.setattr("src.operator_ui.deployment.subprocess.run", run)
+
+
+def test_default_off_package_binds_identity_hashes_private_service_and_external_secrets(tmp_path, monkeypatch):
     values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
     result = generate_package(**values)
     binding_path = values["source_root"] / "var/operator_ui/generated/repository-v1.binding.json"
     binding = json.loads(binding_path.read_text())
@@ -76,8 +92,9 @@ def test_default_off_package_binds_identity_hashes_private_service_and_external_
 
 
 @pytest.mark.parametrize("unsafe", ["public_bind", "symlink_python", "overlap", "missing_index", "weak_secrets"])
-def test_generator_rejects_unsafe_missing_or_overlapping_inputs_without_partial_writes(tmp_path, unsafe):
+def test_generator_rejects_unsafe_missing_or_overlapping_inputs_without_partial_writes(tmp_path, monkeypatch, unsafe):
     values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
     if unsafe == "public_bind":
         values["bind_address"] = "0.0.0.0"
     elif unsafe == "symlink_python":
@@ -97,8 +114,9 @@ def test_generator_rejects_unsafe_missing_or_overlapping_inputs_without_partial_
     assert not (values["source_root"] / "var/operator_ui/generated/repository-v1.binding.json").exists()
 
 
-def test_explicit_enable_changes_only_feature_gate_and_retains_evidence_on_rollback(tmp_path):
+def test_explicit_enable_changes_only_feature_gate_and_retains_evidence_on_rollback(tmp_path, monkeypatch):
     values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
     result = generate_package(**values, enabled=True)
     environment = (values["output_dir"] / "operator-ui-r3.env").read_text()
     rollback = (values["output_dir"] / "ROLLBACK.md").read_text()
@@ -108,3 +126,62 @@ def test_explicit_enable_changes_only_feature_gate_and_retains_evidence_on_rollb
     assert "do not delete" in rollback.lower()
     assert str(values["operations_root"]) in rollback
     assert result["enabled"] is True
+
+
+@pytest.mark.parametrize("enabled, expected", [(False, False), (True, True)])
+def test_real_generated_package_startup_is_disabled_or_bootstraps_with_all_deployment_identity(
+    tmp_path, monkeypatch, enabled, expected
+):
+    values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
+    generate_package(**values, enabled=enabled)
+    generated = dict(
+        line.split("=", 1)
+        for line in (values["output_dir"] / "operator-ui-r3.env").read_text().splitlines()
+        if line
+    )
+    for name, value in generated.items():
+        monkeypatch.setenv(name, value)
+    app = Flask(__name__)
+    app.config[bootstrap_module.R3_PROFILE_KEY] = generated["OPERATOR_UI_R3_PROFILE"]
+    load_connected_environment(app)
+    monkeypatch.setattr(bootstrap_module, "_REPOSITORY_ROOT", values["source_root"])
+    assert bootstrap_module.configure_r3_startup(app) is expected
+    if enabled:
+        assert {
+            app.config[name]
+            for name in (
+                "OPERATOR_UI_DEPLOYED_COMMIT",
+                "OPERATOR_UI_DEPLOYED_TREE",
+                "OPERATOR_UI_DEPLOYED_VERSION",
+                "OPERATOR_UI_DEPLOYED_PROFILE",
+            )
+        } == {COMMIT, TREE, "operator-ui-v1", "repository-v1"}
+
+
+@pytest.mark.parametrize("identity", ["dirty", "commit", "tree"])
+def test_generator_rejects_unclean_or_mismatched_git_identity_before_any_write(tmp_path, monkeypatch, identity):
+    values = deployment_inputs(tmp_path)
+    git_identity(
+        monkeypatch,
+        commit="a" * 40 if identity == "commit" else COMMIT,
+        tree="b" * 40 if identity == "tree" else TREE,
+        dirty=identity == "dirty",
+    )
+    with pytest.raises(DeploymentRejected, match="Git identity"):
+        generate_package(**values)
+    assert not (values["output_dir"] / "greyhound-operator-ui-r3.service").exists()
+    assert not (values["source_root"] / "var/operator_ui/generated/repository-v1.binding.json").exists()
+
+
+@pytest.mark.parametrize("bad", ["path with space", "path%percent", 'path\"quote', "path\nnewline", "path:colon"])
+def test_generator_rejects_systemd_ambiguous_authority_paths(tmp_path, monkeypatch, bad):
+    values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
+    unsafe = tmp_path / bad
+    unsafe.mkdir()
+    unsafe.chmod(0o700)
+    values["operations_root"] = unsafe
+    with pytest.raises(DeploymentRejected, match="systemd-safe"):
+        generate_package(**values)
+    assert not (values["output_dir"] / "greyhound-operator-ui-r3.service").exists()
