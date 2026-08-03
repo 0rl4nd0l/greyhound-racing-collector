@@ -41,13 +41,14 @@ still required. Do not port-forward or publish this development server.
 ## Secrets
 
 Create the secrets file outside the repository and generated package. It must
-be a pre-existing regular non-symlink file with mode `0600`, containing at least
-`OPERATOR_UI_SECRET_KEY`, `OPERATOR_UI_USERNAME`, and a Werkzeug scrypt/pbkdf2
-`OPERATOR_UI_PASSWORD_HASH`. The generator validates names and permissions but
-never copies secret values into the service, environment file, binding, or
-documentation. The generated unit references the original file with
-`EnvironmentFile=`. Never commit the file or paste its contents into review
-evidence.
+be a pre-existing regular non-symlink file with mode `0600`, containing exactly
+one assignment for each of `OPERATOR_UI_SECRET_KEY`,
+`OPERATOR_UI_USERNAME`, and a Werkzeug scrypt/pbkdf2
+`OPERATOR_UI_PASSWORD_HASH`, with no other assignments. The generator validates
+names and permissions but never copies secret values into the service,
+environment file, binding, or documentation. The generated unit references the
+original file with `EnvironmentFile=`. Never commit the file or paste its
+contents into review evidence.
 
 ## Enable and verify (after separate Level 4 approval)
 

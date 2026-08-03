@@ -1,20 +1,21 @@
 # Greyhound Operator UI V1 status
 
-Observed 2026-08-01 at the current clean programme integration base (the R1
-product checkpoint remains preserved in the history below):
+Current review state observed 2026-08-03:
 
 | Field | State |
 |---|---|
-| Repository | `0rl4nd0l/greyhound-racing-collector` |
-| Branch | No current branch claim; ledger state is durable independently of delivery mechanics |
-| HEAD / tree | Base `dee082e954038c9ac4bf48d48bbe3901879310b8` / `302e144765d9bfd7ea3a7a1ef8a25e4fd3ab2c41`; current work is an uncommitted review candidate |
-| Baseline cleanliness | clean |
-| Historical/upstream source | Actual historical merge parent `51a5287d05c790e3855e5b74ce7117a29340135e`; later `origin/master` drift `f38a125f6364b8a60d17ae9c971b0ce172874eea`, tree `408a8adbfa2bd436132bc4d2c63e952aeb57c5a5`, parent `51a5287d05c790e3855e5b74ce7117a29340135e`; local merge `0b08966b31c15d8b459b9c6b60a48b19030a9ce4` |
-| Current release / ticket | R2 and `GHU-030`/`GHU-031` are accepted/integrated. Original `GHU-032`/`033`/`034` and C1 are blocked/rejected; C2 was independently returned and corrected C3 is the unaccepted review candidate. R5 remains deferred. |
-| Counts | 29 accepted tickets, 0 ready, 0 active, 3 review, 13 blocked, 2 deferred, 7 planned (plus accepted audit milestone `GHU-000A`) |
-| Assignment | Fresh bounded implementer correction candidate for `GHU-032C3 + GHU-033C3 + GHU-034C3`; implementation is pending final frozen validation evidence |
-| Next safe action | Freeze and independently review the exact uncommitted C3 candidate; parent retains acceptance and integration authority. |
-| Validation | Focused R3/security/store/bootstrap/connected UI: `282 passed in 29.78s`. Required full Operator UI: `804 passed in 119.75s (0:01:59)`. |
+| Accepted programme base | `GHU-035` accepted at commit `881a3cee0c7f93dd26f5ece9185052f59c4c1aed`, tree `226dae42ebc4deea7ce1c7954e8da74fabd37f7a` |
+| Rejected documentation candidate | Mechanically frozen `GHU-036 C6` candidate `bd95d7affc6b4b10c9b4b5445ad841d72d773e51`, tree `92cb955331961e0cdc12c9a99ee0725a84b76c04`, was rejected in review session `019fc6fc-b9e8-76f3-9cb9-d3a1867db428` because `DEPLOYMENT.md` described at-least-three rather than exact-three secret assignments and this opening table still presented obsolete `GHU-032C3` identity, counts, and assignment as current. |
+| Current ticket | Documentation-only `GHU-036 C7` is in `REVIEW`; no acceptance, integration, deployment, or runtime proof is claimed. |
+| Product candidate | `GHU-036 C5` remains the mechanically frozen product candidate at commit `61567704a812969abc39df07c92eb5ab7e858710`, tree `254fbcd541b37d6904a8000391da5488fefa3e26`; deployment-generator validation passed exactly `54/54`. |
+| Prior validation | `124` focused tests passed; the broad run passed `854` tests and had `13` `/tmp` harness failures; owner-safe bootstrap validation passed `39/39`. These are preserved prior results, not rerun C7 claims. |
+| Next safe action | Independently review the exact documentation-only C7 delta; the parent retains acceptance and integration authority. |
+
+## Historical detailed record
+
+The detailed body below preserves earlier programme states and evidence. Its
+then-current identities, counts, assignments, and next actions are historical,
+not the current 2026-08-03 summary above.
 
 `GHU-000B` audit run `20260730T172346Z-1bacc67937-3c5f6b`, session
 `019fb40d-e8ed-7d40-8ab2-8ad2b156552c`, child
