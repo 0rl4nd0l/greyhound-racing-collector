@@ -9,7 +9,7 @@ from tempfile import TemporaryDirectory
 import pytest
 from flask import Flask
 
-from src.operator_ui.deployment import DeploymentRejected, generate_package
+from src.operator_ui.deployment import DeploymentRejected, generate_package, main
 from src.operator_ui.security import load_connected_environment
 import src.operator_ui.bootstrap as bootstrap_module
 
@@ -118,6 +118,17 @@ def git_identity(monkeypatch, *, commit=COMMIT, tree=TREE, dirty=False):
         return subprocess.CompletedProcess(command, 0, output, "")
 
     monkeypatch.setattr("src.operator_ui.deployment.subprocess.run", run)
+
+
+def load_generated_environment(monkeypatch, values):
+    generated = dict(
+        line.split("=", 1)
+        for line in (values["output_dir"] / "operator-ui-r3.env").read_text().splitlines()
+        if line
+    )
+    for name, value in generated.items():
+        monkeypatch.setenv(name, value)
+    return generated
 
 
 @pytest.fixture
@@ -420,13 +431,7 @@ def test_real_generated_package_startup_is_disabled_or_bootstraps_with_all_deplo
     values = deployment_inputs(real_startup_tmp_path)
     git_identity(monkeypatch)
     generate_package(**values, enabled=enabled)
-    generated = dict(
-        line.split("=", 1)
-        for line in (values["output_dir"] / "operator-ui-r3.env").read_text().splitlines()
-        if line
-    )
-    for name, value in generated.items():
-        monkeypatch.setenv(name, value)
+    generated = load_generated_environment(monkeypatch, values)
     app = Flask(__name__)
     app.config[bootstrap_module.R3_PROFILE_KEY] = generated["OPERATOR_UI_R3_PROFILE"]
     load_connected_environment(app)
@@ -442,6 +447,82 @@ def test_real_generated_package_startup_is_disabled_or_bootstraps_with_all_deplo
                 "OPERATOR_UI_DEPLOYED_PROFILE",
             )
         } == {COMMIT, TREE, "operator-ui-v1", "repository-v1"}
+
+
+def test_clean_exact_generated_serve_identity_reaches_exec(real_startup_tmp_path, monkeypatch):
+    values = deployment_inputs(real_startup_tmp_path)
+    git_identity(monkeypatch)
+    generate_package(**values, enabled=True)
+    load_generated_environment(monkeypatch, values)
+    executed = []
+
+    class ExecReached(Exception):
+        pass
+
+    def execv(executable, arguments):
+        executed.append((executable, arguments))
+        raise ExecReached
+
+    monkeypatch.setattr("src.operator_ui.deployment.os.execv", execv)
+    with pytest.raises(ExecReached):
+        main(["serve", "--source-root", str(values["source_root"]),
+              "--host", "127.0.0.1", "--port", "5055"])
+    assert executed[0][1][1:] == [str(values["source_root"] / "app.py"),
+                                  "--host", "127.0.0.1", "--port", "5055"]
+
+
+def test_generated_serve_refuses_later_runtime_source_mutation_before_exec(
+    real_startup_tmp_path, monkeypatch
+):
+    values = deployment_inputs(real_startup_tmp_path)
+    app_path = values["source_root"] / "app.py"
+    generated_app = app_path.read_bytes()
+
+    def run(command, **kwargs):
+        if "status" in command:
+            output = " M app.py\n" if app_path.read_bytes() != generated_app else ""
+        else:
+            output = f"{COMMIT}\n{TREE}\n"
+        return subprocess.CompletedProcess(command, 0, output, "")
+
+    monkeypatch.setattr("src.operator_ui.deployment.subprocess.run", run)
+    generate_package(**values, enabled=True)
+    load_generated_environment(monkeypatch, values)
+    app_path.write_bytes(generated_app + b"\n# changed after generation\n")
+    executed = []
+    monkeypatch.setattr("src.operator_ui.deployment.os.execv", lambda *args: executed.append(args))
+
+    with pytest.raises(DeploymentRejected, match="Git identity"):
+        main(["serve", "--source-root", str(values["source_root"]),
+              "--host", "127.0.0.1", "--port", "5055"])
+    assert executed == []
+
+
+@pytest.mark.parametrize("name,value", [
+    ("OPERATOR_UI_DEPLOYED_COMMIT", None),
+    ("OPERATOR_UI_DEPLOYED_COMMIT", "not-a-commit"),
+    ("OPERATOR_UI_DEPLOYED_TREE", None),
+    ("OPERATOR_UI_DEPLOYED_TREE", "A" * 40),
+])
+def test_serve_refuses_missing_or_malformed_deployed_identity_before_exec(
+    tmp_path, monkeypatch, name, value
+):
+    values = deployment_inputs(tmp_path)
+    monkeypatch.setenv("OPERATOR_UI_CONNECTED_MODE", "1")
+    monkeypatch.setenv("OPERATOR_UI_R3_PROFILE", "repository-v1")
+    monkeypatch.setenv("OPERATOR_UI_DEPLOYED_COMMIT", COMMIT)
+    monkeypatch.setenv("OPERATOR_UI_DEPLOYED_TREE", TREE)
+    if value is None:
+        monkeypatch.delenv(name)
+    else:
+        monkeypatch.setenv(name, value)
+    executed = []
+    monkeypatch.setattr("src.operator_ui.deployment.os.execv", lambda *args: executed.append(args))
+
+    with pytest.raises(DeploymentRejected, match="deployed source commit/tree identity is invalid"):
+        main(["serve", "--source-root", str(values["source_root"]),
+              "--host", "127.0.0.1", "--port", "5055"])
+    assert executed == []
 
 
 @pytest.mark.parametrize("identity", ["dirty", "commit", "tree"])

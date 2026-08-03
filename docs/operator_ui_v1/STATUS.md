@@ -6,10 +6,10 @@ Current review state observed 2026-08-03:
 |---|---|
 | Accepted programme base | `GHU-035` accepted at commit `881a3cee0c7f93dd26f5ece9185052f59c4c1aed`, tree `226dae42ebc4deea7ce1c7954e8da74fabd37f7a` |
 | Rejected correction candidate | `GHU-036 C7` commit `ffad974a0ce0bcd0a47752d66ff768c223a8580e`, tree `0d215c3d5f567167d7a4f16b1984bf39205f44ea`, was rejected in independent review session `019fc704-0419-7943-a284-dd8208d0d98a` because its checked-in profile and five artifact hashes were reopened by pathname after validation instead of coming from bounded, no-follow retained reads. |
-| Current ticket | Unstaged, uncommitted `GHU-036 C8` is in `REVIEW`; no self-identity, acceptance, integration, deployment, or runtime proof is claimed. |
-| Product candidate | C8 changes only the profile/five-artifact authority-read seam and deterministic adversarial tests; all transactional output, external-secret, startup, systemd, and default-off boundaries are preserved. |
-| Prior validation | `124` focused tests passed; the broad run passed `854` tests and had `13` `/tmp` harness failures; owner-safe bootstrap validation passed `39/39`. These are preserved prior results, not rerun C8 claims. |
-| Next safe action | Independently review the exact unstaged C8 delta; the parent retains freeze, acceptance, and integration authority. |
+| Current ticket | Unstaged, uncommitted `GHU-036 C10` is in `REVIEW`; no self-identity, acceptance, integration, deployment, or runtime proof is claimed. |
+| Product candidate | C10 revalidates the generated commit/tree and clean Git state immediately before service `execv`; all other generation, startup, systemd, and default-off boundaries are preserved. |
+| Prior validation | `124` focused tests passed; the broad run passed `854` tests and had `13` `/tmp` harness failures; owner-safe bootstrap validation passed `39/39`. These are preserved prior results, not rerun C10 claims. |
+| Next safe action | Independently review the exact unstaged C10 delta; the parent retains freeze, acceptance, and integration authority. |
 
 ## Historical detailed record
 
@@ -903,6 +903,21 @@ content-sensitive leaf identity, no-follow descriptor-relative traversal,
 retained descriptors, bounded reads, source Git re-verification, cleanup, and
 no output on rejection. Deterministic coverage permits unrelated ancestor
 churn and exercises leaf replacement, component replacement, in-place
-mutation, and oversize rejection for all six authority files. C9 remains an
-unstaged, uncommitted `REVIEW` candidate; no acceptance, integration,
-deployment, or runtime proof is claimed.
+mutation, and oversize rejection for all six authority files. C9 was frozen at
+`47333882...`, tree `67d8048e...`, and rejected in session
+`019fc71d-7400-7172-999b-ea7b1e1c7aff`, leading to C10; no acceptance,
+integration, deployment, or runtime proof is claimed.
+
+## GHU-036 C10 correction status
+
+Fresh review of C9 in session `019fc71d-7400-7172-999b-ea7b1e1c7aff` found
+that generation bound a clean source commit/tree but enabled service startup
+did not revalidate that identity before executing `app.py`. C10 now requires the
+generated environment's deployed commit and tree to be present, canonical
+40-character lowercase Git identities, and to exactly match a clean current
+source `HEAD` and `HEAD^{tree}` immediately before `execv`. Focused coverage
+proves the clean exact generated startup reaches exec, a later non-artifact
+runtime-source mutation is refused before exec, and missing or malformed
+expected identities fail closed. C10 remains an unstaged, uncommitted `REVIEW`
+candidate; no acceptance, integration, installation, deployment, service start,
+runtime proof, or live proof is claimed.

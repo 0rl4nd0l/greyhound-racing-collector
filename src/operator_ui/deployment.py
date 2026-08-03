@@ -423,6 +423,11 @@ def main(argv: list[str] | None = None) -> int:
         if os.environ.get("OPERATOR_UI_CONNECTED_MODE") != "1" or os.environ.get("OPERATOR_UI_R3_PROFILE") != "repository-v1":
             return 0
         source = _safe_existing(args.source_root, directory=True)
+        deployed_commit = os.environ.get("OPERATOR_UI_DEPLOYED_COMMIT", "")
+        deployed_tree = os.environ.get("OPERATOR_UI_DEPLOYED_TREE", "")
+        if not _COMMIT.fullmatch(deployed_commit) or not _COMMIT.fullmatch(deployed_tree):
+            raise DeploymentRejected("deployed source commit/tree identity is invalid")
+        _verify_source_identity(source, deployed_commit, deployed_tree)
         os.execv(sys.executable, [sys.executable, str(source / "app.py"), "--host", args.host, "--port", str(args.port)])
     values = vars(args); values.pop("command")
     result = generate_package(**values)
