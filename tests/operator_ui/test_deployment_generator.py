@@ -2,6 +2,7 @@ import hashlib
 import json
 import subprocess
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import pytest
 from flask import Flask
@@ -70,6 +71,15 @@ def git_identity(monkeypatch, *, commit=COMMIT, tree=TREE, dirty=False):
     monkeypatch.setattr("src.operator_ui.deployment.subprocess.run", run)
 
 
+@pytest.fixture
+def real_startup_tmp_path():
+    repository = Path(__file__).parents[2]
+    with TemporaryDirectory(prefix=".operator-ui-startup-", dir=repository) as temporary:
+        fixture_root = Path(temporary)
+        fixture_root.chmod(0o700)
+        yield fixture_root
+
+
 def test_default_off_package_binds_identity_hashes_private_service_and_external_secrets(tmp_path, monkeypatch):
     values = deployment_inputs(tmp_path)
     git_identity(monkeypatch)
@@ -130,9 +140,9 @@ def test_explicit_enable_changes_only_feature_gate_and_retains_evidence_on_rollb
 
 @pytest.mark.parametrize("enabled, expected", [(False, False), (True, True)])
 def test_real_generated_package_startup_is_disabled_or_bootstraps_with_all_deployment_identity(
-    tmp_path, monkeypatch, enabled, expected
+    real_startup_tmp_path, monkeypatch, enabled, expected
 ):
-    values = deployment_inputs(tmp_path)
+    values = deployment_inputs(real_startup_tmp_path)
     git_identity(monkeypatch)
     generate_package(**values, enabled=enabled)
     generated = dict(
