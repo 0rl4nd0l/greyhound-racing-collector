@@ -21,7 +21,8 @@ from race_collection.synchronous_manual_capture import CaptureOneRejected, Verif
 from src.predictor.on_demand import PredictionBlocked
 from .api import register_level_1_provider
 from .job_store import JobInput, JobStore, Phase
-from .live_adapters import LiveEvidenceAdapters
+from .foundation import JsonSerializationPolicy, JsonSource, OperatorEvidenceReader, RawSourceConfig, SourceConfig, TimestampSyntax
+from .live_adapters import InstalledUnits, LiveEvidenceAdapters, PredictionBundleSource, UpcomingRaceSource
 from .prediction_worker import ServerChoice, WorkerConfig, run_once
 from .r3_api import R3Rejected, R3Services, ResolvedSubmission, build_verified_bundle_reader, install_r3_api
 
@@ -158,7 +159,7 @@ def _repository_layout()->dict[str,Any]:
         if not binding_path.exists():raise RuntimeError("generated repository-v1 binding unavailable") from exc
         raise
     deployment=binding.get("deployment")
-    if set(binding)!=_BINDING_KEYS or binding["schema_version"]!="operator_ui_repository_binding_v1" or binding["profile_id"]!="repository-v1" or type(binding["roots"]) is not dict or set(binding["roots"])!=_ROOT_KEYS or type(binding["generator"]) is not dict or set(binding["generator"])!=_GENERATOR_KEYS or binding["generator"]!={"generator_id":"GHU-036-repository-v1-generator","schema_version":"operator_ui_repository_binding_generator_v1","version":"1"} or any(not _finite_text(value) for value in binding["generator"].values()) or type(deployment) is not dict or set(deployment)!=_DEPLOYMENT_KEYS or not _HEX40_RE.fullmatch(deployment.get("source_commit","") or "") or not _HEX40_RE.fullmatch(deployment.get("source_tree","") or "") or any(not _finite_text(deployment.get(key)) for key in ("ui_version","profile_id")) or any(deployment[key]!=profile["deployment"][key] for key in _PROFILE_DEPLOYMENT_KEYS) or not _HEX64_RE.fullmatch(binding.get("profile_sha256","") or "") or binding["profile_sha256"]!=hashlib.sha256(profile_raw).hexdigest() or type(binding["artifacts"]) is not dict or set(binding["artifacts"])!=_ARTIFACT_KEYS or any(not isinstance(value,str) or _HEX64_RE.fullmatch(value) is None for value in binding["artifacts"].values()):raise RuntimeError("generated repository-v1 binding invalid")
+    if set(binding) not in (_BINDING_KEYS, _BINDING_KEYS|{"live_evidence"}) or binding["schema_version"]!="operator_ui_repository_binding_v1" or binding["profile_id"]!="repository-v1" or type(binding["roots"]) is not dict or set(binding["roots"])!=_ROOT_KEYS or type(binding["generator"]) is not dict or set(binding["generator"])!=_GENERATOR_KEYS or binding["generator"]!={"generator_id":"GHU-036-repository-v1-generator","schema_version":"operator_ui_repository_binding_generator_v1","version":"1"} or any(not _finite_text(value) for value in binding["generator"].values()) or type(deployment) is not dict or set(deployment)!=_DEPLOYMENT_KEYS or not _HEX40_RE.fullmatch(deployment.get("source_commit","") or "") or not _HEX40_RE.fullmatch(deployment.get("source_tree","") or "") or any(not _finite_text(deployment.get(key)) for key in ("ui_version","profile_id")) or any(deployment[key]!=profile["deployment"][key] for key in _PROFILE_DEPLOYMENT_KEYS) or not _HEX64_RE.fullmatch(binding.get("profile_sha256","") or "") or binding["profile_sha256"]!=hashlib.sha256(profile_raw).hexdigest() or type(binding["artifacts"]) is not dict or set(binding["artifacts"])!=_ARTIFACT_KEYS or any(not isinstance(value,str) or _HEX64_RE.fullmatch(value) is None for value in binding["artifacts"].values()):raise RuntimeError("generated repository-v1 binding invalid")
     roots={}
     for name,value in binding["roots"].items():
         path=Path(value) if isinstance(value,str) else Path("")
@@ -181,7 +182,56 @@ def _repository_layout()->dict[str,Any]:
     for path in artifacts.values():_regular(path)
     artifact_binding={"prediction_script":artifacts["script"],"prediction_config":artifacts["config"],"model_artifact":artifacts["model"],"model_manifest":artifacts["manifest"],"model_schema":artifacts["schema"]}
     if any(binding["artifacts"].get(name)!=_sha(path) for name,path in artifact_binding.items()):raise RuntimeError("generated repository-v1 artifact identity mismatch")
-    return {"base":operations,"paths":paths,"dirs":dirs,"artifacts":artifacts,"source_root":roots["source_root"],"pinned_python":roots["pinned_python"],"deployment":dict(deployment)}
+    return {"base":operations,"paths":paths,"dirs":dirs,"artifacts":artifacts,"source_root":roots["source_root"],"pinned_python":roots["pinned_python"],"deployment":dict(deployment),"live_evidence":binding.get("live_evidence")}
+
+
+def _configured_live(layout:Mapping[str,Any])->LiveEvidenceAdapters:
+    live=layout.get("live_evidence")
+    if not isinstance(live,dict) or set(live)!={"schema_version","observed_at","working_directory","sources","raw_sources","units","service_status"} or live.get("schema_version")!="operator_ui_live_authority_v1":raise RuntimeError("generated live evidence binding invalid")
+    def entry(group:str,key:str)->tuple[Path,str,Path|None]:
+        item=live[group].get(key)
+        allowed={"path","sha256"}|({"allowlisted_root"} if group=="sources" and key=="odds_refresh" else set())
+        if not isinstance(item,dict) or set(item)!=allowed or not isinstance(item["path"],str) or not Path(item["path"]).is_absolute() or not _HEX64_RE.fullmatch(item["sha256"]):raise RuntimeError("generated live evidence binding invalid")
+        path=Path(item["path"]);_regular(path)
+        root=None
+        if "allowlisted_root" in item:
+            root=Path(item["allowlisted_root"])
+            if not root.is_absolute():raise RuntimeError("generated live evidence binding invalid")
+            _directory(root)
+        return path,item["sha256"],root
+    policies={"full_state":"P-COLLECTOR-FULL-DYNAMIC","full_report":"P-COLLECTOR-FULL-DYNAMIC","odds_state":"P-COLLECTOR-ODDS-DYNAMIC","odds_report":"P-COLLECTOR-ODDS-DYNAMIC","odds_refresh":"P-COLLECTOR-ODDS-DYNAMIC","corpus_report":"P-REPORT-24H","corpus_manifest":"P-REPORT-24H","deployment_manifest":"P-DEPLOY-60","model_catalog":"P-CATALOG-60"}
+    sources={}
+    for key,policy in policies.items():
+        path,digest,sealed_root=entry("sources",key)
+        try:payload=json.loads(_retained_read(path))
+        except (UnicodeDecodeError,json.JSONDecodeError) as exc:raise RuntimeError("generated live evidence source invalid") from exc
+        if type(payload) is not dict:raise RuntimeError("generated live evidence source invalid")
+        schema=payload.get("schema_version")
+        time_field=None if key in {"full_state","corpus_manifest","model_catalog"} else ("updated_at" if key=="odds_state" else "generated_at")
+        evidence_root=layout["dirs"]["current_evidence"]
+        allowlisted=sealed_root or (evidence_root if path.is_relative_to(evidence_root) else path.parent)
+        serialization=(JsonSerializationPolicy.COMPACT_CANONICAL if key=="model_catalog" else JsonSerializationPolicy.PRODUCER_PRETTY_SORTED)
+        sources[key]=SourceConfig(path,allowlisted,"producer_report",str(schema or "shadow_autopilot_refresh_report"),f"operator_ui.{key}",policy,"Exact producer evidence only.",JsonSource("schema_version" if schema else None,schema,tuple(payload),time_field,max_items=100000,timestamp_syntax=TimestampSyntax.AWARE_ISO8601,serialization_policy=serialization,authority_observed_at=live["observed_at"] if key=="model_catalog" else None),expected_sha256=digest)
+    raw_sources={}
+    for key in live.get("raw_sources",{}):
+        path,digest,_=entry("raw_sources",key);policy="P-CATALOG-60" if key.startswith("model_") else "P-REPORT-24H"
+        raw_sources[key]=RawSourceConfig(path,path.parent,"fixed_file",key,f"operator_ui.{key}",policy,"Exact fixed bytes only.",expected_sha256=digest)
+    unit_values={}
+    for key in ("full_timer","full_service","odds_timer","odds_service"):
+        path,digest,_=entry("units",key);raw=_retained_read(path)
+        if hashlib.sha256(raw).hexdigest()!=digest:raise RuntimeError("installed unit identity mismatch")
+        unit_values[key]=raw;unit_values[f"{key}_sha256"]=digest
+    try:observed=datetime.fromisoformat(live["observed_at"].replace("Z","+00:00"))
+    except (AttributeError,ValueError) as exc:raise RuntimeError("installed unit observation time invalid") from exc
+    status=live.get("service_status",{})
+    for lane in ("full","odds"):
+        if not isinstance(status.get(lane),dict) or set(status[lane])!={"unit_name","active_state","sub_state","exec_main_pid"}:raise RuntimeError("installed unit status invalid")
+        expected={"full":"shadow-autopilot.service","odds":"shadow-autopilot-odds-capture.service"}[lane]
+        if status[lane]["unit_name"]!=expected:raise RuntimeError("installed unit status invalid")
+        unit_values.update({f"{lane}_unit_name":status[lane]["unit_name"],f"{lane}_active_state":status[lane]["active_state"],f"{lane}_sub_state":status[lane]["sub_state"],f"{lane}_exec_main_pid":status[lane]["exec_main_pid"]})
+    units=InstalledUnits(**unit_values,observed_at=observed,working_directory=live["working_directory"])
+    reader=OperatorEvidenceReader(sources,raw_sources=raw_sources)
+    return LiveEvidenceAdapters(reader,units=units,upcoming_races=UpcomingRaceSource(layout["paths"]["current_index.json"],layout["dirs"]["current_evidence"]),prediction_bundles=PredictionBundleSource(layout["dirs"]["prediction_bundles"]))
 
 
 def _runner(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -307,6 +357,7 @@ def configure_r3_startup(app: Flask) -> bool:
         layout=_repository_layout(); audit=layout["paths"]["audit.sqlite3"]; canonical=layout["paths"]["canonical.sqlite3"]
         deployed=layout["deployment"]
         if (app.config.get("OPERATOR_UI_DEPLOYED_COMMIT"),app.config.get("OPERATOR_UI_DEPLOYED_TREE"),app.config.get("OPERATOR_UI_DEPLOYED_VERSION"),app.config.get("OPERATOR_UI_DEPLOYED_PROFILE")) != (deployed["source_commit"],deployed["source_tree"],deployed["ui_version"],deployed["profile_id"]):raise RuntimeError("generated repository-v1 deployment identity mismatch")
+        if int(app.config.get("OPERATOR_UI_LEVEL",1))>=2:app.config[CONFIG_KEY]=_configured_live(layout)
     else:
         base=(_REPOSITORY_ROOT/_PROFILES[selector]).absolute(); audit=base/"audit.sqlite3"; canonical=base/"canonical.sqlite3"
     app.config["OPERATOR_UI_AUDIT_DB_PATH"]=str(audit)

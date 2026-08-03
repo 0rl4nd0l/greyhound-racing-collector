@@ -35,6 +35,18 @@ _ARTIFACTS = {
     "model_manifest": "artifacts/frozen_models/market_form_residual_v1/manifest.json",
     "model_schema": "configs/prediction/schemas/market_form_residual_v1.schema.json",
 }
+_LIVE_JSON_KEYS = {
+    "full_state", "full_report", "odds_state", "odds_report", "odds_refresh",
+    "corpus_report", "corpus_manifest", "deployment_manifest", "model_catalog",
+}
+_LIVE_RAW_KEYS = {
+    "corpus_inventory_csv", "corpus_inventory_jsonl", "corpus_scorecard_csv",
+    "corpus_scorecard_jsonl", "corpus_report_bytes", "corpus_summary",
+    "corpus_final_status", "model_latest_config", "model_latest_schema",
+    "model_latest_artifact", "model_latest_manifest", "model_baseline_config",
+    "model_baseline_schema",
+}
+_UNIT_KEYS = {"full_timer", "full_service", "odds_timer", "odds_service"}
 
 
 def _safe_existing(path: Path, *, directory: bool, executable: bool = False) -> Path:
@@ -98,6 +110,88 @@ def _read(path: Path, maximum: int = 256 * 1024) -> bytes:
     if len(data) > maximum:
         raise DeploymentRejected(f"bounded deployment input oversized: {path}")
     return data
+
+
+def _retained_file_read(path: Path, maximum: int = 256 * 1024) -> bytes:
+    """Bounded no-follow read retaining and rechecking every absolute component."""
+    path = path.absolute(); opened: list[tuple[int, Path, tuple[int, int, int, int, int]]] = []
+    descriptor = os.open("/", os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY)
+    try:
+        root_info = os.fstat(descriptor)
+        opened.append((descriptor, Path("/"), (root_info.st_dev, root_info.st_ino, root_info.st_mode, root_info.st_size, root_info.st_mtime_ns)))
+        current = Path("/")
+        for offset, component in enumerate(path.parts[1:]):
+            current /= component; directory = offset < len(path.parts[1:]) - 1
+            descriptor = os.open(component, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | (os.O_DIRECTORY if directory else 0), dir_fd=descriptor)
+            info = os.fstat(descriptor)
+            opened.append((descriptor, current, (info.st_dev, info.st_ino, info.st_mode, info.st_size, info.st_mtime_ns)))
+            if directory and not stat.S_ISDIR(info.st_mode) or not directory and not stat.S_ISREG(info.st_mode):
+                raise DeploymentRejected(f"authority input has wrong type: {path}")
+        chunks=[];remaining=maximum+1
+        while remaining:
+            chunk=os.read(descriptor,min(65536,remaining))
+            if not chunk:break
+            chunks.append(chunk);remaining-=len(chunk)
+        data=b"".join(chunks)
+        if len(data)>maximum:raise DeploymentRejected(f"bounded deployment input oversized: {path}")
+        for item,item_path,identity in opened:
+            observed=os.fstat(item);named=os.stat(item_path,follow_symlinks=False)
+            if (observed.st_dev,observed.st_ino,observed.st_mode,observed.st_size,observed.st_mtime_ns)!=identity or (named.st_dev,named.st_ino,named.st_mode,named.st_size,named.st_mtime_ns)!=identity:
+                raise DeploymentRejected(f"authority identity changed during retained read: {path}")
+        return data
+    except DeploymentRejected:raise
+    except OSError as error:raise DeploymentRejected(f"required input unreadable: {path}") from error
+    finally:
+        for item,_,_ in reversed(opened):
+            try:os.close(item)
+            except OSError:pass
+
+
+def _live_authority(path: Path) -> dict[str, Any]:
+    """Validate one deployer-owned, finite observation without discovering anything."""
+    try:
+        value = json.loads(_retained_file_read(path).decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise DeploymentRejected("live authority observation is malformed") from error
+    if not isinstance(value, dict) or set(value) != {"schema_version", "observed_at", "working_directory", "sources", "raw_sources", "units", "service_status"} or value["schema_version"] != "operator_ui_live_authority_v1":
+        raise DeploymentRejected("live authority observation is incomplete")
+    if set(value.get("sources", {})) != _LIVE_JSON_KEYS or set(value.get("raw_sources", {})) != _LIVE_RAW_KEYS or set(value.get("units", {})) != _UNIT_KEYS or set(value.get("service_status", {})) != {"full", "odds"}:
+        raise DeploymentRejected("live authority observation is incomplete")
+    try:
+        observed = __import__("datetime").datetime.fromisoformat(value["observed_at"].replace("Z", "+00:00"))
+    except (AttributeError, TypeError, ValueError) as error:
+        raise DeploymentRejected("live authority observation time is invalid") from error
+    if observed.tzinfo is None or not isinstance(value.get("working_directory"), str) or not value["working_directory"].startswith("/"):
+        raise DeploymentRejected("live authority observation is invalid")
+    sealed: dict[str, Any] = {"schema_version": value["schema_version"], "observed_at": value["observed_at"], "working_directory": value["working_directory"]}
+    for group in ("sources", "raw_sources", "units"):
+        sealed[group] = {}
+        for name, locator in value[group].items():
+            if not isinstance(locator, str) or not Path(locator).is_absolute():
+                raise DeploymentRejected("live authority locator is invalid")
+            file_path = _safe_existing(Path(locator), directory=False)
+            raw = _retained_file_read(file_path, 16 * 1024 * 1024)
+            sealed[group][name] = {"path": str(file_path), "sha256": hashlib.sha256(raw).hexdigest()}
+    try:
+        odds_report = json.loads(_retained_file_read(Path(value["sources"]["odds_report"])).decode("utf-8"))
+        relative = Path(odds_report["autopilot_output_dir"]) / "odds_capture_refresh_report.json"
+        refresh_path = Path(value["sources"]["odds_refresh"])
+        if relative.is_absolute() or ".." in relative.parts or len(relative.parts) < 2:
+            raise ValueError
+        refresh_root = refresh_path.parents[len(relative.parts) - 1]
+        if refresh_path.relative_to(refresh_root) != relative:
+            raise ValueError
+        _safe_existing(refresh_root, directory=True)
+    except (KeyError, TypeError, ValueError, OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise DeploymentRejected("odds refresh authority is contradictory") from error
+    sealed["sources"]["odds_refresh"]["allowlisted_root"] = str(refresh_root)
+    sealed["service_status"] = value["service_status"]
+    for lane in ("full", "odds"):
+        status = sealed["service_status"][lane]
+        expected_unit = {"full": "shadow-autopilot.service", "odds": "shadow-autopilot-odds-capture.service"}[lane]
+        if not isinstance(status, dict) or set(status) != {"unit_name", "active_state", "sub_state", "exec_main_pid"} or status["unit_name"] != expected_unit or not isinstance(status["active_state"], str) or not isinstance(status["sub_state"], str) or type(status["exec_main_pid"]) is not int or status["exec_main_pid"] < 0:
+            raise DeploymentRejected("live authority service status is invalid")
+    return sealed
 
 
 def _file_identity(info: os.stat_result) -> tuple[int, ...]:
@@ -298,7 +392,7 @@ def generate_package(*, source_root: Path, pinned_python: Path, evidence_root: P
                      secrets_file: Path, output_dir: Path, source_commit: str,
                      source_tree: str, ui_version: str, profile_id: str,
                      bind_address: str = "127.0.0.1", port: int = 5055,
-                     enabled: bool = False) -> dict[str, Any]:
+                     live_authority: Path | None = None, enabled: bool = False) -> dict[str, Any]:
     """Validate every authority input, then write one finite generated package."""
     if not _COMMIT.fullmatch(source_commit) or not _COMMIT.fullmatch(source_tree):
         raise DeploymentRejected("source commit/tree identity is invalid")
@@ -365,8 +459,14 @@ def generate_package(*, source_root: Path, pinned_python: Path, evidence_root: P
             "roots": {"source_root": str(source), "pinned_python": str(python), "evidence_root": str(evidence), "producer_root": str(producer), "canonical_db": str(database), "operations_root": str(operations)},
         }
     active = bool(enabled)
+    live = _live_authority(_safe_existing(live_authority, directory=False)) if active and live_authority is not None else None
+    if active and live is None:
+        raise DeploymentRejected("enabled package requires live authority observation")
+    if live is not None:
+        binding["live_evidence"] = live
     environment = "\n".join((
         f"OPERATOR_UI_CONNECTED_MODE={int(active)}",
+        f"OPERATOR_UI_LEVEL={2 if active else 1}",
         f"OPERATOR_UI_R3_PROFILE={'repository-v1' if active else 'disabled'}",
         f"OPERATOR_UI_DEPLOYED_COMMIT={source_commit}", f"OPERATOR_UI_DEPLOYED_TREE={source_tree}",
         f"OPERATOR_UI_DEPLOYED_VERSION={ui_version}", f"OPERATOR_UI_DEPLOYED_PROFILE={profile_id}",
@@ -412,6 +512,7 @@ def _parser() -> argparse.ArgumentParser:
     generate.add_argument("--source-commit", required=True); generate.add_argument("--source-tree", required=True)
     generate.add_argument("--ui-version", default="operator-ui-v1"); generate.add_argument("--profile-id", default="repository-v1")
     generate.add_argument("--bind-address", default="127.0.0.1"); generate.add_argument("--port", type=int, default=5055); generate.add_argument("--enable", action="store_true", dest="enabled")
+    generate.add_argument("--live-authority", type=Path)
     serve = commands.add_parser("serve")
     serve.add_argument("--source-root", required=True, type=Path); serve.add_argument("--host", required=True); serve.add_argument("--port", required=True, type=int)
     return parser

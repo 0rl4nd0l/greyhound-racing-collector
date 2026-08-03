@@ -67,12 +67,65 @@ def deployment_inputs(tmp_path: Path) -> dict[str, object]:
     secrets = tmp_path / "operator-ui.secrets"
     secrets.write_text("\n".join(SECRET_LINES) + "\n")
     secrets.chmod(0o600)
+    live_root = tmp_path / "live"
+    live_root.mkdir(mode=0o700)
+    json_keys = {
+        "full_state", "full_report", "odds_state", "odds_report", "odds_refresh",
+        "corpus_report", "corpus_manifest", "deployment_manifest", "model_catalog",
+    }
+    raw_keys = {
+        "corpus_inventory_csv", "corpus_inventory_jsonl", "corpus_scorecard_csv",
+        "corpus_scorecard_jsonl", "corpus_report_bytes", "corpus_summary",
+        "corpus_final_status", "model_latest_config", "model_latest_schema",
+        "model_latest_artifact", "model_latest_manifest", "model_baseline_config",
+        "model_baseline_schema",
+    }
+    schemas = {
+        "full_state": "shadow_autopilot_daemon_state_v1",
+        "full_report": "shadow_autopilot_daemon_run_v1",
+        "odds_state": "shadow_autopilot_odds_capture_only_state_v1",
+        "odds_report": "shadow_autopilot_odds_capture_only_daemon_report_v1",
+        "corpus_report": "race_evidence_inventory_report_v1",
+        "corpus_manifest": "race_evidence_inventory_output_manifest_v1",
+        "deployment_manifest": "operator_ui_deployment_manifest_v1",
+        "model_catalog": "on_demand_prediction_config_catalog_v1",
+    }
+    sources = {}
+    for key in json_keys:
+        payload = {} if key == "odds_refresh" else {"schema_version": schemas[key]}
+        if key == "odds_report":
+            payload["autopilot_output_dir"] = "reports"
+        if key not in {"full_state", "corpus_manifest", "model_catalog"}:
+            payload["updated_at" if key == "odds_state" else "generated_at"] = "2026-08-03T01:02:03Z"
+        target = (live_root / "reports/odds_capture_refresh_report.json"
+                  if key == "odds_refresh" else live_root / f"{key}.json")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(payload))
+        sources[key] = str(target)
+    raw_sources = {}
+    for key in raw_keys:
+        target = live_root / f"{key}.raw"; target.write_bytes(key.encode())
+        raw_sources[key] = str(target)
+    units = {}
+    for key in ("full_timer", "full_service", "odds_timer", "odds_service"):
+        target = live_root / f"{key}.unit"; target.write_text("[Unit]\nDescription=test\n")
+        units[key] = str(target)
+    authority = live_root / "authority.json"
+    authority.write_text(json.dumps({
+        "schema_version": "operator_ui_live_authority_v1",
+        "observed_at": "2026-08-03T01:02:03Z", "working_directory": str(source),
+        "sources": sources, "raw_sources": raw_sources, "units": units,
+        "service_status": {
+            "full": {"unit_name": "shadow-autopilot.service", "active_state": "inactive", "sub_state": "dead", "exec_main_pid": 0},
+            "odds": {"unit_name": "shadow-autopilot-odds-capture.service", "active_state": "active", "sub_state": "waiting", "exec_main_pid": 0},
+        },
+    }))
     return dict(source_root=source, pinned_python=python, evidence_root=evidence,
                 producer_root=producer, canonical_db=database,
                 operations_root=operations, secrets_file=secrets,
                 output_dir=output, source_commit=COMMIT, source_tree=TREE,
                 ui_version="operator-ui-v1", profile_id="repository-v1",
-                bind_address="127.0.0.1", port=5055)
+                bind_address="127.0.0.1", port=5055, live_authority=authority)
 
 
 def generated_targets(values: dict[str, object]) -> tuple[Path, ...]:
@@ -154,6 +207,7 @@ def test_default_off_package_binds_identity_hashes_private_service_and_external_
     environment = (values["output_dir"] / "operator-ui-r3.env").read_text()
     service = (values["output_dir"] / "greyhound-operator-ui-r3.service").read_text()
     assert "OPERATOR_UI_CONNECTED_MODE=0" in environment
+    assert "OPERATOR_UI_LEVEL=1" in environment
     assert "OPERATOR_UI_R3_PROFILE=disabled" in environment
     assert "127.0.0.1" in service and "--port 5055" in service
     assert f"EnvironmentFile={values['secrets_file']}" in service
@@ -417,11 +471,30 @@ def test_explicit_enable_changes_only_feature_gate_and_retains_evidence_on_rollb
     environment = (values["output_dir"] / "operator-ui-r3.env").read_text()
     rollback = (values["output_dir"] / "ROLLBACK.md").read_text()
     assert "OPERATOR_UI_CONNECTED_MODE=1" in environment
+    assert "OPERATOR_UI_LEVEL=2" in environment
     assert "OPERATOR_UI_R3_PROFILE=repository-v1" in environment
     assert "disable" in rollback.lower()
     assert "do not delete" in rollback.lower()
     assert str(values["operations_root"]) in rollback
     assert result["enabled"] is True
+    binding=json.loads((values["source_root"] / "var/operator_ui/generated/repository-v1.binding.json").read_text())
+    refresh=binding["live_evidence"]["sources"]["odds_refresh"]
+    assert Path(refresh["path"]).relative_to(Path(refresh["allowlisted_root"])).as_posix()=="reports/odds_capture_refresh_report.json"
+    assert binding["live_evidence"]["service_status"]["full"]["unit_name"]=="shadow-autopilot.service"
+    assert binding["live_evidence"]["service_status"]["odds"]["unit_name"]=="shadow-autopilot-odds-capture.service"
+
+
+def test_enabled_generator_rejects_missing_or_incomplete_live_authority_without_output(tmp_path, monkeypatch):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = values.pop("live_authority")
+    with pytest.raises(DeploymentRejected, match="requires live authority"):
+        generate_package(**values, enabled=True)
+    assert all(not target.exists() for target in generated_targets(values))
+    values["live_authority"] = authority
+    authority.write_text(json.dumps({"schema_version": "operator_ui_live_authority_v1"}))
+    with pytest.raises(DeploymentRejected, match="incomplete"):
+        generate_package(**values, enabled=True)
+    assert all(not target.exists() for target in generated_targets(values))
 
 
 @pytest.mark.parametrize("enabled, expected", [(False, False), (True, True)])

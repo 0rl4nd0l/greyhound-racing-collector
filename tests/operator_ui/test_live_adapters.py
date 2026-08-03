@@ -8,7 +8,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+from flask import Flask
 from types import SimpleNamespace
+from werkzeug.security import generate_password_hash
 
 import src.operator_ui.live_adapters as live_module
 from race_collection.synchronous_manual_capture import VerifiedCurrentRaceIndex
@@ -40,6 +42,9 @@ from src.operator_ui.live_adapters import (
     InstalledUnits, LiveEvidenceAdapters, PredictionBundleSource,
     UpcomingRaceSource, _calendar_gap, _finite_metric,
 )
+from src.operator_ui.api import install_level_1_api
+from src.operator_ui.bootstrap import CONFIG_KEY, bind_configured_live_evidence
+from src.operator_ui.security import install_connected_mode
 
 NOW = datetime(2026, 7, 31, 2, tzinfo=timezone.utc)
 
@@ -240,16 +245,21 @@ def make_live(
                 schema_value=schema_value,
                 top_level_fields=tuple(payload),
                 time_field=time_field,
+                identity_fields=("schema_version",) if schema_value else (),
                 max_items=1000,
                 serialization_policy=policy,
                 timestamp_syntax=TimestampSyntax.AWARE_ISO8601,
+                authority_observed_at=(now.isoformat() if key == "model_catalog" else None),
             ),
         )
     reader = OperatorEvidenceReader(sources, raw_sources=raw_sources, clock=lambda: now)
     units = InstalledUnits(
         **unit_bytes, observed_at=units_observed_at or now, working_directory="/srv/app",
+        full_unit_name="shadow-autopilot.service",
         full_active_state=full_status[0], full_sub_state=full_status[1],
-        full_exec_main_pid=full_status[2], odds_active_state=odds_status[0],
+        full_exec_main_pid=full_status[2],
+        odds_unit_name="shadow-autopilot-odds-capture.service",
+        odds_active_state=odds_status[0],
         odds_sub_state=odds_status[1], odds_exec_main_pid=odds_status[2],
         **{
             f"{name}_sha256": hashlib.sha256(raw).hexdigest()
@@ -265,6 +275,7 @@ def make_live(
 def test_actual_generated_units_and_distinct_lane_ids(tmp_path):
     result = make_live(tmp_path).collector(NOW)
     assert result.evidence.status == "AVAILABLE/FRESH"
+    assert result.evidence.freshness_policy == "P-COLLECTOR-AGGREGATE"
     assert [lane["run_id"] for lane in result.data["lanes"]] == ["full-1", "odds-9"]
     assert result.data["lanes"][0]["component_identity"]["cadence_seconds"] == "900.0"
     assert result.data["lanes"][1]["component_identity"]["cadence_seconds"] == "120.0"
@@ -280,6 +291,33 @@ def test_actual_generated_units_and_distinct_lane_ids(tmp_path):
             "next_meaningful_action", "next_meaningful_action_at",
             "lock_owner", "recent_capture",
         }
+
+
+def test_realistic_producer_payloads_are_bound_at_authenticated_collector_endpoint(tmp_path):
+    app = Flask(__name__)
+    app.config.update(
+        TESTING=True, OPERATOR_UI_CONNECTED_MODE=True, OPERATOR_UI_LEVEL=2,
+        OPERATOR_UI_SECRET_KEY="endpoint-secret-" + "x" * 40,
+        OPERATOR_UI_USERNAME="operator",
+        OPERATOR_UI_PASSWORD_HASH=generate_password_hash("correct horse"),
+        OPERATOR_UI_AUDIT_DB_PATH=str(tmp_path / "audit.sqlite3"),
+        DATABASE_PATH=str(tmp_path / "canonical.sqlite3"),
+        OPERATOR_UI_DEPLOYED_COMMIT="b" * 40,
+        OPERATOR_UI_DEPLOYED_TREE="c" * 40,
+        OPERATOR_UI_DEPLOYED_VERSION="operator-ui-v1",
+        OPERATOR_UI_CLOCK=lambda: NOW,
+    )
+    install_connected_mode(app); assert install_level_1_api(app)
+    app.config[CONFIG_KEY] = make_live(tmp_path / "live")
+    assert bind_configured_live_evidence(app)
+    client = app.test_client()
+    token = client.get("/operator-ui/login").get_json()["csrf_token"]
+    assert client.post("/operator-ui/login", data={"username":"operator","password":"correct horse","csrf_token":token}).status_code == 200
+    response = client.get("/operator-ui/api/v1/collector")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["classification"] == "AVAILABLE/FRESH"
+    assert [lane["run_id"] for lane in payload["data"]["lanes"]] == ["full-1", "odds-9"]
 
 
 def test_complete_calendar_and_nondefault_values(tmp_path):
@@ -769,6 +807,36 @@ def test_model_catalog_observation_age_and_unavailable_evaluation(tmp_path):
     assert all(item["evaluation_status"] == "UNAVAILABLE" for item in fresh.data["models"])
     assert all(item["evaluation_claim"] is None and item["evaluation_hashes"] == {} for item in fresh.data["models"])
     assert live.models(NOW + timedelta(seconds=60, microseconds=1)).evidence.status == "STALE"
+
+
+def test_model_catalog_age_is_bound_to_immutable_authority_observation(tmp_path):
+    values = actual_payloads()
+    live = make_live(tmp_path, values, now=NOW - timedelta(minutes=10))
+    source = live._reader._sources["model_catalog"]
+    live = LiveEvidenceAdapters(
+        OperatorEvidenceReader(
+            {**live._reader._sources, "model_catalog": replace(
+                source, json=replace(
+                    source.json,
+                    authority_observed_at=(NOW - timedelta(minutes=10)).isoformat(),
+                )
+            )},
+            raw_sources=live._reader._raw_sources,
+            clock=lambda: NOW,
+        ),
+        units=live._units,
+    )
+    assert live.models(NOW).evidence.status == "STALE"
+
+
+@pytest.mark.parametrize("lane", ["full", "odds"])
+def test_system_rejects_wrong_observed_service_unit_identity(tmp_path, lane):
+    live = make_live(tmp_path)
+    units = replace(
+        live._units,
+        **{f"{lane}_unit_name": "shadow-autopilot.service" if lane == "odds" else "shadow-autopilot-odds-capture.service"},
+    )
+    assert LiveEvidenceAdapters(live._reader, units=units).system(NOW).evidence.status == "INVALID/INTEGRITY_FAILED"
 
 
 @pytest.mark.parametrize("family", ["config_schema", "artifact_manifest"])

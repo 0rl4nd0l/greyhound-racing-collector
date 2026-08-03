@@ -152,6 +152,7 @@ class JsonSource:
         JsonSerializationPolicy.COMPACT_CANONICAL
     )
     timestamp_syntax: TimestampSyntax = TimestampSyntax.CANONICAL_TERMINAL_Z
+    authority_observed_at: str | None = None
 
     def __post_init__(self) -> None:
         try:
@@ -164,6 +165,8 @@ class JsonSource:
         except (TypeError, ValueError) as exc:
             raise ValueError("unsupported timestamp syntax") from exc
         object.__setattr__(self, "timestamp_syntax", timestamp_syntax)
+        if self.authority_observed_at is not None:
+            _parse_utc(self.authority_observed_at, timestamp_syntax)
 
 
 @dataclass(frozen=True)
@@ -456,6 +459,11 @@ def _validate_source(config: SourceConfig) -> SourceConfig:
             "on_demand_prediction_config_catalog_v1",
         }
     )
+    if schema.authority_observed_at is not None and (
+        schema.time_field is not None
+        or schema.schema_value != "on_demand_prediction_config_catalog_v1"
+    ):
+        raise ValueError("authority observation time is unsupported for this source")
     if (schema.schema_field is None or schema.time_field is None) and policy.mode != "adapter" and not observed_without_producer_time:
         raise ValueError("only adapter-owned or approved observation-bound evidence may omit producer time")
     for value in (
@@ -868,12 +876,14 @@ class OperatorEvidenceReader:
                 ).encode("utf-8")
             if canonical != raw:
                 raise _InvalidEvidence("JSON bytes are not canonical")
-            if config.json.time_field is None:
+            if config.json.time_field is None and config.json.authority_observed_at is None:
                 age = math.nan
                 freshness = Freshness.UNKNOWN
             else:
                 evidence_time = _parse_utc(
-                    payload[config.json.time_field], config.json.timestamp_syntax
+                    payload[config.json.time_field] if config.json.time_field is not None
+                    else config.json.authority_observed_at,
+                    config.json.timestamp_syntax,
                 )
                 age = (observed.astimezone(timezone.utc) - evidence_time).total_seconds()
                 freshness = _freshness(POLICIES[config.policy], age)
@@ -914,6 +924,8 @@ class OperatorEvidenceReader:
         }
         if config.json.time_field is not None:
             role_times[config.json.time_role] = payload[config.json.time_field]
+        elif config.json.authority_observed_at is not None:
+            role_times["observed_at"] = config.json.authority_observed_at
         integrity = Integrity.VALID
         status = status_for(
             Availability.PRESENT, integrity, freshness, conflict=conflict

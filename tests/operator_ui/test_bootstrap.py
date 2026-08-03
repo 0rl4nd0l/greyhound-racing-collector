@@ -109,7 +109,35 @@ def repository_binding_fixture(tmp_path,monkeypatch):
     profile_raw=(repo/"configs/operator_ui/repository-v1.toml").read_bytes()
     deployment={"source_commit":"21e7b02e60e82da9c4dbbb796ea435bc120e9862","source_tree":"2cfc75cd8a2af1a9e5da4986c969cb668b93af62","ui_version":"operator-ui-v1","profile_id":"repository-v1"}
     artifact_paths={"prediction_script":repo/"scripts/predict_race_now.py","prediction_config":repo/"configs/prediction/manual-default.json","model_artifact":repo/model.model_path.relative_to(source_root),"model_manifest":repo/model.manifest_path.relative_to(source_root),"model_schema":repo/model.schema_path.relative_to(source_root)}
-    binding={"schema_version":"operator_ui_repository_binding_v1","profile_id":"repository-v1","generator":{"generator_id":"GHU-036-repository-v1-generator","schema_version":"operator_ui_repository_binding_generator_v1","version":"1"},"deployment":deployment,"profile_sha256":hashlib.sha256(profile_raw).hexdigest(),"artifacts":{name:hashlib.sha256(path.read_bytes()).hexdigest() for name,path in artifact_paths.items()},"roots":{"source_root":str(repo.absolute()),"pinned_python":str(python.absolute()),"evidence_root":str(evidence.absolute()),"producer_root":str(producer.absolute()),"canonical_db":str(canonical.absolute()),"operations_root":str(operations.absolute())}}
+    live_root=evidence/"operator_ui_live";live_root.mkdir(mode=0o700)
+    generated_at="2026-08-03T01:02:03Z"
+    source_payloads={
+        "full_state":{"schema_version":"shadow_autopilot_daemon_state_v1"},
+        "full_report":{"schema_version":"shadow_autopilot_daemon_run_v1","generated_at":generated_at},
+        "odds_state":{"schema_version":"shadow_autopilot_odds_capture_only_state_v1","updated_at":generated_at},
+        "odds_report":{"schema_version":"shadow_autopilot_odds_capture_only_daemon_report_v1","generated_at":generated_at,"autopilot_output_dir":"reports"},
+        "odds_refresh":{"generated_at":generated_at},
+        "corpus_report":{"schema_version":"race_evidence_inventory_report_v1","generated_at":generated_at},
+        "corpus_manifest":{"schema_version":"race_evidence_inventory_output_manifest_v1"},
+        "deployment_manifest":{"schema_version":"operator_ui_deployment_manifest_v1","generated_at":generated_at},
+        "model_catalog":{"schema_version":"on_demand_prediction_config_catalog_v1"},
+    }
+    live_sources={}
+    for name,payload in source_payloads.items():
+        path=(live_root/"reports/odds_capture_refresh_report.json" if name=="odds_refresh" else live_root/f"{name}.json")
+        path.parent.mkdir(parents=True,exist_ok=True)
+        raw=(json.dumps(payload,separators=(",",":"),sort_keys=True) if name=="model_catalog" else json.dumps(payload,indent=2,sort_keys=True,default=str)+"\n").encode()
+        path.write_bytes(raw);live_sources[name]={"path":str(path.absolute()),"sha256":hashlib.sha256(raw).hexdigest()}
+        if name=="odds_refresh":live_sources[name]["allowlisted_root"]=str(live_root.absolute())
+    raw_names=("corpus_inventory_csv","corpus_inventory_jsonl","corpus_scorecard_csv","corpus_scorecard_jsonl","corpus_report_bytes","corpus_summary","corpus_final_status","model_latest_config","model_latest_schema","model_latest_artifact","model_latest_manifest","model_baseline_config","model_baseline_schema")
+    live_raw={}
+    for name in raw_names:
+        path=live_root/f"{name}.raw";path.write_bytes(name.encode());live_raw[name]={"path":str(path.absolute()),"sha256":hashlib.sha256(path.read_bytes()).hexdigest()}
+    live_units={}
+    for name in ("full_timer","full_service","odds_timer","odds_service"):
+        path=live_root/f"{name}.unit";path.write_text("[Unit]\nDescription=test\n",encoding="utf-8");live_units[name]={"path":str(path.absolute()),"sha256":hashlib.sha256(path.read_bytes()).hexdigest()}
+    live_evidence={"schema_version":"operator_ui_live_authority_v1","observed_at":"2026-08-03T01:02:03Z","working_directory":str(repo.absolute()),"sources":live_sources,"raw_sources":live_raw,"units":live_units,"service_status":{"full":{"unit_name":"shadow-autopilot.service","active_state":"inactive","sub_state":"dead","exec_main_pid":0},"odds":{"unit_name":"shadow-autopilot-odds-capture.service","active_state":"inactive","sub_state":"dead","exec_main_pid":0}}}
+    binding={"schema_version":"operator_ui_repository_binding_v1","profile_id":"repository-v1","generator":{"generator_id":"GHU-036-repository-v1-generator","schema_version":"operator_ui_repository_binding_generator_v1","version":"1"},"deployment":deployment,"profile_sha256":hashlib.sha256(profile_raw).hexdigest(),"artifacts":{name:hashlib.sha256(path.read_bytes()).hexdigest() for name,path in artifact_paths.items()},"roots":{"source_root":str(repo.absolute()),"pinned_python":str(python.absolute()),"evidence_root":str(evidence.absolute()),"producer_root":str(producer.absolute()),"canonical_db":str(canonical.absolute()),"operations_root":str(operations.absolute())},"live_evidence":live_evidence}
     target=repo/"var/operator_ui/generated/repository-v1.binding.json";target.parent.mkdir(parents=True);target.write_text(json.dumps(binding),encoding="utf-8")
     monkeypatch.setattr(bootstrap_module,"_REPOSITORY_ROOT",repo)
     return repo,evidence,producer,operations,canonical
@@ -125,6 +153,26 @@ def test_repository_profile_binds_authoritative_sources_and_separate_operations_
     assert worker.repository_root==repo and worker.current_index_evidence_root==evidence and worker.output_root==producer/"artifacts/on_demand_prediction_runs"
     assert worker.canonical_db==canonical and worker.collector_request_root==evidence/"manual_prediction_collector_requests_v1"
     assert canonical.read_bytes()==before and not (operations/"canonical.sqlite3").exists()
+    live=app.config[bootstrap_module.CONFIG_KEY]
+    refresh=live._reader._sources["odds_refresh"]
+    assert refresh.locator.relative_to(refresh.allowlisted_root).as_posix()=="reports/odds_capture_refresh_report.json"
+    assert refresh.json.serialization_policy.value=="producer_pretty_sorted"
+    assert live._reader._sources["corpus_report"].json.serialization_policy.value=="producer_pretty_sorted"
+    catalog=live._reader._sources["model_catalog"]
+    assert catalog.json.serialization_policy.value=="compact_canonical"
+    assert catalog.json.authority_observed_at=="2026-08-03T01:02:03Z"
+    assert live._units.full_unit_name=="shadow-autopilot.service"
+    assert live._units.odds_unit_name=="shadow-autopilot-odds-capture.service"
+    corpus_envelope,corpus_payload=live._reader.read_payload("corpus_report")
+    assert corpus_envelope.schema_integrity=="valid"
+    assert corpus_payload["schema_version"]=="race_evidence_inventory_report_v1"
+    refresh_envelope,refresh_payload=live._reader.read_verified_payload(
+        "odds_refresh","reports/odds_capture_refresh_report.json"
+    )
+    assert refresh_envelope.schema_integrity=="valid"
+    assert refresh_payload["generated_at"]=="2026-08-03T01:02:03Z"
+    catalog_envelope,_=live._reader.read_payload("model_catalog")
+    assert catalog_envelope.observed_at=="2026-08-03T01:02:03Z"
 
 
 @pytest.mark.parametrize(("binding_field", "configured_key", "wrong_value"), [

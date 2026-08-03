@@ -98,9 +98,11 @@ class InstalledUnits:
     full_active_state: str | None = None
     full_sub_state: str | None = None
     full_exec_main_pid: int | None = None
+    full_unit_name: str | None = None
     odds_active_state: str | None = None
     odds_sub_state: str | None = None
     odds_exec_main_pid: int | None = None
+    odds_unit_name: str | None = None
     full_timer_sha256: str | None = None
     full_service_sha256: str | None = None
     odds_timer_sha256: str | None = None
@@ -644,9 +646,11 @@ def _inventory_semantics(report: Mapping[str, Any]) -> tuple[dict[str, int], dic
     return counts, actions
 
 
-def _status(envelope: EvidenceEnvelope, status: str) -> EvidenceEnvelope:
+def _status(envelope: EvidenceEnvelope, status: str, *, policy: str | None = None) -> EvidenceEnvelope:
     values = envelope.to_dict()
     values["status"] = status
+    if policy is not None:
+        values["freshness_policy"] = policy
     values["reference_hashes"] = tuple(sorted(values["reference_hashes"].items()))
     identity = values["evidence_identity"]
     values["evidence_identity"] = tuple(identity.items()) if identity else None
@@ -1332,7 +1336,7 @@ class LiveEvidenceAdapters:
         deployed = self.system(now)
         statuses = {full_env.status, odds_env.status, deployed.evidence.status}
         worst = next((value for value in ("INVALID/INTEGRITY_FAILED", "DIVERGENT", "UNAVAILABLE/DATA_MISSING", "STALE") if value in statuses), "AVAILABLE/FRESH")
-        return APIObservation(_status(full_env, worst), {"lanes": [full, odds]})
+        return APIObservation(_status(full_env, worst, policy="P-COLLECTOR-AGGREGATE"), {"lanes": [full, odds]})
 
     def system(self, now: datetime) -> APIObservation:
         envelope, payload = self._read("deployment_manifest")
@@ -1431,13 +1435,16 @@ class LiveEvidenceAdapters:
                 or payload.get("working_directory") is None
             )
             statuses = {
-                "full": (self._units.full_active_state, self._units.full_sub_state, self._units.full_exec_main_pid),
-                "odds": (self._units.odds_active_state, self._units.odds_sub_state, self._units.odds_exec_main_pid),
+                "full": (self._units.full_unit_name, self._units.full_active_state, self._units.full_sub_state, self._units.full_exec_main_pid),
+                "odds": (self._units.odds_unit_name, self._units.odds_active_state, self._units.odds_sub_state, self._units.odds_exec_main_pid),
             }
             missing_service_status = any(
                 value is None for values in statuses.values() for value in values
             )
-            for active_state, sub_state, pid in statuses.values():
+            expected_units = {"full": "shadow-autopilot.service", "odds": "shadow-autopilot-odds-capture.service"}
+            for lane, (unit_name, active_state, sub_state, pid) in statuses.items():
+                if unit_name is not None and unit_name != expected_units[lane]:
+                    raise ValueError("installed service unit identity is invalid")
                 if active_state is not None:
                     _text(active_state)
                 if sub_state is not None:
@@ -1520,7 +1527,7 @@ class LiveEvidenceAdapters:
             "observed_at": observed.isoformat().replace("+00:00", "Z"),
             "age_seconds": age, "reference_hashes": None if incomplete else units,
             "service_status": {
-                lane: {"active_state": values[0], "sub_state": values[1], "exec_main_pid": values[2]}
+                lane: {"active_state": values[1], "sub_state": values[2], "exec_main_pid": values[3]}
                 for lane, values in statuses.items()
             },
         }]})
@@ -1643,7 +1650,7 @@ class LiveEvidenceAdapters:
             configs = catalog.get("configs")
             if not isinstance(configs, list) or len(configs) != 2:
                 raise ValueError("predictor catalog is not the finite allowlist")
-            observed = _time(envelope.server_observed_at)
+            observed = _time(envelope.observed_at)
             if not isinstance(now, datetime) or now.tzinfo is None:
                 raise ValueError("server time is invalid")
             age = (now.astimezone(timezone.utc) - observed).total_seconds()
