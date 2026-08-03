@@ -205,13 +205,24 @@ def _live_authority(path: Path) -> dict[str, Any]:
             sealed[group][name] = {"path": str(file_path), "sha256": hashlib.sha256(raw).hexdigest()}
     try:
         odds_report = _strict_json(snapshots[("sources", "odds_report")])
-        relative = Path(odds_report["autopilot_output_dir"]) / "odds_capture_refresh_report.json"
         refresh_path = Path(value["sources"]["odds_refresh"])
-        if relative.is_absolute() or ".." in relative.parts or len(relative.parts) < 2:
-            raise ValueError
-        refresh_root = refresh_path.parents[len(relative.parts) - 1]
-        if refresh_path.relative_to(refresh_root) != relative:
-            raise ValueError
+        output_dir = odds_report["autopilot_output_dir"]
+        if output_dir is None:
+            if (
+                odds_report.get("final_status")
+                != "ODDS_CAPTURE_ONLY_WAITING_FOR_WINDOW"
+                or odds_report.get("status") != "WAITING"
+                or odds_report.get("odds_capture_refresh_report") != {}
+            ):
+                raise ValueError
+            refresh_root = refresh_path.parent
+        else:
+            relative = Path(output_dir) / "odds_capture_refresh_report.json"
+            if relative.is_absolute() or ".." in relative.parts or len(relative.parts) < 2:
+                raise ValueError
+            refresh_root = refresh_path.parents[len(relative.parts) - 1]
+            if refresh_path.relative_to(refresh_root) != relative:
+                raise ValueError
         _safe_existing(refresh_root, directory=True)
     except (KeyError, TypeError, ValueError, OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise DeploymentRejected("odds refresh authority is contradictory") from error

@@ -547,6 +547,59 @@ def test_enabled_generator_derives_refresh_root_without_rereading_odds_report(tm
     assert reads == 1
 
 
+def test_enabled_generator_binds_waiting_cycle_without_refresh_output(tmp_path, monkeypatch):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    odds_report = Path(authority["sources"]["odds_report"])
+    odds_report.write_text(json.dumps({
+        "schema_version": "shadow_autopilot_odds_capture_only_daemon_report_v1",
+        "generated_at": "2026-08-03T01:02:03Z",
+        "final_status": "ODDS_CAPTURE_ONLY_WAITING_FOR_WINDOW",
+        "status": "WAITING",
+        "autopilot_output_dir": None,
+        "odds_capture_refresh_report": {},
+    }))
+
+    generate_package(**values, enabled=True)
+
+    binding = json.loads(
+        (values["source_root"] / "var/operator_ui/generated/repository-v1.binding.json").read_text()
+    )
+    refresh = binding["live_evidence"]["sources"]["odds_refresh"]
+    assert Path(refresh["allowlisted_root"]) == Path(refresh["path"]).parent
+    assert Path(refresh["path"]).name == "odds_capture_refresh_report.json"
+
+
+@pytest.mark.parametrize(
+    "report_update",
+    [
+        {"final_status": "ODDS_CAPTURE_ONLY_READY"},
+        {"odds_capture_refresh_report": {"status": "CAPTURED"}},
+    ],
+)
+def test_enabled_generator_rejects_null_refresh_locator_when_refresh_is_required(
+    tmp_path, monkeypatch, report_update
+):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    odds_report = Path(authority["sources"]["odds_report"])
+    report = {
+        "schema_version": "shadow_autopilot_odds_capture_only_daemon_report_v1",
+        "generated_at": "2026-08-03T01:02:03Z",
+        "final_status": "ODDS_CAPTURE_ONLY_WAITING_FOR_WINDOW",
+        "status": "WAITING",
+        "autopilot_output_dir": None,
+        "odds_capture_refresh_report": {},
+    }
+    report.update(report_update)
+    odds_report.write_text(json.dumps(report))
+
+    with pytest.raises(DeploymentRejected, match="odds refresh authority is contradictory"):
+        generate_package(**values, enabled=True)
+
+    assert all(not target.exists() for target in generated_targets(values))
+
+
 def test_enabled_generator_rejects_duplicate_unit_paths(tmp_path, monkeypatch):
     values = deployment_inputs(tmp_path); git_identity(monkeypatch)
     authority = json.loads(values["live_authority"].read_text())
