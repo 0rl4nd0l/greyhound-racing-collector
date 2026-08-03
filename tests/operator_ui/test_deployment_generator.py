@@ -107,8 +107,14 @@ def deployment_inputs(tmp_path: Path) -> dict[str, object]:
         target = live_root / f"{key}.raw"; target.write_bytes(key.encode())
         raw_sources[key] = str(target)
     units = {}
-    for key in ("full_timer", "full_service", "odds_timer", "odds_service"):
-        target = live_root / f"{key}.unit"; target.write_text("[Unit]\nDescription=test\n")
+    unit_names = {
+        "full_timer": "shadow-autopilot.timer",
+        "full_service": "shadow-autopilot.service",
+        "odds_timer": "shadow-autopilot-odds-capture.timer",
+        "odds_service": "shadow-autopilot-odds-capture.service",
+    }
+    for key, unit_name in unit_names.items():
+        target = live_root / unit_name; target.write_text("[Unit]\nDescription=test\n")
         units[key] = str(target)
     authority = live_root / "authority.json"
     authority.write_text(json.dumps({
@@ -495,6 +501,70 @@ def test_enabled_generator_rejects_missing_or_incomplete_live_authority_without_
     with pytest.raises(DeploymentRejected, match="incomplete"):
         generate_package(**values, enabled=True)
     assert all(not target.exists() for target in generated_targets(values))
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_enabled_generator_strictly_decodes_live_authority(tmp_path, monkeypatch, constant):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = values["live_authority"]
+    raw = authority.read_text()
+    authority.write_text(raw[:-1] + f',"nonfinite":{constant}}}')
+    with pytest.raises(DeploymentRejected, match="malformed"):
+        generate_package(**values, enabled=True)
+    authority.write_text(raw[:-1] + ',"schema_version":"duplicate"}')
+    with pytest.raises(DeploymentRejected, match="malformed"):
+        generate_package(**values, enabled=True)
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_enabled_generator_strictly_decodes_retained_odds_report(tmp_path, monkeypatch, constant):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    odds_report = Path(authority["sources"]["odds_report"])
+    odds_report.write_text('{"autopilot_output_dir":"reports","value":' + constant + '}')
+    with pytest.raises(DeploymentRejected, match="odds refresh authority is contradictory"):
+        generate_package(**values, enabled=True)
+    odds_report.write_text('{"autopilot_output_dir":"reports","autopilot_output_dir":"other"}')
+    with pytest.raises(DeploymentRejected, match="odds refresh authority is contradictory"):
+        generate_package(**values, enabled=True)
+
+
+def test_enabled_generator_derives_refresh_root_without_rereading_odds_report(tmp_path, monkeypatch):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    odds_report = Path(authority["sources"]["odds_report"])
+    real_read = __import__("src.operator_ui.deployment", fromlist=["_retained_file_read"])._retained_file_read
+    reads = 0
+
+    def retained_read(path, maximum=256 * 1024):
+        nonlocal reads
+        if Path(path) == odds_report:
+            reads += 1
+        return real_read(path, maximum)
+
+    monkeypatch.setattr("src.operator_ui.deployment._retained_file_read", retained_read)
+    generate_package(**values, enabled=True)
+    assert reads == 1
+
+
+def test_enabled_generator_rejects_duplicate_unit_paths(tmp_path, monkeypatch):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    authority["units"]["odds_service"] = authority["units"]["full_service"]
+    values["live_authority"].write_text(json.dumps(authority))
+    with pytest.raises(DeploymentRejected, match="unit paths must be distinct"):
+        generate_package(**values, enabled=True)
+
+
+def test_enabled_generator_rejects_unit_path_with_wrong_basename(tmp_path, monkeypatch):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    wrong = Path(authority["units"]["full_timer"]).with_name("wrong.timer")
+    wrong.write_text("[Unit]\nDescription=test\n")
+    authority["units"]["full_timer"] = str(wrong)
+    values["live_authority"].write_text(json.dumps(authority))
+    with pytest.raises(DeploymentRejected, match="unit path is invalid"):
+        generate_package(**values, enabled=True)
 
 
 @pytest.mark.parametrize("enabled, expected", [(False, False), (True, True)])

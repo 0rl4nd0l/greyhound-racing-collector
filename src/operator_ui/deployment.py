@@ -47,6 +47,12 @@ _LIVE_RAW_KEYS = {
     "model_baseline_schema",
 }
 _UNIT_KEYS = {"full_timer", "full_service", "odds_timer", "odds_service"}
+_UNIT_BASENAMES = {
+    "full_timer": "shadow-autopilot.timer",
+    "full_service": "shadow-autopilot.service",
+    "odds_timer": "shadow-autopilot-odds-capture.timer",
+    "odds_service": "shadow-autopilot-odds-capture.service",
+}
 
 
 def _safe_existing(path: Path, *, directory: bool, executable: bool = False) -> Path:
@@ -147,11 +153,27 @@ def _retained_file_read(path: Path, maximum: int = 256 * 1024) -> bytes:
             except OSError:pass
 
 
+def _strict_json(raw: bytes) -> Any:
+    def exact(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+        value: dict[str, Any] = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("duplicate key")
+            value[key] = item
+        return value
+
+    return json.loads(
+        raw.decode("utf-8"),
+        parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)),
+        object_pairs_hook=exact,
+    )
+
+
 def _live_authority(path: Path) -> dict[str, Any]:
     """Validate one deployer-owned, finite observation without discovering anything."""
     try:
-        value = json.loads(_retained_file_read(path).decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        value = _strict_json(_retained_file_read(path))
+    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
         raise DeploymentRejected("live authority observation is malformed") from error
     if not isinstance(value, dict) or set(value) != {"schema_version", "observed_at", "working_directory", "sources", "raw_sources", "units", "service_status"} or value["schema_version"] != "operator_ui_live_authority_v1":
         raise DeploymentRejected("live authority observation is incomplete")
@@ -164,16 +186,25 @@ def _live_authority(path: Path) -> dict[str, Any]:
     if observed.tzinfo is None or not isinstance(value.get("working_directory"), str) or not value["working_directory"].startswith("/"):
         raise DeploymentRejected("live authority observation is invalid")
     sealed: dict[str, Any] = {"schema_version": value["schema_version"], "observed_at": value["observed_at"], "working_directory": value["working_directory"]}
+    snapshots: dict[tuple[str, str], bytes] = {}
+    unit_paths: set[Path] = set()
     for group in ("sources", "raw_sources", "units"):
         sealed[group] = {}
         for name, locator in value[group].items():
             if not isinstance(locator, str) or not Path(locator).is_absolute():
                 raise DeploymentRejected("live authority locator is invalid")
             file_path = _safe_existing(Path(locator), directory=False)
+            if group == "units":
+                if file_path in unit_paths:
+                    raise DeploymentRejected("live authority unit paths must be distinct")
+                unit_paths.add(file_path)
+                if file_path != file_path.resolve() or file_path.name != _UNIT_BASENAMES[name]:
+                    raise DeploymentRejected("live authority unit path is invalid")
             raw = _retained_file_read(file_path, 16 * 1024 * 1024)
+            snapshots[(group, name)] = raw
             sealed[group][name] = {"path": str(file_path), "sha256": hashlib.sha256(raw).hexdigest()}
     try:
-        odds_report = json.loads(_retained_file_read(Path(value["sources"]["odds_report"])).decode("utf-8"))
+        odds_report = _strict_json(snapshots[("sources", "odds_report")])
         relative = Path(odds_report["autopilot_output_dir"]) / "odds_capture_refresh_report.json"
         refresh_path = Path(value["sources"]["odds_refresh"])
         if relative.is_absolute() or ".." in relative.parts or len(relative.parts) < 2:
