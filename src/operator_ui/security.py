@@ -291,7 +291,7 @@ def _validate_audit_fields(fields: Mapping[str, Any], *, operation: bool) -> Non
                 raise AuditUnavailable("operation audit transition lifecycle invalid") from None
             if contract not in _EVENT_CONTRACTS:
                 raise AuditUnavailable("operation audit transition lifecycle invalid")
-        if not str(fields.get("job_id","")).startswith("job_") or not str(fields.get("race_id","")).startswith("race-"): raise AuditUnavailable("operation audit identity invalid")
+        if not str(fields.get("job_id","")).startswith("job_"): raise AuditUnavailable("operation audit identity invalid")
         scalar_names=set(OperationAuditEvent.__dataclass_fields__)-{"actor_level","reference_hashes"}
     else:
         if fields.get("actor_level") not in {0,1,2} or fields.get("http_method") not in {"GET","POST"} or fields.get("authorization_decision") not in {"allowed","denied"}:

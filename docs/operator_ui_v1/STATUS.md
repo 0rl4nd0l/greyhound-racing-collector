@@ -784,3 +784,21 @@ a producer result. The 23 fixture bindings, protocol race identity, one
 submission/one invocation, duplicate reuse, blocker identity, and prohibition
 on false `PREDICTION_READY` remain unchanged. C3 is `REVIEW`; it is not
 accepted, integrated, deployed, or runtime-proven.
+
+## GHU-035C4 correction status
+
+GHU-035C3 is rejected at commit `e3c2405804a03484de9a92e7d92a6379e870b8d2`,
+tree `dd11aa8e6dec356f1e9581239839cc9790311033`. Parent focused validation
+returned `1 failed, 1 passed`: the sealed blocker remained `FAILED /
+PROCESS_OUTPUT_INVALID`; isolated validation identified
+`PREDICTION_BUNDLE_INVALID` at `result.race.identity`. The current index and
+predictor use the canonical display-form stable identity, while the Level-2
+operation-audit adapter alone required an unrelated `race-` prefix.
+
+GHU-035C4 is an unstaged `REVIEW` candidate. Its supported E2E fixture now uses
+the real `stable_race_id`, and the audit adapter preserves that already
+validated identity unchanged while retaining its bounded printable scalar,
+job, authority, lifecycle, hash, and immutable-chain validation. No security
+policy, authentication, CSRF, audit immutability, idempotency, collector
+ownership, stable identity, or leakage control is weakened. No acceptance,
+integration, deployment, runtime/live proof, or prohibited action is claimed.

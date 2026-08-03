@@ -1208,3 +1208,17 @@ Status: implementation candidate, awaiting parent inspection and independent rev
 ## GHU-032C8 — Authentic history-seal producer/verifier coherence
 
 Status: correction candidate, awaiting parent inspection and independent review. C7 is rejected because the authentic 13-member `sealed_prediction_history_v1` producer object was rejected by its reduced nine-member verifier schema. C8 is limited to exact producer/verifier/test coherence and preserves all other C3-C7 security boundaries. No acceptance, integration, publication, deployment, runtime/data mutation, runtime proof, live proof, outcome access, training, promotion, EV, staking, or betting claim is made.
+
+## GHU-035C4 — Preserve canonical stable race identity through Level-2 audit
+
+- Release: `R3`
+- Priority: `P0`
+- Status: `review`
+- Dependencies: rejected `GHU-035C3`; accepted/integrated `GHU-032C8` through `GHU-034C8`
+- Outcome: Apply the existing collector/predictor stable race identity contract consistently at the operation-audit adapter so the canonical current-index identity traverses bootstrap, audit, worker, and sealed-result validation unchanged.
+- Scope: Replace C3's unreachable synthetic `race-` fixture with `stable_race_id`; remove only the audit adapter's invented `race-` prefix assumption; retain bounded printable identity validation and every authentication, CSRF, authority, lifecycle, hash, append-only, idempotency, worker, predictor, and leakage invariant.
+- Non-goals: Security-policy relaxation, GHU-036, deployment, collector/browser invocation, runtime/data/model mutation, live outcomes, training, promotion, EV, betting, staging, commit, push, or merge.
+- Validation: Focused E2E and operation-audit tests when dependencies are available; Python compile and `git diff --check` locally.
+- Claims supported: Unstaged/uncommitted GHU-035C4 review candidate pending parent executable validation and independent review only.
+- Next safe action: Parent freezes and runs exact executable validation, then assigns independent exact-delta review.
+- Rejected C3 evidence: Commit `e3c2405804a03484de9a92e7d92a6379e870b8d2`, tree `dd11aa8e6dec356f1e9581239839cc9790311033`; run `20260803T074017Z-b8cd217e34-b4650b`, child `c08d284522fbd047033d5d2afbaf8df9`, session `019fc691-42a1-7a43-920a-38dec213ccf3`. Parent focused pytest returned `1 failed, 1 passed`; `sealed_blocked` still produced `FAILED / PROCESS_OUTPUT_INVALID`, and isolated validation reported `PREDICTION_BUNDLE_INVALID` at `result.race.identity` because C3's synthetic identity cannot satisfy the producer's stable identity contract.

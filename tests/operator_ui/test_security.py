@@ -104,6 +104,14 @@ def test_operation_audit_is_separate_insert_only_confirmed_and_verified(tmp_path
         with pytest.raises(sqlite3.IntegrityError): db.execute("UPDATE operation_audit_events SET reason='changed'")
         with pytest.raises(sqlite3.IntegrityError): db.execute("DELETE FROM operation_audit_events")
 
+def test_operation_audit_preserves_collector_stable_race_identity(tmp_path):
+    original = operation_event(1)
+    values = original.__dict__.copy()
+    values["race_id"] = "Race 5 - RICH - 2026-08-01"
+    store = AuditStore(tmp_path / "audit.sqlite3")
+    assert store.append_operation_and_confirm(OperationAuditEvent(**values))
+    assert store.verify_chain()
+
 @pytest.mark.parametrize("field",["event_id","session_identifier","request_identifier"])
 @pytest.mark.parametrize("spelling",["upper","braced"])
 def test_audit_uuid_fields_require_exact_canonical_serialization(tmp_path,field,spelling):
