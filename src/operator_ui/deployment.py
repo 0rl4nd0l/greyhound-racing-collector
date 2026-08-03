@@ -207,9 +207,17 @@ def _live_authority(path: Path) -> dict[str, Any]:
         odds_report = _strict_json(snapshots[("sources", "odds_report")])
         refresh_path = Path(value["sources"]["odds_refresh"])
         output_dir = odds_report["autopilot_output_dir"]
+        if refresh_path.name != "odds_capture_refresh_report.json":
+            raise ValueError
         if output_dir is None:
+            generated_at = __import__("datetime").datetime.fromisoformat(
+                odds_report["generated_at"].replace("Z", "+00:00")
+            )
             if (
-                odds_report.get("final_status")
+                odds_report.get("schema_version")
+                != "shadow_autopilot_odds_capture_only_daemon_report_v1"
+                or generated_at.tzinfo is None
+                or odds_report.get("final_status")
                 != "ODDS_CAPTURE_ONLY_WAITING_FOR_WINDOW"
                 or odds_report.get("status") != "WAITING"
                 or odds_report.get("odds_capture_refresh_report") != {}

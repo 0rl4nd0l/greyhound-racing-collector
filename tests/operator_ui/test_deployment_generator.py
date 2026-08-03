@@ -571,6 +571,69 @@ def test_enabled_generator_binds_waiting_cycle_without_refresh_output(tmp_path, 
 
 
 @pytest.mark.parametrize(
+    "report_update, removed_key",
+    [
+        ({"schema_version": "wrong"}, None),
+        ({}, "schema_version"),
+        ({"generated_at": "not-a-timestamp"}, None),
+        ({"generated_at": "2026-08-03T01:02:03"}, None),
+        ({"generated_at": []}, None),
+        ({}, "generated_at"),
+        ({"status": "CAPTURED"}, None),
+    ],
+)
+def test_enabled_generator_rejects_unauthenticated_waiting_cycle_without_refresh_output(
+    tmp_path, monkeypatch, report_update, removed_key
+):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    odds_report = Path(authority["sources"]["odds_report"])
+    report = {
+        "schema_version": "shadow_autopilot_odds_capture_only_daemon_report_v1",
+        "generated_at": "2026-08-03T01:02:03Z",
+        "final_status": "ODDS_CAPTURE_ONLY_WAITING_FOR_WINDOW",
+        "status": "WAITING",
+        "autopilot_output_dir": None,
+        "odds_capture_refresh_report": {},
+    }
+    report.update(report_update)
+    if removed_key is not None:
+        del report[removed_key]
+    odds_report.write_text(json.dumps(report))
+
+    with pytest.raises(DeploymentRejected, match="odds refresh authority is contradictory"):
+        generate_package(**values, enabled=True)
+
+    assert all(not target.exists() for target in generated_targets(values))
+
+
+def test_enabled_generator_rejects_substituted_refresh_authority_filename(
+    tmp_path, monkeypatch
+):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    odds_report = Path(authority["sources"]["odds_report"])
+    odds_report.write_text(json.dumps({
+        "schema_version": "shadow_autopilot_odds_capture_only_daemon_report_v1",
+        "generated_at": "2026-08-03T01:02:03Z",
+        "final_status": "ODDS_CAPTURE_ONLY_WAITING_FOR_WINDOW",
+        "status": "WAITING",
+        "autopilot_output_dir": None,
+        "odds_capture_refresh_report": {},
+    }))
+    refresh = Path(authority["sources"]["odds_refresh"])
+    substituted = refresh.with_name("substituted_refresh_report.json")
+    substituted.write_bytes(refresh.read_bytes())
+    authority["sources"]["odds_refresh"] = str(substituted)
+    values["live_authority"].write_text(json.dumps(authority))
+
+    with pytest.raises(DeploymentRejected, match="odds refresh authority is contradictory"):
+        generate_package(**values, enabled=True)
+
+    assert all(not target.exists() for target in generated_targets(values))
+
+
+@pytest.mark.parametrize(
     "report_update",
     [
         {"final_status": "ODDS_CAPTURE_ONLY_READY"},
