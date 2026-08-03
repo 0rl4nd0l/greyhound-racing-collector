@@ -148,8 +148,8 @@ def test_generator_rejects_secrets_inside_deployment_roots_without_partial_write
 def test_generator_rejects_canonical_database_as_secrets_without_partial_writes(tmp_path, monkeypatch):
     values = deployment_inputs(tmp_path)
     git_identity(monkeypatch)
-    values["canonical_db"].write_text(values["secrets_file"].read_text())
     values["canonical_db"].chmod(0o600)
+    values["canonical_db"].write_text(values["secrets_file"].read_text())
     values["secrets_file"].unlink()
     values["secrets_file"].hardlink_to(values["canonical_db"])
 
