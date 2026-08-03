@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from scripts import validate_upcoming_races
+from race_collection import synchronous_manual_capture as synchronous_capture
 from scripts.capture_prediction_snapshot import _candidate_files
 from utils.csv_metadata import (
     THEDOGS_EXPERT_FORM_COLUMNS,
@@ -175,7 +176,13 @@ def test_real_thedogs_comma_export_normalizes_to_pipe_with_provenance(tmp_path):
     assert verified["target_metadata_status"] == "verified"
 
 
-def test_provenance_payload_writes_flat_prejump_shadow_metadata_block(tmp_path):
+def test_provenance_payload_writes_flat_prejump_shadow_metadata_block(
+    tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(
+        "utils.csv_metadata._utc_timestamp",
+        lambda: "2026-05-29T00:00:00+00:00",
+    )
     runners = [
         (1, "Alpha Runner"),
         (2, "Bravo Runner"),
@@ -240,12 +247,45 @@ def test_provenance_payload_writes_flat_prejump_shadow_metadata_block(tmp_path):
     assert shadow_metadata["target_grade_safe"] == "Maiden"
     assert shadow_metadata["source_url"] == SYNTHETIC_RACE_URL
     assert shadow_metadata["runner_box_name_list"] == [
-        {"box_number": 1, "dog_name": "Alpha Runner"},
-        {"box_number": 2, "dog_name": "Bravo Runner"},
-        {"box_number": 3, "dog_name": "Charlie Runner"},
-        {"box_number": 4, "dog_name": "Delta Runner"},
+        {"box_number": 1, "dog_name": "Alpha Runner", "scratch_state": "ACTIVE"},
+        {"box_number": 2, "dog_name": "Bravo Runner", "scratch_state": "ACTIVE"},
+        {"box_number": 3, "dog_name": "Charlie Runner", "scratch_state": "ACTIVE"},
+        {"box_number": 4, "dog_name": "Delta Runner", "scratch_state": "ACTIVE"},
     ]
+    assert {
+        row["scratch_state"]
+        for row in final_sidecar[
+            "runner_completeness_after_canonical_alignment"
+        ]["participants"]
+    } == {"ACTIVE"}
     assert shadow_metadata["canonical_final_runner_alignment"]["status"] == "aligned"
+
+    accepted.write_text(result["normalized_content"], encoding="utf-8")
+    sidecar_path = accepted.with_name(accepted.name + ".metadata.json")
+    sidecar_path.write_text(json.dumps(final_sidecar), encoding="utf-8")
+    coverage = {
+        "schema_version": "prejump_sidecar_metadata_coverage_v1",
+        "races": [{
+            "race_url": SYNTHETIC_RACE_URL,
+            "csv_path": str(accepted),
+            "sidecar_path": str(sidecar_path),
+        }],
+    }
+    active_rows, _, _ = synchronous_capture._v2_runner_rows(
+        {
+            "date": "2026-05-29",
+            "jump_datetime": "2026-05-29T11:15:00+10:00",
+            "race_number": 1,
+            "race_url": SYNTHETIC_RACE_URL,
+            "venue": "TEST",
+        },
+        {
+            "generated_at": "2026-05-29T10:00:00+10:00",
+            "sidecar_metadata_coverage": coverage,
+        },
+        evidence_root=tmp_path,
+    )
+    assert [row["scratch_state"] for row in active_rows] == ["ACTIVE"] * 4
 
 
 def test_provenance_payload_preserves_safe_weather_track_fields(tmp_path):

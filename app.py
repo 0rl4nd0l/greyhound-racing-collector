@@ -726,6 +726,24 @@ except Exception:
 if not app.config.get("SECRET_KEY"):
     app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY") or secrets.token_urlsafe(32)
 
+# The accepted fixture UI remains unchanged. Connected operational routes are
+# absent unless the server explicitly enables and fully configures this gate.
+from src.operator_ui.security import install_connected_mode, load_connected_environment
+from src.operator_ui.api import install_level_1_api
+from src.operator_ui.bootstrap import bind_configured_live_evidence, bind_configured_r3, configure_r3_startup
+
+# The only R3 startup input is a finite profile selector.  All commands,
+# paths, stores, clocks, model/config artifacts and retry bounds are derived
+# inside the repository-owned factory; the authoritative default is disabled.
+app.config["OPERATOR_UI_R3_PROFILE"] = os.environ.get("OPERATOR_UI_R3_PROFILE", "disabled")
+
+load_connected_environment(app)
+configure_r3_startup(app)
+install_connected_mode(app)
+install_level_1_api(app)
+bind_configured_live_evidence(app)
+bind_configured_r3(app)
+
 # Initialize asset management system
 if ASSET_MANAGEMENT_AVAILABLE and AssetManager:
     try:
@@ -846,6 +864,12 @@ else:
 request_times = {}
 performance_log_file = "logs/perf_server.log"
 
+
+def _is_operator_ui_path(path):
+    """Return whether path is the isolated operator UI or one of its descendants."""
+    return path == "/operator-ui" or path.startswith("/operator-ui/")
+
+
 # Ensure logs directory exists
 os.makedirs("logs", exist_ok=True)
 
@@ -862,14 +886,15 @@ except Exception as e:
 def before_request():
     """Track request start time for profiling and record module deltas"""
     # Log module delta at request start (captures any lazy imports before handler)
-    try:
-        from utils import module_monitor as _module_monitor
+    if not _is_operator_ui_path(request.path or ""):
+        try:
+            from utils import module_monitor as _module_monitor
 
-        _module_monitor.log_request_modules(
-            request.path, method=request.method, context="before_request"
-        )
-    except Exception as e:
-        _debug_silent_failure("Before-request module delta start", e)
+            _module_monitor.log_request_modules(
+                request.path, method=request.method, context="before_request"
+            )
+        except Exception as e:
+            _debug_silent_failure("Before-request module delta start", e)
     if is_profiling():
         request.start_time = time.time()
         # Log the start of request processing
@@ -903,14 +928,15 @@ def after_request(response):
     except Exception as e:
         _debug_silent_failure("After-request early return", e)
     # Log module delta at request end (captures imports within handler)
-    try:
-        from utils import module_monitor as _module_monitor
+    if not _is_operator_ui_path(request.path or ""):
+        try:
+            from utils import module_monitor as _module_monitor
 
-        _module_monitor.log_request_modules(
-            request.path, method=request.method, context="after_request"
-        )
-    except Exception as e:
-        _debug_silent_failure("Before-request module delta end", e)
+            _module_monitor.log_request_modules(
+                request.path, method=request.method, context="after_request"
+            )
+        except Exception as e:
+            _debug_silent_failure("Before-request module delta end", e)
     if is_profiling() and hasattr(request, "start_time"):
         duration = time.time() - request.start_time
         endpoint = request.endpoint or "unknown"
@@ -935,7 +961,11 @@ def after_request(response):
     try:
         ctype = response.headers.get("Content-Type", "")
         # Only modify regular HTML responses (not streams)
-        if "text/html" in ctype and not getattr(response, "direct_passthrough", False):
+        if (
+            "text/html" in ctype
+            and not getattr(response, "direct_passthrough", False)
+            and not _is_operator_ui_path(request.path or "")
+        ):
             # Never mutate error responses; let Flask render its own 4xx/5xx pages
             try:
                 status_code = int(getattr(response, "status_code", 200) or 200)
@@ -9337,6 +9367,19 @@ def index():
         file_stats=file_stats,
         recent_races=recent_races,
     )
+
+
+@app.route("/operator-ui/prototype")
+def operator_ui_prototype():
+    """Render the isolated, fixture-only Level 1 operator prototype."""
+    return render_template("operator_ui.html")
+
+
+@app.route("/operator-ui")
+def operator_ui_connected():
+    """Render chrome only; Level-1 APIs provide any operational evidence."""
+    connected = bool(app.extensions.get("operator_ui_level_1_api_installed"))
+    return render_template("operator_ui_connected.jinja", connected=connected)
 
 
 @app.route("/races")

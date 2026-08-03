@@ -60,6 +60,8 @@ _REQUEST_KEYS = {
     "expected_runner_set_sha256",
 }
 _HASH_RE = re.compile(r"^[0-9a-f]{64}$")
+_SNAPSHOT_MEMBER_MAX_BYTES = 1024 * 1024
+_EXACT_RECEIPT_ENTRY_LIMIT = 32
 
 
 class ProtocolRejected(ValueError):
@@ -290,6 +292,132 @@ class ManualPredictionCollectorProtocol:
             self.collector_exact_receipt_directory(race_id)
             / f"{capture_attempt_sha256}.json"
         )
+
+    def snapshot_authenticated_handoff(
+        self, public_handoff: Mapping[str, Any]
+    ) -> tuple[dict[str, str], dict[str, bytes]]:
+        """Return one descriptor-retained snapshot of the exact sealed protocol chain."""
+        race_id = public_handoff.get("race_id")
+        if not isinstance(race_id, str) or not race_id:
+            raise ProtocolRejected("PROTOCOL_CHAIN_AMBIGUOUS")
+        opened: list[int] = []
+        retained_dirs: list[tuple[int, str, int, tuple[int, int, int, int]]] = []
+        retained_files: list[tuple[int, str, int, tuple[int, int, int, int]]] = []
+
+        def identity(descriptor: int) -> tuple[int, int, int, int]:
+            value = os.fstat(descriptor)
+            return value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns
+
+        def child(parent: int, name: str, *, directory: bool) -> int:
+            flags = os.O_RDONLY | os.O_NOFOLLOW
+            if directory:
+                flags |= os.O_DIRECTORY
+            descriptor = os.open(name, flags, dir_fd=parent)
+            opened.append(descriptor)
+            expected = identity(descriptor)
+            if directory:
+                retained_dirs.append((parent, name, descriptor, expected))
+            else:
+                retained_files.append((parent, name, descriptor, expected))
+            return descriptor
+
+        def directory(path: Path) -> int:
+            descriptor = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+            opened.append(descriptor)
+            for component in path.absolute().parts[1:]:
+                descriptor = child(descriptor, component, directory=True)
+            return descriptor
+
+        def read(descriptor: int, expected: tuple[int, int, int, int]) -> bytes:
+            chunks: list[bytes] = []
+            total = 0
+            while True:
+                chunk = os.read(
+                    descriptor,
+                    min(65536, _SNAPSHOT_MEMBER_MAX_BYTES + 1 - total),
+                )
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > _SNAPSHOT_MEMBER_MAX_BYTES:
+                    raise ProtocolRejected("PROTOCOL_MEMBER_OVERSIZED")
+                chunks.append(chunk)
+            if identity(descriptor) != expected:
+                raise ProtocolRejected("PROTOCOL_MEMBER_CHANGED")
+            return b"".join(chunks)
+
+        try:
+            root_fd = directory(self.root)
+            member_dirs = {
+                name: child(root_fd, dirname, directory=True)
+                for name, dirname in (
+                    ("request", "requests"), ("claim", "claims"),
+                    ("attempt", "attempts"), ("response", "responses"),
+                    ("receipt", "receipts"), ("consume", "consumed"),
+                )
+            }
+            exact_root = child(root_fd, "exact-receipts", directory=True)
+            exact_fd = child(
+                exact_root, hashlib.sha256(race_id.encode()).hexdigest(), directory=True
+            )
+            entries = os.listdir(exact_fd)
+            if len(entries) > _EXACT_RECEIPT_ENTRY_LIMIT:
+                raise ProtocolRejected("EXACT_RECEIPT_INDEX_UNBOUNDED")
+            names = sorted(name for name in entries if name.endswith(".json"))
+            matches: list[tuple[dict[str, str], dict[str, bytes]]] = []
+            for filename in names:
+                request_id = filename.removesuffix(".json")
+                if not request_id or Path(filename).name != filename:
+                    raise ProtocolRejected("PROTOCOL_PATH_UNSAFE")
+                descriptors = {
+                    name: child(parent, filename, directory=False)
+                    for name, parent in member_dirs.items()
+                }
+                descriptors["authenticated_receipt"] = child(
+                    exact_fd, filename, directory=False
+                )
+                raws = {
+                    name: read(descriptor, identity(descriptor))
+                    for name, descriptor in descriptors.items()
+                }
+                try:
+                    values = {name: json.loads(raw) for name, raw in raws.items()}
+                except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                    raise ProtocolRejected("PROTOCOL_MEMBER_MALFORMED") from exc
+                if values["authenticated_receipt"].get("request_id") != request_id:
+                    raise ProtocolRejected("HASH_DRIFT")
+                if values["receipt"].get("sealed_handoff") != dict(public_handoff):
+                    continue
+                chain = {
+                    "request_id": request_id,
+                    **{f"{name}_sha256": sha256_bytes(raw) for name, raw in raws.items()},
+                }
+                response, consume = values["response"], values["consume"]
+                if (
+                    response.get("request_sha256") != chain["request_sha256"]
+                    or response.get("claim_sha256") != chain["claim_sha256"]
+                    or response.get("attempt_sha256") != chain["attempt_sha256"]
+                    or consume.get("response_sha256") != chain["response_sha256"]
+                    or response.get("receipt", {}).get("sha256") != chain["receipt_sha256"]
+                ):
+                    raise ProtocolRejected("HASH_DRIFT")
+                matches.append((chain, raws))
+            for parent, name, descriptor, expected in retained_files:
+                named = os.stat(name, dir_fd=parent, follow_symlinks=False)
+                if identity(descriptor) != expected or (named.st_dev, named.st_ino) != expected[:2]:
+                    raise ProtocolRejected("PROTOCOL_MEMBER_CHANGED")
+            for parent, name, descriptor, expected in retained_dirs:
+                named = os.stat(name, dir_fd=parent, follow_symlinks=False)
+                if identity(descriptor) != expected or (named.st_dev, named.st_ino) != expected[:2]:
+                    raise ProtocolRejected("PROTOCOL_DIRECTORY_CHANGED")
+            if len(matches) != 1:
+                raise ProtocolRejected("PROTOCOL_CHAIN_AMBIGUOUS")
+            return matches[0]
+        except OSError as exc:
+            raise ProtocolRejected("PROTOCOL_PATH_UNSAFE") from exc
+        finally:
+            for descriptor in reversed(opened):
+                os.close(descriptor)
 
     def _safe_directory(self, path: Path) -> None:
         try:

@@ -1,0 +1,32 @@
+{% macro prototype_marker(extra_class="") -%}
+<span class="prototype-marker {{ extra_class }}">PROTOTYPE DATA</span>
+{%- endmacro %}
+
+{% macro status(value, tone="unavailable") -%}
+<span class="status status--{{ tone }}">
+  <span class="status__dot" aria-hidden="true"></span>
+  {{ value }}
+  {{ prototype_marker() }}
+</span>
+{%- endmacro %}
+
+{% macro fixture_value(value, extra_class="") -%}
+<span class="fixture-value {{ extra_class }}">
+  <span>{{ value }}</span>
+  {{ prototype_marker() }}
+</span>
+{%- endmacro %}
+
+{% macro updated_at(value) -%}
+<p class="metadata">
+  <span class="metadata__label">Updated at</span>
+  {{ fixture_value(value) }}
+</p>
+{%- endmacro %}
+
+{% macro evidence_source(value) -%}
+<p class="metadata">
+  <span class="metadata__label">Evidence source</span>
+  {{ fixture_value(value) }}
+</p>
+{%- endmacro %}

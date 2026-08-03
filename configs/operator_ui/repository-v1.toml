@@ -1,0 +1,19 @@
+schema_version = "operator_ui_repository_profile_v1"
+profile_id = "repository-v1"
+generated_binding = "var/operator_ui/generated/repository-v1.binding.json"
+
+[deployment]
+ui_version = "operator-ui-v1"
+profile_id = "repository-v1"
+
+[locators]
+prediction_script = "scripts/predict_race_now.py"
+prediction_config = "configs/prediction/manual-default.json"
+model_artifact = "artifacts/frozen_models/market_form_residual_v1/model.json"
+model_manifest = "artifacts/frozen_models/market_form_residual_v1/manifest.json"
+model_schema = "configs/prediction/schemas/market_form_residual_v1.schema.json"
+current_index = "shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json"
+collector_protocol = "manual_prediction_collector_requests_v1"
+prediction_bundles = "artifacts/on_demand_prediction_runs"
+audit_store = "audit.sqlite3"
+job_store = "jobs.sqlite3"
