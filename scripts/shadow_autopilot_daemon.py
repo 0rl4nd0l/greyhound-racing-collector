@@ -1194,6 +1194,7 @@ def timer_file_text() -> str:
             "Description=Run greyhound shadow autopilot every 15 minutes",
             "",
             "[Timer]",
+            f"OnActiveSec={DEFAULT_TIMER_FREQUENCY}",
             f"OnUnitInactiveSec={DEFAULT_TIMER_ON_UNIT_INACTIVE_SEC}",
             f"AccuracySec={DEFAULT_TIMER_ACCURACY}",
             "Persistent=true",
