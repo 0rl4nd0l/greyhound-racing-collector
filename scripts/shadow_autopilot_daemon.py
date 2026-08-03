@@ -3641,7 +3641,7 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
         )
     t2_lock_skip_fields["t2_miss_cause_counts"] = t2_miss_cause_counts
     current_race_index_publish: dict[str, Any] = {
-        "schema_version": "collector_current_race_index_publish_v1",
+        "schema_version": "collector_current_race_index_publish_v2",
         "status": "SKIPPED",
         "reason": "refresh_report_unavailable",
     }

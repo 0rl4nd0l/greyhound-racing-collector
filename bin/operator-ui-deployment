@@ -1,0 +1,8 @@
+#!/usr/bin/env python3
+"""Executable wrapper for the bounded Operator UI deployment generator."""
+
+from src.operator_ui.deployment import main
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
