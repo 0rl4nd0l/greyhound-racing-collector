@@ -1051,7 +1051,7 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 
 - Release: `R3`
 - Priority: `P3`
-- Status: `planned`
+- Status: `REVIEW`
 - Dependencies: `GHU-035`
 - Model routing: GPT-5.6 Sol; fallback GPT-5.6 Terra
 - Session role: Fresh Codex X implementation session
@@ -1063,10 +1063,10 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Risks: Material risk: Stop before manual editing of generated user-service files or widening network exposure. Missing, stale, malformed, conflicting, or unavailable evidence must fail closed.
 - Stop conditions: Stop before manual editing of generated user-service files or widening network exposure.
 - Authority: Level 2 only after all R3 gates; deployment/live proof require separate Level 4/explicit authority.
-- Claims supported: Only the ticket outcome after validation, independent review, and parent acceptance; no implementation claim while incomplete.
-- Claims unsupported: Market edge, profitability, EV, staking, betting, public exposure, training, promotion, and any runtime or data mutation outside this ticket.
-- Next safe action: Wait until every listed prerequisite is accepted/integrated, then parent may mark ready and assign one fresh bounded implementer.
-- Closeout evidence: PENDING: exact base/head/tree/path/diff identities, commands/exits, focused tests, reviewer identity/verdict, parent decision, and applicable commit/PR/merge/deploy/proof fields.
+- Claims supported: Unstaged repository-owned generator/configuration/documentation review candidate; default-off and no deployment performed.
+- Claims unsupported: Acceptance, integration, installation, deployment, service/runtime proof, live prediction, collector/browser action, market edge, profitability, EV, staking, betting, public exposure, training, or promotion.
+- Next safe action: Parent freezes the exact delta and assigns fresh independent exact-head review; parent retains acceptance and integration authority.
+- Closeout evidence: Base commit `881a3cee0c7f93dd26f5ece9185052f59c4c1aed`, tree `226dae42ebc4deea7ce1c7954e8da74fabd37f7a`; GHU-035 independent accept session `019fc6b6-c551-7901-a2e0-6bdaa17545d6`. Working diff identity and bounded validation are recorded in the implementation handoff. No commit, PR, merge, install, deploy, start, restart, or live proof exists.
 
 ## GHU-037 — Bounded deployed acceptance and one-race UI proof
 

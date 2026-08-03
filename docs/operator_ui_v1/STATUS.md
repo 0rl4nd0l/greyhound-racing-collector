@@ -854,3 +854,21 @@ C6 bounded validation: the two focused worker tests were attempted once but
 did not execute because neither `uv` nor an importable `pytest` was available
 (exit 127). Direct Python compilation, `git diff --check`, and the fixture
 binding check each exited 0; all 23 fixture names resolved.
+
+## GHU-036 implementation status
+
+GHU-036 is an unstaged `REVIEW` candidate on accepted/integrated base
+`881a3cee0c7f93dd26f5ece9185052f59c4c1aed`, tree
+`226dae42ebc4deea7ce1c7954e8da74fabd37f7a`. The repository now owns one finite
+default-off generator for the binding consumed by bootstrap, a distinct private
+service/config package, external mode-0600 secret reference, guarded disabled
+entrypoint, and enable/verify/rollback documentation. Rollback retains audit,
+job, prediction, collector, protocol, current-index, and canonical evidence.
+
+No service file was installed or manually edited, no service was started or
+restarted, and no deployment, public exposure, runtime/data/model mutation,
+live prediction, collector/browser action, outcomes, training, promotion, EV,
+betting, push, merge, acceptance, integration, or runtime proof is claimed.
+Focused pytest was attempted once and could not collect because `pytest` is not
+installed in this bounded environment; final static command identities and
+exits are recorded in the implementer handoff.
