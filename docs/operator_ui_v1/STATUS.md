@@ -751,3 +751,19 @@ corrects/replaces that candidate with an unstaged synthetic suite bound to the
 real integrated seams. It is `REVIEW`, not `BLOCKED` or `ACCEPTED`. Missing
 child pytest is `DATA_MISSING`; parent exact executable validation, freeze,
 independent review, acceptance, and mechanical commit remain pending.
+
+## GHU-035C2 correction status
+
+GHU-035C1 is rejected at commit `49cb6e5328c9aaa9ad3787327a770e5c7a74744f`,
+tree `b68d34c9310981f582706fa18144b86be9521e28`; implementer run
+`20260803T072530Z-3c92515a29-e984b8`, session
+`019fc683-afe7-7f52-92d8-ae11648ddacf`. Parent executable validation command
+`uv run --with-requirements requirements/all.in pytest -q tests/operator_ui/test_r3_e2e_safety.py`
+returned exit 1 with `1 failed, 1 passed`: the integrated test expected its
+first POST to return 202 but received 503. The exact cause is test-only: it fed
+the collector display identity `Race 5 - RICH - 2026-08-01` into the real
+Level-2 operation-audit seam, whose protocol identity contract requires a
+`race-` prefix, so the first audit append failed closed before worker dispatch.
+GHU-035C2 changes only that fixture identity and append-only ledger truth. It is
+`REVIEW`, pending parent executable validation, freeze, and independent review;
+it is not accepted, integrated, deployed, or runtime-proven.

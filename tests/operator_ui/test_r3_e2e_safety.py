@@ -17,7 +17,6 @@ from flask import Flask
 from werkzeug.security import generate_password_hash
 
 from race_collection.synchronous_manual_capture import VerifiedCurrentRaceIndex
-from scripts.refresh_prejump_upcoming import stable_race_id
 from src.operator_ui.job_store import JobInput, JobStore, Phase
 from src.operator_ui.prediction_worker import ServerChoice, WorkerConfig, run_once
 from src.operator_ui.r3_api import R3Services, ResolvedSubmission, install_r3_api
@@ -26,7 +25,7 @@ from src.operator_ui.security import install_connected_mode
 NOW = datetime(2026, 8, 1, tzinfo=timezone.utc)
 DIGEST = hashlib.sha256(b"ghu-035c1").hexdigest()
 RACE = {"race_number": 5, "venue": "RICH", "race_date": "2026-08-01", "url": "https://www.thedogs.com.au/racing/richmond/2026-08-01/5"}
-RACE_ID = stable_race_id(RACE)
+RACE_ID = "race-20260801-richmond-r05"
 ROOT = Path(__file__).resolve().parents[2]
 
 # Complete source modules containing these genuine fixtures are part of the

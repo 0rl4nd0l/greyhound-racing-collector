@@ -976,6 +976,22 @@ Schema: `greyhound-operator-ui-ticket-seed-v1` from the approved bundle. Status 
 - Next safe action: Parent freezes and runs exact executable validation, then assigns independent exact-delta review.
 - Closeout evidence: Base commit `3c92515a29a566dd2136a5f954984f41236c0fdb`, tree `eba05242bf2cb665e43ed94331095130a51ff414`; C8 review run `20260803T071114Z-3c92515a29-3e2573`, session `019fc676-aead-7fc0-8986-9a021dc38ca3`, verdict `ACCEPT`. Constructed diff and validation identities are reported by the implementer; parent owns freeze, acceptance and mechanical commit.
 
+## GHU-035C2 — Correct rejected C1 fixture identity
+
+- Release: `R3`
+- Priority: `P0`
+- Status: `review`
+- Dependencies: rejected `GHU-035C1`; accepted/integrated `GHU-032C8` through `GHU-034C8`
+- Session role: Fresh bounded Codex X correction implementer
+- Outcome: Correct only the integrated proof's use of a display-form race identity where the real Level-2 operation-audit contract requires the protocol `race-` identity.
+- Scope: Preserve all 23 genuine fixture bindings, one submission/one invocation, duplicate reuse, exact worker blocker truth, and no false `PREDICTION_READY`.
+- Non-goals: Production changes, GHU-036, deployment, collector/browser invocation, runtime/data/model mutation, live outcomes, training, promotion, EV, betting, staging, commit, push, or merge.
+- Validation: Python compile, `git diff --check`, fixture binding, and the focused executable test when pytest is available.
+- Claims supported: Unstaged/uncommitted GHU-035C2 review candidate pending parent validation and independent review only.
+- Claims unsupported: Acceptance, integration, deployment, runtime/live proof, or a product blocker from unavailable child dependencies.
+- Next safe action: Parent freezes and runs exact executable validation, then assigns independent exact-delta review.
+- Rejected C1 evidence: Commit `49cb6e5328c9aaa9ad3787327a770e5c7a74744f`, tree `b68d34c9310981f582706fa18144b86be9521e28`; implementer run `20260803T072530Z-3c92515a29-e984b8`, session `019fc683-afe7-7f52-92d8-ae11648ddacf`. Parent command `uv run --with-requirements requirements/all.in pytest -q tests/operator_ui/test_r3_e2e_safety.py` returned exit 1 with `1 failed, 1 passed`: `test_one_authenticated_submission_reaches_real_worker_once_without_false_ready` expected the first POST to return 202 but received 503. C1 remains rejected evidence.
+
 ## GHU-032C1 through GHU-034C1 — Rejected first correction candidate
 
 - Release: `R3`
