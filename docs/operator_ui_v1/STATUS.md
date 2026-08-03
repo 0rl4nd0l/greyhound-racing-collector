@@ -855,33 +855,31 @@ did not execute because neither `uv` nor an importable `pytest` was available
 (exit 127). Direct Python compilation, `git diff --check`, and the fixture
 binding check each exited 0; all 23 fixture names resolved.
 
-## GHU-036 implementation status
+## GHU-036 C5 correction status
 
-GHU-036 C3 is in `REVIEW`. The initial candidate was frozen as
-`d1024b05bae5988b246fb8f2ae0f6e1f7d569153`, tree
-`1d767f105695d6b38b877b02f3a48bb1584f08b0`, and rejected. C1 was frozen as
-`16e2aae871e5c913d583c8cfa398e132b363d66e`, tree
-`9f3c36ef005151f2edd3a76d7594b368f0aa55fb`. C2's exact candidate was
-`913fc84368e70cb6a2161381a3ee6823812f336a`, tree
-`a211c4a593a723a0ccf2223189f5b87d00ed8f08`; fresh review session
-`019fc6df-8de0-7852-b20f-d3cb34570e49` rejected it for two residual issues:
-incomplete external secret-file authority checks and contradictory/volatile
-ledger evidence. C3 corrects only those findings. The secret reference must be
-a regular nonsymlink file outside source, evidence, producer, operations, and
-generated-output roots; distinct from the canonical database; owned by the
-current service user; and exactly mode `0600`.
+GHU-036 C3 was accepted and integrated as commit
+`1e71261bd5a469abc72d40111575fc51282723be`, tree
+`60121cc4abe3343f03a8677e1ba3ffdb601bea76`. C4 is commit
+`dd0a87db44530a3ee98b28f9eb677f9d5be81b7f`, tree
+`aa1f754c996ecee4e05161dc1aa84fd3338c542d`; it contains only the one-line
+canonical-database secret-alias fixture correction atop C3. Its deployment
+validation passed exactly `27 passed`.
 
-Recorded C2 validation is: focused suite `124 passed`; full suite `854 passed`
-plus 13 failures caused by the `/tmp` ancestor safety harness; and the same
-failing module rerun from an owner-safe fixture root `39 passed`. These are
-historical validation results, not C3 acceptance or runtime proof. The exact C3
-freeze identity belongs in the parent review packet after the review bytes are
-frozen; this ledger does not make a self-referential current commit/tree claim.
+Independent C4 review session `019fc6ec-540c-7780-b50c-12559783309c`
+rejected exactly three issues: the external secrets file admitted additional,
+duplicate, and systemd-ambiguous assignments capable of overriding deployment
+gates; four generated outputs were published independently rather than as one
+rollback-safe transaction on reported write failure; and the GHU-036 ledgers
+did not accurately record C3/C4 history and current state.
 
-No service file was installed or manually edited, no service was started or
-restarted, and no deployment, public exposure, runtime/data/model mutation,
-live prediction, collector/browser action, outcomes, training, promotion, EV,
-betting, push, merge, acceptance, integration, or runtime proof is claimed.
-The C3 worker environment does not provide `pytest`; its attempted focused
-selection therefore exited 127 before collection. Final executable/static
-checks and the source-diff hash are recorded in the implementer handoff.
+C5 is an unstaged `REVIEW` correction candidate. It restricts the bounded UTF-8
+EnvironmentFile input to exactly one each of the three required secret names,
+stages and validates all four outputs before publication, and restores every
+pre-existing output byte/mode or removes every new output after a reported
+publication failure. This is process-level rollback on a reported write
+failure, not a claim of cross-filesystem or power-loss crash atomicity. No
+self-referential C5 commit or tree identity is claimed.
+
+No install, service action, deployment, publication, push, merge, runtime/data/
+model mutation, live prediction, collector/browser action, outcomes, training,
+promotion, EV, betting, acceptance, integration, or runtime proof is claimed.

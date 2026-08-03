@@ -21,6 +21,12 @@ class DeploymentRejected(RuntimeError):
 _COMMIT = re.compile(r"^[0-9a-f]{40}$")
 _VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _SYSTEMD_SAFE_PATH = re.compile(r"^/[A-Za-z0-9_./+-]+$")
+_SECRET_VALUE = re.compile(r"^(?=[!-~]+$)[^\"'\\]+$")
+_REQUIRED_SECRETS = {
+    "OPERATOR_UI_SECRET_KEY",
+    "OPERATOR_UI_USERNAME",
+    "OPERATOR_UI_PASSWORD_HASH",
+}
 _ARTIFACTS = {
     "prediction_script": "scripts/predict_race_now.py",
     "prediction_config": "configs/prediction/manual-default.json",
@@ -93,23 +99,85 @@ def _read(path: Path, maximum: int = 256 * 1024) -> bytes:
     return data
 
 
-def _write_new_or_regular(path: Path, content: bytes, mode: int = 0o600) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    if path.is_symlink() or (path.exists() and not path.is_file()):
-        raise DeploymentRejected(f"unsafe generated target: {path}")
-    temporary = path.with_name(f".{path.name}.tmp-{os.getpid()}")
+def _validate_secrets_file(path: Path) -> None:
+    try:
+        text = _read(path, 64 * 1024).decode("utf-8", "strict")
+    except UnicodeDecodeError as error:
+        raise DeploymentRejected("secrets file is not UTF-8") from error
+    present: set[str] = set()
+    for line in text.split("\n"):
+        if not line or (line.startswith("#") and all(" " <= char <= "~" for char in line)):
+            continue
+        if line.count("=") < 1:
+            raise DeploymentRejected("secrets file contains unsupported syntax")
+        name, value = line.split("=", 1)
+        if name not in _REQUIRED_SECRETS or name in present:
+            raise DeploymentRejected("secrets file contains an extra or duplicate assignment")
+        if not value or not _SECRET_VALUE.fullmatch(value):
+            raise DeploymentRejected("secrets file contains ambiguous quoting, escaping, or control syntax")
+        present.add(name)
+    if present != _REQUIRED_SECRETS:
+        raise DeploymentRejected("secrets file is incomplete")
+
+
+def _stage_file(path: Path, content: bytes, mode: int, suffix: str) -> Path:
+    temporary = path.with_name(f".{path.name}.{suffix}-{os.getpid()}")
     try:
         descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
         with os.fdopen(descriptor, "wb") as stream:
+            os.fchmod(stream.fileno(), mode)
             stream.write(content)
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temporary, path)
-    finally:
+    except BaseException:
         try:
             temporary.unlink()
         except FileNotFoundError:
             pass
+        raise
+    return temporary
+
+
+def _publish_transaction(outputs: tuple[tuple[Path, bytes, int], ...]) -> None:
+    originals: dict[Path, tuple[bytes, int] | None] = {}
+    staged: dict[Path, Path] = {}
+    published: list[Path] = []
+    try:
+        for index, (target, content, mode) in enumerate(outputs):
+            target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            if target.exists():
+                originals[target] = (target.read_bytes(), stat.S_IMODE(target.stat().st_mode))
+            else:
+                originals[target] = None
+            staged[target] = _stage_file(target, content, mode, f"tmp-{index}")
+        for target, _, _ in outputs:
+            os.replace(staged[target], target)
+            published.append(target)
+    except BaseException:
+        for index, target in reversed(list(enumerate(published))):
+            original = originals[target]
+            if original is None:
+                try:
+                    target.unlink()
+                except FileNotFoundError:
+                    pass
+            else:
+                content, mode = original
+                recovery = _stage_file(target, content, mode, f"restore-{index}")
+                try:
+                    os.replace(recovery, target)
+                finally:
+                    try:
+                        recovery.unlink()
+                    except FileNotFoundError:
+                        pass
+        raise
+    finally:
+        for temporary in staged.values():
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
 
 
 def _validate_target(path: Path, boundary: Path) -> None:
@@ -183,14 +251,7 @@ def generate_package(*, source_root: Path, pinned_python: Path, evidence_root: P
     protocol = _safe_existing(evidence / "manual_prediction_collector_requests_v1", directory=True)
     bundles = _safe_existing(producer / "artifacts/on_demand_prediction_runs", directory=True)
     artifact_paths = {name: _safe_existing(source / relative, directory=False) for name, relative in _ARTIFACTS.items()}
-    try:
-        secret_text = _read(secrets, 64 * 1024).decode("utf-8", "strict")
-    except UnicodeDecodeError as error:
-        raise DeploymentRejected("secrets file is not UTF-8") from error
-    required_secrets = {"OPERATOR_UI_SECRET_KEY", "OPERATOR_UI_USERNAME", "OPERATOR_UI_PASSWORD_HASH"}
-    present = {line.split("=", 1)[0] for line in secret_text.splitlines() if line and not line.startswith("#") and "=" in line}
-    if not required_secrets <= present:
-        raise DeploymentRejected("secrets file is incomplete")
+    _validate_secrets_file(secrets)
 
     binding = {
         "schema_version": "operator_ui_repository_binding_v1",
@@ -231,10 +292,12 @@ by hand and does not alter the canonical database `{database}`.
     for target, boundary in ((binding_target, source), (environment_target, output), (service_target, output), (rollback_target, output)):
         _validate_target(target, boundary)
     binding_bytes = (json.dumps(binding, sort_keys=True, separators=(",", ":")) + "\n").encode()
-    _write_new_or_regular(binding_target, binding_bytes)
-    _write_new_or_regular(environment_target, environment.encode())
-    _write_new_or_regular(service_target, service.encode(), 0o644)
-    _write_new_or_regular(rollback_target, rollback.encode(), 0o644)
+    _publish_transaction((
+        (binding_target, binding_bytes, 0o600),
+        (environment_target, environment.encode(), 0o600),
+        (service_target, service.encode(), 0o644),
+        (rollback_target, rollback.encode(), 0o644),
+    ))
     return {"enabled": active, "binding": str(binding_target), "service": str(service_target)}
 
 

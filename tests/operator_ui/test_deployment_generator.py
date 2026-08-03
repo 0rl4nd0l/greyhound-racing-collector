@@ -1,5 +1,7 @@
 import hashlib
 import json
+import os
+import stat
 import subprocess
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -14,6 +16,11 @@ import src.operator_ui.bootstrap as bootstrap_module
 
 COMMIT = "881a3cee0c7f93dd26f5ece9185052f59c4c1aed"
 TREE = "226dae42ebc4deea7ce1c7954e8da74fabd37f7a"
+SECRET_LINES = (
+    "OPERATOR_UI_SECRET_KEY=actual-secret_+/=.$-value",
+    "OPERATOR_UI_USERNAME=operator@example.test",
+    "OPERATOR_UI_PASSWORD_HASH=scrypt:32768:8:1$saltsalt$0123456789abcdef",
+)
 
 
 def deployment_inputs(tmp_path: Path) -> dict[str, object]:
@@ -50,7 +57,7 @@ def deployment_inputs(tmp_path: Path) -> dict[str, object]:
     database.write_text("canonical")
     database.chmod(0o400)
     secrets = tmp_path / "operator-ui.secrets"
-    secrets.write_text("OPERATOR_UI_SECRET_KEY=not-copied\nOPERATOR_UI_USERNAME=operator\nOPERATOR_UI_PASSWORD_HASH=scrypt:example\n")
+    secrets.write_text("\n".join(SECRET_LINES) + "\n")
     secrets.chmod(0o600)
     return dict(source_root=source, pinned_python=python, evidence_root=evidence,
                 producer_root=producer, canonical_db=database,
@@ -58,6 +65,15 @@ def deployment_inputs(tmp_path: Path) -> dict[str, object]:
                 output_dir=output, source_commit=COMMIT, source_tree=TREE,
                 ui_version="operator-ui-v1", profile_id="repository-v1",
                 bind_address="127.0.0.1", port=5055)
+
+
+def generated_targets(values: dict[str, object]) -> tuple[Path, ...]:
+    return (
+        values["source_root"] / "var/operator_ui/generated/repository-v1.binding.json",
+        values["output_dir"] / "operator-ui-r3.env",
+        values["output_dir"] / "greyhound-operator-ui-r3.service",
+        values["output_dir"] / "ROLLBACK.md",
+    )
 
 
 def git_identity(monkeypatch, *, commit=COMMIT, tree=TREE, dirty=False):
@@ -97,8 +113,94 @@ def test_default_off_package_binds_identity_hashes_private_service_and_external_
     assert "OPERATOR_UI_R3_PROFILE=disabled" in environment
     assert "127.0.0.1" in service and "--port 5055" in service
     assert f"EnvironmentFile={values['secrets_file']}" in service
-    assert "not-copied" not in service + environment
+    assert "actual-secret" not in service + environment
     assert result["enabled"] is False
+
+
+@pytest.mark.parametrize(
+    "injected",
+    [
+        "OPERATOR_UI_CONNECTED_MODE=1",
+        "OPERATOR_UI_R3_PROFILE=repository-v1",
+        "OPERATOR_UI_DEPLOYED_COMMIT=" + "a" * 40,
+        "ENABLE_LIVE_SCRAPING=1",
+        "UNRELATED_KEY=value",
+        SECRET_LINES[0],
+        'OPERATOR_UI_USERNAME="operator"',
+        "OPERATOR_UI_USERNAME=operator\\ name",
+        " OPERATOR_UI_USERNAME=operator",
+        "export OPERATOR_UI_USERNAME=operator",
+    ],
+)
+def test_secrets_file_rejects_override_extra_duplicate_or_ambiguous_syntax_before_output(
+    tmp_path, monkeypatch, injected
+):
+    values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
+    values["secrets_file"].write_text("\n".join((*SECRET_LINES, injected)) + "\n")
+
+    with pytest.raises(DeploymentRejected, match="secrets file"):
+        generate_package(**values)
+
+    assert all(not target.exists() for target in generated_targets(values))
+
+
+def test_secrets_file_accepts_safe_comments_blanks_and_real_secret_forms(tmp_path, monkeypatch):
+    values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
+    values["secrets_file"].write_text(
+        "# generated out of band\n\n" + "\n".join(SECRET_LINES) + "\n# end\n"
+    )
+
+    generate_package(**values)
+
+    assert all(target.is_file() for target in generated_targets(values))
+
+
+@pytest.mark.parametrize("preexisting", [False, True])
+@pytest.mark.parametrize("operation", ["fsync", "replace"])
+@pytest.mark.parametrize("failure_point", range(1, 5))
+def test_reported_publication_failure_restores_the_whole_package_and_cleans_artifacts(
+    tmp_path, monkeypatch, preexisting, operation, failure_point
+):
+    values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
+    targets = generated_targets(values)
+    expected = {}
+    if preexisting:
+        for index, target in enumerate(targets):
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(f"prior-{index}".encode())
+            target.chmod(0o640 + index)
+            expected[target] = (target.read_bytes(), stat.S_IMODE(target.stat().st_mode))
+
+    real_operation = getattr(os, operation)
+    calls = 0
+
+    def fail_once(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == failure_point:
+            raise OSError(f"injected {operation} failure {failure_point}")
+        return real_operation(*args, **kwargs)
+
+    monkeypatch.setattr(f"src.operator_ui.deployment.os.{operation}", fail_once)
+
+    with pytest.raises(OSError, match=f"injected {operation} failure {failure_point}"):
+        generate_package(**values)
+
+    for target in targets:
+        if preexisting:
+            assert (target.read_bytes(), stat.S_IMODE(target.stat().st_mode)) == expected[target]
+        else:
+            assert not target.exists()
+    artifact_names = [
+        path.name
+        for parent in {target.parent for target in targets}
+        for path in parent.iterdir()
+        if path.name.startswith(".")
+    ]
+    assert artifact_names == []
 
 
 @pytest.mark.parametrize("unsafe", ["public_bind", "symlink_python", "overlap", "missing_index", "weak_secrets"])
