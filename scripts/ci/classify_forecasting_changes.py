@@ -17,14 +17,18 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_RULES = ROOT / ".github/forecasting-paths.ini"
 TIERS = (
     "non_forecasting",
+    "ci_contract",
     "manual_prediction",
     "official_results",
+    "forward_corpus",
+    "operator_ui",
+    "forecasting_core",
     "full_forecasting",
 )
 TIER_RANK = {tier: rank for rank, tier in enumerate(TIERS)}
 KNOWN_STATUS_PREFIXES = frozenset({"A", "C", "D", "M", "R", "T"})
 DESTRUCTIVE_STATUS_PREFIXES = frozenset({"C", "D", "R", "T"})
-FOCUSED_TIERS = frozenset({"manual_prediction", "official_results"})
+FOCUSED_TIERS = frozenset(TIERS) - {"non_forecasting", "full_forecasting"}
 
 
 class ClassificationError(RuntimeError):
@@ -57,7 +61,7 @@ def load_rules(path: Path = DEFAULT_RULES) -> dict[str, tuple[str, ...]]:
     except (OSError, configparser.Error) as exc:
         raise ClassificationError(f"unable to load classifier rules: {exc}") from exc
     if parser.get("metadata", "schema_version", fallback=None) != (
-        "forecasting-change-rules-v1"
+        "forecasting-change-rules-v2"
     ):
         raise ClassificationError("unsupported classifier rules schema")
     tier_sections = set(parser.sections()) - {"metadata"}
@@ -104,7 +108,6 @@ def classify_changes(
         }
 
     classified_paths: list[dict[str, Any]] = []
-    selected = "non_forecasting"
     selected_tiers: set[str] = set()
     destructive_change = False
     for change in change_list:
@@ -121,6 +124,7 @@ def classify_changes(
         for path in change.paths:
             try:
                 tier, matched = _path_tier(path, rules)
+                normalized = _normalize_path(path)
             except ClassificationError as exc:
                 return {
                     "tier": "full_forecasting",
@@ -129,7 +133,7 @@ def classify_changes(
                 }
             classified_paths.append(
                 {
-                    "path": _normalize_path(path),
+                    "path": normalized,
                     "status": change.status,
                     "tier": tier,
                     "matched_tiers": list(matched),
@@ -137,20 +141,26 @@ def classify_changes(
                 }
             )
             selected_tiers.add(tier)
-            if TIER_RANK[tier] > TIER_RANK[selected]:
-                selected = tier
 
-    focused_tiers = selected_tiers & FOCUSED_TIERS
+    risk_tiers = selected_tiers - {"non_forecasting"}
     if destructive_change:
         selected = "full_forecasting"
         reason = "destructive_change_defaults_to_full"
-    elif len(focused_tiers) > 1:
-        selected = "full_forecasting"
-        reason = "mixed_focused_tiers_default_to_full"
     elif any(item["defaulted_to_full"] for item in classified_paths):
+        selected = "full_forecasting"
         reason = "unknown_path_defaults_to_full"
+    elif "full_forecasting" in risk_tiers:
+        selected = "full_forecasting"
+        reason = "shared_or_high_risk_path_requires_full"
+    elif len(risk_tiers & FOCUSED_TIERS) > 1:
+        selected = "full_forecasting"
+        reason = "incompatible_mixed_tiers_default_to_full"
+    elif risk_tiers:
+        selected = next(iter(risk_tiers))
+        reason = "single_trusted_tier"
     else:
-        reason = "broadest_matching_tier"
+        selected = "non_forecasting"
+        reason = "known_non_forecasting_paths"
     return {"tier": selected, "reason": reason, "paths": classified_paths}
 
 
@@ -223,7 +233,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.force_full:
             result = {
                 "tier": "full_forecasting",
-                "reason": "non_pull_request_event_defaults_to_full",
+                "reason": "explicit_full_validation",
                 "paths": [],
             }
         else:
