@@ -269,6 +269,8 @@ def validate(artifact: dict, members: dict[str, bytes]) -> dict:
         config=config(),
         forbidden_paths=forbidden_paths(),
         member_bytes=members,
+        expected_source_commit=COMMIT,
+        expected_source_tree=TREE,
     )
 
 
@@ -336,6 +338,8 @@ def test_missing_and_unknown_fields_are_rejected(location: str, mutation: str):
             config=cfg,
             forbidden_paths=forbidden_paths(),
             member_bytes=members,
+            expected_source_commit=COMMIT,
+            expected_source_tree=TREE,
         )
 
 
@@ -537,6 +541,8 @@ def test_replay_conflict_and_late_artifacts_fail_closed():
             config=config(),
             forbidden_paths=forbidden_paths(),
             member_bytes=members,
+            expected_source_commit=COMMIT,
+            expected_source_tree=TREE,
             seen_run_ids={RUN_ID},
         )
     with pytest.raises(ManualIndependentCaptureRejected, match="ARTIFACT_CONFLICT"):
@@ -545,6 +551,8 @@ def test_replay_conflict_and_late_artifacts_fail_closed():
             config=config(),
             forbidden_paths=forbidden_paths(),
             member_bytes=members,
+            expected_source_commit=COMMIT,
+            expected_source_tree=TREE,
             expected_request_sha256="0" * 64,
         )
 
@@ -574,6 +582,38 @@ def test_cancellation_and_timeout_have_hard_terminal_semantics():
     timed_out["closure"]["closed_at"] = timed_out["timing"]["terminal_at"]
     with pytest.raises(ManualIndependentCaptureRejected, match="TIMING_INVALID"):
         validate(timed_out, members)
+
+    timed_out, members = terminal_without_capture(
+        "TIMED_OUT", "TIMED_OUT", cancelled=True
+    )
+    timed_out["timing"]["terminal_at"] = timed_out["timing"]["deadline_at"]
+    timed_out["closure"]["closed_at"] = timed_out["timing"]["terminal_at"]
+    with pytest.raises(ManualIndependentCaptureRejected, match="CANCELLATION_INVALID"):
+        validate(timed_out, members)
+
+    timed_out["terminal"] = {
+        "status": "FAILED",
+        "failure_code": "PROCESS_REAP_UNCONFIRMED",
+    }
+    assert validate(timed_out, members)["terminal"]["failure_code"] == (
+        "PROCESS_REAP_UNCONFIRMED"
+    )
+
+
+def test_source_revision_is_bound_to_trusted_expected_commit_and_tree():
+    artifact, members = ready_artifact()
+    artifact["provenance"]["source_commit"] = "1" * 40
+    with pytest.raises(
+        ManualIndependentCaptureRejected, match="SOURCE_PROVENANCE_MISMATCH"
+    ):
+        validate(artifact, members)
+
+    artifact, members = ready_artifact()
+    artifact["provenance"]["source_tree"] = "2" * 40
+    with pytest.raises(
+        ManualIndependentCaptureRejected, match="SOURCE_PROVENANCE_MISMATCH"
+    ):
+        validate(artifact, members)
 
 
 @pytest.mark.parametrize("failure_code", sorted(TERMINAL_STATUS_BY_FAILURE_CODE))

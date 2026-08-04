@@ -55,9 +55,10 @@ Every record binds:
 - attempt count `1` and source attempt count `0` or `1` according to the
   failure class;
 - strictly ordered runner identity and positive finite decimal odds;
-- source commit/tree, config, model, request, race, runner-set, odds, source
-  bytes/timestamps/content class, explicit target/same/future-outcome exclusion,
-  and artifact member bytes/hashes;
+- source commit/tree bound to trusted caller-supplied expectations, config,
+  model, request, race, runner-set, odds, source bytes/timestamps/content class,
+  explicit target/same/future-outcome exclusion, and artifact member
+  bytes/hashes;
 - `research_only=true`, `canonical=false`, `phase7_excluded=true`,
   `phase7_eligible=false`, and
   `phase7_exclusion_reason="manual_research_only_noncanonical"`;

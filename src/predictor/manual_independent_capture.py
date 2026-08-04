@@ -728,6 +728,8 @@ def validate_terminal_artifact(
     config: Mapping[str, Any],
     forbidden_paths: Mapping[str, str],
     member_bytes: Mapping[str, bytes],
+    expected_source_commit: str,
+    expected_source_tree: str,
     expected_run_id: str | None = None,
     expected_request_id: str | None = None,
     expected_request_sha256: str | None = None,
@@ -859,7 +861,10 @@ def validate_terminal_artifact(
         )
         if cleanup_deadline != expected_cleanup_deadline:
             raise _reject("CANCELLATION_INVALID", reason="cleanup_deadline")
-        if failure_code == "CANCELLED" and terminal_at > cleanup_deadline:
+        if (
+            failure_code != "PROCESS_REAP_UNCONFIRMED"
+            and terminal_at > cleanup_deadline
+        ):
             raise _reject("CANCELLATION_INVALID", reason="late_cancel_terminal")
     elif failure_code in {"TIMED_OUT", "PROCESS_REAP_UNCONFIRMED"}:
         if cleanup_deadline != deadline:
@@ -951,8 +956,16 @@ def validate_terminal_artifact(
         },
         "artifact.provenance",
     )
-    _git_object(provenance["source_commit"], "artifact.provenance.source_commit")
-    _git_object(provenance["source_tree"], "artifact.provenance.source_tree")
+    source_commit = _git_object(
+        provenance["source_commit"], "artifact.provenance.source_commit"
+    )
+    source_tree = _git_object(
+        provenance["source_tree"], "artifact.provenance.source_tree"
+    )
+    trusted_commit = _git_object(expected_source_commit, "expected_source_commit")
+    trusted_tree = _git_object(expected_source_tree, "expected_source_tree")
+    if source_commit != trusted_commit or source_tree != trusted_tree:
+        raise _reject("SOURCE_PROVENANCE_MISMATCH")
     for name in ("config_sha256", "model_sha256", "request_sha256"):
         _sha256(provenance[name], f"artifact.provenance.{name}")
     if provenance["config_sha256"] != canonical_sha256(validated_config):
