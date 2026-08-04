@@ -3,13 +3,16 @@ import shutil
 import hashlib
 import threading
 import json
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from flask import Flask
 from werkzeug.security import generate_password_hash
 
 from src.operator_ui.api import install_level_1_api, register_level_1_provider
+from src.operator_ui.api import _validate_envelope
 from src.operator_ui.bootstrap import CONFIG_KEY, R3_PROFILE_KEY, bind_configured_live_evidence, bind_configured_r3
+from src.operator_ui.foundation import OperatorEvidenceReader
 from src.operator_ui.live_adapters import LiveEvidenceAdapters
 from src.operator_ui.security import install_connected_mode
 import src.operator_ui.bootstrap as bootstrap_module
@@ -122,6 +125,7 @@ def repository_binding_fixture(tmp_path,monkeypatch):
         "deployment_manifest":{"schema_version":"operator_ui_deployment_manifest_v1","generated_at":generated_at},
         "model_catalog":{"schema_version":"on_demand_prediction_config_catalog_v1"},
     }
+    assert "schema_version" not in source_payloads["odds_refresh"]
     live_sources={}
     for name,payload in source_payloads.items():
         path=(live_root/"reports/odds_capture_refresh_report.json" if name=="odds_refresh" else live_root/f"{name}.json")
@@ -170,6 +174,13 @@ def test_repository_profile_binds_authoritative_sources_and_separate_operations_
     refresh=live._reader._sources["odds_refresh"]
     assert refresh.locator.relative_to(refresh.allowlisted_root).as_posix()=="reports/odds_capture_refresh_report.json"
     assert refresh.json.serialization_policy.value=="producer_pretty_sorted"
+    assert refresh.json.schema_field is None and refresh.json.schema_value is None
+    assert refresh.json.identity_fields==()
+    assert all(
+        config.json.identity_fields==("schema_version",)
+        for config in live._reader._sources.values()
+        if config.json.schema_value
+    )
     assert live._reader._sources["corpus_report"].json.serialization_policy.value=="producer_pretty_sorted"
     catalog=live._reader._sources["model_catalog"]
     assert catalog.json.serialization_policy.value=="producer_compact_canonical_line"
@@ -186,6 +197,34 @@ def test_repository_profile_binds_authoritative_sources_and_separate_operations_
     assert refresh_payload["generated_at"]=="2026-08-03T01:02:03Z"
     catalog_envelope,_=live._reader.read_payload("model_catalog")
     assert catalog_envelope.observed_at=="2026-08-03T01:02:03Z"
+
+
+def test_repository_profile_schema_evidence_identities_pass_api_validation(tmp_path,monkeypatch):
+    repository_binding_fixture(tmp_path,monkeypatch)
+    layout=bootstrap_module._repository_layout()
+    live=bootstrap_module._configured_live(layout)
+    request_now=datetime(2026,8,3,1,2,4,tzinfo=timezone.utc)
+    expected={
+        "full_report":("collector","shadow_autopilot_daemon_run_v1"),
+        "corpus_report":("corpus","race_evidence_inventory_report_v1"),
+        "model_catalog":("models","on_demand_prediction_config_catalog_v1"),
+    }
+    for source,(resource,schema) in expected.items():
+        envelope,_=live._reader.read_payload(source,server_observed_at=request_now)
+        assert envelope.evidence_identity==(("schema_version",schema),)
+        normalized,*_=_validate_envelope(resource,envelope,request_now)
+        assert normalized["evidence_identity"]=={"schema_version":schema}
+
+    sources=dict(live._reader._sources)
+    sources["full_report"]=replace(sources["full_report"],expected_sha256="0"*64)
+    divergent=OperatorEvidenceReader(sources).read_payload(
+        "full_report",server_observed_at=request_now
+    )[0]
+    assert divergent.status=="DIVERGENT"
+    normalized,*_=_validate_envelope("collector",divergent,request_now)
+    assert normalized["evidence_identity"]=={
+        "schema_version":"shadow_autopilot_daemon_run_v1"
+    }
 
 
 @pytest.mark.parametrize(("binding_field", "configured_key", "wrong_value"), [
