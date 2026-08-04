@@ -320,6 +320,13 @@ _ACTIONS = {
     "collect_future_strict_prejump_odds", "repair_strict_prejump_odds_runner_set",
     "ready_for_unified_evidence_evaluation",
 }
+_OFFICIAL_RESULT_GAP_ACTIONS = {
+    "append_official_result_evidence_backlog", "capture_official_result",
+    "repair_official_result_runner_set_or_identity_join",
+}
+_STRICT_ODDS_GAP_ACTIONS = {
+    "collect_future_strict_prejump_odds", "repair_strict_prejump_odds_runner_set",
+}
 _DECISIONS = {
     "RUN_POST_BACKLOG_UNIFIED_EVALUATION", "RUN_BACKLOG_APPEND",
     "STRICT_PREJUMP_ODDS_COLLECTION_NEXT", "OFFICIAL_RESULT_CAPTURE_NEXT",
@@ -684,8 +691,20 @@ def _inventory_semantics(report: Mapping[str, Any]) -> tuple[dict[str, int], dic
         raise ValueError("inventory skipped reason counts are invalid")
     for key, value in reason_counts.items():
         _bounded_identity(key); _bounded_count(value)
-    for field in ("skipped_race_action_counts", "official_result_gap_action_counts", "strict_odds_gap_action_counts"):
+    skipped = _count_map(metrics.get("skipped_race_action_counts"))
+    skipped_population = total - evaluated
+    if (
+        sum(reason_counts.values()) != skipped_population
+        or sum(skipped.values()) != skipped_population
+    ):
+        raise ValueError("inventory skipped race counts are contradictory")
+    for field, allowed_actions in (
+        ("official_result_gap_action_counts", _OFFICIAL_RESULT_GAP_ACTIONS),
+        ("strict_odds_gap_action_counts", _STRICT_ODDS_GAP_ACTIONS),
+    ):
         gap_counts = _count_map(metrics.get(field))
+        if any(action not in allowed_actions for action in gap_counts):
+            raise ValueError("inventory gap action is invalid")
         if sum(gap_counts.values()) > shadow:
             raise ValueError("inventory gap action counts are contradictory")
     notes = metrics.get("metric_notes")

@@ -932,6 +932,67 @@ def test_corpus_accepts_genuine_relative_and_absolute_producer_locators_without_
     assert "population_count" not in rendered
 
 
+def test_corpus_accepts_scorecard_skips_over_the_full_race_union(tmp_path):
+    values = actual_payloads()
+    report = values["corpus_report"]
+    report["summary_counts"].update(
+        race_union_count=5284,
+        shadow_prediction_race_count=3598,
+        shadow_races_with_official_result_evidence_db=1206,
+        shadow_races_with_strict_prejump_odds=3582,
+        shadow_races_complete_official_and_strict_odds=1190,
+        action_counts={
+            "not_shadow_scored": 1686,
+            "capture_official_result": 2392,
+            "collect_future_strict_prejump_odds": 16,
+            "ready_for_unified_evidence_evaluation": 1190,
+        },
+    )
+    report["scorecard_metrics"].update(
+        evaluation_race_count=1190,
+        skipped_race_reason_counts={
+            "shadow_predictions_missing": 1686,
+            "official_result_incomplete_for_shadow_boxes": 2392,
+            "strict_odds_incomplete_for_shadow_boxes": 16,
+        },
+        skipped_race_action_counts={
+            "not_shadow_scored": 1686,
+            "capture_official_result": 2392,
+            "collect_future_strict_prejump_odds": 16,
+        },
+        official_result_gap_action_counts={"capture_official_result": 2392},
+        strict_odds_gap_action_counts={"collect_future_strict_prejump_odds": 16},
+    )
+
+    assert make_live(tmp_path, values).corpus(NOW).evidence.status == "AVAILABLE/FRESH"
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["skipped_race_reason_counts", "skipped_race_action_counts"],
+)
+def test_corpus_rejects_scorecard_skip_conservation_violations(tmp_path, field):
+    values = actual_payloads()
+    counts = values["corpus_report"]["scorecard_metrics"][field]
+    counts[next(iter(counts))] += 1
+
+    assert make_live(tmp_path, values).corpus(NOW).evidence.status == "INVALID/INTEGRITY_FAILED"
+
+
+@pytest.mark.parametrize(
+    ("field", "action"),
+    [
+        ("official_result_gap_action_counts", "not_shadow_scored"),
+        ("strict_odds_gap_action_counts", "capture_official_result"),
+    ],
+)
+def test_corpus_rejects_cross_family_gap_actions(tmp_path, field, action):
+    values = actual_payloads()
+    values["corpus_report"]["scorecard_metrics"][field] = {action: 1}
+
+    assert make_live(tmp_path, values).corpus(NOW).evidence.status == "INVALID/INTEGRITY_FAILED"
+
+
 @pytest.mark.parametrize(
     "mutate",
     [
