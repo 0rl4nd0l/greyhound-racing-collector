@@ -18,29 +18,23 @@ Historical candidate logs are not release evidence for a later commit. Every
 pull request to `master` receives the stable
 `Forecasting acceptance / tests-race-collection` GitHub Actions check. A
 lightweight classifier compares the exact pull-request base and head, validates
-its checked-in fixture cases, and selects the broadest applicable tier:
-
-- `full_forecasting` for forecasting core and shared contracts, feature schemas,
-  model/training/source-admission surfaces, common dependencies, test
-  infrastructure, workflow/classifier changes, forecasting contract docs, or
-  any unknown path;
-- `manual_prediction` for the on-demand predictor, its two checked-in configs,
-  operator docs, residual scorer, and directly associated tests; or
-- `non_forecasting` only for explicitly allowlisted unrelated docs and UI
-  surfaces.
-
-Renames and copies classify both old and new paths. Deletions retain their
-deleted path. Empty, malformed, unmatched, mixed, or overlapping changes select
-the broader tier, with uncertainty selecting `full_forecasting`.
+its checked-in fixture cases, and selects one of the eight risk tiers documented
+in [forecasting_ci_tiers.md](forecasting_ci_tiers.md). CI contract, manual
+prediction, official-result, forward-corpus, Operator UI, and isolated
+forecasting-core changes receive focused validation. Shared or high-risk paths,
+unknown paths, destructive changes, and incompatible focused-tier combinations
+fail closed to `full_forecasting`. Renames and copies classify both old and new
+paths; empty or malformed change sets also fail closed.
 
 The stable gate checks out the pull-request head explicitly. The full tier runs
-the complete `tests/race_collection` suite. The manual tier runs:
+the complete `tests/race_collection` suite plus directly associated top-level
+manual, official-result, and Operator UI tests. It runs on scheduled and manual
+dispatches, for PRs labeled `ci:full-forecasting`, and whenever risk
+classification escalates. CI-only routing changes select `ci_contract`, which
+validates classifier and workflow contracts plus one named smoke from each
+focused tier without invoking the complete race-collection suite.
 
-```text
-uv run --no-project --with-requirements requirements/all.in python -m pytest -q --noconftest tests/test_predict_race_now.py tests/test_predict_market_form_residual.py
-```
-
-Both relevant tiers upload:
+Every tier except `non_forecasting` uploads:
 
 - `forecasting-suite.log`, the complete combined test output; and
 - `forecasting-ci-attestation.json`, containing the exact expected head, checked
@@ -55,19 +49,20 @@ artifact cannot be uploaded. Because a tracked file cannot contain the identity
 of the commit that contains itself, the CI attestation and the reviewer-local
 post-commit report are the authoritative exact-head evidence surfaces.
 
-## Required local acceptance
+## Required acceptance
 
-Run from a clean checkout of the exact pull-request head:
+Run the selected command from [forecasting_ci_tiers.md](forecasting_ci_tiers.md)
+in a clean checkout of the exact pull-request head. Scheduled, explicitly
+dispatched, forced, and classifier-escalated validation runs:
 
 ```text
-uv run --no-project --with-requirements requirements/all.in python -m pytest -q --noconftest tests/race_collection
+uv run --no-project --with-requirements requirements/all.in --with PyYAML python scripts/ci/run_full_forecasting.py
 ```
 
 The retained report must record the command, exit status, exact commit and tree,
-environment, complete log path, and log SHA-256. It must also record focused
-adversarial tests, populated migration and current-master overlap regressions,
-schema parsing/validation, changed-file compile/lint/format, `git diff --check`,
-and Git integrity.
+selected tier, environment, complete log path, and log SHA-256. Changed-file
+fatal lint, Python compilation, workflow syntax validation, classifier tests,
+and `git diff --check` remain required for CI routing changes.
 
 ## Repaired release contracts
 
