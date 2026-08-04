@@ -416,6 +416,32 @@ def test_missing_and_unknown_fields_are_rejected(location: str, mutation: str):
         )
 
 
+@pytest.mark.parametrize("invalid", [[], {}])
+@pytest.mark.parametrize(
+    "location,expected_code",
+    [
+        ("terminal_status", "TERMINAL_STATUS_INVALID"),
+        ("source_attempt_count", "ATTEMPT_AUTHORITY_INVALID"),
+        ("source_content_class", "SOURCE_CLASS_INVALID"),
+        ("artifact_role", "ARTIFACT_ROLE_INVALID"),
+    ],
+)
+def test_unhashable_scalar_shapes_are_stable_contract_rejections(
+    location: str, expected_code: str, invalid: object
+):
+    artifact, members = ready_artifact()
+    if location == "terminal_status":
+        artifact["terminal"]["status"] = invalid
+    elif location == "source_attempt_count":
+        artifact["attempt"]["source_attempt_count"] = invalid
+    elif location == "source_content_class":
+        artifact["provenance"]["source_files"][0]["content_class"] = invalid
+    else:
+        artifact["provenance"]["artifact_hashes"][0]["role"] = invalid
+    with pytest.raises(ManualIndependentCaptureRejected, match=expected_code):
+        validate(artifact, members)
+
+
 @pytest.mark.parametrize(
     "path_field,path_value",
     [

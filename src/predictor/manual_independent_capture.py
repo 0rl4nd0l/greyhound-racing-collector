@@ -646,7 +646,10 @@ def _source_files(value: Any) -> list[dict[str, Any]]:
             },
             f"artifact.provenance.source_files[{index}]",
         )
-        if row["content_class"] not in SOURCE_PATH_BY_CLASS:
+        if (
+            not isinstance(row["content_class"], str)
+            or row["content_class"] not in SOURCE_PATH_BY_CLASS
+        ):
             raise _reject("SOURCE_CLASS_INVALID", field=f"source_files[{index}]")
         if row["outcome_scope"] != "target_same_future_outcomes_excluded":
             raise _reject("OUTCOME_SCOPE_INVALID", field=f"source_files[{index}]")
@@ -688,7 +691,10 @@ def _artifact_hashes(value: Any) -> list[dict[str, Any]]:
             {"role", "path", "bytes", "sha256"},
             f"artifact.provenance.artifact_hashes[{index}]",
         )
-        if row["role"] not in ARTIFACT_PATH_BY_ROLE:
+        if (
+            not isinstance(row["role"], str)
+            or row["role"] not in ARTIFACT_PATH_BY_ROLE
+        ):
             raise _reject(
                 "ARTIFACT_ROLE_INVALID", field=f"artifact_hashes[{index}].role"
             )
@@ -766,7 +772,7 @@ def _capture(value: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
 
 
 def _validate_terminal_pair(status: Any, failure_code: Any) -> str | None:
-    if status not in TERMINAL_STATUSES:
+    if not isinstance(status, str) or status not in TERMINAL_STATUSES:
         raise _reject("TERMINAL_STATUS_INVALID")
     if status == "CAPTURE_READY":
         if failure_code is not None:
@@ -1049,7 +1055,11 @@ def validate_terminal_artifact(
     if attempt["attempt_count"] != 1 or isinstance(attempt["attempt_count"], bool):
         raise _reject("ATTEMPT_AUTHORITY_INVALID")
     source_attempts = attempt["source_attempt_count"]
-    if source_attempts not in {0, 1} or isinstance(source_attempts, bool):
+    if (
+        isinstance(source_attempts, bool)
+        or not isinstance(source_attempts, int)
+        or source_attempts not in {0, 1}
+    ):
         raise _reject("ATTEMPT_AUTHORITY_INVALID")
     if failure_code in ZERO_SOURCE_ATTEMPT_CODES and source_attempts != 0:
         raise _reject("ATTEMPT_AUTHORITY_INVALID")
