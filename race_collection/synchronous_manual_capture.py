@@ -20,6 +20,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from config.venue_mapping import normalize_venue
 from race_collection.manual_prediction_collector_request import (
     RECEIPT_READY,
     CollectorRequest,
@@ -829,7 +830,13 @@ def _v2_runner_rows(
     alignment = shadow.get("canonical_final_runner_alignment")
     if not isinstance(alignment, Mapping) or alignment.get("status") != "aligned" or alignment.get("canonical_runner_set_status") != "available":
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_source_not_aligned")
-    if shadow.get("source_url") != race["race_url"] or shadow.get("race_date") != race["date"] or shadow.get("venue") != race["venue"] or shadow.get("race_number") != race["race_number"]:
+    if (
+        shadow.get("source_url") != race["race_url"]
+        or shadow.get("race_date") != race["date"]
+        or not isinstance(shadow.get("venue"), str)
+        or normalize_venue(shadow["venue"]) != normalize_venue(race["venue"])
+        or shadow.get("race_number") != race["race_number"]
+    ):
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_race_identity_mismatch")
     observed = datetime.fromisoformat(str(shadow.get("metadata_captured_at") or ""))
     if observed.tzinfo is None or observed.utcoffset() is None:
@@ -838,8 +845,8 @@ def _v2_runner_rows(
     jump = datetime.fromisoformat(str(race["jump_datetime"]))
     if generated.tzinfo is None or generated.utcoffset() is None:
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="source_generated_at_invalid")
-    source_age = (generated - observed).total_seconds()
-    if source_age < 0 or source_age > 1200 or generated >= jump or observed >= jump:
+    source_distance = abs((generated - observed).total_seconds())
+    if source_distance > 1200 or generated >= jump or observed >= jump:
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_source_stale_or_postjump")
     participants = shadow.get("runner_box_name_list")
     if not isinstance(participants, list) or not participants:
@@ -972,6 +979,7 @@ def _v2_runner_rows(
         reader = csv.DictReader(io.StringIO(csv_text, newline=""), delimiter=delimiters[0], strict=True)
         headers = [str(value or "").lstrip("\ufeff").strip() for value in (reader.fieldnames or [])]
         lowered = {value.lower(): value for value in headers}
+        expert_history = {"dog name", "plc", "box", "date", "track"}.issubset(lowered)
         name_header = next((lowered[value] for value in ("dog_name", "dog name", "runner", "name") if value in lowered), None)
         box_header = next((lowered[value] for value in ("box", "box_number") if value in lowered), None)
         if name_header is None:
@@ -983,7 +991,15 @@ def _v2_runner_rows(
             name_cell = str(record[name_header] or "").strip()
             if not name_cell:
                 continue
-            if box_header is None:
+            if expert_history:
+                import re
+                match = re.match(r"^([0-9]{1,2})\.\s+(.+)$", name_cell)
+                if match is None:
+                    raise ValueError("expert_history_runner_prefix_invalid")
+                box, name = int(match.group(1)), match.group(2).strip()
+                if re.match(r"^[0-9]", name):
+                    raise ValueError("expert_history_runner_prefix_ambiguous")
+            elif box_header is None:
                 import re
                 match = re.match(r"^([0-9]{1,2})\s*[\.\):-]\s*(.+)$", name_cell)
                 if match is None:
