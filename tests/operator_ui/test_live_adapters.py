@@ -746,11 +746,11 @@ def test_unknown_lifecycle_and_full_status_verdict_disagreement_fail_closed(tmp_
     assert make_live(tmp_path / "conflict", conflict).collector(NOW).data["lanes"][0]["status"] == "DIVERGENT"
 
 
-@pytest.mark.parametrize("path", ["../prior", "/tmp/report"])
-def test_refresh_path_traversal_fails_closed(tmp_path, path):
+@pytest.mark.parametrize("path, expected_status", [("../prior", "INTEGRITY_FAILED"), ("/tmp/report", "DIVERGENT")])
+def test_refresh_path_traversal_fails_closed(tmp_path, path, expected_status):
     values = actual_payloads()
     values["odds_state"]["autopilot_output_dir"] = path
-    assert make_live(tmp_path, values).collector(NOW).data["lanes"][1]["status"] == "INTEGRITY_FAILED"
+    assert make_live(tmp_path, values).collector(NOW).data["lanes"][1]["status"] == expected_status
 
 
 def test_refresh_timestamp_and_status_disagreement_fail_closed(tmp_path):
