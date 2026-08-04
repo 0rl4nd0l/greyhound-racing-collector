@@ -415,9 +415,50 @@ def validate_prediction_result_v2(value: Any) -> dict[str, Any]:
         raise _blocked("PREDICTION_BUNDLE_INVALID", field="result.evidence.model")
     status, stage, blocker, prediction = result["status"], result["blocker_stage"], result["blocker"], result["prediction"]
     if status == "PREDICTION_READY":
-        chain=_exact_fields(evidence["protocol_chain"],{"request_id","request_sha256","claim_sha256","attempt_sha256","response_sha256","receipt_sha256","consume_sha256","authenticated_receipt_sha256"},"result.evidence.protocol_chain")
-        if not isinstance(chain["request_id"],str) or not chain["request_id"]:raise _blocked("PREDICTION_BUNDLE_INVALID",field="result.evidence.protocol_chain.request_id")
-        for name in set(chain)-{"request_id"}:_sha(chain[name],f"result.evidence.protocol_chain.{name}")
+        chain = evidence["protocol_chain"]
+        manual_chain_keys = {
+            "request_id", "request_sha256", "claim_sha256", "attempt_sha256",
+            "response_sha256", "receipt_sha256", "consume_sha256",
+            "authenticated_receipt_sha256",
+        }
+        collector_chain_keys = {
+            "protocol_kind", "collector_run_id", "capture_attempt_sha256",
+            "collector_exact_receipt_sha256",
+        }
+        if isinstance(chain, Mapping) and set(chain) == manual_chain_keys:
+            chain = _exact_fields(
+                chain, manual_chain_keys, "result.evidence.protocol_chain"
+            )
+            if not isinstance(chain["request_id"], str) or not chain["request_id"]:
+                raise _blocked(
+                    "PREDICTION_BUNDLE_INVALID",
+                    field="result.evidence.protocol_chain.request_id",
+                )
+            for name in set(chain) - {"request_id"}:
+                _sha(chain[name], f"result.evidence.protocol_chain.{name}")
+        elif isinstance(chain, Mapping) and set(chain) == collector_chain_keys:
+            chain = _exact_fields(
+                chain, collector_chain_keys, "result.evidence.protocol_chain"
+            )
+            if (
+                chain["protocol_kind"] != "collector_exact_capture_v1"
+                or not isinstance(chain["collector_run_id"], str)
+                or not chain["collector_run_id"]
+            ):
+                raise _blocked(
+                    "PREDICTION_BUNDLE_INVALID",
+                    field="result.evidence.protocol_chain",
+                )
+            for name in (
+                "capture_attempt_sha256",
+                "collector_exact_receipt_sha256",
+            ):
+                _sha(chain[name], f"result.evidence.protocol_chain.{name}")
+        else:
+            raise _blocked(
+                "PREDICTION_BUNDLE_INVALID",
+                field="result.evidence.protocol_chain",
+            )
         cutoff=_exact_fields(evidence["authenticated_cutoff"],{"history_seal_sha256","cutoff_timestamp","source_sha256","sealed_sha256"},"result.evidence.authenticated_cutoff")
         _timestamp(cutoff["cutoff_timestamp"],"result.evidence.authenticated_cutoff.cutoff_timestamp")
         for name in ("history_seal_sha256","source_sha256","sealed_sha256"):_sha(cutoff[name],f"result.evidence.authenticated_cutoff.{name}")
@@ -507,7 +548,181 @@ def _validate_request_binding(raw: bytes, result: Mapping[str, Any]) -> dict[str
     return dict(request)
 
 
+def _validate_authenticated_cutoff(
+    contents: Mapping[str, bytes], result: Mapping[str, Any]
+) -> None:
+    required = {"features/history_seal.json", "features/sealed_history.db"}
+    if not required.issubset(contents):
+        raise _blocked("PREDICTION_BUNDLE_INVALID", reason="sealed_protocol_required")
+    cutoff = result["evidence"]["authenticated_cutoff"]
+    history_raw = contents["features/history_seal.json"]
+    history = _canonical_json(
+        history_raw, max_bytes=BUNDLE_CONTROL_MAX_BYTES, label="history_seal"
+    )
+    history_keys={"schema_version","cutoff_timestamp","source_sha256","sealed_sha256","target_race_id","cutoff_basis","safe_race_count","safe_dog_row_count","excluded_target_metadata_rows","excluded_at_or_after_cutoff_metadata_rows","excluded_ambiguous_date_metadata_rows","target_rows_materialized","at_or_after_cutoff_rows_materialized"}
+    count_keys=("safe_race_count","safe_dog_row_count","excluded_target_metadata_rows","excluded_at_or_after_cutoff_metadata_rows","excluded_ambiguous_date_metadata_rows","target_rows_materialized","at_or_after_cutoff_rows_materialized")
+    digests=(cutoff.get("history_seal_sha256"),cutoff.get("sealed_sha256"),cutoff.get("source_sha256"),history.get("sealed_sha256"),history.get("source_sha256"))
+    jump=_timestamp(result["race"]["jump_timestamp"],"race.jump_timestamp")
+    if set(history) != history_keys or history.get("schema_version") != "sealed_prediction_history_v1" or history.get("cutoff_basis") != "race_date_strictly_before_target_jump_date" or any(not isinstance(history.get(key),int) or isinstance(history.get(key),bool) or history[key] < 0 for key in count_keys) or any(not isinstance(value,str) or _SHA256_RE.fullmatch(value) is None for value in digests) or sha256_bytes(history_raw) != cutoff["history_seal_sha256"] or sha256_bytes(contents["features/sealed_history.db"]) != history.get("sealed_sha256") or history.get("sealed_sha256") != cutoff["sealed_sha256"] or history.get("source_sha256") != cutoff["source_sha256"] or _timestamp(history.get("cutoff_timestamp"),"history.cutoff_timestamp") != jump or _timestamp(cutoff.get("cutoff_timestamp"),"cutoff.cutoff_timestamp") != jump or history.get("target_rows_materialized") != 0 or history.get("at_or_after_cutoff_rows_materialized") != 0 or history.get("target_race_id") != result["race"]["race_id"]: raise _blocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH", field="authenticated_cutoff")
+
+
+def _validate_collector_exact_protocol(
+    contents: Mapping[str, bytes], result: Mapping[str, Any]
+) -> None:
+    member_name = "protocol/collector_exact_receipt.json"
+    if member_name not in contents:
+        raise _blocked("PREDICTION_BUNDLE_INVALID", reason="sealed_protocol_required")
+    chain = result["evidence"]["protocol_chain"]
+    raw = contents[member_name]
+    receipt = _canonical_json(
+        raw,
+        max_bytes=BUNDLE_CONTROL_MAX_BYTES,
+        label="protocol.collector_exact_receipt",
+    )
+    receipt_keys = {
+        "schema_version", "race_id", "collector_run_id", "captured_at",
+        "emitted_at", "sealed_handoff", "artifacts", "form_name",
+    }
+    handoff_keys = {
+        "schema_version", "race_id", "race", "append_timestamp",
+        "runner_set_sha256", "source_report_sha256", "source_form_sha256",
+        "source_sidecar_sha256", "capture_attempt_sha256",
+        "append_report_sha256",
+    }
+    if (
+        set(receipt) != receipt_keys
+        or receipt.get("schema_version") != "collector-exact-capture-receipt-v1"
+        or receipt.get("race_id") != result["race"]["race_id"]
+        or receipt.get("collector_run_id") != chain["collector_run_id"]
+        or sha256_bytes(raw) != chain["collector_exact_receipt_sha256"]
+    ):
+        raise _blocked(
+            "PREDICTION_BUNDLE_IDENTITY_MISMATCH",
+            field="protocol.collector_exact_receipt",
+        )
+    handoff = receipt.get("sealed_handoff")
+    result_race = {
+        key: result["race"][key]
+        for key in (
+            "race_id", "url", "venue", "race_number", "race_date",
+            "jump_timestamp",
+        )
+    }
+    if (
+        not isinstance(handoff, Mapping)
+        or set(handoff) != handoff_keys
+        or handoff.get("schema_version") != "on_demand_verified_collector_capture_v2"
+        or handoff.get("race_id") != result["race"]["race_id"]
+        or handoff.get("race") != result_race
+        or handoff.get("runner_set_sha256")
+        != result["evidence"]["runner_set_sha256"]
+        or handoff.get("capture_attempt_sha256")
+        != chain["capture_attempt_sha256"]
+    ):
+        raise _blocked(
+            "PREDICTION_BUNDLE_IDENTITY_MISMATCH",
+            field="protocol.collector_exact_receipt.handoff",
+        )
+    captured = _timestamp(receipt.get("captured_at"), "protocol.captured_at")
+    emitted = _timestamp(receipt.get("emitted_at"), "protocol.emitted_at")
+    jump = _timestamp(result["race"]["jump_timestamp"], "race.jump_timestamp")
+    if (
+        receipt.get("captured_at") != handoff.get("append_timestamp")
+        or not captured <= emitted
+        or not captured < jump
+    ):
+        raise _blocked(
+            "PREDICTION_BUNDLE_IDENTITY_MISMATCH",
+            field="protocol.collector_exact_receipt.time",
+        )
+    artifacts = receipt.get("artifacts")
+    labels = ("report", "form", "sidecar")
+    if not isinstance(artifacts, Mapping) or set(artifacts) != set(labels):
+        raise _blocked(
+            "PREDICTION_BUNDLE_IDENTITY_MISMATCH",
+            field="protocol.collector_exact_receipt.artifacts",
+        )
+    external_paths: dict[str, str] = {}
+    for label in labels:
+        artifact = artifacts[label]
+        if not isinstance(artifact, Mapping) or set(artifact) != {"path", "sha256"}:
+            raise _blocked(
+                "PREDICTION_BUNDLE_IDENTITY_MISMATCH",
+                field="protocol.collector_exact_receipt.artifacts",
+            )
+        external_paths[label] = _relative_name(artifact.get("path"))
+        if artifact.get("sha256") != handoff.get(f"source_{label}_sha256"):
+            raise _blocked(
+                "PREDICTION_BUNDLE_IDENTITY_MISMATCH",
+                field="protocol.collector_exact_receipt.artifacts",
+            )
+    form_name = _relative_name(receipt.get("form_name"))
+    if (
+        Path(form_name).name != form_name
+        or form_name != Path(external_paths["form"]).name
+        or len(set(external_paths.values())) != len(external_paths)
+    ):
+        raise _blocked(
+            "PREDICTION_BUNDLE_IDENTITY_MISMATCH",
+            field="protocol.collector_exact_receipt.artifacts",
+        )
+    bundle_sources = {
+        "report": "source/capture.json",
+        "form": f"source/{form_name}",
+        "sidecar": f"source/{form_name}.metadata.json",
+    }
+    if not set(bundle_sources.values()).issubset(contents):
+        raise _blocked("PREDICTION_BUNDLE_INVALID", reason="sealed_protocol_required")
+    if any(
+        sha256_bytes(contents[bundle_sources[label]])
+        != artifacts[label]["sha256"]
+        for label in labels
+    ):
+        raise _blocked(
+            "PREDICTION_BUNDLE_IDENTITY_MISMATCH",
+            field="protocol.collector_exact_receipt.source",
+        )
+    source_report = _canonical_json(
+        contents[bundle_sources["report"]],
+        max_bytes=BUNDLE_CONTROL_MAX_BYTES,
+        label="source.capture",
+    )
+    attempts = source_report.get("attempts") if isinstance(source_report, Mapping) else None
+    matches = [
+        attempt
+        for attempt in attempts or []
+        if isinstance(attempt, Mapping)
+        and attempt.get("race_id") == result["race"]["race_id"]
+        and attempt.get("status") == "APPENDED"
+    ]
+    if (
+        not isinstance(source_report, Mapping)
+        or set(source_report) != {
+            "schema_version", "race_id", "collector_run_id", "attempts"
+        }
+        or source_report.get("schema_version")
+        != "collector_exact_capture_source_v1"
+        or source_report.get("race_id") != result["race"]["race_id"]
+        or source_report.get("collector_run_id") != chain["collector_run_id"]
+        or len(matches) != 1
+        or sha256_bytes(canonical_bytes(matches[0]))
+        != chain["capture_attempt_sha256"]
+        or not isinstance(matches[0].get("append_report"), Mapping)
+        or sha256_bytes(canonical_bytes(matches[0]["append_report"]))
+        != handoff.get("append_report_sha256")
+    ):
+        raise _blocked(
+            "PREDICTION_BUNDLE_IDENTITY_MISMATCH",
+            field="protocol.collector_exact_receipt.source_report",
+        )
+
+
 def _validate_sealed_protocol(contents: Mapping[str, bytes], result: Mapping[str, Any]) -> None:
+    chain = result["evidence"]["protocol_chain"]
+    if chain.get("protocol_kind") == "collector_exact_capture_v1":
+        _validate_collector_exact_protocol(contents, result)
+        _validate_authenticated_cutoff(contents, result)
+        return
     names = ("request", "claim", "attempt", "response", "receipt", "consume", "authenticated_receipt")
     required = {f"protocol/{name}.json" for name in names} | {"features/history_seal.json", "features/sealed_history.db"}
     if not required.issubset(contents): raise _blocked("PREDICTION_BUNDLE_INVALID", reason="sealed_protocol_required")
@@ -555,13 +770,7 @@ def _validate_sealed_protocol(contents: Mapping[str, bytes], result: Mapping[str
         if len(path)>512 or any(ord(character)<32 or ord(character)==127 for character in path): raise _blocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH", field="protocol.authenticated_receipt.path")
         artifact_paths.append(path)
     if exact.get("receipt") != reference or len(set(artifact_paths)) != len(artifact_paths) or any(artifacts[key].get("sha256") != sealed.get(f"source_{key}_sha256") for key in artifact_labels) or exact.get("form_name") != Path(artifacts["form"]["path"]).name: raise _blocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH", field="protocol.authenticated_receipt")
-    cutoff = result["evidence"]["authenticated_cutoff"]; history_raw = contents["features/history_seal.json"]
-    history = _canonical_json(history_raw, max_bytes=BUNDLE_CONTROL_MAX_BYTES, label="history_seal")
-    history_keys={"schema_version","cutoff_timestamp","source_sha256","sealed_sha256","target_race_id","cutoff_basis","safe_race_count","safe_dog_row_count","excluded_target_metadata_rows","excluded_at_or_after_cutoff_metadata_rows","excluded_ambiguous_date_metadata_rows","target_rows_materialized","at_or_after_cutoff_rows_materialized"}
-    count_keys=("safe_race_count","safe_dog_row_count","excluded_target_metadata_rows","excluded_at_or_after_cutoff_metadata_rows","excluded_ambiguous_date_metadata_rows","target_rows_materialized","at_or_after_cutoff_rows_materialized")
-    digests=(cutoff.get("history_seal_sha256"),cutoff.get("sealed_sha256"),cutoff.get("source_sha256"),history.get("sealed_sha256"),history.get("source_sha256"))
-    jump=_timestamp(result["race"]["jump_timestamp"],"race.jump_timestamp")
-    if set(history) != history_keys or history.get("schema_version") != "sealed_prediction_history_v1" or history.get("cutoff_basis") != "race_date_strictly_before_target_jump_date" or any(not isinstance(history.get(key),int) or isinstance(history.get(key),bool) or history[key] < 0 for key in count_keys) or any(not isinstance(value,str) or _SHA256_RE.fullmatch(value) is None for value in digests) or sha256_bytes(history_raw) != cutoff["history_seal_sha256"] or sha256_bytes(contents["features/sealed_history.db"]) != history.get("sealed_sha256") or history.get("sealed_sha256") != cutoff["sealed_sha256"] or history.get("source_sha256") != cutoff["source_sha256"] or _timestamp(history.get("cutoff_timestamp"),"history.cutoff_timestamp") != jump or _timestamp(cutoff.get("cutoff_timestamp"),"cutoff.cutoff_timestamp") != jump or history.get("target_rows_materialized") != 0 or history.get("at_or_after_cutoff_rows_materialized") != 0 or history.get("target_race_id") != result["race"]["race_id"]: raise _blocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH", field="authenticated_cutoff")
+    _validate_authenticated_cutoff(contents, result)
 
 
 class PredictionBlocked(RuntimeError):

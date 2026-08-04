@@ -19,6 +19,7 @@ import scripts.predict_race_now as predict_now
 import src.predictor.on_demand as on_demand
 from race_collection.manual_prediction_collector_request import (
     ManualPredictionCollectorProtocol,
+    ProtocolRejected,
 )
 from race_collection.synchronous_manual_capture import (
     CollectorBusy as CollectorLockBusy,
@@ -883,6 +884,30 @@ def test_scheduled_exact_receipt_reuses_while_capture_authority_is_busy(
     assert result["status"] == "PREDICTION_READY"
     assert calls == {"capture": 0, "score": 1}
     assert not protocol.outstanding_request_ids()
+    assert result["evidence"]["protocol_chain"]["protocol_kind"] == (
+        "collector_exact_capture_v1"
+    )
+    index = on_demand.verify_prediction_bundle_index(tmp_path / "bundles")
+    assert len(index["entries"]) == 1
+    bundle = tmp_path / "bundles" / index["entries"][0]["directory"]
+    assert (bundle / "protocol/collector_exact_receipt.json").is_file()
+    assert not (bundle / "protocol/request.json").exists()
+    contents = {
+        path.relative_to(bundle).as_posix(): path.read_bytes()
+        for path in bundle.rglob("*")
+        if path.is_file() and path.name != "bundle_manifest.json"
+    }
+    tampered = json.loads(contents["protocol/collector_exact_receipt.json"])
+    tampered["collector_run_id"] = "substituted-run"
+    contents["protocol/collector_exact_receipt.json"] = canonical_bytes(tampered)
+    with pytest.raises(PredictionBlocked):
+        on_demand._validate_sealed_protocol(contents, result)
+    paths["form"].write_bytes(b"tampered after verified snapshot")
+    public_handoff = {
+        key: item for key, item in value.items() if not key.startswith("_")
+    }
+    with pytest.raises(ProtocolRejected):
+        protocol.snapshot_collector_exact_handoff(public_handoff)
 
 
 def test_operator_cli_emits_one_canonical_fixture_prediction(
