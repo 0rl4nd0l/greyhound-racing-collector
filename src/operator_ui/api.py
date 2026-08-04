@@ -1180,9 +1180,10 @@ def install_level_1_api(app: Flask) -> bool:
             elif (
                 (
                     resource in _FINITE_EMPTY_INVALID_RESOURCES
-                    or resource == "system" and not raw.data
+                    or resource == "system"
                 )
                 and classification is EvidenceStatus.INVALID_INTEGRITY_FAILED
+                and not raw.data
             ):
                 response["data"] = {}
             elif raw.data:
