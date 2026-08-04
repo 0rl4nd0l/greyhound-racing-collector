@@ -176,6 +176,7 @@ def make_live(
     raw_overrides=None,
     upcoming_races=None,
     prediction_bundles=None,
+    reader_clock=None,
 ):
     values = values or actual_payloads()
     unit_bytes = {
@@ -279,7 +280,9 @@ def make_live(
                 authority_observed_at=(now.isoformat() if key == "model_catalog" else None),
             ),
         )
-    reader = OperatorEvidenceReader(sources, raw_sources=raw_sources, clock=lambda: now)
+    reader = OperatorEvidenceReader(
+        sources, raw_sources=raw_sources, clock=reader_clock or (lambda: now)
+    )
     units = InstalledUnits(
         **unit_bytes, observed_at=units_observed_at or now, working_directory="/srv/app",
         full_unit_name="shadow-autopilot.service",
@@ -345,6 +348,56 @@ def test_realistic_producer_payloads_are_bound_at_authenticated_collector_endpoi
     payload = response.get_json()
     assert payload["classification"] == "AVAILABLE/FRESH"
     assert [lane["run_id"] for lane in payload["data"]["lanes"]] == ["full-1", "odds-9"]
+
+
+def test_live_endpoints_use_exact_nonfrozen_request_clock(tmp_path, monkeypatch):
+    base = datetime.now(timezone.utc)
+    view = VerifiedCurrentRaceIndex(
+        "collector_current_race_index_v2", "run-live", base.isoformat(),
+        "1" * 64, b"packet", (), "refresh.json", "2" * 64,
+        "3" * 64, "4" * 64, "5" * 64,
+    )
+    monkeypatch.setattr(
+        live_module, "bounded_current_race_index", lambda **kwargs: view
+    )
+    live = make_live(
+        tmp_path / "live",
+        actual_payloads(base - timedelta(seconds=30)),
+        now=base,
+        units_observed_at=base,
+        reader_clock=lambda: datetime.now(timezone.utc),
+        upcoming_races=UpcomingRaceSource(tmp_path / "live/index.json", tmp_path / "live"),
+    )
+    app = Flask(__name__)
+    app.config.update(
+        TESTING=True, OPERATOR_UI_CONNECTED_MODE=True, OPERATOR_UI_LEVEL=2,
+        OPERATOR_UI_SECRET_KEY="endpoint-secret-" + "x" * 40,
+        OPERATOR_UI_USERNAME="operator",
+        OPERATOR_UI_PASSWORD_HASH=generate_password_hash("correct horse"),
+        OPERATOR_UI_AUDIT_DB_PATH=str(tmp_path / "audit.sqlite3"),
+        DATABASE_PATH=str(tmp_path / "canonical.sqlite3"),
+        OPERATOR_UI_DEPLOYED_COMMIT="b" * 40,
+        OPERATOR_UI_DEPLOYED_TREE="c" * 40,
+        OPERATOR_UI_DEPLOYED_VERSION="operator-ui-v1",
+        OPERATOR_UI_CLOCK=lambda: datetime.now(timezone.utc),
+    )
+    install_connected_mode(app); assert install_level_1_api(app)
+    app.config[CONFIG_KEY] = live
+    assert bind_configured_live_evidence(app)
+    client = app.test_client()
+    token = client.get("/operator-ui/login").get_json()["csrf_token"]
+    assert client.post("/operator-ui/login", data={"username":"operator","password":"correct horse","csrf_token":token}).status_code == 200
+
+    for route in (
+        "/operator-ui/api/v1/races/upcoming",
+        "/operator-ui/api/v1/collector",
+        "/operator-ui/api/v1/corpus",
+        "/operator-ui/api/v1/models",
+        "/operator-ui/api/v1/system",
+    ):
+        response = client.get(route)
+        assert response.status_code == 200
+        assert response.get_json()["classification"] != "NON_OPERATIONAL/PROVIDER_ERROR"
 
 
 def test_complete_calendar_and_nondefault_values(tmp_path):
@@ -702,8 +755,8 @@ def test_corpus_inventory_is_digest_only_but_final_status_retains_bytes(tmp_path
     live = make_live(tmp_path, values)
     observed = {}
     original = live._reader.read_raw_authenticated
-    def capture(key):
-        result = original(key); observed[key] = result; return result
+    def capture(key, **kwargs):
+        result = original(key, **kwargs); observed[key] = result; return result
     monkeypatch.setattr(live._reader, "read_raw_authenticated", capture)
     assert live.corpus(NOW).evidence.status == "UNAVAILABLE/DATA_MISSING"
     csv_manifest = values["corpus_manifest"]["files"]["packet/race_evidence_inventory.csv"]
@@ -1377,6 +1430,57 @@ def test_real_collector_rejection_codes_map_truthfully(tmp_path, monkeypatch, co
     result = make_live(tmp_path, upcoming_races=UpcomingRaceSource(tmp_path / "index", tmp_path)).upcoming(NOW)
     assert (result.evidence.status, result.evidence.availability, result.evidence.schema_integrity) == (status, availability, integrity)
     assert "no operational claim" in result.evidence.supported_claim
+
+
+def test_invalid_present_current_index_retains_exact_bounded_content_hash(tmp_path):
+    index = tmp_path / "index.json"
+    raw = b'{"schema_version":"collector_current_race_index_v2","broken":true}'
+    index.write_bytes(raw)
+    result = make_live(
+        tmp_path,
+        upcoming_races=UpcomingRaceSource(index, tmp_path),
+    ).upcoming(NOW)
+
+    assert result.evidence.status == "INVALID/INTEGRITY_FAILED"
+    assert result.evidence.availability == "present"
+    assert result.evidence.schema_integrity == "failed"
+    assert result.evidence.content_sha256 == hashlib.sha256(raw).hexdigest()
+    assert result.data == {}
+    app = Flask(__name__)
+    app.config.update(
+        TESTING=True, OPERATOR_UI_CONNECTED_MODE=True, OPERATOR_UI_LEVEL=2,
+        OPERATOR_UI_SECRET_KEY="endpoint-secret-" + "x" * 40,
+        OPERATOR_UI_USERNAME="operator",
+        OPERATOR_UI_PASSWORD_HASH=generate_password_hash("correct horse"),
+        OPERATOR_UI_AUDIT_DB_PATH=str(tmp_path / "audit.sqlite3"),
+        DATABASE_PATH=str(tmp_path / "canonical.sqlite3"),
+        OPERATOR_UI_DEPLOYED_COMMIT="b" * 40,
+        OPERATOR_UI_DEPLOYED_TREE="c" * 40,
+        OPERATOR_UI_DEPLOYED_VERSION="operator-ui-v1",
+        OPERATOR_UI_CLOCK=lambda: NOW,
+    )
+    install_connected_mode(app); assert install_level_1_api(app)
+    app.config[CONFIG_KEY] = make_live(
+        tmp_path / "endpoint-live",
+        upcoming_races=UpcomingRaceSource(index, tmp_path),
+    )
+    assert bind_configured_live_evidence(app)
+    client = app.test_client()
+    token = client.get("/operator-ui/login").get_json()["csrf_token"]
+    assert client.post("/operator-ui/login", data={"username":"operator","password":"correct horse","csrf_token":token}).status_code == 200
+    response = client.get("/operator-ui/api/v1/races/upcoming")
+    assert response.status_code == 200
+    assert response.get_json()["classification"] == "INVALID/INTEGRITY_FAILED"
+
+
+def test_collector_invalid_aggregate_axes_are_coherent(tmp_path):
+    values = actual_payloads()
+    values["full_state"]["schema_version"] = "wrong"
+    live = make_live(tmp_path / "live", values)
+    aggregate = live.collector(NOW).evidence
+    assert (aggregate.status, aggregate.availability, aggregate.schema_integrity) == (
+        "INVALID/INTEGRITY_FAILED", "present", "failed"
+    )
 
 
 @pytest.mark.parametrize(("age", "status"), [(60, "AVAILABLE/FRESH"), (60.000001, "STALE")])
