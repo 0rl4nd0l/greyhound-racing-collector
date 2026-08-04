@@ -1088,6 +1088,9 @@ class LiveEvidenceAdapters:
     def _raw(self, key: str) -> tuple[EvidenceEnvelope, bytes | None]:
         return self._reader.read_raw(key)
 
+    def _authenticated_raw(self, key: str) -> tuple[EvidenceEnvelope, bytes | None, int | None]:
+        return self._reader.read_raw_authenticated(key)
+
     def _lane(self, *, lane: str, now: datetime) -> tuple[EvidenceEnvelope, dict[str, Any]]:
         odds = lane == "ODDS_ONLY"
         state_key, report_key = (("odds_state", "odds_report") if odds else ("full_state", "full_report"))
@@ -1585,12 +1588,12 @@ class LiveEvidenceAdapters:
                 if not isinstance(item, Mapping) or set(item) != {"bytes", "sha256"} or type(item["bytes"]) is not int or item["bytes"] < 0:
                     raise ValueError("inventory manifest entry is invalid")
                 declared = _sha(item.get("sha256"))
-                raw_env, raw = self._raw(key)
-                if raw is None:
+                raw_env, raw, byte_count = self._authenticated_raw(key)
+                if raw is None and key not in {"corpus_inventory_csv", "corpus_inventory_jsonl"}:
                     return APIObservation(_status(raw_env, _missing_or_invalid(raw_env)), {})
                 if raw_env.status == "DIVERGENT":
                     return APIObservation(_status(raw_env, "DIVERGENT"), {})
-                raw_hash, byte_count = raw_env.content_sha256, len(raw)
+                raw_hash = raw_env.content_sha256
                 if key == "corpus_report_bytes" and raw_hash != envelope.content_sha256:
                     return APIObservation(_status(envelope, "DIVERGENT"), {})
                 if declared != raw_hash or item["bytes"] != byte_count:

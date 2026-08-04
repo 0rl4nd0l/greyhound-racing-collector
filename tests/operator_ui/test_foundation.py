@@ -28,11 +28,22 @@ from src.operator_ui.foundation import (
     OperatorEvidenceReader,
     ReadOnlyDatabase,
     ReadOnlySqlite,
+    RawSourceConfig,
     ReferenceHash,
     SourceConfig,
     TimestampSyntax,
     status_for,
 )
+
+
+def digest_only_reader(root: Path, raw_path: Path, *, digest: str, size: int) -> OperatorEvidenceReader:
+    json_path = root / "source.json"; write_payload(json_path)
+    raw = RawSourceConfig(
+        raw_path, root, "fixed_file", "inventory", "fixture.inventory",
+        "P-REPORT-24H", "Exact authenticated identity.", max_bytes=64*1024*1024,
+        expected_sha256=digest, expected_bytes=size, digest_only=True,
+    )
+    return OperatorEvidenceReader({"source": source_config(root, json_path)}, raw_sources={"inventory": raw}, clock=lambda: NOW)
 
 
 NOW = datetime(2026, 7, 31, 2, 0, tzinfo=timezone.utc)
@@ -70,6 +81,35 @@ def write_payload(path: Path, payload: object | None = None) -> bytes:
     raw = canonical_bytes(valid_payload() if payload is None else payload)
     path.write_bytes(raw)
     return raw
+
+
+def test_digest_only_raw_source_streams_identity_without_returning_bytes(tmp_path):
+    raw_path = tmp_path / "inventory.csv"; raw_path.write_bytes(b"inventory" * 8192)
+    digest = hashlib.sha256(raw_path.read_bytes()).hexdigest()
+    envelope, raw, byte_count = digest_only_reader(tmp_path, raw_path, digest=digest, size=raw_path.stat().st_size).read_raw_authenticated("inventory")
+    assert envelope.status == EvidenceStatus.AVAILABLE_FRESH.value
+    assert envelope.content_sha256 == digest and byte_count == raw_path.stat().st_size
+    assert raw is None
+
+
+@pytest.mark.parametrize("mismatch", ["hash", "bytes"])
+def test_digest_only_raw_source_identity_mismatch_is_divergent(tmp_path, mismatch):
+    raw_path = tmp_path / "inventory.jsonl"; raw_path.write_bytes(b"{}\n")
+    digest = hashlib.sha256(raw_path.read_bytes()).hexdigest()
+    reader = digest_only_reader(tmp_path, raw_path, digest="0"*64 if mismatch=="hash" else digest, size=4 if mismatch=="bytes" else 3)
+    envelope, raw, byte_count = reader.read_raw_authenticated("inventory")
+    assert envelope.status == EvidenceStatus.DIVERGENT.value
+    assert raw is None and byte_count is None
+
+
+def test_digest_only_raw_source_timeout_fails_closed(tmp_path, monkeypatch):
+    raw_path = tmp_path / "inventory.csv"; raw_path.write_bytes(b"inventory")
+    reader = digest_only_reader(tmp_path, raw_path, digest=hashlib.sha256(b"inventory").hexdigest(), size=9)
+    ticks = iter((0.0,31.0))
+    monkeypatch.setattr(foundation.time, "monotonic", lambda: next(ticks,31.0))
+    envelope, raw, byte_count = reader.read_raw_authenticated("inventory")
+    assert envelope.status == EvidenceStatus.INVALID_INTEGRITY_FAILED.value
+    assert raw is None and byte_count is None
 
 
 def source_config(root: Path, path: Path, **changes) -> SourceConfig:

@@ -44,6 +44,7 @@ _DEPLOYMENT_KEYS={"source_commit","source_tree","ui_version","profile_id"}
 _PROFILE_DEPLOYMENT_KEYS={"ui_version","profile_id"}
 _ARTIFACT_KEYS={"prediction_script","prediction_config","model_artifact","model_manifest","model_schema"}
 _MAX_CONTROL_BYTES=256*1024
+_DIGEST_ONLY_RAW_KEYS={"corpus_inventory_csv","corpus_inventory_jsonl"}
 _HEX40_RE=re.compile(r"^[0-9a-f]{40}$")
 _HEX64_RE=re.compile(r"^[0-9a-f]{64}$")
 
@@ -190,8 +191,10 @@ def _configured_live(layout:Mapping[str,Any])->LiveEvidenceAdapters:
     if not isinstance(live,dict) or set(live)!={"schema_version","observed_at","working_directory","sources","raw_sources","units","service_status"} or live.get("schema_version")!="operator_ui_live_authority_v1":raise RuntimeError("generated live evidence binding invalid")
     def entry(group:str,key:str)->tuple[Path,str,Path|None]:
         item=live[group].get(key)
-        allowed={"path","sha256"}|({"allowlisted_root"} if group=="sources" and key=="odds_refresh" else set())
+        digest_only=group=="raw_sources" and key in _DIGEST_ONLY_RAW_KEYS
+        allowed=({"path","sha256","bytes","authentication"} if digest_only else {"path","sha256"})|({"allowlisted_root"} if group=="sources" and key=="odds_refresh" else set())
         if not isinstance(item,dict) or set(item)!=allowed or not isinstance(item["path"],str) or not Path(item["path"]).is_absolute() or not _HEX64_RE.fullmatch(item["sha256"]):raise RuntimeError("generated live evidence binding invalid")
+        if digest_only and (item["authentication"]!="sha256_size_only_v1" or type(item["bytes"]) is not int or not 0<=item["bytes"]<=64*1024*1024):raise RuntimeError("generated live evidence binding invalid")
         path=Path(item["path"]);_regular(path)
         root=None
         if "allowlisted_root" in item:
@@ -215,7 +218,8 @@ def _configured_live(layout:Mapping[str,Any])->LiveEvidenceAdapters:
     raw_sources={}
     for key in live.get("raw_sources",{}):
         path,digest,_=entry("raw_sources",key);policy="P-CATALOG-60" if key.startswith("model_") else "P-REPORT-24H"
-        raw_sources[key]=RawSourceConfig(path,path.parent,"fixed_file",key,f"operator_ui.{key}",policy,"Exact fixed bytes only.",expected_sha256=digest)
+        item=live["raw_sources"][key];digest_only=key in _DIGEST_ONLY_RAW_KEYS
+        raw_sources[key]=RawSourceConfig(path,path.parent,"fixed_file",key,f"operator_ui.{key}",policy,"Exact authenticated file identity only." if digest_only else "Exact fixed bytes only.",max_bytes=64*1024*1024 if digest_only else 16_777_216,expected_sha256=digest,expected_bytes=item.get("bytes") if digest_only else None,digest_only=digest_only)
     unit_values={}
     for key in ("full_timer","full_service","odds_timer","odds_service"):
         path,digest,_=entry("units",key);raw=_retained_read(path)

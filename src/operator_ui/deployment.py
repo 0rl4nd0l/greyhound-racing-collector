@@ -10,6 +10,7 @@ import re
 import stat
 import subprocess
 import sys
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
@@ -47,6 +48,10 @@ _LIVE_RAW_KEYS = {
     "model_baseline_schema",
 }
 _UNIT_KEYS = {"full_timer", "full_service", "odds_timer", "odds_service"}
+_DIGEST_ONLY_RAW_KEYS = {"corpus_inventory_csv", "corpus_inventory_jsonl"}
+_DIGEST_ONLY_MAX_BYTES = 64 * 1024 * 1024
+_DIGEST_ONLY_DEADLINE_SECONDS = 30.0
+_READ_CHUNK_BYTES = 64 * 1024
 _UNIT_BASENAMES = {
     "full_timer": "shadow-autopilot.timer",
     "full_service": "shadow-autopilot.service",
@@ -153,6 +158,56 @@ def _retained_file_read(path: Path, maximum: int = 256 * 1024) -> bytes:
             except OSError:pass
 
 
+def _retained_file_digest(path: Path) -> tuple[str, int]:
+    """Stream one large fixed file to a digest without retaining its bytes."""
+    path = path.absolute(); opened: list[tuple[int, Path, tuple[int, ...]]] = []
+    descriptor = os.open("/", os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY)
+    started = time.monotonic()
+    try:
+        current = Path("/")
+        parts = path.parts[1:]
+        for offset, component in enumerate(parts):
+            info = os.fstat(descriptor)
+            opened.append((descriptor, current, (info.st_dev, info.st_ino, info.st_mode, info.st_size, info.st_mtime_ns, info.st_ctime_ns)))
+            current /= component; directory = offset < len(parts) - 1
+            descriptor = os.open(component, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | (os.O_DIRECTORY if directory else 0), dir_fd=descriptor)
+            info = os.fstat(descriptor)
+            if directory and not stat.S_ISDIR(info.st_mode) or not directory and not stat.S_ISREG(info.st_mode):
+                raise DeploymentRejected(f"authority input has wrong type: {path}")
+        info = os.fstat(descriptor)
+        identity = (info.st_dev, info.st_ino, info.st_mode, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+        opened.append((descriptor, current, identity))
+        if info.st_size > _DIGEST_ONLY_MAX_BYTES:
+            raise DeploymentRejected(f"bounded deployment input oversized: {path}")
+        digest = hashlib.sha256(); total = 0
+        while True:
+            if time.monotonic() - started > _DIGEST_ONLY_DEADLINE_SECONDS:
+                raise DeploymentRejected(f"bounded deployment input timed out: {path}")
+            chunk = os.read(descriptor, _READ_CHUNK_BYTES)
+            if not chunk: break
+            total += len(chunk)
+            if total > _DIGEST_ONLY_MAX_BYTES:
+                raise DeploymentRejected(f"bounded deployment input oversized: {path}")
+            digest.update(chunk)
+        if time.monotonic() - started > _DIGEST_ONLY_DEADLINE_SECONDS:
+            raise DeploymentRejected(f"bounded deployment input timed out: {path}")
+        for item, item_path, expected in opened:
+            observed = os.fstat(item); named = os.stat(item_path, follow_symlinks=False)
+            actual = (observed.st_dev, observed.st_ino, observed.st_mode, observed.st_size, observed.st_mtime_ns, observed.st_ctime_ns)
+            named_identity = (named.st_dev, named.st_ino, named.st_mode, named.st_size, named.st_mtime_ns, named.st_ctime_ns)
+            if actual != expected or named_identity != expected:
+                raise DeploymentRejected(f"authority identity changed during retained read: {path}")
+        if total != identity[3]:
+            raise DeploymentRejected(f"authority identity changed during retained read: {path}")
+        return digest.hexdigest(), total
+    except DeploymentRejected: raise
+    except OSError as error: raise DeploymentRejected(f"required input unreadable: {path}") from error
+    finally:
+        for item, _, _ in reversed(opened):
+            try: os.close(item)
+            except OSError: pass
+
+
 def _strict_json(raw: bytes) -> Any:
     def exact(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         value: dict[str, Any] = {}
@@ -200,9 +255,13 @@ def _live_authority(path: Path) -> dict[str, Any]:
                 unit_paths.add(file_path)
                 if file_path != file_path.resolve() or file_path.name != _UNIT_BASENAMES[name]:
                     raise DeploymentRejected("live authority unit path is invalid")
-            raw = _retained_file_read(file_path, 16 * 1024 * 1024)
-            snapshots[(group, name)] = raw
-            sealed[group][name] = {"path": str(file_path), "sha256": hashlib.sha256(raw).hexdigest()}
+            if group == "raw_sources" and name in _DIGEST_ONLY_RAW_KEYS:
+                digest, byte_count = _retained_file_digest(file_path)
+                sealed[group][name] = {"path": str(file_path), "sha256": digest, "bytes": byte_count, "authentication": "sha256_size_only_v1"}
+            else:
+                raw = _retained_file_read(file_path, 16 * 1024 * 1024)
+                snapshots[(group, name)] = raw
+                sealed[group][name] = {"path": str(file_path), "sha256": hashlib.sha256(raw).hexdigest()}
     try:
         odds_report = _strict_json(snapshots[("sources", "odds_report")])
         refresh_path = Path(value["sources"]["odds_refresh"])

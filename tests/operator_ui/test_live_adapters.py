@@ -209,7 +209,9 @@ def make_live(
         raw_sources[key] = RawSourceConfig(
             locator=path, allowlisted_root=allowlisted, source_kind="fixed_file",
             source_identity=key, source_locator=f"operator_ui.{key}", policy="P-CATALOG-60" if key.startswith("model_") else "P-REPORT-24H",
-            supported_claim="Exact fixed bytes only.", expected_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+            supported_claim="Exact fixed bytes only.", max_bytes=64*1024*1024 if key in {"corpus_inventory_csv","corpus_inventory_jsonl"} else 16_777_216,
+            expected_sha256=hashlib.sha256(path.read_bytes()).hexdigest(), expected_bytes=path.stat().st_size if key in {"corpus_inventory_csv","corpus_inventory_jsonl"} else None,
+            digest_only=key in {"corpus_inventory_csv","corpus_inventory_jsonl"},
         )
     sources = {}
     for key, payload in values.items():
@@ -668,6 +670,19 @@ def test_corpus_exact_manifest_and_bound_file_tamper_fail_closed(tmp_path):
     live = make_live(tmp_path / "replace")
     (tmp_path / "replace/packet/race_evidence_inventory.csv").write_bytes(b"changed")
     assert live.corpus(NOW).evidence.status == "DIVERGENT"
+
+
+def test_corpus_inventory_is_digest_only_but_final_status_retains_bytes(tmp_path, monkeypatch):
+    live = make_live(tmp_path)
+    observed = {}
+    original = live._reader.read_raw_authenticated
+    def capture(key):
+        result = original(key); observed[key] = result; return result
+    monkeypatch.setattr(live._reader, "read_raw_authenticated", capture)
+    assert live.corpus(NOW).evidence.status == "AVAILABLE/FRESH"
+    assert observed["corpus_inventory_csv"][1] is None
+    assert observed["corpus_inventory_jsonl"][1] is None
+    assert observed["corpus_final_status"][1] == b"RACE_EVIDENCE_INVENTORY_READY_FOR_EVALUATION\n"
 
 
 @pytest.mark.parametrize("mutation", ["unknown", "missing"])

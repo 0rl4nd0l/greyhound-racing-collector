@@ -133,6 +133,7 @@ def repository_binding_fixture(tmp_path,monkeypatch):
     live_raw={}
     for name in raw_names:
         path=live_root/f"{name}.raw";path.write_bytes(name.encode());live_raw[name]={"path":str(path.absolute()),"sha256":hashlib.sha256(path.read_bytes()).hexdigest()}
+        if name in {"corpus_inventory_csv","corpus_inventory_jsonl"}:live_raw[name].update(bytes=path.stat().st_size,authentication="sha256_size_only_v1")
     live_units={}
     for name in ("full_timer","full_service","odds_timer","odds_service"):
         path=live_root/f"{name}.unit";path.write_text("[Unit]\nDescription=test\n",encoding="utf-8");live_units[name]={"path":str(path.absolute()),"sha256":hashlib.sha256(path.read_bytes()).hexdigest()}

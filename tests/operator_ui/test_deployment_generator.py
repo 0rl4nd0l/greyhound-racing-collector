@@ -810,3 +810,39 @@ def test_generator_rejects_systemd_ambiguous_authority_paths(tmp_path, monkeypat
     with pytest.raises(DeploymentRejected, match="systemd-safe"):
         generate_package(**values)
     assert not (values["output_dir"] / "greyhound-operator-ui-r3.service").exists()
+
+
+@pytest.mark.parametrize("key,size", [("corpus_inventory_csv",17_015_083),("corpus_inventory_jsonl",22_391_456)])
+def test_generator_streams_canonical_sized_inventory_without_byte_retention(tmp_path, monkeypatch, key, size):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    path = Path(authority["raw_sources"][key]); path.write_bytes(b"x" * size)
+    assert generate_package(**values)["enabled"] is False
+    binding = json.loads((values["source_root"] / "var/operator_ui/generated/repository-v1.binding.json").read_text())
+    assert binding["live_evidence"]["raw_sources"][key] == {
+        "path": str(path.absolute()), "sha256": hashlib.sha256(b"x" * size).hexdigest(),
+        "bytes": size, "authentication": "sha256_size_only_v1",
+    }
+
+
+def test_generator_digest_only_inventory_ceiling_and_timeout_fail_closed(tmp_path, monkeypatch):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    path = Path(authority["raw_sources"]["corpus_inventory_csv"])
+    path.write_bytes(b"")
+    with path.open("r+b") as oversized:
+        oversized.truncate(64 * 1024 * 1024 + 1)
+    with pytest.raises(DeploymentRejected, match="oversized"): generate_package(**values)
+    path.write_bytes(b"inventory")
+    ticks = iter((0.0,31.0))
+    monkeypatch.setattr("src.operator_ui.deployment.time.monotonic", lambda: next(ticks,31.0))
+    with pytest.raises(DeploymentRejected, match="timed out"): generate_package(**values)
+
+
+def test_generator_digest_only_inventory_mutation_fails_closed(tmp_path, monkeypatch):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    path = Path(authority["raw_sources"]["corpus_inventory_jsonl"])
+    replace_during_authority_read(monkeypatch, path, component=False)
+    with pytest.raises(DeploymentRejected, match="authority.*changed|identity"):
+        generate_package(**values)
