@@ -66,10 +66,19 @@ Every record binds:
   did not occur, with downstream admissibility fixed to
   `research_only_noncanonical_phase7_excluded`.
 
+Validation requires trusted caller expectations for the run UUID, request UUID,
+canonical request hash, source commit, source tree, and explicit research-model
+hash. It also requires mutable caller-owned replay inventories; a successful
+validation records all three identifiers before returning, so reuse through the
+same persisted inventory is terminally rejected. `EXACT_RACE_INVALID` is
+accepted only when the requested URL is not already an exact canonical TheDogs
+race URL.
+
 Canonical JSON uses sorted keys, compact separators, and one trailing newline.
 Duplicate keys, unknown/missing fields, non-finite values, unsafe member paths,
-member/hash drift, race or request disagreement, replayed IDs/hashes, a late
-non-timeout artifact, and conflicting terminal states are rejected.
+outcome/result filename tokens, member/hash drift, race or request
+disagreement, replayed IDs/hashes, a late non-timeout artifact, and conflicting
+terminal states are rejected.
 
 ## Terminal vocabulary
 

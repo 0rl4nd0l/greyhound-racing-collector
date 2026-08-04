@@ -32,6 +32,7 @@ COMMIT = "c20932008edaa02f602733253165f2cd7845a2a3"
 TREE = "c4b5fc900e1a347c6fe0c889d3b300c7df8d2922"
 RUN_ID = "10000000-0000-4000-8000-000000000001"
 REQUEST_ID = "20000000-0000-4000-8000-000000000002"
+MODEL_BYTES = b'{"model":"fixture-research-model"}\n'
 
 
 def forbidden_paths(base: str = "/srv/greyhound-protected") -> dict[str, str]:
@@ -97,7 +98,7 @@ def ready_artifact() -> tuple[dict, dict[str, bytes]]:
         for row in runner_rows
     ]
     source = b"box,dog,source_timestamp\n1,Alpha Dog,2026-08-04T00:00:09+00:00\n"
-    model = b'{"model":"fixture-research-model"}\n'
+    model = MODEL_BYTES
     capture = canonical_bytes({"runner_set": runner_rows})
     cfg_raw = canonical_bytes(cfg)
     member_bytes = {
@@ -264,6 +265,7 @@ def valid_failure_artifact(code: str) -> tuple[dict, dict[str, bytes]]:
 
 
 def validate(artifact: dict, members: dict[str, bytes]) -> dict:
+    request_value = artifact["request"]
     return validate_terminal_artifact(
         artifact,
         config=config(),
@@ -271,6 +273,13 @@ def validate(artifact: dict, members: dict[str, bytes]) -> dict:
         member_bytes=members,
         expected_source_commit=COMMIT,
         expected_source_tree=TREE,
+        expected_model_sha256=sha256_bytes(MODEL_BYTES),
+        expected_run_id=artifact["run_id"],
+        expected_request_id=request_value["request_id"],
+        expected_request_sha256=canonical_sha256(request_value),
+        seen_run_ids=set(),
+        seen_request_ids=set(),
+        seen_request_sha256s=set(),
     )
 
 
@@ -340,6 +349,17 @@ def test_missing_and_unknown_fields_are_rejected(location: str, mutation: str):
             member_bytes=members,
             expected_source_commit=COMMIT,
             expected_source_tree=TREE,
+            expected_model_sha256=sha256_bytes(MODEL_BYTES),
+            expected_run_id=artifact.get("run_id", RUN_ID),
+            expected_request_id=artifact.get("request", {}).get(
+                "request_id", REQUEST_ID
+            ),
+            expected_request_sha256=canonical_sha256(
+                artifact.get("request", request())
+            ),
+            seen_run_ids=set(),
+            seen_request_ids=set(),
+            seen_request_sha256s=set(),
         )
 
 
@@ -525,6 +545,22 @@ def test_outcome_fields_and_result_evidence_paths_are_not_expressible():
     ):
         validate(artifact, members)
 
+    for forbidden_variant in (
+        "sources/official-results.json",
+        "sources/race_outcome.csv",
+        "capture/canonical-db.json",
+        "capture/phase-7.json",
+    ):
+        artifact, members = ready_artifact()
+        source = artifact["provenance"]["source_files"][0]
+        old_path = source["path"]
+        source["path"] = forbidden_variant
+        members[source["path"]] = members.pop(old_path)
+        with pytest.raises(
+            ManualIndependentCaptureRejected, match="FORBIDDEN_ARTIFACT_LOCATOR"
+        ):
+            validate(artifact, members)
+
     artifact, members = ready_artifact()
     artifact["provenance"]["source_files"][0]["outcome_scope"] = (
         "target_outcomes_included"
@@ -543,7 +579,13 @@ def test_replay_conflict_and_late_artifacts_fail_closed():
             member_bytes=members,
             expected_source_commit=COMMIT,
             expected_source_tree=TREE,
+            expected_model_sha256=sha256_bytes(MODEL_BYTES),
+            expected_run_id=RUN_ID,
+            expected_request_id=REQUEST_ID,
+            expected_request_sha256=canonical_sha256(artifact["request"]),
             seen_run_ids={RUN_ID},
+            seen_request_ids=set(),
+            seen_request_sha256s=set(),
         )
     with pytest.raises(ManualIndependentCaptureRejected, match="ARTIFACT_CONFLICT"):
         validate_terminal_artifact(
@@ -553,12 +595,86 @@ def test_replay_conflict_and_late_artifacts_fail_closed():
             member_bytes=members,
             expected_source_commit=COMMIT,
             expected_source_tree=TREE,
+            expected_model_sha256=sha256_bytes(MODEL_BYTES),
+            expected_run_id=RUN_ID,
+            expected_request_id=REQUEST_ID,
             expected_request_sha256="0" * 64,
+            seen_run_ids=set(),
+            seen_request_ids=set(),
+            seen_request_sha256s=set(),
         )
 
     artifact["timing"]["terminal_at"] = "2026-08-04T00:01:36+00:00"
     artifact["closure"]["closed_at"] = artifact["timing"]["terminal_at"]
     with pytest.raises(ManualIndependentCaptureRejected, match="LATE_ARTIFACT"):
+        validate(artifact, members)
+
+
+def test_success_updates_required_replay_inventories_and_second_use_is_rejected():
+    artifact, members = ready_artifact()
+    seen_runs: set[str] = set()
+    seen_requests: set[str] = set()
+    seen_hashes: set[str] = set()
+    expected_request_sha256 = canonical_sha256(artifact["request"])
+    arguments = {
+        "config": config(),
+        "forbidden_paths": forbidden_paths(),
+        "member_bytes": members,
+        "expected_source_commit": COMMIT,
+        "expected_source_tree": TREE,
+        "expected_model_sha256": sha256_bytes(MODEL_BYTES),
+        "expected_run_id": RUN_ID,
+        "expected_request_id": REQUEST_ID,
+        "expected_request_sha256": expected_request_sha256,
+        "seen_run_ids": seen_runs,
+        "seen_request_ids": seen_requests,
+        "seen_request_sha256s": seen_hashes,
+    }
+
+    validate_terminal_artifact(artifact, **arguments)
+    assert seen_runs == {RUN_ID}
+    assert seen_requests == {REQUEST_ID}
+    assert seen_hashes == {expected_request_sha256}
+    with pytest.raises(ManualIndependentCaptureRejected, match="REPLAYED_ARTIFACT"):
+        validate_terminal_artifact(artifact, **arguments)
+
+
+@pytest.mark.parametrize(
+    "expected_override",
+    [
+        {"expected_run_id": "30000000-0000-4000-8000-000000000003"},
+        {"expected_request_id": "30000000-0000-4000-8000-000000000003"},
+        {"expected_request_sha256": "0" * 64},
+    ],
+)
+def test_trusted_request_identity_is_mandatory(expected_override: dict[str, str]):
+    artifact, members = ready_artifact()
+    arguments = {
+        "config": config(),
+        "forbidden_paths": forbidden_paths(),
+        "member_bytes": members,
+        "expected_source_commit": COMMIT,
+        "expected_source_tree": TREE,
+        "expected_model_sha256": sha256_bytes(MODEL_BYTES),
+        "expected_run_id": RUN_ID,
+        "expected_request_id": REQUEST_ID,
+        "expected_request_sha256": canonical_sha256(artifact["request"]),
+        "seen_run_ids": set(),
+        "seen_request_ids": set(),
+        "seen_request_sha256s": set(),
+    }
+    arguments.update(expected_override)
+    with pytest.raises(ManualIndependentCaptureRejected, match="ARTIFACT_CONFLICT"):
+        validate_terminal_artifact(artifact, **arguments)
+
+
+def test_exact_race_failure_cannot_hide_a_valid_canonical_url():
+    artifact, members = valid_failure_artifact("EXACT_RACE_INVALID")
+    artifact["request"]["requested_race_url"] = race()["url"]
+    artifact["provenance"]["request_sha256"] = canonical_sha256(artifact["request"])
+    with pytest.raises(
+        ManualIndependentCaptureRejected, match="TERMINAL_FAILURE_CONFLICT"
+    ):
         validate(artifact, members)
 
 

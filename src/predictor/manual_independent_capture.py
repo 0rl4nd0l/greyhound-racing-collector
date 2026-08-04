@@ -11,8 +11,7 @@ import math
 import os
 import re
 import uuid
-from collections.abc import Mapping, Sequence
-from collections.abc import Set as AbstractSet
+from collections.abc import Mapping, MutableSet, Sequence
 from copy import deepcopy
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -137,6 +136,8 @@ _FORBIDDEN_MEMBER_PARTS = frozenset(
         "collector-state",
         "forward-corpus",
         "live-odds",
+        "outcome",
+        "outcomes",
         "phase-7",
         "phase7",
         "result",
@@ -510,8 +511,14 @@ def _request(value: Any, *, exact_race_invalid: bool) -> dict[str, Any]:
     ):
         raise _reject("EXACT_RACE_INVALID")
     if exact_race_invalid:
-        if request["selected_race"] is not None:
-            raise _reject("RACE_IDENTITY_DISAGREEMENT")
+        requested_identity = canonical_thedogs_race_identity(
+            request["requested_race_url"]
+        )
+        if request["selected_race"] is not None or (
+            requested_identity is not None
+            and requested_identity["canonical_url"] == request["requested_race_url"]
+        ):
+            raise _reject("TERMINAL_FAILURE_CONFLICT")
     else:
         race = _race(request["selected_race"], "artifact.request.selected_race")
         if request["requested_race_url"] != race["url"]:
@@ -544,7 +551,21 @@ def _relative_member_path(value: Any, label: str) -> str:
     if path.as_posix() != value or any(part in {"", ".", ".."} for part in path.parts):
         raise _reject("UNSAFE_ARTIFACT_PATH", field=label)
     normalized_parts = {part.lower().replace("_", "-") for part in path.parts}
-    if normalized_parts & _FORBIDDEN_MEMBER_PARTS:
+    contains_forbidden_sequence = False
+    for part in path.parts:
+        tokens = re.findall(r"[a-z0-9]+", part.lower())
+        for forbidden in _FORBIDDEN_MEMBER_PARTS:
+            forbidden_tokens = re.findall(r"[a-z0-9]+", forbidden)
+            width = len(forbidden_tokens)
+            if any(
+                tokens[index : index + width] == forbidden_tokens
+                for index in range(len(tokens) - width + 1)
+            ):
+                contains_forbidden_sequence = True
+                break
+        if contains_forbidden_sequence:
+            break
+    if normalized_parts & _FORBIDDEN_MEMBER_PARTS or contains_forbidden_sequence:
         raise _reject("FORBIDDEN_ARTIFACT_LOCATOR", field=label)
     return value
 
@@ -730,12 +751,13 @@ def validate_terminal_artifact(
     member_bytes: Mapping[str, bytes],
     expected_source_commit: str,
     expected_source_tree: str,
-    expected_run_id: str | None = None,
-    expected_request_id: str | None = None,
-    expected_request_sha256: str | None = None,
-    seen_run_ids: AbstractSet[str] = frozenset(),
-    seen_request_ids: AbstractSet[str] = frozenset(),
-    seen_request_sha256s: AbstractSet[str] = frozenset(),
+    expected_model_sha256: str,
+    expected_run_id: str,
+    expected_request_id: str,
+    expected_request_sha256: str,
+    seen_run_ids: MutableSet[str],
+    seen_request_ids: MutableSet[str],
+    seen_request_sha256s: MutableSet[str],
 ) -> dict[str, Any]:
     """Validate one terminal record and all supplied byte/hash bindings."""
 
@@ -777,15 +799,25 @@ def validate_terminal_artifact(
     request_id = request["request_id"]
     request_sha256 = canonical_sha256(request)
 
-    if expected_run_id is not None and run_id != expected_run_id:
+    trusted_run_id = _canonical_uuid(expected_run_id, "expected_run_id")
+    trusted_request_id = _canonical_uuid(expected_request_id, "expected_request_id")
+    trusted_request_sha256 = _sha256(expected_request_sha256, "expected_request_sha256")
+    if run_id != trusted_run_id:
         raise _reject("ARTIFACT_CONFLICT", field="run_id")
-    if expected_request_id is not None and request_id != expected_request_id:
+    if request_id != trusted_request_id:
         raise _reject("ARTIFACT_CONFLICT", field="request_id")
-    if (
-        expected_request_sha256 is not None
-        and request_sha256 != expected_request_sha256
-    ):
+    if request_sha256 != trusted_request_sha256:
         raise _reject("ARTIFACT_CONFLICT", field="request_sha256")
+    replay_sets = (
+        (seen_run_ids, "seen_run_ids", _canonical_uuid),
+        (seen_request_ids, "seen_request_ids", _canonical_uuid),
+        (seen_request_sha256s, "seen_request_sha256s", _sha256),
+    )
+    for values, label, validator in replay_sets:
+        if not isinstance(values, MutableSet):
+            raise _reject("REPLAY_INVENTORY_INVALID", field=label)
+        for item in values:
+            validator(item, label)
     if (
         run_id in seen_run_ids
         or request_id in seen_request_ids
@@ -968,6 +1000,9 @@ def validate_terminal_artifact(
         raise _reject("SOURCE_PROVENANCE_MISMATCH")
     for name in ("config_sha256", "model_sha256", "request_sha256"):
         _sha256(provenance[name], f"artifact.provenance.{name}")
+    trusted_model_sha256 = _sha256(expected_model_sha256, "expected_model_sha256")
+    if provenance["model_sha256"] != trusted_model_sha256:
+        raise _reject("MODEL_HASH_DRIFT")
     if provenance["config_sha256"] != canonical_sha256(validated_config):
         raise _reject("CONFIG_HASH_DRIFT")
     if provenance["request_sha256"] != request_sha256:
@@ -1077,6 +1112,9 @@ def validate_terminal_artifact(
         or closure["downstream_admissibility"] != DOWNSTREAM_ADMISSIBILITY
     ):
         raise _reject("DOWNSTREAM_AUTHORITY_INVALID")
+    seen_run_ids.add(run_id)
+    seen_request_ids.add(request_id)
+    seen_request_sha256s.add(request_sha256)
     return deepcopy(dict(artifact))
 
 
