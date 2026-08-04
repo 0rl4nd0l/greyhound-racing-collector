@@ -531,6 +531,39 @@ def collector_lanes():
     return [full, odds]
 
 
+def test_collector_preserves_timezone_bearing_producer_run_ids(tmp_path):
+    lanes = collector_lanes()
+    lanes[0]["run_id"] = "20260804T100012+1000"
+    lanes[1]["run_id"] = "20260804T191454+1000_odds_capture"
+    lanes[1]["operational_context"]["lock_owner"] = {
+        "kind": "collector",
+        "run_id": "20260804T191454+1000_odds_capture",
+        "started_at": "2026-07-31T01:02:00Z",
+    }
+    app = app_for(tmp_path)
+    register_level_1_provider(
+        app,
+        "collector",
+        lambda _now: APIObservation(
+            evidence("P-COLLECTOR-AGGREGATE"), {"lanes": lanes}
+        ),
+    )
+    client = app.test_client()
+    login(client)
+
+    response = client.get(ROUTES["collector"])
+
+    assert response.status_code == 200
+    response_lanes = response.get_json()["data"]["lanes"]
+    assert [lane["run_id"] for lane in response_lanes] == [
+        "20260804T100012+1000",
+        "20260804T191454+1000_odds_capture",
+    ]
+    assert response_lanes[1]["operational_context"]["lock_owner"]["run_id"] == (
+        "20260804T191454+1000_odds_capture"
+    )
+
+
 def corpus_report():
     return {
         "report_id": "report-1",

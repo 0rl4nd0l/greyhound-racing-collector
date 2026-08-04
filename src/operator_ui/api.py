@@ -475,7 +475,7 @@ def _collector_lane(value: Any, *, request_now: datetime) -> dict[str, Any]:
         )
         owner = {
             "kind": _text(owner_raw["kind"]),
-            "run_id": _id(owner_raw["run_id"]),
+            "run_id": _text(owner_raw["run_id"]),
             "started_at": _utc(owner_raw["started_at"], field="lock owner started_at")[0],
         }
     capture_raw = _exact(
@@ -543,7 +543,7 @@ def _collector_lane(value: Any, *, request_now: datetime) -> dict[str, Any]:
         "reference_hashes": _named_hashes(
             raw["reference_hashes"], required=status != "DATA_MISSING"
         ),
-        "run_id": _id(raw["run_id"]),
+        "run_id": _text(raw["run_id"]),
         "state_age_seconds": state_age,
         "status": status,
     }
