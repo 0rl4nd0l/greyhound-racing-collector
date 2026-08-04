@@ -159,6 +159,16 @@ def reader(config: SourceConfig) -> OperatorEvidenceReader:
     return OperatorEvidenceReader({"fixture": config}, clock=lambda: NOW)
 
 
+def test_source_config_default_max_bytes_is_256_kib(tmp_path):
+    configured = SourceConfig(
+        tmp_path / "source.json", tmp_path, "fixture", "fixture-v1",
+        "fixture.source", "P-DEPLOY-60", "Exact fixture.",
+        JsonSource(None, None, (), None),
+    )
+
+    assert configured.max_bytes == 256 * 1024
+
+
 def test_valid_envelope_is_deterministic_finite_immutable_and_serializable(
     tmp_path,
 ):

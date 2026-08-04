@@ -181,7 +181,7 @@ class SourceConfig:
     policy: str
     supported_claim: str | HistoricalClaim
     json: JsonSource
-    max_bytes: int = 1_048_576
+    max_bytes: int = 256 * 1024
     max_envelope_bytes: int = 32_768
     expected_sha256: str | None = None
 

@@ -155,6 +155,18 @@ def test_repository_profile_binds_authoritative_sources_and_separate_operations_
     assert worker.canonical_db==canonical and worker.collector_request_root==evidence/"manual_prediction_collector_requests_v1"
     assert canonical.read_bytes()==before and not (operations/"canonical.sqlite3").exists()
     live=app.config[bootstrap_module.CONFIG_KEY]
+    source_limits={key:config.max_bytes for key,config in live._reader._sources.items()}
+    assert source_limits=={
+        "full_state":512*1024,
+        "full_report":512*1024,
+        "odds_state":256*1024,
+        "odds_report":256*1024,
+        "odds_refresh":256*1024,
+        "corpus_report":256*1024,
+        "corpus_manifest":256*1024,
+        "deployment_manifest":256*1024,
+        "model_catalog":256*1024,
+    }
     refresh=live._reader._sources["odds_refresh"]
     assert refresh.locator.relative_to(refresh.allowlisted_root).as_posix()=="reports/odds_capture_refresh_report.json"
     assert refresh.json.serialization_policy.value=="producer_pretty_sorted"
