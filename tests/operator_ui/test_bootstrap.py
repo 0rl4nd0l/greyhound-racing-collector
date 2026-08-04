@@ -1,7 +1,7 @@
 import pytest
 import shutil
 import hashlib
-import time
+import threading
 import json
 from datetime import datetime, timezone
 from pathlib import Path
@@ -284,12 +284,15 @@ def test_finite_testing_fixture_profile_builds_real_repository_composition(tmp_p
           "runners":[{"box_number":1,"display_name":"ALPHA","identity":"alpha","source_native_runner_id":"dog-1"}]}
     view=VerifiedCurrentRaceIndex("collector_current_race_index_v2","run","2026-08-01T00:00:00Z",digest,b"{}",(race,),"source.json",digest,digest,digest,digest)
     monkeypatch.setattr(bootstrap_module,"bounded_current_race_index",lambda **_:view)
+    runner_completed = threading.Event()
     def terminal_runner(store,job_id,_worker,*,now,confirm_audit):
         job,attempt=store.claim_attempt(job_id,now=now(),confirm_audit=confirm_audit)
         store.transition(job_id,Phase.ATTEMPT_STARTED,now=now(),status="RUNNING",reason="predictor_started",facts={"attempt_id":attempt,"pid":123},confirm_audit=confirm_audit)
         empty=hashlib.sha256(b"").hexdigest()
         facts={"attempt_id":attempt,"pid":123,"exit_code":-1,"stdout_complete":False,"stdout_prefix_length":0,"stdout_prefix_sha256":empty,"stderr_complete":False,"stderr_prefix_length":0,"stderr_prefix_sha256":empty}
-        return store.transition(job_id,Phase.FAILED,now=now(),status="FAILED",reason="POST_SPAWN_FAILURE",facts=facts,confirm_audit=confirm_audit)
+        failed_job = store.transition(job_id,Phase.FAILED,now=now(),status="FAILED",reason="POST_SPAWN_FAILURE",facts=facts,confirm_audit=confirm_audit)
+        runner_completed.set()
+        return failed_job
     monkeypatch.setattr(bootstrap_module,"run_once",terminal_runner)
     app = Flask(__name__)
     app.config.update(TESTING=True, OPERATOR_UI_CONNECTED_MODE=True,
@@ -310,8 +313,7 @@ def test_finite_testing_fixture_profile_builds_real_repository_composition(tmp_p
     response=client.post("/operator-ui/api/v1/prediction-jobs",base_url="https://localhost",headers={"X-CSRF-Token":token},json={"race_id":"race-fixture","model_id":"latest-research","config_id":"manual-default","odds_source_id":"auto","idempotency_key":"12345678-1234-4123-8123-123456789abc"})
     assert response.status_code==202 and response.get_json()["phase"]=="WAITING_FOR_CLAIM",response.get_json()
     job_id=response.get_json()["job_id"]
-    deadline=time.monotonic()+2
-    while services.job_store.get(job_id).phase is not Phase.FAILED and time.monotonic()<deadline:time.sleep(.01)
+    assert runner_completed.wait(timeout=30), "terminal runner did not complete within 30 seconds"
     job=services.job_store.get(job_id)
     assert job.attempt_claimed and job.phase is Phase.FAILED
     assert [event["phase"] for event in services.job_store.events(job_id)][-3:]==["CLAIMED","ATTEMPT_STARTED","FAILED"]
