@@ -668,6 +668,69 @@ def test_collector_non_healthy_discloses_bounded_lane_states(
     ]
 
 
+@pytest.mark.parametrize("lane_status", ["DIVERGENT", "INTEGRITY_FAILED"])
+def test_collector_untrusted_lane_accepts_empty_reference_hashes(
+    tmp_path, lane_status
+):
+    lanes = collector_lanes()
+    lanes[0].update(
+        status=lane_status,
+        deadline_utc=None,
+        state_age_seconds=None,
+        reference_hashes={},
+    )
+    app = app_for(tmp_path)
+    register_level_1_provider(
+        app,
+        "collector",
+        lambda _now: APIObservation(
+            evidence("P-COLLECTOR-AGGREGATE", status="DIVERGENT"),
+            {"lanes": lanes},
+        ),
+    )
+    client = app.test_client()
+    login(client)
+
+    response = client.get(ROUTES["collector"])
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["classification"] == "DIVERGENT"
+    assert payload["data"]["lanes"][0]["status"] == lane_status
+    assert payload["data"]["lanes"][0]["reference_hashes"] == {}
+
+
+@pytest.mark.parametrize(
+    "lane_status",
+    [
+        "ACTIVE",
+        "RECEIPT_READY",
+        "CAPTURE_WINDOW_CLOSED",
+        "CAPTURE_FAILED",
+        "STALE",
+    ],
+)
+def test_collector_trusted_lane_rejects_empty_reference_hashes(
+    tmp_path, lane_status
+):
+    lanes = collector_lanes()
+    lanes[0].update(status=lane_status, reference_hashes={})
+    if lane_status == "STALE":
+        lanes[0].update(deadline_utc=None, state_age_seconds=None)
+    app = app_for(tmp_path)
+    register_level_1_provider(
+        app,
+        "collector",
+        lambda _now: APIObservation(
+            evidence("P-COLLECTOR-AGGREGATE"), {"lanes": lanes}
+        ),
+    )
+    client = app.test_client()
+    login(client)
+
+    audited_provider_error(tmp_path, client.get(ROUTES["collector"]))
+
+
 @pytest.mark.parametrize(
     ("classification", "component_status"),
     [

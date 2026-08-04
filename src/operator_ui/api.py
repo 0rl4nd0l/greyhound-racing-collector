@@ -541,7 +541,8 @@ def _collector_lane(value: Any, *, request_now: datetime) -> dict[str, Any]:
         "operational_context": context,
         "phase": _text(raw["phase"]),
         "reference_hashes": _named_hashes(
-            raw["reference_hashes"], required=status != "DATA_MISSING"
+            raw["reference_hashes"],
+            required=status not in {"DATA_MISSING", "INTEGRITY_FAILED", "DIVERGENT"},
         ),
         "run_id": _text(raw["run_id"]),
         "state_age_seconds": state_age,
