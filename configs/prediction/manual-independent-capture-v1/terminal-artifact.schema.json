@@ -201,7 +201,7 @@
         "display_name": {"type": "string", "minLength": 1},
         "identity": {"type": "string", "minLength": 1},
         "source_native_runner_id": {"type": ["string", "null"]},
-        "decimal_odds": {"type": "number", "exclusiveMinimum": 0}
+        "decimal_odds": {"type": "number", "exclusiveMinimum": 1}
       }
     }
   }

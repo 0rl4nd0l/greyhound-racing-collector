@@ -529,6 +529,14 @@ def test_runner_and_odds_hash_drift_are_rejected():
         validate(artifact, members)
 
 
+@pytest.mark.parametrize("invalid_odds", [1, 1.0, 0.5, 0, -1])
+def test_decimal_odds_must_be_finite_and_greater_than_one(invalid_odds: float):
+    artifact, members = ready_artifact()
+    artifact["capture"]["runner_set"][0]["decimal_odds"] = invalid_odds
+    with pytest.raises(ManualIndependentCaptureRejected, match="ODDS_INVALID"):
+        validate(artifact, members)
+
+
 @pytest.mark.parametrize(
     "location,field,value",
     [

@@ -712,7 +712,7 @@ def _capture(value: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
             isinstance(odds, bool)
             or not isinstance(odds, (int, float))
             or not math.isfinite(float(odds))
-            or odds <= 0
+            or odds <= 1
         ):
             raise _reject("ODDS_INVALID", field=f"runner_set[{index}].decimal_odds")
         identity_row = {key: row[key] for key in row if key != "decimal_odds"}
