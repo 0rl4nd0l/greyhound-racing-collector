@@ -341,13 +341,16 @@ def test_json_schemas_and_example_publish_the_exact_fail_closed_vocabulary():
     [
         ("display_name", " Alpha Dog"),
         ("display_name", "Alpha Dog "),
+        ("display_name", "Alpha Dog\n"),
         ("identity", "alpha dog"),
         ("identity", " ALPHA DOG"),
         ("identity", "ALPHA DOG "),
+        ("identity", "ALPHA DOG\n"),
         ("identity", "é"),
         ("source_native_runner_id", ""),
         ("source_native_runner_id", " dog-1"),
         ("source_native_runner_id", "dog-1 "),
+        ("source_native_runner_id", "dog-1\n"),
     ],
 )
 def test_published_runner_strings_cannot_pass_schema_but_fail_runtime(
