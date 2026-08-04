@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import tempfile
 import time
 import uuid
@@ -215,6 +216,7 @@ def _validate_collector_source_report(
     *,
     race_id: str,
     collector_run_id: str,
+    emitted_at: str,
     capture_attempt_sha256: str,
     append_report_sha256: str,
 ) -> None:
@@ -224,23 +226,48 @@ def _validate_collector_source_report(
         raise ProtocolRejected("RECORD_MALFORMED") from exc
     if (
         type(report) is not dict
+        or set(report)
+        != {
+            "schema_version",
+            "collector_run_id",
+            "generated_at",
+            "race_id",
+            "source_race_id",
+            "source_plan_item",
+            "source_attempt",
+            "attempts",
+        }
         or canonical_bytes(report) != raw
         or report.get("schema_version") != "collector_exact_capture_source_v1"
         or report.get("race_id") != race_id
         or report.get("collector_run_id") != collector_run_id
+        or report.get("generated_at") != emitted_at
+    ):
+        raise ProtocolRejected("EXACT_RECEIPT_MALFORMED")
+    _timestamp(report["generated_at"], "source_report.generated_at")
+    source_race_id = _known_text(
+        report.get("source_race_id"), "source_report.source_race_id"
+    )
+    source_plan = report.get("source_plan_item")
+    source_attempt = report.get("source_attempt")
+    if (
+        type(source_plan) is not dict
+        or type(source_attempt) is not dict
+        or source_plan.get("schema_version")
+        != "autonomous_live_odds_capture_plan_item_v1"
+        or source_plan.get("status") != "READY_TO_CAPTURE"
+        or source_plan.get("race_id") != source_race_id
+        or source_attempt.get("schema_version")
+        != "autonomous_live_odds_capture_attempt_v1"
+        or source_attempt.get("race_id") != source_race_id
+        or source_attempt.get("status") != "APPENDED"
     ):
         raise ProtocolRejected("EXACT_RECEIPT_MALFORMED")
     attempts = report.get("attempts")
-    matches = [
-        attempt
-        for attempt in attempts or []
-        if isinstance(attempt, Mapping)
-        and attempt.get("race_id") == race_id
-        and attempt.get("status") == "APPENDED"
-    ]
-    if len(matches) != 1:
+    adapted_attempt = {**source_attempt, "race_id": race_id}
+    if type(attempts) is not list or attempts != [adapted_attempt]:
         raise ProtocolRejected("EXACT_RECEIPT_MALFORMED")
-    attempt = matches[0]
+    attempt = attempts[0]
     append_report = attempt.get("append_report")
     if (
         sha256_bytes(canonical_bytes(attempt)) != capture_attempt_sha256
@@ -446,8 +473,18 @@ class ManualPredictionCollectorProtocol:
             flags = os.O_RDONLY | os.O_NOFOLLOW
             if directory:
                 flags |= os.O_DIRECTORY
+            elif hasattr(os, "O_NONBLOCK"):
+                flags |= os.O_NONBLOCK
             descriptor = os.open(name, flags, dir_fd=parent)
             opened.append(descriptor)
+            opened_value = os.fstat(descriptor)
+            valid_type = (
+                stat.S_ISDIR(opened_value.st_mode)
+                if directory
+                else stat.S_ISREG(opened_value.st_mode)
+            )
+            if not valid_type:
+                raise ProtocolRejected("PROTOCOL_PATH_UNSAFE")
             expected = identity(descriptor)
             if directory:
                 retained_dirs.append((parent, name, descriptor, expected))
@@ -535,6 +572,7 @@ class ManualPredictionCollectorProtocol:
             evidence_root = directory(self.root.parent)
             artifact_raws: dict[str, bytes] = {}
             artifact_paths: dict[str, Path] = {}
+            artifact_identities: dict[str, tuple[int, int]] = {}
             for label, source_key in (
                 ("report", "source_report_sha256"),
                 ("form", "source_form_sha256"),
@@ -546,16 +584,24 @@ class ManualPredictionCollectorProtocol:
                     "sha256",
                 }:
                     raise ProtocolRejected("EXACT_RECEIPT_MALFORMED")
-                relative = Path(
-                    _known_text(artifact.get("path"), f"artifacts.{label}.path")
+                relative_text = _known_text(
+                    artifact.get("path"), f"artifacts.{label}.path"
                 )
-                if relative.is_absolute() or not relative.parts:
+                relative = Path(relative_text)
+                if (
+                    len(relative_text) > 512
+                    or len(relative.parts) > _EXACT_RECEIPT_ENTRY_LIMIT
+                    or relative.is_absolute()
+                    or not relative.parts
+                ):
                     raise ProtocolRejected("PROTOCOL_PATH_UNSAFE")
                 parent = evidence_root
                 for component in relative.parts[:-1]:
                     parent = child(parent, component, directory=True)
                 descriptor = child(parent, relative.parts[-1], directory=False)
-                raw = read(descriptor, identity(descriptor))
+                descriptor_identity = identity(descriptor)
+                artifact_identities[label] = descriptor_identity[:2]
+                raw = read(descriptor, descriptor_identity)
                 expected_hash = _hash(
                     artifact.get("sha256"), f"artifacts.{label}.sha256"
                 )
@@ -568,6 +614,7 @@ class ManualPredictionCollectorProtocol:
                 artifact_paths[label] = relative
             if (
                 len(set(artifact_paths.values())) != len(artifact_paths)
+                or len(set(artifact_identities.values())) != len(artifact_identities)
                 or receipt.get("form_name") != artifact_paths["form"].name
             ):
                 raise ProtocolRejected("EXACT_RECEIPT_MALFORMED")
@@ -575,6 +622,7 @@ class ManualPredictionCollectorProtocol:
                 artifact_raws["report"],
                 race_id=race_id,
                 collector_run_id=collector_run_id,
+                emitted_at=str(receipt.get("emitted_at")),
                 capture_attempt_sha256=capture_attempt_sha,
                 append_report_sha256=str(
                     public_handoff.get("append_report_sha256")
@@ -1416,6 +1464,7 @@ class ManualPredictionCollectorProtocol:
             Path(handoff["_report_path"]).read_bytes(),
             race_id=race_id,
             collector_run_id=collector_run,
+            emitted_at=emitted_text,
             capture_attempt_sha256=capture_attempt_sha,
             append_report_sha256=public_handoff["append_report_sha256"],
         )
@@ -1584,6 +1633,7 @@ class ManualPredictionCollectorProtocol:
                 raw_artifacts["report"],
                 race_id=race_id,
                 collector_run_id=value["collector_run_id"],
+                emitted_at=value["emitted_at"],
                 capture_attempt_sha256=capture_attempt_sha,
                 append_report_sha256=handoff["append_report_sha256"],
             )

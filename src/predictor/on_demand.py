@@ -570,7 +570,8 @@ def _validate_collector_exact_protocol(
     contents: Mapping[str, bytes], result: Mapping[str, Any]
 ) -> None:
     member_name = "protocol/collector_exact_receipt.json"
-    if member_name not in contents:
+    protocol_members = {name for name in contents if name.startswith("protocol/")}
+    if protocol_members != {member_name}:
         raise _blocked("PREDICTION_BUNDLE_INVALID", reason="sealed_protocol_required")
     chain = result["evidence"]["protocol_chain"]
     raw = contents[member_name]
@@ -615,7 +616,7 @@ def _validate_collector_exact_protocol(
         or handoff.get("race_id") != result["race"]["race_id"]
         or handoff.get("race") != result_race
         or handoff.get("runner_set_sha256")
-        != result["evidence"]["runner_set_sha256"]
+        != runner_set_sha256(result["prediction"]["predictions"])
         or handoff.get("capture_attempt_sha256")
         != chain["capture_attempt_sha256"]
     ):
@@ -671,7 +672,10 @@ def _validate_collector_exact_protocol(
         "form": f"source/{form_name}",
         "sidecar": f"source/{form_name}.metadata.json",
     }
-    if not set(bundle_sources.values()).issubset(contents):
+    if (
+        len(set(bundle_sources.values())) != len(bundle_sources)
+        or not set(bundle_sources.values()).issubset(contents)
+    ):
         raise _blocked("PREDICTION_BUNDLE_INVALID", reason="sealed_protocol_required")
     if any(
         sha256_bytes(contents[bundle_sources[label]])
@@ -687,28 +691,54 @@ def _validate_collector_exact_protocol(
         max_bytes=BUNDLE_CONTROL_MAX_BYTES,
         label="source.capture",
     )
-    attempts = source_report.get("attempts") if isinstance(source_report, Mapping) else None
-    matches = [
-        attempt
-        for attempt in attempts or []
-        if isinstance(attempt, Mapping)
-        and attempt.get("race_id") == result["race"]["race_id"]
-        and attempt.get("status") == "APPENDED"
-    ]
+    source_plan = (
+        source_report.get("source_plan_item")
+        if isinstance(source_report, Mapping)
+        else None
+    )
+    source_attempt = (
+        source_report.get("source_attempt")
+        if isinstance(source_report, Mapping)
+        else None
+    )
+    source_race_id = (
+        source_report.get("source_race_id")
+        if isinstance(source_report, Mapping)
+        else None
+    )
+    adapted_attempt = (
+        {**source_attempt, "race_id": result["race"]["race_id"]}
+        if isinstance(source_attempt, Mapping)
+        else None
+    )
     if (
         not isinstance(source_report, Mapping)
         or set(source_report) != {
-            "schema_version", "race_id", "collector_run_id", "attempts"
+            "schema_version", "collector_run_id", "generated_at", "race_id",
+            "source_race_id", "source_plan_item", "source_attempt", "attempts",
         }
         or source_report.get("schema_version")
         != "collector_exact_capture_source_v1"
         or source_report.get("race_id") != result["race"]["race_id"]
         or source_report.get("collector_run_id") != chain["collector_run_id"]
-        or len(matches) != 1
-        or sha256_bytes(canonical_bytes(matches[0]))
+        or source_report.get("generated_at") != receipt.get("emitted_at")
+        or not isinstance(source_race_id, str)
+        or not source_race_id
+        or not isinstance(source_plan, Mapping)
+        or source_plan.get("schema_version")
+        != "autonomous_live_odds_capture_plan_item_v1"
+        or source_plan.get("status") != "READY_TO_CAPTURE"
+        or source_plan.get("race_id") != source_race_id
+        or not isinstance(source_attempt, Mapping)
+        or source_attempt.get("schema_version")
+        != "autonomous_live_odds_capture_attempt_v1"
+        or source_attempt.get("race_id") != source_race_id
+        or source_attempt.get("status") != "APPENDED"
+        or source_report.get("attempts") != [adapted_attempt]
+        or sha256_bytes(canonical_bytes(adapted_attempt))
         != chain["capture_attempt_sha256"]
-        or not isinstance(matches[0].get("append_report"), Mapping)
-        or sha256_bytes(canonical_bytes(matches[0]["append_report"]))
+        or not isinstance(source_attempt.get("append_report"), Mapping)
+        or sha256_bytes(canonical_bytes(source_attempt["append_report"]))
         != handoff.get("append_report_sha256")
     ):
         raise _blocked(
