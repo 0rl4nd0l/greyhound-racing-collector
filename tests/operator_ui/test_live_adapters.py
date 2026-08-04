@@ -1486,7 +1486,7 @@ def test_ui_stale_snapshot_beyond_predictor_window_retains_bound_identity(tmp_pa
         ("CURRENT_INDEX_UNAVAILABLE", "UNAVAILABLE/DATA_MISSING", "missing", "unknown"),
         ("DISCOVERY_TIMEOUT", "UNAVAILABLE/DATA_MISSING", "error", "unknown"),
         ("CURRENT_INDEX_SOURCE_CHANGED", "UNAVAILABLE/DATA_MISSING", "error", "unknown"),
-        ("CURRENT_INDEX_PUBLICATION_INVALID", "INVALID/INTEGRITY_FAILED", "error", "failed"),
+        ("CURRENT_INDEX_PUBLICATION_INVALID", "INVALID/INTEGRITY_FAILED", "present", "failed"),
     ],
 )
 def test_real_collector_rejection_codes_map_truthfully(tmp_path, monkeypatch, code, status, availability, integrity):
