@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from werkzeug.security import generate_password_hash
 
 import src.operator_ui.live_adapters as live_module
+import src.operator_ui.bootstrap as bootstrap_module
 from race_collection.synchronous_manual_capture import VerifiedCurrentRaceIndex
 from race_collection.synchronous_manual_capture import CaptureOneRejected
 from src.predictor.on_demand import (
@@ -51,6 +52,30 @@ NOW = datetime(2026, 7, 31, 2, tzinfo=timezone.utc)
 
 def canonical(value):
     return json.dumps(value, allow_nan=False, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
+
+
+@pytest.mark.parametrize("source_key", ["full_state", "full_report"])
+def test_full_sources_have_hard_512_kib_retained_read_ceiling(tmp_path, source_key):
+    path = tmp_path / f"{source_key}.json"
+    at_limit = b"{}" + b" " * (512 * 1024 - 2)
+    path.write_bytes(at_limit)
+    assert bootstrap_module._retained_source_read(path, source_key) == at_limit
+
+    path.write_bytes(at_limit + b" ")
+    with pytest.raises(RuntimeError, match="fixed R3 runtime oversized"):
+        bootstrap_module._retained_source_read(path, source_key)
+
+
+@pytest.mark.parametrize("source_key", ["odds_state", "model_catalog"])
+def test_non_full_sources_retain_default_256_kib_ceiling(tmp_path, source_key):
+    path = tmp_path / f"{source_key}.json"
+    at_limit = b"{}" + b" " * (256 * 1024 - 2)
+    path.write_bytes(at_limit)
+    assert bootstrap_module._retained_source_read(path, source_key) == at_limit
+
+    path.write_bytes(at_limit + b" ")
+    with pytest.raises(RuntimeError, match="fixed R3 runtime oversized"):
+        bootstrap_module._retained_source_read(path, source_key)
 
 
 def actual_payloads(at=NOW - timedelta(seconds=30)):
