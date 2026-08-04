@@ -44,6 +44,8 @@ _DEPLOYMENT_KEYS={"source_commit","source_tree","ui_version","profile_id"}
 _PROFILE_DEPLOYMENT_KEYS={"ui_version","profile_id"}
 _ARTIFACT_KEYS={"prediction_script","prediction_config","model_artifact","model_manifest","model_schema"}
 _MAX_CONTROL_BYTES=256*1024
+_MAX_FULL_SOURCE_BYTES=512*1024
+_FULL_SOURCE_KEYS={"full_state","full_report"}
 _DIGEST_ONLY_RAW_KEYS={"corpus_inventory_csv","corpus_inventory_jsonl"}
 _HEX40_RE=re.compile(r"^[0-9a-f]{40}$")
 _HEX64_RE=re.compile(r"^[0-9a-f]{64}$")
@@ -113,6 +115,11 @@ def _retained_read(path:Path,*,maximum:int=_MAX_CONTROL_BYTES)->bytes:
         return b"".join(chunks)
     finally:
         for item in reversed(opened):os.close(item)
+
+
+def _retained_source_read(path:Path,key:str)->bytes:
+    maximum=_MAX_FULL_SOURCE_BYTES if key in _FULL_SOURCE_KEYS else _MAX_CONTROL_BYTES
+    return _retained_read(path,maximum=maximum)
 
 
 def _regular(path: Path) -> None:
@@ -206,7 +213,7 @@ def _configured_live(layout:Mapping[str,Any])->LiveEvidenceAdapters:
     sources={}
     for key,policy in policies.items():
         path,digest,sealed_root=entry("sources",key)
-        try:payload=json.loads(_retained_read(path))
+        try:payload=json.loads(_retained_source_read(path,key))
         except (UnicodeDecodeError,json.JSONDecodeError) as exc:raise RuntimeError("generated live evidence source invalid") from exc
         if type(payload) is not dict:raise RuntimeError("generated live evidence source invalid")
         schema=payload.get("schema_version")
