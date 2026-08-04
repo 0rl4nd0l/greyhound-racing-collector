@@ -1492,6 +1492,8 @@ def test_ui_stale_snapshot_beyond_predictor_window_retains_bound_identity(tmp_pa
 def test_real_collector_rejection_codes_map_truthfully(tmp_path, monkeypatch, code, status, availability, integrity):
     def rejected(**kwargs):
         raise CaptureOneRejected(code)
+    if code == "CURRENT_INDEX_PUBLICATION_INVALID":
+        (tmp_path / "index").write_bytes(b"invalid current index")
     monkeypatch.setattr(live_module, "bounded_current_race_index", rejected)
     result = make_live(tmp_path, upcoming_races=UpcomingRaceSource(tmp_path / "index", tmp_path)).upcoming(NOW)
     assert (result.evidence.status, result.evidence.availability, result.evidence.schema_integrity) == (status, availability, integrity)
