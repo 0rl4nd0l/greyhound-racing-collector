@@ -222,7 +222,7 @@ def _configured_live(layout:Mapping[str,Any])->LiveEvidenceAdapters:
         allowlisted=sealed_root or (evidence_root if path.is_relative_to(evidence_root) else path.parent)
         serialization=(JsonSerializationPolicy.PRODUCER_COMPACT_CANONICAL_LINE if key=="model_catalog" else JsonSerializationPolicy.PRODUCER_PRETTY_SORTED)
         max_bytes=_MAX_FULL_SOURCE_BYTES if key in _FULL_SOURCE_KEYS else _MAX_CONTROL_BYTES
-        sources[key]=SourceConfig(path,allowlisted,"producer_report",str(schema or "shadow_autopilot_refresh_report"),f"operator_ui.{key}",policy,"Exact producer evidence only.",JsonSource("schema_version" if schema else None,schema,tuple(payload),time_field,max_items=100000,timestamp_syntax=TimestampSyntax.AWARE_ISO8601,serialization_policy=serialization,authority_observed_at=live["observed_at"] if key=="model_catalog" else None),max_bytes=max_bytes,expected_sha256=digest)
+        sources[key]=SourceConfig(path,allowlisted,"producer_report",str(schema or "shadow_autopilot_refresh_report"),f"operator_ui.{key}",policy,"Exact producer evidence only.",JsonSource("schema_version" if schema else None,schema,tuple(payload),time_field,identity_fields=("schema_version",) if schema else (),max_items=100000,timestamp_syntax=TimestampSyntax.AWARE_ISO8601,serialization_policy=serialization,authority_observed_at=live["observed_at"] if key=="model_catalog" else None),max_bytes=max_bytes,expected_sha256=digest)
     raw_sources={}
     for key in live.get("raw_sources",{}):
         path,digest,_=entry("raw_sources",key);policy="P-CATALOG-60" if key.startswith("model_") else "P-REPORT-24H"
