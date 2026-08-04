@@ -76,4 +76,3 @@ Phase 7 exclusion contracts for a future exact-race manual research lane.
   bundle, or Phase 7 contracts.
 - No file outside `allowed_files` and no use of the dirty launch checkout for
   implementation.
-

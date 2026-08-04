@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://greyhound-racing-collector.invalid/schemas/manual-independent-capture-v1/config.schema.json",
+  "title": "manual-independent-capture-v1 configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "contract_version", "safety", "authority_profile", "paths", "timing", "attempt_policy"],
+  "properties": {
+    "schema_version": {"const": "manual_independent_capture_config_v1"},
+    "contract_version": {"const": "manual-independent-capture-v1"},
+    "safety": {"$ref": "#/$defs/safety"},
+    "authority_profile": {"const": "manual_independent_capture_research_only_v1"},
+    "paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operations_root", "manual_root", "browser_profile", "runs_root", "manual_lock"],
+      "properties": {
+        "operations_root": {"type": "string", "pattern": "^(?!.*(?:^|/)\\.\\.?(?:/|$))/[^\\u0000\\\\]*$"},
+        "manual_root": {"type": "string", "pattern": "^(?!.*(?:^|/)\\.\\.?(?:/|$))/[^\\u0000\\\\]*$"},
+        "browser_profile": {"type": "string", "pattern": "^(?!.*(?:^|/)\\.\\.?(?:/|$))/[^\\u0000\\\\]*$"},
+        "runs_root": {"type": "string", "pattern": "^(?!.*(?:^|/)\\.\\.?(?:/|$))/[^\\u0000\\\\]*$"},
+        "manual_lock": {"type": "string", "pattern": "^(?!.*(?:^|/)\\.\\.?(?:/|$))/[^\\u0000\\\\]*$"}
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimum_prejump_margin_seconds", "hard_timeout_seconds", "cancellation_grace_seconds"],
+      "properties": {
+        "minimum_prejump_margin_seconds": {"type": "integer", "minimum": 1, "maximum": 7200},
+        "hard_timeout_seconds": {"type": "integer", "minimum": 1, "maximum": 900},
+        "cancellation_grace_seconds": {"type": "integer", "minimum": 1, "maximum": 120}
+      }
+    },
+    "attempt_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_concurrent_manual_runs", "max_capture_attempts", "retries_allowed", "replay_allowed"],
+      "properties": {
+        "max_concurrent_manual_runs": {"const": 1},
+        "max_capture_attempts": {"const": 1},
+        "retries_allowed": {"const": false},
+        "replay_allowed": {"const": false}
+      }
+    }
+  },
+  "$defs": {
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["research_only", "canonical", "phase7_excluded", "phase7_eligible", "phase7_exclusion_reason"],
+      "properties": {
+        "research_only": {"const": true},
+        "canonical": {"const": false},
+        "phase7_excluded": {"const": true},
+        "phase7_eligible": {"const": false},
+        "phase7_exclusion_reason": {"const": "manual_research_only_noncanonical"}
+      }
+    }
+  }
+}
