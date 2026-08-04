@@ -679,6 +679,12 @@ def _inventory_semantics(report: Mapping[str, Any]) -> tuple[dict[str, int], dic
             raise ValueError("inventory backlog closure disagrees with writes")
         _lock_metadata(backlog["shared_lock_status"])
         _lock_metadata(backlog["shared_lock_release"], release=True)
+        lock_acquired = (
+            isinstance(backlog["shared_lock_status"], Mapping)
+            and backlog["shared_lock_status"].get("status") == "acquired_by_backlog_append"
+        )
+        if (backlog["shared_lock_release"] is not None) != lock_acquired:
+            raise ValueError("inventory backlog lock release closure is contradictory")
     else:
         raise ValueError("inventory backlog status is invalid")
 

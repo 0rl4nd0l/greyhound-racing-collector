@@ -932,6 +932,76 @@ def _owned_shared_lock(pid=123):
     }
 
 
+def _found_backlog(*, shared_lock_status=None, shared_lock_release=None):
+    return {
+        "status": "FOUND",
+        "path": "artifacts/evidence/official_result_evidence_append_backlog_x/official_result_evidence_append_backlog_report.json",
+        "final_status": "NOOP_ALREADY_PRESENT",
+        "artifact_count": 1,
+        "processed_count": 1,
+        "status_counts": {"ALREADY_PRESENT": 1},
+        "inserted_race_rows": 0,
+        "inserted_runner_rows": 0,
+        "db_write_performed": False,
+        "shared_lock_status": shared_lock_status,
+        "shared_lock_release": shared_lock_release,
+    }
+
+
+@pytest.mark.parametrize(
+    ("shared_lock_status", "shared_lock_release"),
+    [
+        (None, None),
+        (
+            _shared_lock(
+                "acquired_by_backlog_append",
+                write_allowed=True,
+                pid=123,
+                lock=_owned_shared_lock(),
+                owned_lock=_owned_shared_lock(),
+            ),
+            {"released": True, "reason": "released_by_owner"},
+        ),
+    ],
+)
+def test_corpus_accepts_backlog_lock_release_closure(
+    tmp_path, shared_lock_status, shared_lock_release
+):
+    values = actual_payloads()
+    values["corpus_report"]["latest_backlog_append_report"] = _found_backlog(
+        shared_lock_status=shared_lock_status,
+        shared_lock_release=shared_lock_release,
+    )
+    assert make_live(tmp_path, values).corpus(NOW).evidence.status == "AVAILABLE/FRESH"
+
+
+@pytest.mark.parametrize(
+    ("shared_lock_status", "shared_lock_release"),
+    [
+        (None, {"released": False, "reason": "lock_already_missing"}),
+        (
+            _shared_lock(
+                "acquired_by_backlog_append",
+                write_allowed=True,
+                pid=123,
+                lock=_owned_shared_lock(),
+                owned_lock=_owned_shared_lock(),
+            ),
+            None,
+        ),
+    ],
+)
+def test_corpus_rejects_backlog_lock_release_contradictions(
+    tmp_path, shared_lock_status, shared_lock_release
+):
+    values = actual_payloads()
+    values["corpus_report"]["latest_backlog_append_report"] = _found_backlog(
+        shared_lock_status=shared_lock_status,
+        shared_lock_release=shared_lock_release,
+    )
+    assert make_live(tmp_path, values).corpus(NOW).evidence.status == "INVALID/INTEGRITY_FAILED"
+
+
 @pytest.mark.parametrize("value", [
     _shared_lock("not_configured", lock_path=None, write_allowed=True),
     _shared_lock("missing", write_allowed=True),
