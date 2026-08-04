@@ -336,6 +336,48 @@ def test_json_schemas_and_example_publish_the_exact_fail_closed_vocabulary():
     validate_config(config(), forbidden_paths=forbidden_paths())
 
 
+@pytest.mark.parametrize("location", ["artifact_safety", "request_safety"])
+@pytest.mark.parametrize(
+    "field", ["research_only", "canonical", "phase7_excluded", "phase7_eligible"]
+)
+def test_boolean_and_integer_constants_are_not_interchangeable(
+    location: str, field: str
+):
+    artifact, members = ready_artifact()
+    section = "safety" if location == "artifact_safety" else "request"
+    target = artifact[section]
+    if location == "request_safety":
+        target = target["safety"]
+    target[field] = int(SAFETY_FIELDS[field])
+    with pytest.raises(ManualIndependentCaptureRejected, match="SAFETY_CLAIM_INVALID"):
+        validate(artifact, members)
+
+
+@pytest.mark.parametrize(
+    "section,field,value",
+    [
+        ("safety", "research_only", 1),
+        ("safety", "canonical", 0),
+        ("safety", "phase7_excluded", 1),
+        ("safety", "phase7_eligible", 0),
+        ("attempt_policy", "max_concurrent_manual_runs", True),
+        ("attempt_policy", "max_capture_attempts", True),
+        ("attempt_policy", "retries_allowed", 0),
+        ("attempt_policy", "replay_allowed", 0),
+    ],
+)
+def test_config_constant_types_are_exact(section: str, field: str, value: object):
+    cfg = config()
+    cfg[section][field] = value
+    expected_code = (
+        "SAFETY_CLAIM_INVALID"
+        if section == "safety"
+        else "ATTEMPT_AUTHORITY_INVALID"
+    )
+    with pytest.raises(ManualIndependentCaptureRejected, match=expected_code):
+        validate_config(cfg, forbidden_paths=forbidden_paths())
+
+
 @pytest.mark.parametrize(
     "field,value",
     [

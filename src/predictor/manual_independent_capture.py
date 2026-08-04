@@ -324,7 +324,12 @@ def _integer(value: Any, label: str, *, minimum: int, maximum: int) -> int:
 
 def _safety(value: Any, label: str) -> dict[str, Any]:
     row = _exact(value, set(SAFETY_FIELDS), label)
-    if dict(row) != SAFETY_FIELDS:
+    if any(
+        row[name] is not expected
+        if isinstance(expected, bool)
+        else row[name] != expected
+        for name, expected in SAFETY_FIELDS.items()
+    ):
         raise _reject("SAFETY_CLAIM_INVALID", field=label)
     return dict(row)
 
@@ -472,12 +477,14 @@ def validate_config(
         },
         "config.attempt_policy",
     )
-    if dict(policy) != {
-        "max_concurrent_manual_runs": 1,
-        "max_capture_attempts": 1,
-        "retries_allowed": False,
-        "replay_allowed": False,
-    }:
+    if (
+        isinstance(policy["max_concurrent_manual_runs"], bool)
+        or policy["max_concurrent_manual_runs"] != 1
+        or isinstance(policy["max_capture_attempts"], bool)
+        or policy["max_capture_attempts"] != 1
+        or policy["retries_allowed"] is not False
+        or policy["replay_allowed"] is not False
+    ):
         raise _reject("ATTEMPT_AUTHORITY_INVALID")
     return deepcopy(dict(config))
 
