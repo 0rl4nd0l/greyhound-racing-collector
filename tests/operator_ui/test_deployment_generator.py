@@ -67,12 +67,71 @@ def deployment_inputs(tmp_path: Path) -> dict[str, object]:
     secrets = tmp_path / "operator-ui.secrets"
     secrets.write_text("\n".join(SECRET_LINES) + "\n")
     secrets.chmod(0o600)
+    live_root = tmp_path / "live"
+    live_root.mkdir(mode=0o700)
+    json_keys = {
+        "full_state", "full_report", "odds_state", "odds_report", "odds_refresh",
+        "corpus_report", "corpus_manifest", "deployment_manifest", "model_catalog",
+    }
+    raw_keys = {
+        "corpus_inventory_csv", "corpus_inventory_jsonl", "corpus_scorecard_csv",
+        "corpus_scorecard_jsonl", "corpus_report_bytes", "corpus_summary",
+        "corpus_final_status", "model_latest_config", "model_latest_schema",
+        "model_latest_artifact", "model_latest_manifest", "model_baseline_config",
+        "model_baseline_schema",
+    }
+    schemas = {
+        "full_state": "shadow_autopilot_daemon_state_v1",
+        "full_report": "shadow_autopilot_daemon_run_v1",
+        "odds_state": "shadow_autopilot_odds_capture_only_state_v1",
+        "odds_report": "shadow_autopilot_odds_capture_only_daemon_report_v1",
+        "corpus_report": "race_evidence_inventory_report_v1",
+        "corpus_manifest": "race_evidence_inventory_output_manifest_v1",
+        "deployment_manifest": "operator_ui_deployment_manifest_v1",
+        "model_catalog": "on_demand_prediction_config_catalog_v1",
+    }
+    sources = {}
+    for key in json_keys:
+        payload = {} if key == "odds_refresh" else {"schema_version": schemas[key]}
+        if key == "odds_report":
+            payload["autopilot_output_dir"] = "reports"
+        if key not in {"full_state", "corpus_manifest", "model_catalog"}:
+            payload["updated_at" if key == "odds_state" else "generated_at"] = "2026-08-03T01:02:03Z"
+        target = (live_root / "reports/odds_capture_refresh_report.json"
+                  if key == "odds_refresh" else live_root / f"{key}.json")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(payload))
+        sources[key] = str(target)
+    raw_sources = {}
+    for key in raw_keys:
+        target = live_root / f"{key}.raw"; target.write_bytes(key.encode())
+        raw_sources[key] = str(target)
+    units = {}
+    unit_names = {
+        "full_timer": "shadow-autopilot.timer",
+        "full_service": "shadow-autopilot.service",
+        "odds_timer": "shadow-autopilot-odds-capture.timer",
+        "odds_service": "shadow-autopilot-odds-capture.service",
+    }
+    for key, unit_name in unit_names.items():
+        target = live_root / unit_name; target.write_text("[Unit]\nDescription=test\n")
+        units[key] = str(target)
+    authority = live_root / "authority.json"
+    authority.write_text(json.dumps({
+        "schema_version": "operator_ui_live_authority_v1",
+        "observed_at": "2026-08-03T01:02:03Z", "working_directory": str(source),
+        "sources": sources, "raw_sources": raw_sources, "units": units,
+        "service_status": {
+            "full": {"unit_name": "shadow-autopilot.service", "active_state": "inactive", "sub_state": "dead", "exec_main_pid": 0},
+            "odds": {"unit_name": "shadow-autopilot-odds-capture.service", "active_state": "active", "sub_state": "waiting", "exec_main_pid": 0},
+        },
+    }))
     return dict(source_root=source, pinned_python=python, evidence_root=evidence,
                 producer_root=producer, canonical_db=database,
                 operations_root=operations, secrets_file=secrets,
                 output_dir=output, source_commit=COMMIT, source_tree=TREE,
                 ui_version="operator-ui-v1", profile_id="repository-v1",
-                bind_address="127.0.0.1", port=5055)
+                bind_address="127.0.0.1", port=5055, live_authority=authority)
 
 
 def generated_targets(values: dict[str, object]) -> tuple[Path, ...]:
@@ -154,6 +213,7 @@ def test_default_off_package_binds_identity_hashes_private_service_and_external_
     environment = (values["output_dir"] / "operator-ui-r3.env").read_text()
     service = (values["output_dir"] / "greyhound-operator-ui-r3.service").read_text()
     assert "OPERATOR_UI_CONNECTED_MODE=0" in environment
+    assert "OPERATOR_UI_LEVEL=1" in environment
     assert "OPERATOR_UI_R3_PROFILE=disabled" in environment
     assert "127.0.0.1" in service and "--port 5055" in service
     assert f"EnvironmentFile={values['secrets_file']}" in service
@@ -417,11 +477,210 @@ def test_explicit_enable_changes_only_feature_gate_and_retains_evidence_on_rollb
     environment = (values["output_dir"] / "operator-ui-r3.env").read_text()
     rollback = (values["output_dir"] / "ROLLBACK.md").read_text()
     assert "OPERATOR_UI_CONNECTED_MODE=1" in environment
+    assert "OPERATOR_UI_LEVEL=2" in environment
     assert "OPERATOR_UI_R3_PROFILE=repository-v1" in environment
     assert "disable" in rollback.lower()
     assert "do not delete" in rollback.lower()
     assert str(values["operations_root"]) in rollback
     assert result["enabled"] is True
+    binding=json.loads((values["source_root"] / "var/operator_ui/generated/repository-v1.binding.json").read_text())
+    refresh=binding["live_evidence"]["sources"]["odds_refresh"]
+    assert Path(refresh["path"]).relative_to(Path(refresh["allowlisted_root"])).as_posix()=="reports/odds_capture_refresh_report.json"
+    assert binding["live_evidence"]["service_status"]["full"]["unit_name"]=="shadow-autopilot.service"
+    assert binding["live_evidence"]["service_status"]["odds"]["unit_name"]=="shadow-autopilot-odds-capture.service"
+
+
+def test_enabled_generator_rejects_missing_or_incomplete_live_authority_without_output(tmp_path, monkeypatch):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = values.pop("live_authority")
+    with pytest.raises(DeploymentRejected, match="requires live authority"):
+        generate_package(**values, enabled=True)
+    assert all(not target.exists() for target in generated_targets(values))
+    values["live_authority"] = authority
+    authority.write_text(json.dumps({"schema_version": "operator_ui_live_authority_v1"}))
+    with pytest.raises(DeploymentRejected, match="incomplete"):
+        generate_package(**values, enabled=True)
+    assert all(not target.exists() for target in generated_targets(values))
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_enabled_generator_strictly_decodes_live_authority(tmp_path, monkeypatch, constant):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = values["live_authority"]
+    raw = authority.read_text()
+    authority.write_text(raw[:-1] + f',"nonfinite":{constant}}}')
+    with pytest.raises(DeploymentRejected, match="malformed"):
+        generate_package(**values, enabled=True)
+    authority.write_text(raw[:-1] + ',"schema_version":"duplicate"}')
+    with pytest.raises(DeploymentRejected, match="malformed"):
+        generate_package(**values, enabled=True)
+
+
+@pytest.mark.parametrize("constant", ["NaN", "Infinity", "-Infinity"])
+def test_enabled_generator_strictly_decodes_retained_odds_report(tmp_path, monkeypatch, constant):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    odds_report = Path(authority["sources"]["odds_report"])
+    odds_report.write_text('{"autopilot_output_dir":"reports","value":' + constant + '}')
+    with pytest.raises(DeploymentRejected, match="odds refresh authority is contradictory"):
+        generate_package(**values, enabled=True)
+    odds_report.write_text('{"autopilot_output_dir":"reports","autopilot_output_dir":"other"}')
+    with pytest.raises(DeploymentRejected, match="odds refresh authority is contradictory"):
+        generate_package(**values, enabled=True)
+
+
+def test_enabled_generator_derives_refresh_root_without_rereading_odds_report(tmp_path, monkeypatch):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    odds_report = Path(authority["sources"]["odds_report"])
+    real_read = __import__("src.operator_ui.deployment", fromlist=["_retained_file_read"])._retained_file_read
+    reads = 0
+
+    def retained_read(path, maximum=256 * 1024):
+        nonlocal reads
+        if Path(path) == odds_report:
+            reads += 1
+        return real_read(path, maximum)
+
+    monkeypatch.setattr("src.operator_ui.deployment._retained_file_read", retained_read)
+    generate_package(**values, enabled=True)
+    assert reads == 1
+
+
+def test_enabled_generator_binds_waiting_cycle_without_refresh_output(tmp_path, monkeypatch):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    odds_report = Path(authority["sources"]["odds_report"])
+    odds_report.write_text(json.dumps({
+        "schema_version": "shadow_autopilot_odds_capture_only_daemon_report_v1",
+        "generated_at": "2026-08-03T01:02:03Z",
+        "final_status": "ODDS_CAPTURE_ONLY_WAITING_FOR_WINDOW",
+        "status": "WAITING",
+        "autopilot_output_dir": None,
+        "odds_capture_refresh_report": {},
+    }))
+
+    generate_package(**values, enabled=True)
+
+    binding = json.loads(
+        (values["source_root"] / "var/operator_ui/generated/repository-v1.binding.json").read_text()
+    )
+    refresh = binding["live_evidence"]["sources"]["odds_refresh"]
+    assert Path(refresh["allowlisted_root"]) == Path(refresh["path"]).parent
+    assert Path(refresh["path"]).name == "odds_capture_refresh_report.json"
+
+
+@pytest.mark.parametrize(
+    "report_update, removed_key",
+    [
+        ({"schema_version": "wrong"}, None),
+        ({}, "schema_version"),
+        ({"generated_at": "not-a-timestamp"}, None),
+        ({"generated_at": "2026-08-03T01:02:03"}, None),
+        ({"generated_at": []}, None),
+        ({}, "generated_at"),
+        ({"status": "CAPTURED"}, None),
+    ],
+)
+def test_enabled_generator_rejects_unauthenticated_waiting_cycle_without_refresh_output(
+    tmp_path, monkeypatch, report_update, removed_key
+):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    odds_report = Path(authority["sources"]["odds_report"])
+    report = {
+        "schema_version": "shadow_autopilot_odds_capture_only_daemon_report_v1",
+        "generated_at": "2026-08-03T01:02:03Z",
+        "final_status": "ODDS_CAPTURE_ONLY_WAITING_FOR_WINDOW",
+        "status": "WAITING",
+        "autopilot_output_dir": None,
+        "odds_capture_refresh_report": {},
+    }
+    report.update(report_update)
+    if removed_key is not None:
+        del report[removed_key]
+    odds_report.write_text(json.dumps(report))
+
+    with pytest.raises(DeploymentRejected, match="odds refresh authority is contradictory"):
+        generate_package(**values, enabled=True)
+
+    assert all(not target.exists() for target in generated_targets(values))
+
+
+def test_enabled_generator_rejects_substituted_refresh_authority_filename(
+    tmp_path, monkeypatch
+):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    odds_report = Path(authority["sources"]["odds_report"])
+    odds_report.write_text(json.dumps({
+        "schema_version": "shadow_autopilot_odds_capture_only_daemon_report_v1",
+        "generated_at": "2026-08-03T01:02:03Z",
+        "final_status": "ODDS_CAPTURE_ONLY_WAITING_FOR_WINDOW",
+        "status": "WAITING",
+        "autopilot_output_dir": None,
+        "odds_capture_refresh_report": {},
+    }))
+    refresh = Path(authority["sources"]["odds_refresh"])
+    substituted = refresh.with_name("substituted_refresh_report.json")
+    substituted.write_bytes(refresh.read_bytes())
+    authority["sources"]["odds_refresh"] = str(substituted)
+    values["live_authority"].write_text(json.dumps(authority))
+
+    with pytest.raises(DeploymentRejected, match="odds refresh authority is contradictory"):
+        generate_package(**values, enabled=True)
+
+    assert all(not target.exists() for target in generated_targets(values))
+
+
+@pytest.mark.parametrize(
+    "report_update",
+    [
+        {"final_status": "ODDS_CAPTURE_ONLY_READY"},
+        {"odds_capture_refresh_report": {"status": "CAPTURED"}},
+    ],
+)
+def test_enabled_generator_rejects_null_refresh_locator_when_refresh_is_required(
+    tmp_path, monkeypatch, report_update
+):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    odds_report = Path(authority["sources"]["odds_report"])
+    report = {
+        "schema_version": "shadow_autopilot_odds_capture_only_daemon_report_v1",
+        "generated_at": "2026-08-03T01:02:03Z",
+        "final_status": "ODDS_CAPTURE_ONLY_WAITING_FOR_WINDOW",
+        "status": "WAITING",
+        "autopilot_output_dir": None,
+        "odds_capture_refresh_report": {},
+    }
+    report.update(report_update)
+    odds_report.write_text(json.dumps(report))
+
+    with pytest.raises(DeploymentRejected, match="odds refresh authority is contradictory"):
+        generate_package(**values, enabled=True)
+
+    assert all(not target.exists() for target in generated_targets(values))
+
+
+def test_enabled_generator_rejects_duplicate_unit_paths(tmp_path, monkeypatch):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    authority["units"]["odds_service"] = authority["units"]["full_service"]
+    values["live_authority"].write_text(json.dumps(authority))
+    with pytest.raises(DeploymentRejected, match="unit paths must be distinct"):
+        generate_package(**values, enabled=True)
+
+
+def test_enabled_generator_rejects_unit_path_with_wrong_basename(tmp_path, monkeypatch):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    wrong = Path(authority["units"]["full_timer"]).with_name("wrong.timer")
+    wrong.write_text("[Unit]\nDescription=test\n")
+    authority["units"]["full_timer"] = str(wrong)
+    values["live_authority"].write_text(json.dumps(authority))
+    with pytest.raises(DeploymentRejected, match="unit path is invalid"):
+        generate_package(**values, enabled=True)
 
 
 @pytest.mark.parametrize("enabled, expected", [(False, False), (True, True)])
@@ -551,3 +810,41 @@ def test_generator_rejects_systemd_ambiguous_authority_paths(tmp_path, monkeypat
     with pytest.raises(DeploymentRejected, match="systemd-safe"):
         generate_package(**values)
     assert not (values["output_dir"] / "greyhound-operator-ui-r3.service").exists()
+
+
+@pytest.mark.parametrize("key,size", [("corpus_inventory_csv",17_015_083),("corpus_inventory_jsonl",22_391_456)])
+def test_generator_streams_canonical_sized_inventory_without_byte_retention(tmp_path, monkeypatch, key, size):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    path = Path(authority["raw_sources"][key]); path.write_bytes(b"x" * size)
+    assert generate_package(**values, enabled=True)["enabled"] is True
+    binding = json.loads((values["source_root"] / "var/operator_ui/generated/repository-v1.binding.json").read_text())
+    assert binding["live_evidence"]["raw_sources"][key] == {
+        "path": str(path.absolute()), "sha256": hashlib.sha256(b"x" * size).hexdigest(),
+        "bytes": size, "authentication": "sha256_size_only_v1",
+    }
+
+
+def test_generator_digest_only_inventory_ceiling_and_timeout_fail_closed(tmp_path, monkeypatch):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    path = Path(authority["raw_sources"]["corpus_inventory_csv"])
+    path.write_bytes(b"")
+    with path.open("r+b") as oversized:
+        oversized.truncate(64 * 1024 * 1024 + 1)
+    with pytest.raises(DeploymentRejected, match="oversized"):
+        generate_package(**values, enabled=True)
+    path.write_bytes(b"inventory")
+    ticks = iter((0.0,31.0))
+    monkeypatch.setattr("src.operator_ui.deployment.time.monotonic", lambda: next(ticks,31.0))
+    with pytest.raises(DeploymentRejected, match="timed out"):
+        generate_package(**values, enabled=True)
+
+
+def test_generator_digest_only_inventory_mutation_fails_closed(tmp_path, monkeypatch):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    path = Path(authority["raw_sources"]["corpus_inventory_jsonl"])
+    replace_during_authority_read(monkeypatch, path, component=False)
+    with pytest.raises(DeploymentRejected, match="authority.*changed|identity"):
+        generate_package(**values, enabled=True)

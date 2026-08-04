@@ -14,6 +14,7 @@ import os
 import re
 import sqlite3
 import stat
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -152,6 +153,7 @@ class JsonSource:
         JsonSerializationPolicy.COMPACT_CANONICAL
     )
     timestamp_syntax: TimestampSyntax = TimestampSyntax.CANONICAL_TERMINAL_Z
+    authority_observed_at: str | None = None
 
     def __post_init__(self) -> None:
         try:
@@ -164,6 +166,8 @@ class JsonSource:
         except (TypeError, ValueError) as exc:
             raise ValueError("unsupported timestamp syntax") from exc
         object.__setattr__(self, "timestamp_syntax", timestamp_syntax)
+        if self.authority_observed_at is not None:
+            _parse_utc(self.authority_observed_at, timestamp_syntax)
 
 
 @dataclass(frozen=True)
@@ -195,6 +199,8 @@ class RawSourceConfig:
     max_bytes: int = 16_777_216
     max_envelope_bytes: int = 32_768
     expected_sha256: str | None = None
+    expected_bytes: int | None = None
+    digest_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -456,6 +462,11 @@ def _validate_source(config: SourceConfig) -> SourceConfig:
             "on_demand_prediction_config_catalog_v1",
         }
     )
+    if schema.authority_observed_at is not None and (
+        schema.time_field is not None
+        or schema.schema_value != "on_demand_prediction_config_catalog_v1"
+    ):
+        raise ValueError("authority observation time is unsupported for this source")
     if (schema.schema_field is None or schema.time_field is None) and policy.mode != "adapter" and not observed_without_producer_time:
         raise ValueError("only adapter-owned or approved observation-bound evidence may omit producer time")
     for value in (
@@ -725,6 +736,34 @@ def _read_regular_file(binding: _BoundPath, maximum: int) -> bytes:
             os.close(opened_descriptor)
 
 
+def _digest_regular_file(binding: _BoundPath, maximum: int) -> tuple[str, int]:
+    """Authenticate a bounded file using fixed chunks and a fixed deadline."""
+    started = time.monotonic()
+    path = binding.locator
+    _verify_path_binding(binding)
+    before = os.lstat(path)
+    if not stat.S_ISREG(before.st_mode): raise _InvalidEvidence("source is not a regular file")
+    if before.st_size > maximum: raise _OversizeEvidence("source exceeds configured maximum")
+    opened_file = _open_bound_file(binding); descriptor = opened_file.descriptor
+    try:
+        if not _same_file(before, opened_file.opened): raise _PathChanged("source changed while opening")
+        digest = hashlib.sha256(); total = 0
+        while True:
+            if time.monotonic() - started > 30.0: raise _InvalidEvidence("source authentication timed out")
+            chunk = os.read(descriptor, 65_536)
+            if not chunk: break
+            total += len(chunk)
+            if total > maximum: raise _OversizeEvidence("source grew beyond configured maximum")
+            digest.update(chunk)
+        if time.monotonic() - started > 30.0: raise _InvalidEvidence("source authentication timed out")
+        after = _verify_bound_file(binding, opened_file)
+        if opened_file.opened.st_size != after.st_size or total != after.st_size:
+            raise _PathChanged("source changed during observation")
+        return digest.hexdigest(), total
+    finally:
+        for opened_descriptor in reversed(opened_file.descriptors): os.close(opened_descriptor)
+
+
 class OperatorEvidenceReader:
     """Observe configured JSON evidence using symbolic keys only."""
 
@@ -768,6 +807,15 @@ class OperatorEvidenceReader:
                 raise ValueError("unsupported freshness policy")
             if type(config.max_bytes) is not int or config.max_bytes <= 0:
                 raise ValueError("raw source limit must be positive")
+            if type(config.digest_only) is not bool:
+                raise ValueError("raw source digest-only policy must be boolean")
+            if config.digest_only:
+                if key not in {"corpus_inventory_csv", "corpus_inventory_jsonl"}:
+                    raise ValueError("digest-only raw source key is not allowed")
+                if config.max_bytes != 64 * 1024 * 1024 or type(config.expected_bytes) is not int or config.expected_bytes < 0 or config.expected_bytes > config.max_bytes:
+                    raise ValueError("digest-only source policy is invalid")
+            elif config.expected_bytes is not None:
+                raise ValueError("byte count is supported only for digest-only sources")
             if config.expected_sha256 is not None:
                 _validate_hash(config.expected_sha256, "expected_sha256")
             normalized = RawSourceConfig(
@@ -777,6 +825,7 @@ class OperatorEvidenceReader:
                 supported_claim=config.supported_claim, max_bytes=config.max_bytes,
                 max_envelope_bytes=config.max_envelope_bytes,
                 expected_sha256=config.expected_sha256,
+                expected_bytes=config.expected_bytes, digest_only=config.digest_only,
             )
             raw_validated[key] = normalized
             raw_bindings[key] = _bind_path(locator, root)
@@ -868,12 +917,14 @@ class OperatorEvidenceReader:
                 ).encode("utf-8")
             if canonical != raw:
                 raise _InvalidEvidence("JSON bytes are not canonical")
-            if config.json.time_field is None:
+            if config.json.time_field is None and config.json.authority_observed_at is None:
                 age = math.nan
                 freshness = Freshness.UNKNOWN
             else:
                 evidence_time = _parse_utc(
-                    payload[config.json.time_field], config.json.timestamp_syntax
+                    payload[config.json.time_field] if config.json.time_field is not None
+                    else config.json.authority_observed_at,
+                    config.json.timestamp_syntax,
                 )
                 age = (observed.astimezone(timezone.utc) - evidence_time).total_seconds()
                 freshness = _freshness(POLICIES[config.policy], age)
@@ -914,6 +965,8 @@ class OperatorEvidenceReader:
         }
         if config.json.time_field is not None:
             role_times[config.json.time_role] = payload[config.json.time_field]
+        elif config.json.authority_observed_at is not None:
+            role_times["observed_at"] = config.json.authority_observed_at
         integrity = Integrity.VALID
         status = status_for(
             Availability.PRESENT, integrity, freshness, conflict=conflict
@@ -949,15 +1002,19 @@ class OperatorEvidenceReader:
         observed = self._clock()
         observed_text = _utc_text(observed)
         try:
-            raw = _read_regular_file(binding, config.max_bytes)
+            if config.digest_only:
+                digest, byte_count = _digest_regular_file(binding, config.max_bytes)
+                raw = None
+            else:
+                raw = _read_regular_file(binding, config.max_bytes)
+                digest, byte_count = hashlib.sha256(raw).hexdigest(), len(raw)
         except FileNotFoundError:
             return self._failure(config, observed_text, Availability.MISSING, Integrity.UNKNOWN), None
         except PermissionError:
             return self._failure(config, observed_text, Availability.UNREADABLE, Integrity.UNKNOWN), None
         except (_InvalidEvidence, OSError):
             return self._failure(config, observed_text, Availability.ERROR, Integrity.FAILED), None
-        digest = hashlib.sha256(raw).hexdigest()
-        conflict = config.expected_sha256 is not None and digest != config.expected_sha256
+        conflict = ((config.expected_sha256 is not None and digest != config.expected_sha256) or (config.expected_bytes is not None and byte_count != config.expected_bytes))
         envelope = _new_envelope(
             source_kind=config.source_kind, source_identity=config.source_identity,
             content_sha256=digest, source_locator=config.source_locator,
@@ -971,6 +1028,13 @@ class OperatorEvidenceReader:
         )
         self._check_envelope_size(envelope, config.max_envelope_bytes)
         return envelope, raw
+
+    def read_raw_authenticated(self, source_key: str) -> tuple[EvidenceEnvelope, bytes | None, int | None]:
+        """Return authenticated bytes when retained, plus the verified byte count."""
+        envelope, raw = self.read_raw(source_key)
+        if envelope.content_sha256 is None: return envelope, raw, None
+        config = self._raw_sources[source_key]
+        return envelope, raw, config.expected_bytes if config.digest_only and envelope.status != EvidenceStatus.DIVERGENT.value else len(raw) if raw is not None else None
 
     def read_verified_payload(
         self, source_key: str, expected_source_locator: str

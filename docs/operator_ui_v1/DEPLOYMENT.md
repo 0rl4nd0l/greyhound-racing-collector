@@ -22,10 +22,25 @@ before package output is written. The service namespace mounts source,
 collector evidence, producer evidence, and the canonical database read-only;
 only the separate operations root is writable.
 
+An enabled package additionally requires `--live-authority` pointing to one
+server-owned `operator_ui_live_authority_v1` observation. It names the exact
+full/odds state and report files, the odds report's same-run refresh file, the
+inventory report/manifest and all seven raw packet files, the predictor catalog
+and exact config/schema/model/manifest bytes, four installed unit files, and
+the observed `ActiveState`/`SubState`/`ExecMainPID` values. The generator copies
+no evidence: it performs bounded no-follow retained reads and seals each fixed
+path and byte identity in the repository binding. `observed_at` must be the
+actual time those installed-unit and service-state observations were captured;
+the generator does not invent it. Regenerate after any authoritative producer
+or installed-unit observation changes. Browser requests and environment values
+cannot select paths or commands.
+
 The default package is disabled. Omitting `--enable` writes
-`OPERATOR_UI_CONNECTED_MODE=0` and `OPERATOR_UI_R3_PROFILE=disabled`; its guarded
+`OPERATOR_UI_CONNECTED_MODE=0`, `OPERATOR_UI_LEVEL=1`, and
+`OPERATOR_UI_R3_PROFILE=disabled`; its guarded
 entrypoint exits without starting another UI process. `--enable` is only a
-package-generation choice and is not permission to install or start a service.
+package-generation choice; it writes `OPERATOR_UI_LEVEL=2` and requires the
+complete live authority observation, but is not permission to install or start a service.
 The separate unit does not replace the existing UI, which remains available
 until an accepted deployment deliberately changes that state.
 
