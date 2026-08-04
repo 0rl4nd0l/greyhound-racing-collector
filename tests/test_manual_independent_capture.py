@@ -139,13 +139,16 @@ def ready_artifact() -> tuple[dict, dict[str, bytes]]:
             "race_identity_sha256": canonical_sha256(selected),
             "runner_set_sha256": sealed_runner_set_sha256(selected, canonical_runners),
             "odds_sha256": canonical_sha256(
-                [
-                    {
-                        "box_number": row["box_number"],
-                        "decimal_odds": row["decimal_odds"],
-                    }
-                    for row in runner_rows
-                ]
+                {
+                    "capture_timestamp": "2026-08-04T00:00:10+00:00",
+                    "odds": [
+                        {
+                            "box_number": row["box_number"],
+                            "decimal_odds": row["decimal_odds"],
+                        }
+                        for row in runner_rows
+                    ],
+                }
             ),
             "source_files": [
                 {
@@ -544,7 +547,7 @@ def test_runner_and_odds_hash_drift_are_rejected():
         validate(artifact, members)
 
 
-@pytest.mark.parametrize("changed_field", ["runner", "odds"])
+@pytest.mark.parametrize("changed_field", ["runner", "odds", "timestamp"])
 def test_runner_and_odds_are_bound_to_trusted_expectations(changed_field: str):
     artifact, members = ready_artifact()
     trusted_runner_sha256 = artifact["provenance"]["runner_set_sha256"]
@@ -559,15 +562,22 @@ def test_runner_and_odds_are_bound_to_trusted_expectations(changed_field: str):
             artifact["request"]["selected_race"], canonical_runners
         )
     else:
-        artifact["capture"]["runner_set"][0]["decimal_odds"] = 9.0
+        if changed_field == "timestamp":
+            artifact["timing"]["capture_timestamp"] = "2026-08-04T00:00:11+00:00"
+            artifact["timing"]["capture_prejump_margin_seconds"] = 594
+        else:
+            artifact["capture"]["runner_set"][0]["decimal_odds"] = 9.0
         artifact["provenance"]["odds_sha256"] = canonical_sha256(
-            [
-                {
-                    "box_number": row["box_number"],
-                    "decimal_odds": row["decimal_odds"],
-                }
-                for row in artifact["capture"]["runner_set"]
-            ]
+            {
+                "capture_timestamp": artifact["timing"]["capture_timestamp"],
+                "odds": [
+                    {
+                        "box_number": row["box_number"],
+                        "decimal_odds": row["decimal_odds"],
+                    }
+                    for row in artifact["capture"]["runner_set"]
+                ],
+            }
         )
     capture_raw = canonical_bytes(artifact["capture"])
     members["capture/odds.json"] = capture_raw

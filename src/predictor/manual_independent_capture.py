@@ -1107,10 +1107,16 @@ def validate_terminal_artifact(
             raise _reject("RACE_IDENTITY_DISAGREEMENT", field="source_files")
         expected_runner_sha = sealed_runner_set_sha256(selected_race, canonical_runners)
         expected_odds_sha = canonical_sha256(
-            [
-                {"box_number": row["box_number"], "decimal_odds": row["decimal_odds"]}
-                for row in capture["runner_set"]
-            ]
+            {
+                "capture_timestamp": timing["capture_timestamp"],
+                "odds": [
+                    {
+                        "box_number": row["box_number"],
+                        "decimal_odds": row["decimal_odds"],
+                    }
+                    for row in capture["runner_set"]
+                ],
+            }
         )
         if (
             expected_runner_sha != trusted_runner_set_sha256
