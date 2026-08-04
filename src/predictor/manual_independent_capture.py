@@ -689,7 +689,7 @@ def _artifact_hashes(value: Any) -> list[dict[str, Any]]:
 def _capture(value: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     capture = _exact(value, {"runner_set"}, "artifact.capture")
     raw_runners = capture["runner_set"]
-    if not isinstance(raw_runners, list) or len(raw_runners) > 16:
+    if not isinstance(raw_runners, list) or len(raw_runners) > 10:
         raise _reject("RUNNER_SET_INVALID")
     if not raw_runners:
         return {"runner_set": []}, []
@@ -708,6 +708,12 @@ def _capture(value: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
             f"artifact.capture.runner_set[{index}]",
         )
         odds = row["decimal_odds"]
+        if (
+            isinstance(row["box_number"], bool)
+            or not isinstance(row["box_number"], int)
+            or not 1 <= row["box_number"] <= 10
+        ):
+            raise _reject("RUNNER_SET_INVALID", field=f"runner_set[{index}].box_number")
         if (
             isinstance(odds, bool)
             or not isinstance(odds, (int, float))

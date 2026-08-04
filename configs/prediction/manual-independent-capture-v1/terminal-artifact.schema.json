@@ -82,7 +82,7 @@
       "additionalProperties": false,
       "required": ["runner_set"],
       "properties": {
-        "runner_set": {"type": "array", "items": {"$ref": "#/$defs/runner"}, "maxItems": 16}
+          "runner_set": {"type": "array", "items": {"$ref": "#/$defs/runner"}, "maxItems": 10}
       }
     },
     "closure": {
@@ -197,7 +197,7 @@
       "additionalProperties": false,
       "required": ["box_number", "display_name", "identity", "source_native_runner_id", "decimal_odds"],
       "properties": {
-        "box_number": {"type": "integer", "minimum": 1},
+        "box_number": {"type": "integer", "minimum": 1, "maximum": 10},
         "display_name": {"type": "string", "minLength": 1},
         "identity": {"type": "string", "minLength": 1},
         "source_native_runner_id": {"type": ["string", "null"]},

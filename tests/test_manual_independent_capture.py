@@ -537,6 +537,14 @@ def test_decimal_odds_must_be_finite_and_greater_than_one(invalid_odds: float):
         validate(artifact, members)
 
 
+@pytest.mark.parametrize("invalid_box", [0, 11, True])
+def test_runner_boxes_are_in_the_shared_greyhound_domain(invalid_box: object):
+    artifact, members = ready_artifact()
+    artifact["capture"]["runner_set"][0]["box_number"] = invalid_box
+    with pytest.raises(ManualIndependentCaptureRejected, match="RUNNER_SET_INVALID"):
+        validate(artifact, members)
+
+
 @pytest.mark.parametrize(
     "location,field,value",
     [
