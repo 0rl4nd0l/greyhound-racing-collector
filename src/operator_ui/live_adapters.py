@@ -320,6 +320,13 @@ _ACTIONS = {
     "collect_future_strict_prejump_odds", "repair_strict_prejump_odds_runner_set",
     "ready_for_unified_evidence_evaluation",
 }
+_OFFICIAL_RESULT_GAP_ACTIONS = {
+    "append_official_result_evidence_backlog", "capture_official_result",
+    "repair_official_result_runner_set_or_identity_join",
+}
+_STRICT_ODDS_GAP_ACTIONS = {
+    "collect_future_strict_prejump_odds", "repair_strict_prejump_odds_runner_set",
+}
 _DECISIONS = {
     "RUN_POST_BACKLOG_UNIFIED_EVALUATION", "RUN_BACKLOG_APPEND",
     "STRICT_PREJUMP_ODDS_COLLECTION_NEXT", "OFFICIAL_RESULT_CAPTURE_NEXT",
@@ -365,6 +372,94 @@ def _bounded_identity(value: Any) -> str:
     if any(ord(char) < 32 or ord(char) == 127 for char in value):
         raise ValueError("producer identity contains a control character")
     return value
+
+
+def _lock_metadata(value: Any, *, release: bool = False) -> None:
+    """Validate non-disclosed producer lock metadata as a finite exact shape."""
+    if value is None:
+        return
+    if not isinstance(value, Mapping):
+        raise ValueError("inventory lock metadata is invalid")
+    if release:
+        base = {"released", "reason"}
+        reason = value.get("reason")
+        extra = (
+            {"error"} if reason == "lock_unreadable" else
+            {"lock"} if reason == "lock_owned_by_other_run" else set()
+        )
+        if set(value) != base | extra or type(value.get("released")) is not bool:
+            raise ValueError("inventory lock release is invalid")
+        if reason not in {"released_by_owner", "lock_already_missing", "lock_unreadable", "lock_owned_by_other_run"}:
+            raise ValueError("inventory lock release reason is invalid")
+        if value["released"] != (reason == "released_by_owner"):
+            raise ValueError("inventory lock release closure is contradictory")
+        if reason == "lock_unreadable":
+            _bounded_identity(value["error"])
+        elif reason == "lock_owned_by_other_run":
+            lock = value["lock"]
+            fields = {"schema_version", "run_id", "pid", "hostname", "started_at", "output_dir", "owner"}
+            if not isinstance(lock, Mapping) or set(lock) != fields:
+                raise ValueError("inventory lock release owner is invalid")
+            if lock.get("schema_version") != "shadow_autopilot_daemon_lock_v1" or _bounded_count(lock.get("pid")) <= 0:
+                raise ValueError("inventory lock release owner identity is invalid")
+            for field in ("run_id", "hostname", "owner"):
+                _bounded_identity(lock.get(field))
+            _time(lock.get("started_at"))
+            _producer_locator(lock.get("output_dir"))
+        return
+    required = {"schema_version", "lock_path", "status", "write_allowed"}
+    status_contracts = {
+        "not_configured": (set(), None, True),
+        "missing": (set(), "path", True),
+        "unreadable": ({"error"}, "path", False),
+        "invalid_payload": (set(), "path", False),
+        "present_without_pid": ({"lock"}, "path", False),
+        "stale_dead_pid": ({"pid", "lock"}, "path", True),
+        "present_pid_permission_unknown": ({"pid", "lock"}, "path", False),
+        "present_live_pid": ({"pid", "lock"}, "path", False),
+        "lock_path_missing_required": (set(), None, False),
+        "stale_lock_unlink_failed": ({"error", "pid", "lock"}, "path", False),
+        "lock_race_lost": (set(), "path", False),
+        "acquired_by_backlog_append": ({"pid", "lock", "owned_lock"}, "path", True),
+    }
+    status = value.get("status")
+    contract = status_contracts.get(status) if isinstance(status, str) else None
+    if contract is None or set(value) != required | contract[0]:
+        raise ValueError("inventory lock status fields are invalid")
+    if value.get("schema_version") != "shared_lock_status_v1" or type(value.get("write_allowed")) is not bool:
+        raise ValueError("inventory lock status schema is invalid")
+    _, path_shape, write_allowed = contract
+    if value["write_allowed"] is not write_allowed:
+        raise ValueError("inventory lock status write closure is contradictory")
+    if (value.get("lock_path") is None) != (path_shape is None):
+        raise ValueError("inventory lock path is contradictory")
+    if path_shape == "path":
+        _producer_locator(value["lock_path"])
+    if "error" in value:
+        _bounded_identity(value["error"])
+    if "pid" in value and _bounded_count(value["pid"]) <= 0:
+        raise ValueError("inventory lock pid is invalid")
+    lock_fields = {"schema_version", "run_id", "pid", "hostname", "started_at", "output_dir", "owner"}
+    for name in ("lock", "owned_lock"):
+        if name not in value:
+            continue
+        lock = value[name]
+        if not isinstance(lock, Mapping) or set(lock) != lock_fields:
+            raise ValueError("inventory lock owner fields are invalid")
+        if lock.get("schema_version") != "shadow_autopilot_daemon_lock_v1" or _bounded_count(lock.get("pid")) <= 0:
+            raise ValueError("inventory lock owner is invalid")
+        for field in ("run_id", "hostname", "owner"):
+            _bounded_identity(lock.get(field))
+        _time(lock.get("started_at"))
+        _producer_locator(lock.get("output_dir"))
+    if "pid" in value and "lock" in value and value["pid"] != value["lock"]["pid"]:
+        raise ValueError("inventory lock pid is contradictory")
+    if status == "acquired_by_backlog_append":
+        if (
+            value["pid"] != value["owned_lock"]["pid"]
+            or dict(value["lock"]) != dict(value["owned_lock"])
+        ):
+            raise ValueError("inventory acquired lock ownership is contradictory")
 
 
 def _inventory_semantics(report: Mapping[str, Any]) -> tuple[dict[str, int], dict[str, int]]:
@@ -582,9 +677,14 @@ def _inventory_semantics(report: Mapping[str, Any]) -> tuple[dict[str, int], dic
             raise ValueError("inventory backlog closure status is invalid")
         if backlog["db_write_performed"] != (final == "APPENDED_OFFICIAL_RESULT_EVIDENCE_BACKLOG"):
             raise ValueError("inventory backlog closure disagrees with writes")
-        for key in ("shared_lock_status", "shared_lock_release"):
-            if backlog[key] is not None:
-                _bounded_identity(backlog[key])
+        _lock_metadata(backlog["shared_lock_status"])
+        _lock_metadata(backlog["shared_lock_release"], release=True)
+        lock_acquired = (
+            isinstance(backlog["shared_lock_status"], Mapping)
+            and backlog["shared_lock_status"].get("status") == "acquired_by_backlog_append"
+        )
+        if (backlog["shared_lock_release"] is not None) != lock_acquired:
+            raise ValueError("inventory backlog lock release closure is contradictory")
     else:
         raise ValueError("inventory backlog status is invalid")
 
@@ -618,8 +718,20 @@ def _inventory_semantics(report: Mapping[str, Any]) -> tuple[dict[str, int], dic
         raise ValueError("inventory skipped reason counts are invalid")
     for key, value in reason_counts.items():
         _bounded_identity(key); _bounded_count(value)
-    for field in ("skipped_race_action_counts", "official_result_gap_action_counts", "strict_odds_gap_action_counts"):
+    skipped = _count_map(metrics.get("skipped_race_action_counts"))
+    skipped_population = total - evaluated
+    if (
+        sum(reason_counts.values()) != skipped_population
+        or sum(skipped.values()) != skipped_population
+    ):
+        raise ValueError("inventory skipped race counts are contradictory")
+    for field, allowed_actions in (
+        ("official_result_gap_action_counts", _OFFICIAL_RESULT_GAP_ACTIONS),
+        ("strict_odds_gap_action_counts", _STRICT_ODDS_GAP_ACTIONS),
+    ):
         gap_counts = _count_map(metrics.get(field))
+        if any(action not in allowed_actions for action in gap_counts):
+            raise ValueError("inventory gap action is invalid")
         if sum(gap_counts.values()) > shadow:
             raise ValueError("inventory gap action counts are contradictory")
     notes = metrics.get("metric_notes")
@@ -691,13 +803,9 @@ def _missing_or_invalid(envelope: EvidenceEnvelope) -> str:
 
 
 def _path(value: Any) -> str:
-    value = _text(value)
-    if (
-        value.startswith("/")
-        or "\\" in value
-        or any(ord(char) < 32 or ord(char) == 127 for char in value)
-        or any(part in {"", ".", ".."} for part in value.split("/"))
-    ):
+    value = _producer_locator(value)
+    parts = value.split("/")[1 if value.startswith("/") else 0:]
+    if "\\" in value or any(part in {"", ".", ".."} for part in parts):
         raise ValueError("producer path identity is unsafe")
     return value
 
@@ -928,6 +1036,8 @@ class LiveEvidenceAdapters:
             "CURRENT_INDEX_PUBLICATION_MISSING", "CURRENT_INDEX_REPORT_MISSING",
         }:
             return "UNAVAILABLE/DATA_MISSING", "missing"
+        if code == "CURRENT_INDEX_SOURCE_CHANGED":
+            return "UNAVAILABLE/DATA_MISSING", "error"
         return "INVALID/INTEGRITY_FAILED", None
 
     @staticmethod
@@ -993,7 +1103,7 @@ class LiveEvidenceAdapters:
                     )
                     availability = "present"
                 except (FileNotFoundError, PermissionError, OSError, ValueError):
-                    pass
+                    return self._verified_envelope(now=now, policy="P-UPCOMING-300-PREJUMP", identity=CURRENT_RACE_INDEX_SCHEMA, locator="operator_ui.current_race_index", status="UNAVAILABLE/DATA_MISSING", availability="error"), []
             return self._verified_envelope(now=now, policy="P-UPCOMING-300-PREJUMP", identity=CURRENT_RACE_INDEX_SCHEMA, locator="operator_ui.current_race_index", status=status, availability=availability, content_sha256=content_sha256), []
         except FileNotFoundError:
             return self._verified_envelope(now=now, policy="P-UPCOMING-300-PREJUMP", identity=CURRENT_RACE_INDEX_SCHEMA, locator="operator_ui.current_race_index", status="UNAVAILABLE/DATA_MISSING"), []

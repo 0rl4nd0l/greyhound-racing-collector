@@ -59,6 +59,7 @@ class HistoricalClaim(str, Enum):
 
 class JsonSerializationPolicy(str, Enum):
     COMPACT_CANONICAL = "compact_canonical"
+    PRODUCER_COMPACT_CANONICAL_LINE = "producer_compact_canonical_line"
     PRODUCER_PRETTY_SORTED = "producer_pretty_sorted"
 
 
@@ -180,7 +181,7 @@ class SourceConfig:
     policy: str
     supported_claim: str | HistoricalClaim
     json: JsonSource
-    max_bytes: int = 1_048_576
+    max_bytes: int = 256 * 1024
     max_envelope_bytes: int = 32_768
     expected_sha256: str | None = None
 
@@ -910,6 +911,11 @@ class OperatorEvidenceReader:
                     separators=(",", ":"),
                     sort_keys=True,
                 ).encode("utf-8")
+            elif config.json.serialization_policy is JsonSerializationPolicy.PRODUCER_COMPACT_CANONICAL_LINE:
+                canonical = (
+                    json.dumps(payload, allow_nan=False, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+                    + "\n"
+                ).encode("utf-8")
             else:
                 canonical = (
                     json.dumps(payload, indent=2, sort_keys=True, default=str)
@@ -1048,9 +1054,8 @@ class OperatorEvidenceReader:
     ) -> tuple[EvidenceEnvelope, Mapping[str, Any] | None]:
         """Read a fixed server source only when its public locator is expected.
 
-        The expected locator is a producer-authored safe relative identity,
-        compared only to the server-owned configured path relative to its
-        fixed root.  The public symbolic ``source_locator`` remains unchanged.
+        The expected locator is an opaque producer identity, compared only to
+        the configured fixed source.  It never supplies filesystem authority.
         """
         try:
             config = self._sources[source_key]
@@ -1060,11 +1065,10 @@ class OperatorEvidenceReader:
             expected_source_locator, "expected source locator", 4096
         )
         if (
-            expected_source_locator.startswith("/")
-            or "\\" in expected_source_locator
+            "\\" in expected_source_locator
             or any(
                 part in {"", ".", ".."}
-                for part in expected_source_locator.split("/")
+                for part in expected_source_locator.split("/")[1 if expected_source_locator.startswith("/") else 0:]
             )
         ):
             raise _PathChanged("expected producer locator is unsafe")
@@ -1074,7 +1078,7 @@ class OperatorEvidenceReader:
             ).as_posix()
         except ValueError as exc:
             raise _PathChanged("configured source is outside its fixed root") from exc
-        if configured_relative != expected_source_locator:
+        if expected_source_locator not in {configured_relative, config.locator.as_posix()}:
             raise _PathChanged("configured source locator does not match producer identity")
         return self.read_payload(
             source_key, server_observed_at=server_observed_at

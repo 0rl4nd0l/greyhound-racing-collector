@@ -126,7 +126,7 @@ def repository_binding_fixture(tmp_path,monkeypatch):
     for name,payload in source_payloads.items():
         path=(live_root/"reports/odds_capture_refresh_report.json" if name=="odds_refresh" else live_root/f"{name}.json")
         path.parent.mkdir(parents=True,exist_ok=True)
-        raw=(json.dumps(payload,separators=(",",":"),sort_keys=True) if name=="model_catalog" else json.dumps(payload,indent=2,sort_keys=True,default=str)+"\n").encode()
+        raw=((json.dumps(payload,separators=(",",":"),sort_keys=True)+"\n") if name=="model_catalog" else json.dumps(payload,indent=2,sort_keys=True,default=str)+"\n").encode()
         path.write_bytes(raw);live_sources[name]={"path":str(path.absolute()),"sha256":hashlib.sha256(raw).hexdigest()}
         if name=="odds_refresh":live_sources[name]["allowlisted_root"]=str(live_root.absolute())
     raw_names=("corpus_inventory_csv","corpus_inventory_jsonl","corpus_scorecard_csv","corpus_scorecard_jsonl","corpus_report_bytes","corpus_summary","corpus_final_status","model_latest_config","model_latest_schema","model_latest_artifact","model_latest_manifest","model_baseline_config","model_baseline_schema")
@@ -155,12 +155,24 @@ def test_repository_profile_binds_authoritative_sources_and_separate_operations_
     assert worker.canonical_db==canonical and worker.collector_request_root==evidence/"manual_prediction_collector_requests_v1"
     assert canonical.read_bytes()==before and not (operations/"canonical.sqlite3").exists()
     live=app.config[bootstrap_module.CONFIG_KEY]
+    source_limits={key:config.max_bytes for key,config in live._reader._sources.items()}
+    assert source_limits=={
+        "full_state":512*1024,
+        "full_report":512*1024,
+        "odds_state":256*1024,
+        "odds_report":256*1024,
+        "odds_refresh":256*1024,
+        "corpus_report":256*1024,
+        "corpus_manifest":256*1024,
+        "deployment_manifest":256*1024,
+        "model_catalog":256*1024,
+    }
     refresh=live._reader._sources["odds_refresh"]
     assert refresh.locator.relative_to(refresh.allowlisted_root).as_posix()=="reports/odds_capture_refresh_report.json"
     assert refresh.json.serialization_policy.value=="producer_pretty_sorted"
     assert live._reader._sources["corpus_report"].json.serialization_policy.value=="producer_pretty_sorted"
     catalog=live._reader._sources["model_catalog"]
-    assert catalog.json.serialization_policy.value=="compact_canonical"
+    assert catalog.json.serialization_policy.value=="producer_compact_canonical_line"
     assert catalog.json.authority_observed_at=="2026-08-03T01:02:03Z"
     assert live._units.full_unit_name=="shadow-autopilot.service"
     assert live._units.odds_unit_name=="shadow-autopilot-odds-capture.service"

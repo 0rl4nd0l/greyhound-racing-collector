@@ -41,7 +41,7 @@ from src.operator_ui.foundation import (
 )
 from src.operator_ui.live_adapters import (
     InstalledUnits, LiveEvidenceAdapters, PredictionBundleSource,
-    UpcomingRaceSource, _calendar_gap, _finite_metric,
+    UpcomingRaceSource, _calendar_gap, _finite_metric, _lock_metadata,
 )
 from src.operator_ui.api import _corpus_report, install_level_1_api
 from src.operator_ui.bootstrap import CONFIG_KEY, bind_configured_live_evidence
@@ -248,12 +248,15 @@ def make_live(
         )
         path.parent.mkdir(parents=True, exist_ok=True)
         policy = (serialization_policies or {}).get(
-            key, JsonSerializationPolicy.COMPACT_CANONICAL
+            key, JsonSerializationPolicy.PRODUCER_COMPACT_CANONICAL_LINE
+            if key == "model_catalog" else JsonSerializationPolicy.COMPACT_CANONICAL
         )
         if policy is JsonSerializationPolicy.PRODUCER_PRETTY_SORTED:
             path.write_bytes(
                 (json.dumps(payload, indent=2, sort_keys=True, default=str) + "\n").encode()
             )
+        elif policy is JsonSerializationPolicy.PRODUCER_COMPACT_CANONICAL_LINE:
+            path.write_bytes(canonical(payload) + b"\n")
         else:
             path.write_bytes(canonical(payload))
         time_field = (
@@ -743,11 +746,11 @@ def test_unknown_lifecycle_and_full_status_verdict_disagreement_fail_closed(tmp_
     assert make_live(tmp_path / "conflict", conflict).collector(NOW).data["lanes"][0]["status"] == "DIVERGENT"
 
 
-@pytest.mark.parametrize("path", ["../prior", "/tmp/report"])
-def test_refresh_path_traversal_fails_closed(tmp_path, path):
+@pytest.mark.parametrize("path, expected_status", [("../prior", "INTEGRITY_FAILED"), ("/tmp/report", "DIVERGENT")])
+def test_refresh_path_traversal_fails_closed(tmp_path, path, expected_status):
     values = actual_payloads()
     values["odds_state"]["autopilot_output_dir"] = path
-    assert make_live(tmp_path, values).collector(NOW).data["lanes"][1]["status"] == "INTEGRITY_FAILED"
+    assert make_live(tmp_path, values).collector(NOW).data["lanes"][1]["status"] == expected_status
 
 
 def test_refresh_timestamp_and_status_disagreement_fail_closed(tmp_path):
@@ -907,6 +910,133 @@ def test_corpus_rejects_backlog_closure_disagreement(tmp_path):
     assert make_live(tmp_path, values).corpus(NOW).evidence.status == "INVALID/INTEGRITY_FAILED"
 
 
+def _shared_lock(status, *, write_allowed, lock_path="run/shared.lock", **extra):
+    return {
+        "schema_version": "shared_lock_status_v1",
+        "lock_path": lock_path,
+        "status": status,
+        "write_allowed": write_allowed,
+        **extra,
+    }
+
+
+def _owned_shared_lock(pid=123):
+    return {
+        "schema_version": "shadow_autopilot_daemon_lock_v1",
+        "run_id": "official_result_evidence_append_backlog_20260731T020000Z",
+        "pid": pid,
+        "hostname": "collector-host",
+        "started_at": NOW.isoformat(),
+        "output_dir": "artifacts/backlog",
+        "owner": "append_official_result_evidence_backlog",
+    }
+
+
+def _found_backlog(*, shared_lock_status=None, shared_lock_release=None):
+    return {
+        "status": "FOUND",
+        "path": "artifacts/evidence/official_result_evidence_append_backlog_x/official_result_evidence_append_backlog_report.json",
+        "final_status": "NOOP_ALREADY_PRESENT",
+        "artifact_count": 1,
+        "processed_count": 1,
+        "status_counts": {"ALREADY_PRESENT": 1},
+        "inserted_race_rows": 0,
+        "inserted_runner_rows": 0,
+        "db_write_performed": False,
+        "shared_lock_status": shared_lock_status,
+        "shared_lock_release": shared_lock_release,
+    }
+
+
+@pytest.mark.parametrize(
+    ("shared_lock_status", "shared_lock_release"),
+    [
+        (None, None),
+        (
+            _shared_lock(
+                "acquired_by_backlog_append",
+                write_allowed=True,
+                pid=123,
+                lock=_owned_shared_lock(),
+                owned_lock=_owned_shared_lock(),
+            ),
+            {"released": True, "reason": "released_by_owner"},
+        ),
+    ],
+)
+def test_corpus_accepts_backlog_lock_release_closure(
+    tmp_path, shared_lock_status, shared_lock_release
+):
+    values = actual_payloads()
+    values["corpus_report"]["latest_backlog_append_report"] = _found_backlog(
+        shared_lock_status=shared_lock_status,
+        shared_lock_release=shared_lock_release,
+    )
+    assert make_live(tmp_path, values).corpus(NOW).evidence.status == "AVAILABLE/FRESH"
+
+
+@pytest.mark.parametrize(
+    ("shared_lock_status", "shared_lock_release"),
+    [
+        (None, {"released": False, "reason": "lock_already_missing"}),
+        (
+            _shared_lock(
+                "acquired_by_backlog_append",
+                write_allowed=True,
+                pid=123,
+                lock=_owned_shared_lock(),
+                owned_lock=_owned_shared_lock(),
+            ),
+            None,
+        ),
+    ],
+)
+def test_corpus_rejects_backlog_lock_release_contradictions(
+    tmp_path, shared_lock_status, shared_lock_release
+):
+    values = actual_payloads()
+    values["corpus_report"]["latest_backlog_append_report"] = _found_backlog(
+        shared_lock_status=shared_lock_status,
+        shared_lock_release=shared_lock_release,
+    )
+    assert make_live(tmp_path, values).corpus(NOW).evidence.status == "INVALID/INTEGRITY_FAILED"
+
+
+@pytest.mark.parametrize("value", [
+    _shared_lock("not_configured", lock_path=None, write_allowed=True),
+    _shared_lock("missing", write_allowed=True),
+    _shared_lock("unreadable", write_allowed=False, error="OSError:unreadable"),
+    _shared_lock("invalid_payload", write_allowed=False),
+    _shared_lock("stale_dead_pid", write_allowed=True, pid=123, lock=_owned_shared_lock()),
+    _shared_lock("present_pid_permission_unknown", write_allowed=False, pid=123, lock=_owned_shared_lock()),
+    _shared_lock("present_live_pid", write_allowed=False, pid=123, lock=_owned_shared_lock()),
+    _shared_lock("lock_path_missing_required", lock_path=None, write_allowed=False),
+    _shared_lock("stale_lock_unlink_failed", write_allowed=False, error="OSError:busy", pid=123, lock=_owned_shared_lock()),
+    _shared_lock("lock_race_lost", write_allowed=False),
+    _shared_lock("acquired_by_backlog_append", write_allowed=True, pid=123, lock=_owned_shared_lock(), owned_lock=_owned_shared_lock()),
+])
+def test_corpus_accepts_exact_shared_lock_producer_contracts(value):
+    _lock_metadata(value)
+
+
+@pytest.mark.parametrize("value", [
+    _shared_lock("missing", write_allowed=True, pid=123),
+    _shared_lock("missing", write_allowed=False),
+    _shared_lock("unreadable", write_allowed=False),
+    _shared_lock("invalid_payload", write_allowed=False, error="invented"),
+    _shared_lock("present_without_pid", write_allowed=False, lock={"unexpected": "payload"}),
+    _shared_lock("not_configured", lock_path="run/shared.lock", write_allowed=True),
+    _shared_lock("present_live_pid", write_allowed=False, pid=123, lock=_owned_shared_lock(), owned_lock=_owned_shared_lock()),
+    _shared_lock("present_live_pid", write_allowed=False, pid=124, lock=_owned_shared_lock()),
+    _shared_lock("acquired_by_backlog_append", write_allowed=True, pid=123, lock=_owned_shared_lock()),
+    _shared_lock("acquired_by_backlog_append", write_allowed=True, pid=124, lock=_owned_shared_lock(), owned_lock=_owned_shared_lock()),
+    _shared_lock("acquired_by_backlog_append", write_allowed=True, pid=123, lock=_owned_shared_lock(), owned_lock=_owned_shared_lock(124)),
+])
+def test_corpus_rejects_contradictory_shared_lock_metadata(value):
+    with pytest.raises(ValueError):
+        _lock_metadata(value)
+
+
 @pytest.mark.parametrize("absolute", [False, True])
 def test_corpus_accepts_genuine_relative_and_absolute_producer_locators_without_disclosure(tmp_path, absolute):
     values = actual_payloads()
@@ -927,6 +1057,68 @@ def test_corpus_accepts_genuine_relative_and_absolute_producer_locators_without_
     rendered = json.dumps(result.data)
     assert prefix not in rendered
     assert "population_count" not in rendered
+
+
+def test_corpus_accepts_scorecard_skips_over_the_full_race_union(tmp_path):
+    values = actual_payloads()
+    report = values["corpus_report"]
+    report["shadow_prediction_summary"]["shadow_prediction_race_count"] = 3598
+    report["summary_counts"].update(
+        race_union_count=5284,
+        shadow_prediction_race_count=3598,
+        shadow_races_with_official_result_evidence_db=1206,
+        shadow_races_with_strict_prejump_odds=3582,
+        shadow_races_complete_official_and_strict_odds=1190,
+        action_counts={
+            "not_shadow_scored": 1686,
+            "capture_official_result": 2392,
+            "collect_future_strict_prejump_odds": 16,
+            "ready_for_unified_evidence_evaluation": 1190,
+        },
+    )
+    report["scorecard_metrics"].update(
+        evaluation_race_count=1190,
+        skipped_race_reason_counts={
+            "shadow_predictions_missing": 1686,
+            "official_result_incomplete_for_shadow_boxes": 2392,
+            "strict_odds_incomplete_for_shadow_boxes": 16,
+        },
+        skipped_race_action_counts={
+            "not_shadow_scored": 1686,
+            "capture_official_result": 2392,
+            "collect_future_strict_prejump_odds": 16,
+        },
+        official_result_gap_action_counts={"capture_official_result": 2392},
+        strict_odds_gap_action_counts={"collect_future_strict_prejump_odds": 16},
+    )
+
+    assert make_live(tmp_path, values).corpus(NOW).evidence.status == "AVAILABLE/FRESH"
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["skipped_race_reason_counts", "skipped_race_action_counts"],
+)
+def test_corpus_rejects_scorecard_skip_conservation_violations(tmp_path, field):
+    values = actual_payloads()
+    counts = values["corpus_report"]["scorecard_metrics"][field]
+    counts[next(iter(counts))] += 1
+
+    assert make_live(tmp_path, values).corpus(NOW).evidence.status == "INVALID/INTEGRITY_FAILED"
+
+
+@pytest.mark.parametrize(
+    ("field", "action"),
+    [
+        ("official_result_gap_action_counts", "not_shadow_scored"),
+        ("strict_odds_gap_action_counts", "capture_official_result"),
+    ],
+)
+def test_corpus_rejects_cross_family_gap_actions(tmp_path, field, action):
+    values = actual_payloads()
+    values["corpus_report"]["scorecard_metrics"][field] = {action: 1}
+
+    assert make_live(tmp_path, values).corpus(NOW).evidence.status == "INVALID/INTEGRITY_FAILED"
 
 
 @pytest.mark.parametrize(
@@ -1482,13 +1674,15 @@ def test_ui_stale_snapshot_beyond_predictor_window_retains_bound_identity(tmp_pa
     [
         ("CURRENT_INDEX_UNAVAILABLE", "UNAVAILABLE/DATA_MISSING", "missing", "unknown"),
         ("DISCOVERY_TIMEOUT", "UNAVAILABLE/DATA_MISSING", "error", "unknown"),
-        ("CURRENT_INDEX_SOURCE_CHANGED", "INVALID/INTEGRITY_FAILED", "error", "failed"),
-        ("CURRENT_INDEX_PUBLICATION_INVALID", "INVALID/INTEGRITY_FAILED", "error", "failed"),
+        ("CURRENT_INDEX_SOURCE_CHANGED", "UNAVAILABLE/DATA_MISSING", "error", "unknown"),
+        ("CURRENT_INDEX_PUBLICATION_INVALID", "INVALID/INTEGRITY_FAILED", "present", "failed"),
     ],
 )
 def test_real_collector_rejection_codes_map_truthfully(tmp_path, monkeypatch, code, status, availability, integrity):
     def rejected(**kwargs):
         raise CaptureOneRejected(code)
+    if code == "CURRENT_INDEX_PUBLICATION_INVALID":
+        (tmp_path / "index").write_bytes(b"invalid current index")
     monkeypatch.setattr(live_module, "bounded_current_race_index", rejected)
     result = make_live(tmp_path, upcoming_races=UpcomingRaceSource(tmp_path / "index", tmp_path)).upcoming(NOW)
     assert (result.evidence.status, result.evidence.availability, result.evidence.schema_integrity) == (status, availability, integrity)
