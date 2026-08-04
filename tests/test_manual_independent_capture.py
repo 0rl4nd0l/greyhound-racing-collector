@@ -333,6 +333,11 @@ def test_json_schemas_and_example_publish_the_exact_fail_closed_vocabulary():
         terminal_schema["properties"]["terminal"]["properties"]["failure_code"]["enum"]
     )
     assert published_codes == {None, *TERMINAL_STATUS_BY_FAILURE_CODE}
+    absolute_path_pattern = config_schema["$defs"]["absolute_path"]["pattern"]
+    assert all(
+        re.search(absolute_path_pattern, value) is not None
+        for value in config()["paths"].values()
+    )
     validate_config(config(), forbidden_paths=forbidden_paths())
 
 
@@ -386,6 +391,7 @@ def test_config_constant_types_are_exact(section: str, field: str, value: object
         ("display_name", "Alpha Dog\n"),
         ("display_name", "Alpha\nDog"),
         ("display_name", "Alpha\x00Dog"),
+        ("display_name", "Alpha\u009bDog"),
         ("identity", "alpha dog"),
         ("identity", " ALPHA DOG"),
         ("identity", "ALPHA DOG "),
@@ -397,6 +403,7 @@ def test_config_constant_types_are_exact(section: str, field: str, value: object
         ("source_native_runner_id", "dog-1\n"),
         ("source_native_runner_id", "dog\t1"),
         ("source_native_runner_id", "dog\x001"),
+        ("source_native_runner_id", "dog\u009b1"),
     ],
 )
 def test_published_runner_strings_cannot_pass_schema_but_fail_runtime(
@@ -423,6 +430,7 @@ def test_published_runner_strings_cannot_pass_schema_but_fail_runtime(
         "not-an-exact-race-url ",
         "not-an-exact-race-url\n",
         "not-an-exact-\trace-url",
+        "not-an-exact-\u009brace-url",
     ],
 )
 def test_published_requested_url_lexical_rules_match_runtime(value: str):
@@ -531,6 +539,10 @@ def test_unhashable_scalar_shapes_are_stable_contract_rejections(
         ("operations_root", "relative/manual"),
         ("operations_root", "/srv/../manual"),
         ("operations_root", "//srv/manual"),
+        ("operations_root", "/"),
+        ("operations_root", "/srv/manual/"),
+        ("operations_root", "/srv//manual"),
+        ("operations_root", "/srv/\u009bmanual"),
         ("operations_root", "/srv/manual\nmisleading"),
         ("manual_lock", "/srv/greyhound-manual-operations/shared.lock"),
     ],
@@ -542,6 +554,23 @@ def test_unsafe_or_non_derived_manual_paths_are_rejected(
     cfg["paths"][path_field] = path_value
     with pytest.raises(ManualIndependentCaptureRejected):
         validate_config(cfg, forbidden_paths=forbidden_paths())
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "/",
+        "/srv/manual/",
+        "/srv//manual",
+        "/srv/./manual",
+        "/srv/../manual",
+        "/srv/\u009bmanual",
+    ],
+)
+def test_published_path_schema_matches_runtime_normalization(value: str):
+    schema = json.loads((SCHEMA_ROOT / "config.schema.json").read_bytes())
+    pattern = schema["$defs"]["absolute_path"]["pattern"]
+    assert re.search(pattern, value) is None
 
 
 @pytest.mark.parametrize(

@@ -18,7 +18,7 @@
       "properties": {
         "request_id": {"$ref": "#/$defs/uuid"},
         "requested_at": {"$ref": "#/$defs/timestamp"},
-        "requested_race_url": {"type": "string", "minLength": 1, "maxLength": 2048, "pattern": "^(?!\\s)(?![\\s\\S]*\\s$)(?![\\s\\S]*[\\u0000-\\u001f\\u007f])[\\s\\S]+$"},
+        "requested_race_url": {"type": "string", "minLength": 1, "maxLength": 2048, "pattern": "^(?!\\s)(?![\\s\\S]*\\s$)(?![\\s\\S]*[\\u0000-\\u001f\\u007f-\\u009f])[\\s\\S]+$"},
         "selected_race": {"anyOf": [{"$ref": "#/$defs/race"}, {"type": "null"}]},
         "minimum_prejump_margin_seconds": {"type": "integer", "minimum": 1, "maximum": 7200},
         "attempt_authority": {"const": "one_attempt"},
@@ -147,10 +147,10 @@
       "additionalProperties": false,
       "required": ["url", "race_id", "race_date", "venue", "venue_slug", "race_number", "scheduled_start"],
       "properties": {
-        "url": {"type": "string", "pattern": "^(?![\\s\\S]*[\\s\\u0000-\\u001f\\u007f])https://www\\.thedogs\\.com\\.au/racing/[\\s\\S]+$"},
-        "race_id": {"type": "string", "minLength": 1, "pattern": "^(?!\\s)(?![\\s\\S]*\\s$)(?![\\s\\S]*[\\u0000-\\u001f\\u007f])[\\s\\S]+$"},
+        "url": {"type": "string", "pattern": "^(?![\\s\\S]*[\\s\\u0000-\\u001f\\u007f-\\u009f])https://www\\.thedogs\\.com\\.au/racing/[\\s\\S]+$"},
+        "race_id": {"type": "string", "minLength": 1, "pattern": "^(?!\\s)(?![\\s\\S]*\\s$)(?![\\s\\S]*[\\u0000-\\u001f\\u007f-\\u009f])[\\s\\S]+$"},
         "race_date": {"type": "string", "format": "date"},
-        "venue": {"type": "string", "minLength": 1, "pattern": "^(?!\\s)(?![\\s\\S]*\\s$)(?![\\s\\S]*[\\u0000-\\u001f\\u007f])[\\s\\S]+$"},
+        "venue": {"type": "string", "minLength": 1, "pattern": "^(?!\\s)(?![\\s\\S]*\\s$)(?![\\s\\S]*[\\u0000-\\u001f\\u007f-\\u009f])[\\s\\S]+$"},
         "venue_slug": {"type": "string", "pattern": "^[a-z0-9-]+$"},
         "race_number": {"type": "integer", "minimum": 1},
         "scheduled_start": {"$ref": "#/$defs/timestamp"}
@@ -169,7 +169,7 @@
         "path": {"enum": ["sources/form.csv", "sources/race-source.bin", "sources/sidecar.json"]},
         "content_class": {"enum": ["prejump_race_source", "prejump_form", "prejump_sidecar"]},
         "outcome_scope": {"const": "target_same_future_outcomes_excluded"},
-        "race_url": {"type": "string", "format": "uri", "pattern": "^(?![\\s\\S]*[\\s\\u0000-\\u001f\\u007f])https://www\\.thedogs\\.com\\.au/racing/[\\s\\S]+$"},
+        "race_url": {"type": "string", "format": "uri", "pattern": "^(?![\\s\\S]*[\\s\\u0000-\\u001f\\u007f-\\u009f])https://www\\.thedogs\\.com\\.au/racing/[\\s\\S]+$"},
         "race_identity_sha256": {"$ref": "#/$defs/sha256"},
         "source_timestamp": {"$ref": "#/$defs/timestamp"},
         "bytes": {"type": "integer", "minimum": 1, "maximum": 2147483647},
@@ -198,9 +198,9 @@
       "required": ["box_number", "display_name", "identity", "source_native_runner_id", "decimal_odds"],
       "properties": {
         "box_number": {"type": "integer", "minimum": 1, "maximum": 10},
-        "display_name": {"type": "string", "minLength": 1, "pattern": "^(?![\\s\\S]*[\\u0000-\\u001f\\u007f])\\S(?:[\\s\\S]*\\S)?$"},
+        "display_name": {"type": "string", "minLength": 1, "pattern": "^(?![\\s\\S]*[\\u0000-\\u001f\\u007f-\\u009f])\\S(?:[\\s\\S]*\\S)?$"},
         "identity": {"type": "string", "minLength": 1, "pattern": "^(?!.*[a-z])(?![\\s\\S]*\\s$)[\\u0021-\\u007e](?:[\\u0020-\\u007e]*[\\u0021-\\u007e])?$"},
-        "source_native_runner_id": {"anyOf": [{"type": "string", "minLength": 1, "pattern": "^(?![\\s\\S]*[\\u0000-\\u001f\\u007f])\\S(?:[\\s\\S]*\\S)?$"}, {"type": "null"}]},
+        "source_native_runner_id": {"anyOf": [{"type": "string", "minLength": 1, "pattern": "^(?![\\s\\S]*[\\u0000-\\u001f\\u007f-\\u009f])\\S(?:[\\s\\S]*\\S)?$"}, {"type": "null"}]},
         "decimal_odds": {"type": "number", "exclusiveMinimum": 1, "maximum": 1.7976931348623157e308}
       }
     }

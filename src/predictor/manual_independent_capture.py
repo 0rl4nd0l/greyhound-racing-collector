@@ -153,7 +153,7 @@ _RUNNER_IDENTITY_RE = re.compile(
     r"(?!.*[a-z])[\x21-\x7e](?:[\x20-\x7e]*[\x21-\x7e])?"
 )
 _RUNNER_TEXT_RE = re.compile(
-    r"(?![\s\S]*[\x00-\x1f\x7f])\S(?:[\s\S]*\S)?"
+    r"(?![\s\S]*[\x00-\x1f\x7f-\x9f])\S(?:[\s\S]*\S)?"
 )
 _FORBIDDEN_MEMBER_PARTS = frozenset(
     {
@@ -343,7 +343,10 @@ def _absolute_path(value: Any, label: str) -> tuple[Path, Path]:
         or not value
         or value.startswith("//")
         or "\\" in value
-        or any(ord(character) < 32 or ord(character) == 127 for character in value)
+        or any(
+            ord(character) < 32 or 127 <= ord(character) <= 159
+            for character in value
+        )
     ):
         raise _reject("UNSAFE_PATH", field=label)
     path = Path(value)
@@ -566,7 +569,7 @@ def _request(value: Any, *, exact_race_invalid: bool) -> dict[str, Any]:
         or len(request["requested_race_url"]) > 2048
         or request["requested_race_url"] != request["requested_race_url"].strip()
         or any(
-            ord(character) < 32 or ord(character) == 127
+            ord(character) < 32 or 127 <= ord(character) <= 159
             for character in request["requested_race_url"]
         )
     ):
