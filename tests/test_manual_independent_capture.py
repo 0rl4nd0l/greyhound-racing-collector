@@ -412,6 +412,43 @@ def test_published_runner_strings_cannot_pass_schema_but_fail_runtime(
         validate(artifact, members)
 
 
+@pytest.mark.parametrize(
+    "value",
+    [
+        " not-an-exact-race-url",
+        "not-an-exact-race-url ",
+        "not-an-exact-race-url\n",
+        "not-an-exact-\trace-url",
+    ],
+)
+def test_published_requested_url_lexical_rules_match_runtime(value: str):
+    schema = json.loads((SCHEMA_ROOT / "terminal-artifact.schema.json").read_bytes())
+    field_schema = schema["properties"]["request"]["properties"][
+        "requested_race_url"
+    ]
+    assert re.search(field_schema["pattern"], value) is None
+
+    artifact, members = valid_failure_artifact("EXACT_RACE_INVALID")
+    artifact["request"]["requested_race_url"] = value
+    artifact["provenance"]["request_sha256"] = canonical_sha256(artifact["request"])
+    with pytest.raises(ManualIndependentCaptureRejected, match="EXACT_RACE_INVALID"):
+        validate(artifact, members)
+
+
+def test_published_bound_race_strings_reject_padding_and_controls():
+    schema = json.loads((SCHEMA_ROOT / "terminal-artifact.schema.json").read_bytes())
+    race_schema = schema["$defs"]["race"]["properties"]
+    source_url_schema = schema["$defs"]["source_file"]["properties"]["race_url"]
+    invalid = {
+        "url": f"{race()['url']}\n",
+        "race_id": f"{race()['race_id']} ",
+        "venue": " RICH",
+    }
+    for field, value in invalid.items():
+        assert re.search(race_schema[field]["pattern"], value) is None
+    assert re.search(source_url_schema["pattern"], f"{race()['url']}\t") is None
+
+
 @pytest.mark.parametrize("location", ["config", "artifact", "nested"])
 @pytest.mark.parametrize("mutation", ["missing", "unknown"])
 def test_missing_and_unknown_fields_are_rejected(location: str, mutation: str):
