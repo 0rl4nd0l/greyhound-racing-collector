@@ -198,9 +198,9 @@
       "required": ["box_number", "display_name", "identity", "source_native_runner_id", "decimal_odds"],
       "properties": {
         "box_number": {"type": "integer", "minimum": 1, "maximum": 10},
-        "display_name": {"type": "string", "minLength": 1},
-        "identity": {"type": "string", "minLength": 1},
-        "source_native_runner_id": {"type": ["string", "null"]},
+        "display_name": {"type": "string", "minLength": 1, "pattern": "^\\S(?:.*\\S)?$"},
+        "identity": {"type": "string", "minLength": 1, "pattern": "^(?!.*[a-z])[\\u0021-\\u007e](?:[\\u0020-\\u007e]*[\\u0021-\\u007e])?$"},
+        "source_native_runner_id": {"anyOf": [{"type": "string", "minLength": 1, "pattern": "^\\S(?:.*\\S)?$"}, {"type": "null"}]},
         "decimal_odds": {"type": "number", "exclusiveMinimum": 1, "maximum": 1.7976931348623157e308}
       }
     }

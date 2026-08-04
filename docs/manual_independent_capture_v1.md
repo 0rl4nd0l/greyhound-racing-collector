@@ -56,7 +56,8 @@ Every record binds:
   exactly at its cleanup deadline;
 - attempt count `1` and source attempt count `0` or `1` according to the
   failure class;
-- strictly ordered runner identity and finite decimal odds greater than `1`;
+- strictly ordered runners with trimmed display/native IDs, uppercase ASCII
+  identity, and finite decimal odds greater than `1`;
 - source commit/tree bound to trusted caller-supplied expectations, config,
   model, request, race, runner-set, odds, source bytes/timestamps/content class,
   explicit target/same/future-outcome exclusion, and artifact member

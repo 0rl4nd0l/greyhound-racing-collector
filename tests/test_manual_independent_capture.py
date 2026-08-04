@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from copy import deepcopy
 from pathlib import Path
 
@@ -333,6 +334,37 @@ def test_json_schemas_and_example_publish_the_exact_fail_closed_vocabulary():
     )
     assert published_codes == {None, *TERMINAL_STATUS_BY_FAILURE_CODE}
     validate_config(config(), forbidden_paths=forbidden_paths())
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("display_name", " Alpha Dog"),
+        ("display_name", "Alpha Dog "),
+        ("identity", "alpha dog"),
+        ("identity", " ALPHA DOG"),
+        ("identity", "ALPHA DOG "),
+        ("identity", "é"),
+        ("source_native_runner_id", ""),
+        ("source_native_runner_id", " dog-1"),
+        ("source_native_runner_id", "dog-1 "),
+    ],
+)
+def test_published_runner_strings_cannot_pass_schema_but_fail_runtime(
+    field: str, value: str
+):
+    schema = json.loads((SCHEMA_ROOT / "terminal-artifact.schema.json").read_bytes())
+    field_schema = schema["$defs"]["runner"]["properties"][field]
+    if field == "source_native_runner_id":
+        field_schema = field_schema["anyOf"][0]
+    assert len(value) < field_schema.get("minLength", 0) or re.search(
+        field_schema["pattern"], value
+    ) is None
+
+    artifact, members = ready_artifact()
+    artifact["capture"]["runner_set"][0][field] = value
+    with pytest.raises(ManualIndependentCaptureRejected, match="RUNNER_SET_INVALID"):
+        validate(artifact, members)
 
 
 @pytest.mark.parametrize("location", ["config", "artifact", "nested"])

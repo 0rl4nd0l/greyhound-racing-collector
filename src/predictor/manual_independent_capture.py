@@ -149,6 +149,9 @@ VARIABLE_SOURCE_ATTEMPT_CODES = frozenset(
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
 _GIT_OBJECT_RE = re.compile(r"[0-9a-f]{40}")
 _TIMESTAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}")
+_RUNNER_IDENTITY_RE = re.compile(
+    r"(?!.*[a-z])[\x21-\x7e](?:[\x20-\x7e]*[\x21-\x7e])?"
+)
 _FORBIDDEN_MEMBER_PARTS = frozenset(
     {
         "autonomous-shared-lock",
@@ -732,6 +735,11 @@ def _capture(value: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
             raise _reject("RUNNER_SET_INVALID", field=f"runner_set[{index}].box_number")
         if isinstance(odds, bool) or not isinstance(odds, (int, float)) or odds <= 1:
             raise _reject("ODDS_INVALID", field=f"runner_set[{index}].decimal_odds")
+        if (
+            not isinstance(row["identity"], str)
+            or _RUNNER_IDENTITY_RE.fullmatch(row["identity"]) is None
+        ):
+            raise _reject("RUNNER_SET_INVALID", field=f"runner_set[{index}].identity")
         try:
             finite_odds = math.isfinite(float(odds))
         except OverflowError:
