@@ -714,12 +714,13 @@ def _capture(value: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
             or not 1 <= row["box_number"] <= 10
         ):
             raise _reject("RUNNER_SET_INVALID", field=f"runner_set[{index}].box_number")
-        if (
-            isinstance(odds, bool)
-            or not isinstance(odds, (int, float))
-            or not math.isfinite(float(odds))
-            or odds <= 1
-        ):
+        if isinstance(odds, bool) or not isinstance(odds, (int, float)) or odds <= 1:
+            raise _reject("ODDS_INVALID", field=f"runner_set[{index}].decimal_odds")
+        try:
+            finite_odds = math.isfinite(float(odds))
+        except OverflowError:
+            finite_odds = False
+        if not finite_odds:
             raise _reject("ODDS_INVALID", field=f"runner_set[{index}].decimal_odds")
         identity_row = {key: row[key] for key in row if key != "decimal_odds"}
         canonical.append(identity_row)
