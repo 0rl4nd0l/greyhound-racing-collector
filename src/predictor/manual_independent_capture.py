@@ -148,6 +148,7 @@ VARIABLE_SOURCE_ATTEMPT_CODES = frozenset(
 
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
 _GIT_OBJECT_RE = re.compile(r"[0-9a-f]{40}")
+_TIMESTAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}")
 _FORBIDDEN_MEMBER_PARTS = frozenset(
     {
         "autonomous-shared-lock",
@@ -252,7 +253,7 @@ def _exact(value: Any, fields: set[str], label: str) -> Mapping[str, Any]:
 
 
 def _timestamp(value: Any, label: str) -> datetime:
-    if not isinstance(value, str):
+    if not isinstance(value, str) or _TIMESTAMP_RE.fullmatch(value) is None:
         raise _reject("TIMESTAMP_INVALID", field=label)
     try:
         parsed = datetime.fromisoformat(value)
@@ -275,6 +276,10 @@ def _sha256(value: Any, label: str) -> str:
     if not isinstance(value, str) or _SHA256_RE.fullmatch(value) is None:
         raise _reject("HASH_INVALID", field=label)
     return value
+
+
+def _optional_sha256(value: Any, label: str) -> str | None:
+    return None if value is None else _sha256(value, label)
 
 
 def _git_object(value: Any, label: str) -> str:
@@ -812,6 +817,8 @@ def validate_terminal_artifact(
     expected_source_tree: str,
     expected_model_sha256: str,
     expected_source_files: list[Mapping[str, Any]],
+    expected_runner_set_sha256: str | None,
+    expected_odds_sha256: str | None,
     expected_run_id: str,
     expected_request_id: str,
     expected_request_sha256: str,
@@ -1061,6 +1068,10 @@ def validate_terminal_artifact(
     for name in ("config_sha256", "model_sha256", "request_sha256"):
         _sha256(provenance[name], f"artifact.provenance.{name}")
     trusted_model_sha256 = _sha256(expected_model_sha256, "expected_model_sha256")
+    trusted_runner_set_sha256 = _optional_sha256(
+        expected_runner_set_sha256, "expected_runner_set_sha256"
+    )
+    trusted_odds_sha256 = _optional_sha256(expected_odds_sha256, "expected_odds_sha256")
     if provenance["model_sha256"] != trusted_model_sha256:
         raise _reject("MODEL_HASH_DRIFT")
     if provenance["config_sha256"] != canonical_sha256(validated_config):
@@ -1083,6 +1094,8 @@ def validate_terminal_artifact(
             or captured is None
             or not source_files
             or not canonical_runners
+            or trusted_runner_set_sha256 is None
+            or trusted_odds_sha256 is None
         ):
             raise _reject("CAPTURE_EVIDENCE_INCOMPLETE")
         expected_race_sha = canonical_sha256(selected_race)
@@ -1099,6 +1112,11 @@ def validate_terminal_artifact(
                 for row in capture["runner_set"]
             ]
         )
+        if (
+            expected_runner_sha != trusted_runner_set_sha256
+            or expected_odds_sha != trusted_odds_sha256
+        ):
+            raise _reject("CAPTURE_PROVENANCE_MISMATCH")
         for name, expected in (
             ("race_identity_sha256", expected_race_sha),
             ("runner_set_sha256", expected_runner_sha),
@@ -1119,6 +1137,8 @@ def validate_terminal_artifact(
         if (
             captured is not None
             or canonical_runners
+            or trusted_runner_set_sha256 is not None
+            or trusted_odds_sha256 is not None
             or any(
                 provenance[name] is not None
                 for name in ("runner_set_sha256", "odds_sha256")

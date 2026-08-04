@@ -74,12 +74,14 @@ relative path. Therefore outcome aliases such as `winners`, `placings`, or
 `finishing-order` cannot be represented even when they evade a word blacklist.
 
 Validation requires trusted caller expectations for the run UUID, request UUID,
-canonical request hash, source commit, source tree, explicit research-model
-hash, and the complete expected source manifest. Each source row binds its
+canonical request hash, source commit, source tree, explicit research-model,
+runner-set and odds hashes, and the complete expected source manifest. Each source row binds its
 bytes/hash/timestamp/class to the exact selected race URL and race-identity
 hash. Validation also requires mutable caller-owned replay inventories; a
 successful validation records all three identifiers before returning, so reuse
 through the same persisted inventory is terminally rejected.
+All timestamps use exactly `YYYY-MM-DDTHH:MM:SS±HH:MM`; `Z` and fractional
+forms are excluded so schema and runtime accept one deterministic vocabulary.
 `EXACT_RACE_INVALID` is accepted only when the requested URL is not already an
 exact canonical TheDogs race URL.
 

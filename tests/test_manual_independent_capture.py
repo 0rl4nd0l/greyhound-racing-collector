@@ -280,6 +280,8 @@ def validate(artifact: dict, members: dict[str, bytes]) -> dict:
         expected_source_tree=TREE,
         expected_model_sha256=sha256_bytes(MODEL_BYTES),
         expected_source_files=deepcopy(artifact["provenance"]["source_files"]),
+        expected_runner_set_sha256=artifact["provenance"]["runner_set_sha256"],
+        expected_odds_sha256=artifact["provenance"]["odds_sha256"],
         expected_run_id=artifact["run_id"],
         expected_request_id=request_value["request_id"],
         expected_request_sha256=canonical_sha256(request_value),
@@ -359,6 +361,10 @@ def test_missing_and_unknown_fields_are_rejected(location: str, mutation: str):
             expected_source_files=deepcopy(
                 artifact.get("provenance", {}).get("source_files", [])
             ),
+            expected_runner_set_sha256=artifact.get("provenance", {}).get(
+                "runner_set_sha256"
+            ),
+            expected_odds_sha256=artifact.get("provenance", {}).get("odds_sha256"),
             expected_run_id=artifact.get("run_id", RUN_ID),
             expected_request_id=artifact.get("request", {}).get(
                 "request_id", REQUEST_ID
@@ -512,7 +518,9 @@ def test_scheduled_start_must_share_the_canonical_race_date():
 def test_runner_and_odds_hash_drift_are_rejected():
     artifact, members = ready_artifact()
     artifact["capture"]["runner_set"][0]["identity"] = "OTHER DOG"
-    with pytest.raises(ManualIndependentCaptureRejected, match="IDENTITY_HASH_DRIFT"):
+    with pytest.raises(
+        ManualIndependentCaptureRejected, match="CAPTURE_PROVENANCE_MISMATCH"
+    ):
         validate(artifact, members)
 
     artifact, members = ready_artifact()
@@ -530,7 +538,81 @@ def test_runner_and_odds_hash_drift_are_rejected():
 
     artifact, members = ready_artifact()
     artifact["capture"]["runner_set"][0]["decimal_odds"] = 9.0
-    with pytest.raises(ManualIndependentCaptureRejected, match="IDENTITY_HASH_DRIFT"):
+    with pytest.raises(
+        ManualIndependentCaptureRejected, match="CAPTURE_PROVENANCE_MISMATCH"
+    ):
+        validate(artifact, members)
+
+
+@pytest.mark.parametrize("changed_field", ["runner", "odds"])
+def test_runner_and_odds_are_bound_to_trusted_expectations(changed_field: str):
+    artifact, members = ready_artifact()
+    trusted_runner_sha256 = artifact["provenance"]["runner_set_sha256"]
+    trusted_odds_sha256 = artifact["provenance"]["odds_sha256"]
+    if changed_field == "runner":
+        artifact["capture"]["runner_set"][0]["display_name"] = "Fabricated Dog"
+        canonical_runners = [
+            {key: value for key, value in row.items() if key != "decimal_odds"}
+            for row in artifact["capture"]["runner_set"]
+        ]
+        artifact["provenance"]["runner_set_sha256"] = sealed_runner_set_sha256(
+            artifact["request"]["selected_race"], canonical_runners
+        )
+    else:
+        artifact["capture"]["runner_set"][0]["decimal_odds"] = 9.0
+        artifact["provenance"]["odds_sha256"] = canonical_sha256(
+            [
+                {
+                    "box_number": row["box_number"],
+                    "decimal_odds": row["decimal_odds"],
+                }
+                for row in artifact["capture"]["runner_set"]
+            ]
+        )
+    capture_raw = canonical_bytes(artifact["capture"])
+    members["capture/odds.json"] = capture_raw
+    capture_member = next(
+        row
+        for row in artifact["provenance"]["artifact_hashes"]
+        if row["role"] == "capture"
+    )
+    capture_member["bytes"] = len(capture_raw)
+    capture_member["sha256"] = sha256_bytes(capture_raw)
+    with pytest.raises(
+        ManualIndependentCaptureRejected, match="CAPTURE_PROVENANCE_MISMATCH"
+    ):
+        validate_terminal_artifact(
+            artifact,
+            config=config(),
+            forbidden_paths=forbidden_paths(),
+            member_bytes=members,
+            expected_source_commit=COMMIT,
+            expected_source_tree=TREE,
+            expected_model_sha256=sha256_bytes(MODEL_BYTES),
+            expected_source_files=deepcopy(artifact["provenance"]["source_files"]),
+            expected_runner_set_sha256=trusted_runner_sha256,
+            expected_odds_sha256=trusted_odds_sha256,
+            expected_run_id=RUN_ID,
+            expected_request_id=REQUEST_ID,
+            expected_request_sha256=canonical_sha256(artifact["request"]),
+            seen_run_ids=set(),
+            seen_request_ids=set(),
+            seen_request_sha256s=set(),
+        )
+
+
+@pytest.mark.parametrize(
+    "timestamp",
+    ["2026-08-04T00:00:00Z", "2026-08-04T00:00:00.000000+00:00"],
+)
+def test_timestamp_lexical_variants_outside_the_published_contract_are_rejected(
+    timestamp: str,
+):
+    artifact, members = ready_artifact()
+    artifact["request"]["requested_at"] = timestamp
+    artifact["timing"]["submitted_at"] = timestamp
+    artifact["provenance"]["request_sha256"] = canonical_sha256(artifact["request"])
+    with pytest.raises(ManualIndependentCaptureRejected, match="TIMESTAMP_INVALID"):
         validate(artifact, members)
 
 
@@ -650,6 +732,8 @@ def test_replay_conflict_and_late_artifacts_fail_closed():
             expected_source_tree=TREE,
             expected_model_sha256=sha256_bytes(MODEL_BYTES),
             expected_source_files=deepcopy(artifact["provenance"]["source_files"]),
+            expected_runner_set_sha256=artifact["provenance"]["runner_set_sha256"],
+            expected_odds_sha256=artifact["provenance"]["odds_sha256"],
             expected_run_id=RUN_ID,
             expected_request_id=REQUEST_ID,
             expected_request_sha256=canonical_sha256(artifact["request"]),
@@ -667,6 +751,8 @@ def test_replay_conflict_and_late_artifacts_fail_closed():
             expected_source_tree=TREE,
             expected_model_sha256=sha256_bytes(MODEL_BYTES),
             expected_source_files=deepcopy(artifact["provenance"]["source_files"]),
+            expected_runner_set_sha256=artifact["provenance"]["runner_set_sha256"],
+            expected_odds_sha256=artifact["provenance"]["odds_sha256"],
             expected_run_id=RUN_ID,
             expected_request_id=REQUEST_ID,
             expected_request_sha256="0" * 64,
@@ -695,6 +781,8 @@ def test_success_updates_required_replay_inventories_and_second_use_is_rejected(
         "expected_source_tree": TREE,
         "expected_model_sha256": sha256_bytes(MODEL_BYTES),
         "expected_source_files": deepcopy(artifact["provenance"]["source_files"]),
+        "expected_runner_set_sha256": artifact["provenance"]["runner_set_sha256"],
+        "expected_odds_sha256": artifact["provenance"]["odds_sha256"],
         "expected_run_id": RUN_ID,
         "expected_request_id": REQUEST_ID,
         "expected_request_sha256": expected_request_sha256,
@@ -722,6 +810,8 @@ def test_source_manifest_and_each_source_race_binding_are_trusted():
         "expected_source_tree": TREE,
         "expected_model_sha256": sha256_bytes(MODEL_BYTES),
         "expected_source_files": trusted_source_files,
+        "expected_runner_set_sha256": artifact["provenance"]["runner_set_sha256"],
+        "expected_odds_sha256": artifact["provenance"]["odds_sha256"],
         "expected_run_id": RUN_ID,
         "expected_request_id": REQUEST_ID,
         "expected_request_sha256": canonical_sha256(artifact["request"]),
@@ -774,6 +864,8 @@ def test_trusted_request_identity_is_mandatory(expected_override: dict[str, str]
         "expected_source_tree": TREE,
         "expected_model_sha256": sha256_bytes(MODEL_BYTES),
         "expected_source_files": deepcopy(artifact["provenance"]["source_files"]),
+        "expected_runner_set_sha256": artifact["provenance"]["runner_set_sha256"],
+        "expected_odds_sha256": artifact["provenance"]["odds_sha256"],
         "expected_run_id": RUN_ID,
         "expected_request_id": REQUEST_ID,
         "expected_request_sha256": canonical_sha256(artifact["request"]),
