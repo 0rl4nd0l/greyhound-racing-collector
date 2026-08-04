@@ -842,7 +842,7 @@ class OperatorEvidenceReader:
         return envelope
 
     def read_payload(
-        self, source_key: str
+        self, source_key: str, *, server_observed_at: datetime | None = None
     ) -> tuple[EvidenceEnvelope, Mapping[str, Any] | None]:
         """Observe one configured source and return verified JSON when usable.
 
@@ -855,7 +855,7 @@ class OperatorEvidenceReader:
         except (KeyError, TypeError) as exc:
             raise KeyError("unknown evidence source key") from exc
 
-        observed = self._clock()
+        observed = self._clock() if server_observed_at is None else server_observed_at
         observed_text = _utc_text(observed)
         try:
             raw = _read_regular_file(
@@ -992,14 +992,16 @@ class OperatorEvidenceReader:
         self._check_envelope_size(envelope, config.max_envelope_bytes)
         return envelope, MappingProxyType(payload)
 
-    def read_raw(self, source_key: str) -> tuple[EvidenceEnvelope, bytes | None]:
+    def read_raw(
+        self, source_key: str, *, server_observed_at: datetime | None = None
+    ) -> tuple[EvidenceEnvelope, bytes | None]:
         """Read one configured regular file without interpreting its bytes."""
         try:
             config = self._raw_sources[source_key]
             binding = self._raw_bindings[source_key]
         except (KeyError, TypeError) as exc:
             raise KeyError("unknown raw evidence source key") from exc
-        observed = self._clock()
+        observed = self._clock() if server_observed_at is None else server_observed_at
         observed_text = _utc_text(observed)
         try:
             if config.digest_only:
@@ -1029,15 +1031,20 @@ class OperatorEvidenceReader:
         self._check_envelope_size(envelope, config.max_envelope_bytes)
         return envelope, raw
 
-    def read_raw_authenticated(self, source_key: str) -> tuple[EvidenceEnvelope, bytes | None, int | None]:
+    def read_raw_authenticated(
+        self, source_key: str, *, server_observed_at: datetime | None = None
+    ) -> tuple[EvidenceEnvelope, bytes | None, int | None]:
         """Return authenticated bytes when retained, plus the verified byte count."""
-        envelope, raw = self.read_raw(source_key)
+        envelope, raw = self.read_raw(
+            source_key, server_observed_at=server_observed_at
+        )
         if envelope.content_sha256 is None: return envelope, raw, None
         config = self._raw_sources[source_key]
         return envelope, raw, config.expected_bytes if config.digest_only and envelope.status != EvidenceStatus.DIVERGENT.value else len(raw) if raw is not None else None
 
     def read_verified_payload(
-        self, source_key: str, expected_source_locator: str
+        self, source_key: str, expected_source_locator: str, *,
+        server_observed_at: datetime | None = None,
     ) -> tuple[EvidenceEnvelope, Mapping[str, Any] | None]:
         """Read a fixed server source only when its public locator is expected.
 
@@ -1069,7 +1076,9 @@ class OperatorEvidenceReader:
             raise _PathChanged("configured source is outside its fixed root") from exc
         if configured_relative != expected_source_locator:
             raise _PathChanged("configured source locator does not match producer identity")
-        return self.read_payload(source_key)
+        return self.read_payload(
+            source_key, server_observed_at=server_observed_at
+        )
 
     @staticmethod
     def _check_envelope_size(

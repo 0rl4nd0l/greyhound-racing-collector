@@ -19,6 +19,7 @@ from typing import Any
 
 from race_collection.synchronous_manual_capture import (
     CURRENT_RACE_INDEX_SCHEMA,
+    MAX_CURRENT_INDEX_BYTES,
     CaptureOneRejected,
     VerifiedCurrentRaceIndex,
     bounded_current_race_index,
@@ -32,7 +33,13 @@ from src.predictor.on_demand import (
 )
 
 from .api import APIObservation
-from .foundation import EvidenceEnvelope, OperatorEvidenceReader, _new_envelope
+from .foundation import (
+    EvidenceEnvelope,
+    OperatorEvidenceReader,
+    _bind_path,
+    _digest_regular_file,
+    _new_envelope,
+)
 
 _DURATION = re.compile(
     r"^(?P<n>[+-]?(?:[0-9]+(?:\.[0-9]+)?|inf(?:inity)?|nan))\s*"
@@ -647,6 +654,8 @@ def _inventory_semantics(report: Mapping[str, Any]) -> tuple[dict[str, int], dic
 
 
 def _status(envelope: EvidenceEnvelope, status: str, *, policy: str | None = None) -> EvidenceEnvelope:
+    if status == "INVALID/INTEGRITY_FAILED":
+        envelope = _invalid(envelope)
     values = envelope.to_dict()
     values["status"] = status
     if policy is not None:
@@ -975,7 +984,17 @@ class LiveEvidenceAdapters:
             return envelope, races
         except CaptureOneRejected as exc:
             status, availability = self._collector_failure(exc.code)
-            return self._verified_envelope(now=now, policy="P-UPCOMING-300-PREJUMP", identity=CURRENT_RACE_INDEX_SCHEMA, locator="operator_ui.current_race_index", status=status, availability=availability), []
+            content_sha256 = None
+            if status == "INVALID/INTEGRITY_FAILED":
+                try:
+                    content_sha256, _ = _digest_regular_file(
+                        _bind_path(source.index_path, source.evidence_root),
+                        MAX_CURRENT_INDEX_BYTES,
+                    )
+                    availability = "present"
+                except (FileNotFoundError, PermissionError, OSError, ValueError):
+                    pass
+            return self._verified_envelope(now=now, policy="P-UPCOMING-300-PREJUMP", identity=CURRENT_RACE_INDEX_SCHEMA, locator="operator_ui.current_race_index", status=status, availability=availability, content_sha256=content_sha256), []
         except FileNotFoundError:
             return self._verified_envelope(now=now, policy="P-UPCOMING-300-PREJUMP", identity=CURRENT_RACE_INDEX_SCHEMA, locator="operator_ui.current_race_index", status="UNAVAILABLE/DATA_MISSING"), []
         except PermissionError:
@@ -1082,20 +1101,26 @@ class LiveEvidenceAdapters:
             invalid = self._verified_envelope(now=now, policy="P-IMMUTABLE-HISTORICAL", identity="on_demand_race_prediction_v2", locator="operator_ui.prediction_bundle", status="INVALID/INTEGRITY_FAILED")
             return APIObservation(invalid, {})
 
-    def _read(self, key: str) -> tuple[EvidenceEnvelope, Mapping[str, Any] | None]:
-        return self._reader.read_payload(key)
+    def _read(
+        self, key: str, now: datetime
+    ) -> tuple[EvidenceEnvelope, Mapping[str, Any] | None]:
+        return self._reader.read_payload(key, server_observed_at=now)
 
-    def _raw(self, key: str) -> tuple[EvidenceEnvelope, bytes | None]:
-        return self._reader.read_raw(key)
+    def _raw(
+        self, key: str, now: datetime
+    ) -> tuple[EvidenceEnvelope, bytes | None]:
+        return self._reader.read_raw(key, server_observed_at=now)
 
-    def _authenticated_raw(self, key: str) -> tuple[EvidenceEnvelope, bytes | None, int | None]:
-        return self._reader.read_raw_authenticated(key)
+    def _authenticated_raw(
+        self, key: str, now: datetime
+    ) -> tuple[EvidenceEnvelope, bytes | None, int | None]:
+        return self._reader.read_raw_authenticated(key, server_observed_at=now)
 
     def _lane(self, *, lane: str, now: datetime) -> tuple[EvidenceEnvelope, dict[str, Any]]:
         odds = lane == "ODDS_ONLY"
         state_key, report_key = (("odds_state", "odds_report") if odds else ("full_state", "full_report"))
-        state_env, state = self._read(state_key)
-        report_env, report = self._read(report_key)
+        state_env, state = self._read(state_key, now)
+        report_env, report = self._read(report_key, now)
         if state is None or report is None:
             failed = state_env if state is None else report_env
             outer = _missing_or_invalid(failed)
@@ -1272,7 +1297,7 @@ class LiveEvidenceAdapters:
             expected_locator = f"{autopilot_dir}/odds_capture_refresh_report.json"
             try:
                 refresh_env, raw_refresh = self._reader.read_verified_payload(
-                    "odds_refresh", expected_locator
+                    "odds_refresh", expected_locator, server_observed_at=now
                 )
             except (KeyError, ValueError):
                 return _status(report_env, "DIVERGENT"), _lane_data(lane, "DIVERGENT", run_id=run_id)
@@ -1342,7 +1367,7 @@ class LiveEvidenceAdapters:
         return APIObservation(_status(full_env, worst, policy="P-COLLECTOR-AGGREGATE"), {"lanes": [full, odds]})
 
     def system(self, now: datetime) -> APIObservation:
-        envelope, payload = self._read("deployment_manifest")
+        envelope, payload = self._read("deployment_manifest", now)
         if payload is None:
             return APIObservation(_status(envelope, _missing_or_invalid(envelope)), {})
         manifest_fields = frozenset({
@@ -1536,8 +1561,8 @@ class LiveEvidenceAdapters:
         }]})
 
     def corpus(self, now: datetime) -> APIObservation:
-        envelope, report = self._read("corpus_report")
-        manifest_env, manifest = self._read("corpus_manifest")
+        envelope, report = self._read("corpus_report", now)
+        manifest_env, manifest = self._read("corpus_manifest", now)
         if report is None or manifest is None:
             failed = envelope if report is None else manifest_env
             return APIObservation(_status(failed, _missing_or_invalid(failed)), {})
@@ -1588,7 +1613,7 @@ class LiveEvidenceAdapters:
                 if not isinstance(item, Mapping) or set(item) != {"bytes", "sha256"} or type(item["bytes"]) is not int or item["bytes"] < 0:
                     raise ValueError("inventory manifest entry is invalid")
                 declared = _sha(item.get("sha256"))
-                raw_env, raw, byte_count = self._authenticated_raw(key)
+                raw_env, raw, byte_count = self._authenticated_raw(key, now)
                 if raw is None and key not in {"corpus_inventory_csv", "corpus_inventory_jsonl"}:
                     return APIObservation(_status(raw_env, _missing_or_invalid(raw_env)), {})
                 if raw_env.status == "DIVERGENT":
@@ -1626,7 +1651,7 @@ class LiveEvidenceAdapters:
         # scanned prediction/result artifacts or the DB, publication/closure
         # evidence, or a hash-bound backlog report.  Consequently neither a
         # population identity nor producer counts may be disclosed as usable.
-        return APIObservation(_status(envelope, "UNAVAILABLE/DATA_MISSING"), {
+        return APIObservation(_status(envelope, "AVAILABLE/FRESH"), {
             "reports": [{
                 "report_id": hashlib.sha256((envelope.content_sha256 or "").encode()).hexdigest(),
                 "status": "UNAVAILABLE",
@@ -1640,7 +1665,7 @@ class LiveEvidenceAdapters:
         })
 
     def models(self, now: datetime) -> APIObservation:
-        envelope, catalog = self._read("model_catalog")
+        envelope, catalog = self._read("model_catalog", now)
         if catalog is None:
             return APIObservation(_status(envelope, _missing_or_invalid(envelope)), {})
         expected = (
@@ -1671,12 +1696,12 @@ class LiveEvidenceAdapters:
                     raise ValueError("resolved model identity is invalid")
                 if identity.get("requested") != selector or identity.get("resolved") != resolved or identity.get("alias_resolved") is not True:
                     raise ValueError("resolved model identity is divergent")
-                config_env, config_raw = self._raw(f"{prefix}_config")
-                schema_env, schema_raw = self._raw(f"{prefix}_schema")
+                config_env, config_raw = self._raw(f"{prefix}_config", now)
+                schema_env, schema_raw = self._raw(f"{prefix}_schema", now)
                 raw_observations = [(config_env, config_raw), (schema_env, schema_raw)]
                 if resolved == "market_form_residual_v1":
-                    model_env, model_raw = self._raw(f"{prefix}_artifact")
-                    manifest_env, manifest_raw = self._raw(f"{prefix}_manifest")
+                    model_env, model_raw = self._raw(f"{prefix}_artifact", now)
+                    manifest_env, manifest_raw = self._raw(f"{prefix}_manifest", now)
                     raw_observations.extend([(model_env, model_raw), (manifest_env, manifest_raw)])
                 else:
                     model_env = manifest_env = None
