@@ -978,6 +978,85 @@ def test_cancellation_and_timeout_have_hard_terminal_semantics():
         validate(timed_out, members)
 
 
+def test_deadline_and_cancellation_arithmetic_overflow_fail_closed():
+    artifact, members = valid_failure_artifact("EXACT_RACE_INVALID")
+    boundary = "9999-12-31T23:59:59+00:00"
+    artifact["request"]["requested_at"] = boundary
+    artifact["provenance"]["request_sha256"] = canonical_sha256(artifact["request"])
+    for field in ("submitted_at", "readiness_checked_at", "deadline_at", "terminal_at"):
+        artifact["timing"][field] = boundary
+    artifact["closure"]["closed_at"] = boundary
+    with pytest.raises(ManualIndependentCaptureRejected, match="TIMING_INVALID"):
+        validate(artifact, members)
+
+    artifact, members = terminal_without_capture(
+        "CANCELLED", "CANCELLED", cancelled=True
+    )
+    cfg = config()
+    cfg["timing"] = {
+        "minimum_prejump_margin_seconds": 1,
+        "hard_timeout_seconds": 1,
+        "cancellation_grace_seconds": 120,
+    }
+    selected = artifact["request"]["selected_race"]
+    selected.update(
+        {
+            "url": "https://www.thedogs.com.au/racing/richmond/9999-12-31/1/race-name",
+            "race_id": "Race 1 - RICH - 9999-12-31",
+            "race_date": "9999-12-31",
+            "scheduled_start": "9999-12-31T23:59:59+00:00",
+        }
+    )
+    artifact["request"]["requested_at"] = "9999-12-31T23:58:59+00:00"
+    artifact["request"]["requested_race_url"] = selected["url"]
+    artifact["request"]["minimum_prejump_margin_seconds"] = 1
+    artifact["timing"].update(
+        {
+            "submitted_at": "9999-12-31T23:58:59+00:00",
+            "readiness_checked_at": "9999-12-31T23:59:58+00:00",
+            "deadline_at": "9999-12-31T23:59:59+00:00",
+            "cleanup_deadline_at": "9999-12-31T23:59:59+00:00",
+            "readiness_prejump_margin_seconds": 1,
+            "cancel_requested_at": "9999-12-31T23:59:59+00:00",
+            "terminal_at": "9999-12-31T23:59:59+00:00",
+        }
+    )
+    artifact["closure"]["closed_at"] = artifact["timing"]["terminal_at"]
+    artifact["provenance"]["request_sha256"] = canonical_sha256(artifact["request"])
+    artifact["provenance"]["race_identity_sha256"] = canonical_sha256(selected)
+    cfg_raw = canonical_bytes(cfg)
+    members["config/config.json"] = cfg_raw
+    artifact["provenance"]["config_sha256"] = canonical_sha256(cfg)
+    config_member = next(
+        row
+        for row in artifact["provenance"]["artifact_hashes"]
+        if row["role"] == "config"
+    )
+    config_member["bytes"] = len(cfg_raw)
+    config_member["sha256"] = sha256_bytes(cfg_raw)
+    with pytest.raises(
+        ManualIndependentCaptureRejected, match="CANCELLATION_INVALID"
+    ):
+        validate_terminal_artifact(
+            artifact,
+            config=cfg,
+            forbidden_paths=forbidden_paths(),
+            member_bytes=members,
+            expected_source_commit=COMMIT,
+            expected_source_tree=TREE,
+            expected_model_sha256=sha256_bytes(MODEL_BYTES),
+            expected_source_files=[],
+            expected_runner_set_sha256=None,
+            expected_odds_sha256=None,
+            expected_run_id=RUN_ID,
+            expected_request_id=REQUEST_ID,
+            expected_request_sha256=canonical_sha256(artifact["request"]),
+            seen_run_ids=set(),
+            seen_request_ids=set(),
+            seen_request_sha256s=set(),
+        )
+
+
 def test_source_revision_is_bound_to_trusted_expected_commit_and_tree():
     artifact, members = ready_artifact()
     artifact["provenance"]["source_commit"] = "1" * 40

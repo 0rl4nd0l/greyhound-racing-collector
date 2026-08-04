@@ -275,6 +275,15 @@ def _optional_timestamp(value: Any, label: str) -> datetime | None:
     return None if value is None else _timestamp(value, label)
 
 
+def _add_seconds(
+    value: datetime, seconds: int, *, code: str, reason: str
+) -> datetime:
+    try:
+        return value + timedelta(seconds=seconds)
+    except OverflowError as exc:
+        raise _reject(code, reason=reason) from exc
+
+
 def _sha256(value: Any, label: str) -> str:
     if not isinstance(value, str) or _SHA256_RE.fullmatch(value) is None:
         raise _reject("HASH_INVALID", field=label)
@@ -941,8 +950,11 @@ def validate_terminal_artifact(
         or not submitted <= readiness <= terminal_at
     ):
         raise _reject("TIMING_INVALID", reason="ordering")
-    expected_deadline = readiness + timedelta(
-        seconds=validated_config["timing"]["hard_timeout_seconds"]
+    expected_deadline = _add_seconds(
+        readiness,
+        validated_config["timing"]["hard_timeout_seconds"],
+        code="TIMING_INVALID",
+        reason="deadline_overflow",
     )
     if deadline != expected_deadline:
         raise _reject("TIMING_INVALID", reason="deadline")
@@ -964,7 +976,13 @@ def validate_terminal_artifact(
     cancellation_grace = validated_config["timing"]["cancellation_grace_seconds"]
     if cancelled is not None:
         expected_cleanup_deadline = min(
-            deadline, cancelled + timedelta(seconds=cancellation_grace)
+            deadline,
+            _add_seconds(
+                cancelled,
+                cancellation_grace,
+                code="CANCELLATION_INVALID",
+                reason="cleanup_deadline_overflow",
+            ),
         )
         if cleanup_deadline != expected_cleanup_deadline:
             raise _reject("CANCELLATION_INVALID", reason="cleanup_deadline")
