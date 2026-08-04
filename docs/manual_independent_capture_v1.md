@@ -13,10 +13,10 @@ canonically serializable, and validated by
 
 | Surface | Allowed | Forbidden |
 |---|---|---|
-| Reads | One exact canonical TheDogs race; declared pre-jump source bytes; explicit research model and manual config bytes | Autonomous shared lock; canonical DB/history/`live_odds`; forward corpus; collector requests/state; result evidence; Phase 7; service/timer state |
+| Reads | One exact canonical TheDogs race; declared pre-jump source bytes; explicit research model and manual config bytes | Autonomous shared lock and browser profile; canonical DB/history/`live_odds`; shared model storage; forward corpus; collector requests/state; result evidence; Phase 7; service/timer state |
 | Writes | `<operations_root>/manual-independent-capture-v1/runs`, its fixed `browser-profile`, and `manual-capture.lock` | Every protected read surface and every path outside the isolated manual root |
 | Lock | Exactly one manual process lock; at most one manual run | Inspecting, waiting on, acquiring, replacing, bypassing, or mutating the autonomous shared lock |
-| Browser | Fixed manual-only profile | Autonomous/shared browser profile or process authority |
+| Browser | Fixed manual-only profile | Reading, writing, reusing, or controlling the autonomous/shared browser profile or processes |
 | Downstream | Research-only review after terminal bundle closure | Canonical evidence, Phase 7 admission/example status, training, promotion, EV, staking, or betting |
 
 `authority_matrix()` is the machine-readable equivalent. Configuration validation
@@ -51,7 +51,9 @@ Every record binds:
   rejected URL and has no selected identity);
 - readiness, one absolute deadline, cancellation cleanup deadline, capture,
   source, closure, and terminal timestamps with exact ordering and margin
-  arithmetic; cancellation grace cannot extend the absolute deadline;
+  arithmetic; source timestamps cannot predate readiness, cancellation grace
+  cannot extend the absolute deadline, and unreaped-process failure is emitted
+  exactly at its cleanup deadline;
 - attempt count `1` and source attempt count `0` or `1` according to the
   failure class;
 - strictly ordered runner identity and positive finite decimal odds;
@@ -66,6 +68,11 @@ Every record binds:
   did not occur, with downstream admissibility fixed to
   `research_only_noncanonical_phase7_excluded`.
 
+Source and artifact member locations are closed vocabularies, not user-selected
+filenames. Each source content class and artifact role maps to exactly one fixed
+relative path. Therefore outcome aliases such as `winners`, `placings`, or
+`finishing-order` cannot be represented even when they evade a word blacklist.
+
 Validation requires trusted caller expectations for the run UUID, request UUID,
 canonical request hash, source commit, source tree, explicit research-model
 hash, and the complete expected source manifest. Each source row binds its
@@ -77,8 +84,8 @@ through the same persisted inventory is terminally rejected.
 exact canonical TheDogs race URL.
 
 Canonical JSON uses sorted keys, compact separators, and one trailing newline.
-Duplicate keys, unknown/missing fields, non-finite values, unsafe member paths,
-outcome/result filename tokens, member/hash drift, race or request
+Duplicate keys, unknown/missing fields, non-finite values, unsafe or unlisted
+member paths, member/hash drift, race or request
 disagreement, replayed IDs/hashes, a late non-timeout artifact, and conflicting
 terminal states are rejected.
 

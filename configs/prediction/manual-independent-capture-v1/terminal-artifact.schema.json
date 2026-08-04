@@ -160,8 +160,13 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["path", "content_class", "outcome_scope", "race_url", "race_identity_sha256", "source_timestamp", "bytes", "sha256"],
+      "allOf": [
+        {"if": {"properties": {"content_class": {"const": "prejump_race_source"}}}, "then": {"properties": {"path": {"const": "sources/race-source.bin"}}}},
+        {"if": {"properties": {"content_class": {"const": "prejump_form"}}}, "then": {"properties": {"path": {"const": "sources/form.csv"}}}},
+        {"if": {"properties": {"content_class": {"const": "prejump_sidecar"}}}, "then": {"properties": {"path": {"const": "sources/sidecar.json"}}}}
+      ],
       "properties": {
-        "path": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))[^\\u0000\\\\]+$"},
+        "path": {"enum": ["sources/form.csv", "sources/race-source.bin", "sources/sidecar.json"]},
         "content_class": {"enum": ["prejump_race_source", "prejump_form", "prejump_sidecar"]},
         "outcome_scope": {"const": "target_same_future_outcomes_excluded"},
         "race_url": {"type": "string", "format": "uri", "pattern": "^https://www\\.thedogs\\.com\\.au/racing/"},
@@ -175,9 +180,14 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["role", "path", "bytes", "sha256"],
+      "allOf": [
+        {"if": {"properties": {"role": {"const": "capture"}}}, "then": {"properties": {"path": {"const": "capture/odds.json"}}}},
+        {"if": {"properties": {"role": {"const": "config"}}}, "then": {"properties": {"path": {"const": "config/config.json"}}}},
+        {"if": {"properties": {"role": {"const": "model"}}}, "then": {"properties": {"path": {"const": "model/model.json"}}}}
+      ],
       "properties": {
         "role": {"enum": ["config", "model", "capture"]},
-        "path": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))[^\\u0000\\\\]+$"},
+        "path": {"enum": ["capture/odds.json", "config/config.json", "model/model.json"]},
         "bytes": {"type": "integer", "minimum": 1, "maximum": 2147483647},
         "sha256": {"$ref": "#/$defs/sha256"}
       }

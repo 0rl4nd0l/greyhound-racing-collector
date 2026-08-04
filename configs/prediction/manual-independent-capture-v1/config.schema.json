@@ -15,11 +15,11 @@
       "additionalProperties": false,
       "required": ["operations_root", "manual_root", "browser_profile", "runs_root", "manual_lock"],
       "properties": {
-        "operations_root": {"type": "string", "pattern": "^(?!.*(?:^|/)\\.\\.?(?:/|$))/[^\\u0000\\\\]*$"},
-        "manual_root": {"type": "string", "pattern": "^(?!.*(?:^|/)\\.\\.?(?:/|$))/[^\\u0000\\\\]*$"},
-        "browser_profile": {"type": "string", "pattern": "^(?!.*(?:^|/)\\.\\.?(?:/|$))/[^\\u0000\\\\]*$"},
-        "runs_root": {"type": "string", "pattern": "^(?!.*(?:^|/)\\.\\.?(?:/|$))/[^\\u0000\\\\]*$"},
-        "manual_lock": {"type": "string", "pattern": "^(?!.*(?:^|/)\\.\\.?(?:/|$))/[^\\u0000\\\\]*$"}
+        "operations_root": {"type": "string", "pattern": "^/(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))[^\\u0000-\\u001f\\u007f\\\\]*$"},
+        "manual_root": {"type": "string", "pattern": "^/(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))[^\\u0000-\\u001f\\u007f\\\\]*$"},
+        "browser_profile": {"type": "string", "pattern": "^/(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))[^\\u0000-\\u001f\\u007f\\\\]*$"},
+        "runs_root": {"type": "string", "pattern": "^/(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))[^\\u0000-\\u001f\\u007f\\\\]*$"},
+        "manual_lock": {"type": "string", "pattern": "^/(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))[^\\u0000-\\u001f\\u007f\\\\]*$"}
       }
     },
     "timing": {

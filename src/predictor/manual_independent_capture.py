@@ -50,16 +50,33 @@ SAFETY_FIELDS = MappingProxyType(
 
 PROTECTED_PATH_KEYS = frozenset(
     {
+        "autonomous_browser_profile_root",
         "autonomous_shared_lock",
         "canonical_database",
         "canonical_history_root",
         "live_odds_root",
+        "model_artifacts_root",
         "forward_corpus_root",
         "collector_requests_root",
         "collector_state_root",
         "result_evidence_root",
         "services_root",
         "timers_root",
+    }
+)
+
+SOURCE_PATH_BY_CLASS = MappingProxyType(
+    {
+        "prejump_race_source": "sources/race-source.bin",
+        "prejump_form": "sources/form.csv",
+        "prejump_sidecar": "sources/sidecar.json",
+    }
+)
+ARTIFACT_PATH_BY_ROLE = MappingProxyType(
+    {
+        "capture": "capture/odds.json",
+        "config": "config/config.json",
+        "model": "model/model.json",
     }
 )
 
@@ -285,7 +302,13 @@ def _safety(value: Any, label: str) -> dict[str, Any]:
 
 
 def _absolute_path(value: Any, label: str) -> tuple[Path, Path]:
-    if not isinstance(value, str) or not value or "\x00" in value or "\\" in value:
+    if (
+        not isinstance(value, str)
+        or not value
+        or value.startswith("//")
+        or "\\" in value
+        or any(ord(character) < 32 or ord(character) == 127 for character in value)
+    ):
         raise _reject("UNSAFE_PATH", field=label)
     path = Path(value)
     if (
@@ -595,11 +618,7 @@ def _source_files(value: Any) -> list[dict[str, Any]]:
             },
             f"artifact.provenance.source_files[{index}]",
         )
-        if row["content_class"] not in {
-            "prejump_race_source",
-            "prejump_form",
-            "prejump_sidecar",
-        }:
+        if row["content_class"] not in SOURCE_PATH_BY_CLASS:
             raise _reject("SOURCE_CLASS_INVALID", field=f"source_files[{index}]")
         if row["outcome_scope"] != "target_same_future_outcomes_excluded":
             raise _reject("OUTCOME_SCOPE_INVALID", field=f"source_files[{index}]")
@@ -614,6 +633,8 @@ def _source_files(value: Any) -> list[dict[str, Any]]:
             f"source_files[{index}].race_identity_sha256",
         )
         path = _relative_member_path(row["path"], f"source_files[{index}].path")
+        if path != SOURCE_PATH_BY_CLASS[row["content_class"]]:
+            raise _reject("SOURCE_PATH_INVALID", field=f"source_files[{index}].path")
         _timestamp(row["source_timestamp"], f"source_files[{index}].source_timestamp")
         _integer(
             row["bytes"], f"source_files[{index}].bytes", minimum=1, maximum=2**31 - 1
@@ -639,11 +660,15 @@ def _artifact_hashes(value: Any) -> list[dict[str, Any]]:
             {"role", "path", "bytes", "sha256"},
             f"artifact.provenance.artifact_hashes[{index}]",
         )
-        if row["role"] not in {"config", "model", "capture"}:
+        if row["role"] not in ARTIFACT_PATH_BY_ROLE:
             raise _reject(
                 "ARTIFACT_ROLE_INVALID", field=f"artifact_hashes[{index}].role"
             )
         path = _relative_member_path(row["path"], f"artifact_hashes[{index}].path")
+        if path != ARTIFACT_PATH_BY_ROLE[row["role"]]:
+            raise _reject(
+                "ARTIFACT_PATH_INVALID", field=f"artifact_hashes[{index}].path"
+            )
         _integer(
             row["bytes"],
             f"artifact_hashes[{index}].bytes",
@@ -921,9 +946,9 @@ def validate_terminal_artifact(
     elif cleanup_deadline is not None:
         raise _reject("CANCELLATION_INVALID", reason="unexpected_cleanup_deadline")
     if failure_code == "PROCESS_REAP_UNCONFIRMED" and (
-        cleanup_deadline is None or terminal_at < cleanup_deadline
+        cleanup_deadline is None or terminal_at != cleanup_deadline
     ):
-        raise _reject("CANCELLATION_INVALID", reason="early_reap_failure")
+        raise _reject("CANCELLATION_INVALID", reason="reap_failure_deadline")
 
     selected_race = request["selected_race"]
     readiness_margin = timing["readiness_prejump_margin_seconds"]
@@ -1068,7 +1093,7 @@ def validate_terminal_artifact(
             source_time = _timestamp(
                 row["source_timestamp"], "source_files.source_timestamp"
             )
-            if source_time > captured or source_time >= _timestamp(
+            if not readiness <= source_time <= captured or source_time >= _timestamp(
                 selected_race["scheduled_start"], "selected_race.scheduled_start"
             ):
                 raise _reject("SOURCE_TIMING_INVALID", path=row["path"])
@@ -1109,7 +1134,10 @@ def validate_terminal_artifact(
                 source_time = _timestamp(
                     row["source_timestamp"], "source_files.source_timestamp"
                 )
-                if source_time > terminal_at or source_time >= scheduled:
+                if (
+                    not readiness <= source_time <= terminal_at
+                    or source_time >= scheduled
+                ):
                     raise _reject("SOURCE_TIMING_INVALID", path=row["path"])
         if source_attempts == 0 and source_files:
             raise _reject("CAPTURE_EVIDENCE_FORBIDDEN", reason="source_without_attempt")
@@ -1152,6 +1180,7 @@ def validate_terminal_artifact(
 
 
 __all__ = [
+    "ARTIFACT_PATH_BY_ROLE",
     "AUTHORITY_MATRIX",
     "AUTHORITY_PROFILE",
     "CONFIG_SCHEMA_VERSION",
@@ -1160,6 +1189,7 @@ __all__ = [
     "PHASE7_EXCLUSION_REASON",
     "PROTECTED_PATH_KEYS",
     "SAFETY_FIELDS",
+    "SOURCE_PATH_BY_CLASS",
     "TERMINAL_ARTIFACT_SCHEMA_VERSION",
     "TERMINAL_STATUS_BY_FAILURE_CODE",
     "ManualIndependentCaptureRejected",

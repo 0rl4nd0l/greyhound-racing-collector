@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from src.predictor.manual_independent_capture import (
+    ARTIFACT_PATH_BY_ROLE,
     AUTHORITY_MATRIX,
     AUTHORITY_PROFILE,
     CONFIG_SCHEMA_VERSION,
@@ -15,6 +16,7 @@ from src.predictor.manual_independent_capture import (
     PHASE7_EXCLUSION_REASON,
     PROTECTED_PATH_KEYS,
     SAFETY_FIELDS,
+    SOURCE_PATH_BY_CLASS,
     TERMINAL_ARTIFACT_SCHEMA_VERSION,
     TERMINAL_STATUS_BY_FAILURE_CODE,
     ManualIndependentCaptureRejected,
@@ -375,6 +377,8 @@ def test_missing_and_unknown_fields_are_rejected(location: str, mutation: str):
     [
         ("operations_root", "relative/manual"),
         ("operations_root", "/srv/../manual"),
+        ("operations_root", "//srv/manual"),
+        ("operations_root", "/srv/manual\nmisleading"),
         ("manual_lock", "/srv/greyhound-manual-operations/shared.lock"),
     ],
 )
@@ -387,10 +391,17 @@ def test_unsafe_or_non_derived_manual_paths_are_rejected(
         validate_config(cfg, forbidden_paths=forbidden_paths())
 
 
-def test_manual_root_profile_lock_and_runs_cannot_overlap_protected_paths():
+@pytest.mark.parametrize(
+    "manual_path",
+    ["operations_root", "manual_root", "browser_profile", "runs_root", "manual_lock"],
+)
+@pytest.mark.parametrize("protected_key", sorted(PROTECTED_PATH_KEYS))
+def test_manual_root_profile_lock_and_runs_cannot_overlap_protected_paths(
+    manual_path: str, protected_key: str
+):
     cfg = config()
     protected = forbidden_paths()
-    protected["autonomous_shared_lock"] = cfg["paths"]["manual_lock"]
+    protected[protected_key] = cfg["paths"][manual_path]
     with pytest.raises(
         ManualIndependentCaptureRejected, match="PATH_AUTHORITY_CONFLICT"
     ):
@@ -425,12 +436,18 @@ def test_authority_matrix_forbids_all_shared_canonical_and_downstream_surfaces()
     assert matrix["lock_authority"] == "manual_capture_lock_only"
     assert matrix["browser_authority"] == "manual_browser_profile_only"
     assert matrix["downstream_admissibility"] == DOWNSTREAM_ADMISSIBILITY
+    assert "autonomous_browser_profile_root" in matrix["forbidden_reads"]
+    assert "model_artifacts_root" in matrix["forbidden_writes"]
     matrix["allowed_reads"].append("canonical_database")
     assert "canonical_database" not in authority_matrix()["allowed_reads"]
     with pytest.raises(TypeError):
         AUTHORITY_MATRIX["lock_authority"] = "autonomous_shared_lock"  # type: ignore[index]
     with pytest.raises(TypeError):
         TERMINAL_STATUS_BY_FAILURE_CODE["MANUAL_BUSY"] = "CAPTURE_READY"  # type: ignore[index]
+    with pytest.raises(TypeError):
+        SOURCE_PATH_BY_CLASS["prejump_form"] = "winners.csv"  # type: ignore[index]
+    with pytest.raises(TypeError):
+        ARTIFACT_PATH_BY_ROLE["capture"] = "capture/results.json"  # type: ignore[index]
 
 
 def test_hash_drift_in_source_model_config_and_request_is_rejected():
@@ -572,6 +589,26 @@ def test_outcome_fields_and_result_evidence_paths_are_not_expressible():
         ):
             validate(artifact, members)
 
+    for outcome_synonym in (
+        "sources/winners.csv",
+        "sources/placings.json",
+        "sources/finishing-order.csv",
+    ):
+        artifact, members = ready_artifact()
+        source = artifact["provenance"]["source_files"][0]
+        old_path = source["path"]
+        source["path"] = outcome_synonym
+        members[source["path"]] = members.pop(old_path)
+        with pytest.raises(
+            ManualIndependentCaptureRejected, match="SOURCE_PATH_INVALID"
+        ):
+            validate(artifact, members)
+
+    artifact, members = ready_artifact()
+    artifact["provenance"]["source_files"][0]["content_class"] = "prejump_race_source"
+    with pytest.raises(ManualIndependentCaptureRejected, match="SOURCE_PATH_INVALID"):
+        validate(artifact, members)
+
     artifact, members = ready_artifact()
     artifact["provenance"]["source_files"][0]["outcome_scope"] = (
         "target_outcomes_included"
@@ -690,6 +727,13 @@ def test_source_manifest_and_each_source_race_binding_are_trusted():
     ):
         validate(artifact, members)
 
+    artifact, members = ready_artifact()
+    artifact["provenance"]["source_files"][0]["source_timestamp"] = (
+        "2026-08-04T00:00:04+00:00"
+    )
+    with pytest.raises(ManualIndependentCaptureRejected, match="SOURCE_TIMING_INVALID"):
+        validate(artifact, members)
+
 
 @pytest.mark.parametrize(
     "expected_override",
@@ -764,9 +808,16 @@ def test_cancellation_and_timeout_have_hard_terminal_semantics():
         "status": "FAILED",
         "failure_code": "PROCESS_REAP_UNCONFIRMED",
     }
+    timed_out["timing"]["terminal_at"] = timed_out["timing"]["cleanup_deadline_at"]
+    timed_out["closure"]["closed_at"] = timed_out["timing"]["terminal_at"]
     assert validate(timed_out, members)["terminal"]["failure_code"] == (
         "PROCESS_REAP_UNCONFIRMED"
     )
+
+    timed_out["timing"]["terminal_at"] = timed_out["timing"]["deadline_at"]
+    timed_out["closure"]["closed_at"] = timed_out["timing"]["terminal_at"]
+    with pytest.raises(ManualIndependentCaptureRejected, match="CANCELLATION_INVALID"):
+        validate(timed_out, members)
 
 
 def test_source_revision_is_bound_to_trusted_expected_commit_and_tree():
