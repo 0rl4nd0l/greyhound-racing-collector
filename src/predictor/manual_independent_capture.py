@@ -475,7 +475,9 @@ def _race(value: Any, label: str) -> dict[str, Any]:
         or race["race_id"] not in stable_race_id_variants(projection)
     ):
         raise _reject("RACE_IDENTITY_DISAGREEMENT")
-    _timestamp(race["scheduled_start"], f"{label}.scheduled_start")
+    scheduled_start = _timestamp(race["scheduled_start"], f"{label}.scheduled_start")
+    if scheduled_start.date().isoformat() != race["race_date"]:
+        raise _reject("RACE_IDENTITY_DISAGREEMENT", field=f"{label}.scheduled_start")
     return dict(race)
 
 

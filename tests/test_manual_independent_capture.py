@@ -443,6 +443,19 @@ def test_race_identity_disagreement_is_rejected(field: str, value: object):
         validate(artifact, members)
 
 
+def test_scheduled_start_must_share_the_canonical_race_date():
+    artifact, members = ready_artifact()
+    selected = artifact["request"]["selected_race"]
+    selected["scheduled_start"] = "2027-08-04T00:10:05+00:00"
+    artifact["provenance"]["request_sha256"] = canonical_sha256(artifact["request"])
+    artifact["provenance"]["race_identity_sha256"] = canonical_sha256(selected)
+
+    with pytest.raises(
+        ManualIndependentCaptureRejected, match="RACE_IDENTITY_DISAGREEMENT"
+    ):
+        validate(artifact, members)
+
+
 def test_runner_and_odds_hash_drift_are_rejected():
     artifact, members = ready_artifact()
     artifact["capture"]["runner_set"][0]["identity"] = "OTHER DOG"

@@ -45,7 +45,8 @@ configuration cannot claim canonical or Phase 7 authority.
 Every record binds:
 
 - request and run UUIDs plus the canonical request hash;
-- the exact canonical TheDogs URL, stable race identity, scheduled start, and
+- the exact canonical TheDogs URL, stable race identity, and scheduled start
+  whose declared calendar date must equal the URL-bound race date, plus the
   configured margin (except `EXACT_RACE_INVALID`, which preserves only the
   rejected URL and has no selected identity);
 - readiness, one absolute deadline, cancellation cleanup deadline, capture,
