@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://greyhound-racing-collector.invalid/schemas/manual-independent-capture-v1/terminal-artifact.schema.json",
+  "title": "manual-independent-capture-v1 terminal artifact",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "contract_version", "run_id", "safety", "authority_profile", "request", "timing", "attempt", "terminal", "provenance", "capture", "closure"],
+  "properties": {
+    "schema_version": {"const": "manual_independent_capture_terminal_v1"},
+    "contract_version": {"const": "manual-independent-capture-v1"},
+    "run_id": {"$ref": "#/$defs/uuid"},
+    "safety": {"$ref": "#/$defs/safety"},
+    "authority_profile": {"const": "manual_independent_capture_research_only_v1"},
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request_id", "requested_at", "requested_race_url", "selected_race", "minimum_prejump_margin_seconds", "attempt_authority", "manual_concurrency", "safety"],
+      "properties": {
+        "request_id": {"$ref": "#/$defs/uuid"},
+        "requested_at": {"$ref": "#/$defs/timestamp"},
+        "requested_race_url": {"type": "string", "minLength": 1, "maxLength": 2048, "pattern": "^(?!\\s)(?![\\s\\S]*\\s$)(?![\\s\\S]*[\\u0000-\\u001f\\u007f-\\u009f])[\\s\\S]+$"},
+        "selected_race": {"anyOf": [{"$ref": "#/$defs/race"}, {"type": "null"}]},
+        "minimum_prejump_margin_seconds": {"type": "integer", "minimum": 1, "maximum": 7200},
+        "attempt_authority": {"const": "one_attempt"},
+        "manual_concurrency": {"const": "one_manual_run"},
+        "safety": {"$ref": "#/$defs/safety"}
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["submitted_at", "readiness_checked_at", "deadline_at", "cleanup_deadline_at", "capture_timestamp", "readiness_prejump_margin_seconds", "capture_prejump_margin_seconds", "cancel_requested_at", "terminal_at"],
+      "properties": {
+        "submitted_at": {"$ref": "#/$defs/timestamp"},
+        "readiness_checked_at": {"$ref": "#/$defs/timestamp"},
+        "deadline_at": {"$ref": "#/$defs/timestamp"},
+        "cleanup_deadline_at": {"anyOf": [{"$ref": "#/$defs/timestamp"}, {"type": "null"}]},
+        "capture_timestamp": {"anyOf": [{"$ref": "#/$defs/timestamp"}, {"type": "null"}]},
+        "readiness_prejump_margin_seconds": {"type": ["integer", "null"]},
+        "capture_prejump_margin_seconds": {"type": ["integer", "null"]},
+        "cancel_requested_at": {"anyOf": [{"$ref": "#/$defs/timestamp"}, {"type": "null"}]},
+        "terminal_at": {"$ref": "#/$defs/timestamp"}
+      }
+    },
+    "attempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attempt_count", "source_attempt_count"],
+      "properties": {
+        "attempt_count": {"const": 1},
+        "source_attempt_count": {"type": "integer", "minimum": 0, "maximum": 1}
+      }
+    },
+    "terminal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "failure_code"],
+      "properties": {
+        "status": {"enum": ["CAPTURE_READY", "BLOCKED", "FAILED", "CANCELLED", "TIMED_OUT"]},
+        "failure_code": {"type": ["string", "null"], "enum": [null, "MANUAL_BUSY", "EXACT_RACE_INVALID", "INSUFFICIENT_PREJUMP_MARGIN", "SOURCE_TIMEOUT", "SOURCE_MALFORMED", "IDENTITY_MISMATCH", "RUNNER_SET_MISMATCH", "ODDS_INVALID", "CANCELLED", "TIMED_OUT", "PROCESS_REAP_UNCONFIRMED", "FEATURE_BLOCKED", "SCORING_BLOCKED"]}
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_commit", "source_tree", "config_sha256", "model_sha256", "request_sha256", "race_identity_sha256", "runner_set_sha256", "odds_sha256", "source_files", "artifact_hashes"],
+      "properties": {
+        "source_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "source_tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "config_sha256": {"$ref": "#/$defs/sha256"},
+        "model_sha256": {"$ref": "#/$defs/sha256"},
+        "request_sha256": {"$ref": "#/$defs/sha256"},
+        "race_identity_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+        "runner_set_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+        "odds_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+        "source_files": {"type": "array", "items": {"$ref": "#/$defs/source_file"}, "maxItems": 32},
+        "artifact_hashes": {"type": "array", "items": {"$ref": "#/$defs/artifact_hash"}, "minItems": 2, "maxItems": 3}
+      }
+    },
+    "capture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["runner_set"],
+      "properties": {
+          "runner_set": {"type": "array", "items": {"$ref": "#/$defs/runner"}, "maxItems": 10}
+      }
+    },
+    "closure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bundle_closed", "closed_at", "phase7_accessed", "outcome_accessed", "canonical_write_claimed", "downstream_admissibility"],
+      "properties": {
+        "bundle_closed": {"const": true},
+        "closed_at": {"$ref": "#/$defs/timestamp"},
+        "phase7_accessed": {"const": false},
+        "outcome_accessed": {"const": false},
+        "canonical_write_claimed": {"const": false},
+        "downstream_admissibility": {"const": "research_only_noncanonical_phase7_excluded"}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"terminal": {"properties": {"status": {"const": "CAPTURE_READY"}}, "required": ["status"]}}},
+      "then": {"properties": {"terminal": {"properties": {"failure_code": {"const": null}}}}}
+    },
+    {
+      "if": {"properties": {"terminal": {"properties": {"status": {"const": "BLOCKED"}}, "required": ["status"]}}},
+      "then": {"properties": {"terminal": {"properties": {"failure_code": {"enum": ["MANUAL_BUSY", "EXACT_RACE_INVALID", "INSUFFICIENT_PREJUMP_MARGIN", "FEATURE_BLOCKED", "SCORING_BLOCKED"]}}}}}
+    },
+    {
+      "if": {"properties": {"terminal": {"properties": {"status": {"const": "FAILED"}}, "required": ["status"]}}},
+      "then": {"properties": {"terminal": {"properties": {"failure_code": {"enum": ["SOURCE_TIMEOUT", "SOURCE_MALFORMED", "IDENTITY_MISMATCH", "RUNNER_SET_MISMATCH", "ODDS_INVALID", "PROCESS_REAP_UNCONFIRMED"]}}}}}
+    },
+    {
+      "if": {"properties": {"terminal": {"properties": {"status": {"const": "CANCELLED"}}, "required": ["status"]}}},
+      "then": {"properties": {"terminal": {"properties": {"failure_code": {"const": "CANCELLED"}}}}}
+    },
+    {
+      "if": {"properties": {"terminal": {"properties": {"status": {"const": "TIMED_OUT"}}, "required": ["status"]}}},
+      "then": {"properties": {"terminal": {"properties": {"failure_code": {"const": "TIMED_OUT"}}}}}
+    },
+    {
+      "if": {"properties": {"terminal": {"properties": {"failure_code": {"const": "EXACT_RACE_INVALID"}}, "required": ["failure_code"]}}},
+      "then": {"properties": {"request": {"properties": {"selected_race": {"type": "null"}}}}},
+      "else": {"properties": {"request": {"properties": {"selected_race": {"$ref": "#/$defs/race"}}}}}
+    }
+  ],
+  "$defs": {
+    "uuid": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "timestamp": {"type": "string", "format": "date-time", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$"},
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["research_only", "canonical", "phase7_excluded", "phase7_eligible", "phase7_exclusion_reason"],
+      "properties": {
+        "research_only": {"const": true},
+        "canonical": {"const": false},
+        "phase7_excluded": {"const": true},
+        "phase7_eligible": {"const": false},
+        "phase7_exclusion_reason": {"const": "manual_research_only_noncanonical"}
+      }
+    },
+    "race": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "race_id", "race_date", "venue", "venue_slug", "race_number", "scheduled_start"],
+      "properties": {
+        "url": {"type": "string", "pattern": "^(?![\\s\\S]*[\\s\\u0000-\\u001f\\u007f-\\u009f])https://www\\.thedogs\\.com\\.au/racing/[\\s\\S]+$"},
+        "race_id": {"type": "string", "minLength": 1, "pattern": "^(?!\\s)(?![\\s\\S]*\\s$)(?![\\s\\S]*[\\u0000-\\u001f\\u007f-\\u009f])[\\s\\S]+$"},
+        "race_date": {"type": "string", "format": "date"},
+        "venue": {"type": "string", "minLength": 1, "pattern": "^(?!\\s)(?![\\s\\S]*\\s$)(?![\\s\\S]*[\\u0000-\\u001f\\u007f-\\u009f])[\\s\\S]+$"},
+        "venue_slug": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+        "race_number": {"type": "integer", "minimum": 1},
+        "scheduled_start": {"$ref": "#/$defs/timestamp"}
+      }
+    },
+    "source_file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "content_class", "outcome_scope", "race_url", "race_identity_sha256", "source_timestamp", "bytes", "sha256"],
+      "allOf": [
+        {"if": {"properties": {"content_class": {"const": "prejump_race_source"}}}, "then": {"properties": {"path": {"const": "sources/race-source.bin"}}}},
+        {"if": {"properties": {"content_class": {"const": "prejump_form"}}}, "then": {"properties": {"path": {"const": "sources/form.csv"}}}},
+        {"if": {"properties": {"content_class": {"const": "prejump_sidecar"}}}, "then": {"properties": {"path": {"const": "sources/sidecar.json"}}}}
+      ],
+      "properties": {
+        "path": {"enum": ["sources/form.csv", "sources/race-source.bin", "sources/sidecar.json"]},
+        "content_class": {"enum": ["prejump_race_source", "prejump_form", "prejump_sidecar"]},
+        "outcome_scope": {"const": "target_same_future_outcomes_excluded"},
+        "race_url": {"type": "string", "format": "uri", "pattern": "^(?![\\s\\S]*[\\s\\u0000-\\u001f\\u007f-\\u009f])https://www\\.thedogs\\.com\\.au/racing/[\\s\\S]+$"},
+        "race_identity_sha256": {"$ref": "#/$defs/sha256"},
+        "source_timestamp": {"$ref": "#/$defs/timestamp"},
+        "bytes": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "artifact_hash": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["role", "path", "bytes", "sha256"],
+      "allOf": [
+        {"if": {"properties": {"role": {"const": "capture"}}}, "then": {"properties": {"path": {"const": "capture/odds.json"}}}},
+        {"if": {"properties": {"role": {"const": "config"}}}, "then": {"properties": {"path": {"const": "config/config.json"}}}},
+        {"if": {"properties": {"role": {"const": "model"}}}, "then": {"properties": {"path": {"const": "model/model.json"}}}}
+      ],
+      "properties": {
+        "role": {"enum": ["config", "model", "capture"]},
+        "path": {"enum": ["capture/odds.json", "config/config.json", "model/model.json"]},
+        "bytes": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["box_number", "display_name", "identity", "source_native_runner_id", "decimal_odds"],
+      "properties": {
+        "box_number": {"type": "integer", "minimum": 1, "maximum": 10},
+        "display_name": {"type": "string", "minLength": 1, "pattern": "^(?![\\s\\S]*[\\u0000-\\u001f\\u007f-\\u009f])\\S(?:[\\s\\S]*\\S)?$"},
+        "identity": {"type": "string", "minLength": 1, "pattern": "^(?!.*[a-z])(?![\\s\\S]*\\s$)[\\u0021-\\u007e](?:[\\u0020-\\u007e]*[\\u0021-\\u007e])?$"},
+        "source_native_runner_id": {"anyOf": [{"type": "string", "minLength": 1, "pattern": "^(?![\\s\\S]*[\\u0000-\\u001f\\u007f-\\u009f])\\S(?:[\\s\\S]*\\S)?$"}, {"type": "null"}]},
+        "decimal_odds": {"type": "number", "exclusiveMinimum": 1, "maximum": 1.7976931348623157e308}
+      }
+    }
+  }
+}

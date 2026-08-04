@@ -66,9 +66,13 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
                 "docs/forecasting_ci_tiers.md",
             ),
             "manual_prediction": (
+                "configs/prediction/manual-independent-capture-v1/config.schema.json",
                 "configs/prediction/market-only.json",
+                "docs/manual_independent_capture_v1.md",
                 "scripts/predict_market_form_residual.py",
+                "src/predictor/manual_independent_capture.py",
                 "src/predictor/market_form_residual.py",
+                "tests/test_manual_independent_capture.py",
                 "tests/test_predict_market_form_residual.py",
             ),
             "official_results": (
