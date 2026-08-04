@@ -810,6 +810,8 @@ class OperatorEvidenceReader:
             if type(config.digest_only) is not bool:
                 raise ValueError("raw source digest-only policy must be boolean")
             if config.digest_only:
+                if key not in {"corpus_inventory_csv", "corpus_inventory_jsonl"}:
+                    raise ValueError("digest-only raw source key is not allowed")
                 if config.max_bytes != 64 * 1024 * 1024 or type(config.expected_bytes) is not int or config.expected_bytes < 0 or config.expected_bytes > config.max_bytes:
                     raise ValueError("digest-only source policy is invalid")
             elif config.expected_bytes is not None:
