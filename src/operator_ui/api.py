@@ -549,6 +549,29 @@ def _collector_lane(value: Any, *, request_now: datetime) -> dict[str, Any]:
 
 
 def _corpus_report(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise ValueError("corpus report is invalid")
+    status = _text(value.get("status"))
+    if status == "UNAVAILABLE":
+        raw = _exact(
+            value,
+            frozenset(
+                {
+                    "report_id",
+                    "chain_hashes",
+                    "generated_at",
+                    "status",
+                    "admission_gap",
+                }
+            ),
+        )
+        return {
+            "chain_hashes": _named_hashes(raw["chain_hashes"]),
+            "generated_at": _utc(raw["generated_at"], field="generated_at")[0],
+            "report_id": _id(raw["report_id"]),
+            "status": status,
+            "admission_gap": _text(raw["admission_gap"]),
+        }
     raw = _exact(
         value,
         frozenset(

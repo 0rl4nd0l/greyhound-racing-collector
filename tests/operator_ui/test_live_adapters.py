@@ -43,7 +43,7 @@ from src.operator_ui.live_adapters import (
     InstalledUnits, LiveEvidenceAdapters, PredictionBundleSource,
     UpcomingRaceSource, _calendar_gap, _finite_metric,
 )
-from src.operator_ui.api import install_level_1_api
+from src.operator_ui.api import _corpus_report, install_level_1_api
 from src.operator_ui.bootstrap import CONFIG_KEY, bind_configured_live_evidence
 from src.operator_ui.security import install_connected_mode
 
@@ -348,6 +348,69 @@ def test_realistic_producer_payloads_are_bound_at_authenticated_collector_endpoi
     payload = response.get_json()
     assert payload["classification"] == "AVAILABLE/FRESH"
     assert [lane["run_id"] for lane in payload["data"]["lanes"]] == ["full-1", "odds-9"]
+
+
+def test_authenticated_limited_corpus_report_is_disclosed_without_population_claims(tmp_path):
+    app = Flask(__name__)
+    app.config.update(
+        TESTING=True, OPERATOR_UI_CONNECTED_MODE=True, OPERATOR_UI_LEVEL=2,
+        OPERATOR_UI_SECRET_KEY="endpoint-secret-" + "x" * 40,
+        OPERATOR_UI_USERNAME="operator",
+        OPERATOR_UI_PASSWORD_HASH=generate_password_hash("correct horse"),
+        OPERATOR_UI_AUDIT_DB_PATH=str(tmp_path / "audit.sqlite3"),
+        DATABASE_PATH=str(tmp_path / "canonical.sqlite3"),
+        OPERATOR_UI_DEPLOYED_COMMIT="b" * 40,
+        OPERATOR_UI_DEPLOYED_TREE="c" * 40,
+        OPERATOR_UI_DEPLOYED_VERSION="operator-ui-v1",
+        OPERATOR_UI_CLOCK=lambda: NOW,
+    )
+    install_connected_mode(app); assert install_level_1_api(app)
+    app.config[CONFIG_KEY] = make_live(tmp_path / "live")
+    assert bind_configured_live_evidence(app)
+    client = app.test_client()
+    token = client.get("/operator-ui/login").get_json()["csrf_token"]
+    assert client.post("/operator-ui/login", data={"username":"operator","password":"correct horse","csrf_token":token}).status_code == 200
+
+    response = client.get("/operator-ui/api/v1/corpus")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["classification"] == "AVAILABLE/FRESH"
+    report = payload["data"]["reports"][0]
+    assert report["status"] == "UNAVAILABLE"
+    assert "official-result publication/closure" in report["admission_gap"]
+    assert set(report) == {
+        "report_id", "status", "generated_at", "chain_hashes", "admission_gap",
+    }
+    assert report["chain_hashes"]
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda report: report.update(population_id="mixed-population"),
+        lambda report: report.pop("admission_gap"),
+        lambda report: report.update(unknown_claim="not-contracted"),
+        lambda report: report.update(
+            population_id="population-1",
+            population_count=1,
+            funnel_counts={"admitted": 1},
+            exclusions=[],
+        ),
+    ],
+)
+def test_limited_unavailable_corpus_report_rejects_mixed_partial_and_full_claims(mutate):
+    report = {
+        "report_id": "report-1",
+        "status": "UNAVAILABLE",
+        "generated_at": "2026-07-31T01:59:30Z",
+        "chain_hashes": {"report": "a" * 64},
+        "admission_gap": "publication/closure evidence is not hash-bound",
+    }
+    mutate(report)
+
+    with pytest.raises(ValueError):
+        _corpus_report(report)
 
 
 def test_live_endpoints_use_exact_nonfrozen_request_clock(tmp_path, monkeypatch):
