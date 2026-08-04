@@ -754,8 +754,14 @@ def _validate_sealed_protocol(contents: Mapping[str, bytes], result: Mapping[str
         _validate_authenticated_cutoff(contents, result)
         return
     names = ("request", "claim", "attempt", "response", "receipt", "consume", "authenticated_receipt")
-    required = {f"protocol/{name}.json" for name in names} | {"features/history_seal.json", "features/sealed_history.db"}
-    if not required.issubset(contents): raise _blocked("PREDICTION_BUNDLE_INVALID", reason="sealed_protocol_required")
+    protocol_members = {f"protocol/{name}.json" for name in names}
+    required = protocol_members | {"features/history_seal.json", "features/sealed_history.db"}
+    if (
+        {name for name in contents if name.startswith("protocol/")}
+        != protocol_members
+        or not required.issubset(contents)
+    ):
+        raise _blocked("PREDICTION_BUNDLE_INVALID", reason="sealed_protocol_required")
     chain = result["evidence"]["protocol_chain"]
     values = {name: _canonical_json(contents[f"protocol/{name}.json"], max_bytes=BUNDLE_CONTROL_MAX_BYTES, label=f"protocol.{name}") for name in names}
     expected_keys = {

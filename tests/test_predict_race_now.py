@@ -1835,6 +1835,20 @@ def test_residual_bundle_replay_reruns_scorer_at_original_timestamp(tmp_path: Pa
     )
     assert verified.result == result
 
+    bundle = tmp_path / "bundles" / index["entries"][0]["directory"]
+    contents = {
+        path.relative_to(bundle).as_posix(): path.read_bytes()
+        for path in bundle.rglob("*")
+        if path.is_file() and path.name != "bundle_manifest.json"
+    }
+    contents["protocol/collector_exact_receipt.json"] = canonical_bytes({})
+    with pytest.raises(PredictionBlocked) as contradictory_protocol:
+        on_demand._validate_sealed_protocol(contents, result)
+    assert contradictory_protocol.value.code == "PREDICTION_BUNDLE_INVALID"
+    assert contradictory_protocol.value.details == {
+        "reason": "sealed_protocol_required"
+    }
+
 
 def test_output_symlink_write_attempt_is_rejected(tmp_path: Path):
     real = tmp_path / "real"
