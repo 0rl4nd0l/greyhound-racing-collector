@@ -547,6 +547,41 @@ def test_enabled_generator_derives_refresh_root_without_rereading_odds_report(tm
     assert reads == 1
 
 
+def test_enabled_generator_accepts_exact_absolute_odds_output_dir(tmp_path, monkeypatch):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    odds_report = Path(authority["sources"]["odds_report"])
+    refresh = Path(authority["sources"]["odds_refresh"])
+    odds_report.write_text(json.dumps({
+        "schema_version": "shadow_autopilot_odds_capture_only_daemon_report_v1",
+        "autopilot_output_dir": str(refresh.parent),
+    }))
+
+    generate_package(**values, enabled=True)
+
+    binding = json.loads(
+        (values["source_root"] / "var/operator_ui/generated/repository-v1.binding.json").read_text()
+    )
+    assert Path(binding["live_evidence"]["sources"]["odds_refresh"]["allowlisted_root"]) == refresh.parent
+
+
+def test_enabled_generator_rejects_mismatched_absolute_odds_output_dir_without_output(
+    tmp_path, monkeypatch
+):
+    values = deployment_inputs(tmp_path); git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    odds_report = Path(authority["sources"]["odds_report"])
+    odds_report.write_text(json.dumps({
+        "schema_version": "shadow_autopilot_odds_capture_only_daemon_report_v1",
+        "autopilot_output_dir": str(tmp_path / "different-reports"),
+    }))
+
+    with pytest.raises(DeploymentRejected, match="odds refresh authority is contradictory"):
+        generate_package(**values, enabled=True)
+
+    assert all(not target.exists() for target in generated_targets(values))
+
+
 def test_enabled_generator_binds_waiting_cycle_without_refresh_output(tmp_path, monkeypatch):
     values = deployment_inputs(tmp_path); git_identity(monkeypatch)
     authority = json.loads(values["live_authority"].read_text())

@@ -287,11 +287,16 @@ def _live_authority(path: Path) -> dict[str, Any]:
             refresh_root = refresh_path.parent
         else:
             relative = Path(output_dir) / "odds_capture_refresh_report.json"
-            if relative.is_absolute() or ".." in relative.parts or len(relative.parts) < 2:
+            if ".." in relative.parts or len(relative.parts) < 2:
                 raise ValueError
-            refresh_root = refresh_path.parents[len(relative.parts) - 1]
-            if refresh_path.relative_to(refresh_root) != relative:
-                raise ValueError
+            if relative.is_absolute():
+                refresh_root = Path(output_dir)
+                if refresh_path != relative:
+                    raise ValueError
+            else:
+                refresh_root = refresh_path.parents[len(relative.parts) - 1]
+                if refresh_path.relative_to(refresh_root) != relative:
+                    raise ValueError
         _safe_existing(refresh_root, directory=True)
     except (KeyError, TypeError, ValueError, OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise DeploymentRejected("odds refresh authority is contradictory") from error
