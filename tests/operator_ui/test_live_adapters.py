@@ -41,7 +41,7 @@ from src.operator_ui.foundation import (
 )
 from src.operator_ui.live_adapters import (
     InstalledUnits, LiveEvidenceAdapters, PredictionBundleSource,
-    UpcomingRaceSource, _calendar_gap, _finite_metric,
+    UpcomingRaceSource, _calendar_gap, _finite_metric, _lock_metadata,
 )
 from src.operator_ui.api import _corpus_report, install_level_1_api
 from src.operator_ui.bootstrap import CONFIG_KEY, bind_configured_live_evidence
@@ -908,6 +908,63 @@ def test_corpus_rejects_backlog_closure_disagreement(tmp_path):
         "shared_lock_release": None,
     }
     assert make_live(tmp_path, values).corpus(NOW).evidence.status == "INVALID/INTEGRITY_FAILED"
+
+
+def _shared_lock(status, *, write_allowed, lock_path="run/shared.lock", **extra):
+    return {
+        "schema_version": "shared_lock_status_v1",
+        "lock_path": lock_path,
+        "status": status,
+        "write_allowed": write_allowed,
+        **extra,
+    }
+
+
+def _owned_shared_lock(pid=123):
+    return {
+        "schema_version": "shadow_autopilot_daemon_lock_v1",
+        "run_id": "official_result_evidence_append_backlog_20260731T020000Z",
+        "pid": pid,
+        "hostname": "collector-host",
+        "started_at": NOW.isoformat(),
+        "output_dir": "artifacts/backlog",
+        "owner": "append_official_result_evidence_backlog",
+    }
+
+
+@pytest.mark.parametrize("value", [
+    _shared_lock("not_configured", lock_path=None, write_allowed=True),
+    _shared_lock("missing", write_allowed=True),
+    _shared_lock("unreadable", write_allowed=False, error="OSError:unreadable"),
+    _shared_lock("invalid_payload", write_allowed=False),
+    _shared_lock("stale_dead_pid", write_allowed=True, pid=123, lock=_owned_shared_lock()),
+    _shared_lock("present_pid_permission_unknown", write_allowed=False, pid=123, lock=_owned_shared_lock()),
+    _shared_lock("present_live_pid", write_allowed=False, pid=123, lock=_owned_shared_lock()),
+    _shared_lock("lock_path_missing_required", lock_path=None, write_allowed=False),
+    _shared_lock("stale_lock_unlink_failed", write_allowed=False, error="OSError:busy", pid=123, lock=_owned_shared_lock()),
+    _shared_lock("lock_race_lost", write_allowed=False),
+    _shared_lock("acquired_by_backlog_append", write_allowed=True, pid=123, lock=_owned_shared_lock(), owned_lock=_owned_shared_lock()),
+])
+def test_corpus_accepts_exact_shared_lock_producer_contracts(value):
+    _lock_metadata(value)
+
+
+@pytest.mark.parametrize("value", [
+    _shared_lock("missing", write_allowed=True, pid=123),
+    _shared_lock("missing", write_allowed=False),
+    _shared_lock("unreadable", write_allowed=False),
+    _shared_lock("invalid_payload", write_allowed=False, error="invented"),
+    _shared_lock("present_without_pid", write_allowed=False, lock={"unexpected": "payload"}),
+    _shared_lock("not_configured", lock_path="run/shared.lock", write_allowed=True),
+    _shared_lock("present_live_pid", write_allowed=False, pid=123, lock=_owned_shared_lock(), owned_lock=_owned_shared_lock()),
+    _shared_lock("present_live_pid", write_allowed=False, pid=124, lock=_owned_shared_lock()),
+    _shared_lock("acquired_by_backlog_append", write_allowed=True, pid=123, lock=_owned_shared_lock()),
+    _shared_lock("acquired_by_backlog_append", write_allowed=True, pid=124, lock=_owned_shared_lock(), owned_lock=_owned_shared_lock()),
+    _shared_lock("acquired_by_backlog_append", write_allowed=True, pid=123, lock=_owned_shared_lock(), owned_lock=_owned_shared_lock(124)),
+])
+def test_corpus_rejects_contradictory_shared_lock_metadata(value):
+    with pytest.raises(ValueError):
+        _lock_metadata(value)
 
 
 @pytest.mark.parametrize("absolute", [False, True])

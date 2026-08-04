@@ -408,19 +408,32 @@ def _lock_metadata(value: Any, *, release: bool = False) -> None:
             _producer_locator(lock.get("output_dir"))
         return
     required = {"schema_version", "lock_path", "status", "write_allowed"}
-    optional = {"error", "pid", "lock", "owned_lock"}
-    if not required <= set(value) or set(value) - required - optional:
+    status_contracts = {
+        "not_configured": (set(), None, True),
+        "missing": (set(), "path", True),
+        "unreadable": ({"error"}, "path", False),
+        "invalid_payload": (set(), "path", False),
+        "present_without_pid": ({"lock"}, "path", False),
+        "stale_dead_pid": ({"pid", "lock"}, "path", True),
+        "present_pid_permission_unknown": ({"pid", "lock"}, "path", False),
+        "present_live_pid": ({"pid", "lock"}, "path", False),
+        "lock_path_missing_required": (set(), None, False),
+        "stale_lock_unlink_failed": ({"error", "pid", "lock"}, "path", False),
+        "lock_race_lost": (set(), "path", False),
+        "acquired_by_backlog_append": ({"pid", "lock", "owned_lock"}, "path", True),
+    }
+    status = value.get("status")
+    contract = status_contracts.get(status) if isinstance(status, str) else None
+    if contract is None or set(value) != required | contract[0]:
         raise ValueError("inventory lock status fields are invalid")
     if value.get("schema_version") != "shared_lock_status_v1" or type(value.get("write_allowed")) is not bool:
         raise ValueError("inventory lock status schema is invalid")
-    if value.get("status") not in {
-        "not_configured", "missing", "unreadable", "invalid_payload",
-        "present_without_pid", "stale_dead_pid", "present_pid_permission_unknown",
-        "present_live_pid", "lock_path_missing_required", "stale_lock_unlink_failed",
-        "lock_race_lost", "acquired_by_backlog_append",
-    }:
-        raise ValueError("inventory lock status is unknown")
-    if value.get("lock_path") is not None:
+    _, path_shape, write_allowed = contract
+    if value["write_allowed"] is not write_allowed:
+        raise ValueError("inventory lock status write closure is contradictory")
+    if (value.get("lock_path") is None) != (path_shape is None):
+        raise ValueError("inventory lock path is contradictory")
+    if path_shape == "path":
         _producer_locator(value["lock_path"])
     if "error" in value:
         _bounded_identity(value["error"])
@@ -439,6 +452,14 @@ def _lock_metadata(value: Any, *, release: bool = False) -> None:
             _bounded_identity(lock.get(field))
         _time(lock.get("started_at"))
         _producer_locator(lock.get("output_dir"))
+    if "pid" in value and "lock" in value and value["pid"] != value["lock"]["pid"]:
+        raise ValueError("inventory lock pid is contradictory")
+    if status == "acquired_by_backlog_append":
+        if (
+            value["pid"] != value["owned_lock"]["pid"]
+            or dict(value["lock"]) != dict(value["owned_lock"])
+        ):
+            raise ValueError("inventory acquired lock ownership is contradictory")
 
 
 def _inventory_semantics(report: Mapping[str, Any]) -> tuple[dict[str, int], dict[str, int]]:
