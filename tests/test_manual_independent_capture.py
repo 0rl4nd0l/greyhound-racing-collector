@@ -384,6 +384,8 @@ def test_config_constant_types_are_exact(section: str, field: str, value: object
         ("display_name", " Alpha Dog"),
         ("display_name", "Alpha Dog "),
         ("display_name", "Alpha Dog\n"),
+        ("display_name", "Alpha\nDog"),
+        ("display_name", "Alpha\x00Dog"),
         ("identity", "alpha dog"),
         ("identity", " ALPHA DOG"),
         ("identity", "ALPHA DOG "),
@@ -393,6 +395,8 @@ def test_config_constant_types_are_exact(section: str, field: str, value: object
         ("source_native_runner_id", " dog-1"),
         ("source_native_runner_id", "dog-1 "),
         ("source_native_runner_id", "dog-1\n"),
+        ("source_native_runner_id", "dog\t1"),
+        ("source_native_runner_id", "dog\x001"),
     ],
 )
 def test_published_runner_strings_cannot_pass_schema_but_fail_runtime(

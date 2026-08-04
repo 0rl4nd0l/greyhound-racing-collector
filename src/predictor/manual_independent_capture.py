@@ -152,6 +152,9 @@ _TIMESTAMP_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}"
 _RUNNER_IDENTITY_RE = re.compile(
     r"(?!.*[a-z])[\x21-\x7e](?:[\x20-\x7e]*[\x21-\x7e])?"
 )
+_RUNNER_TEXT_RE = re.compile(
+    r"(?![\s\S]*[\x00-\x1f\x7f])\S(?:[\s\S]*\S)?"
+)
 _FORBIDDEN_MEMBER_PARTS = frozenset(
     {
         "autonomous-shared-lock",
@@ -762,6 +765,19 @@ def _capture(value: Any) -> tuple[dict[str, Any], list[dict[str, Any]]]:
             or _RUNNER_IDENTITY_RE.fullmatch(row["identity"]) is None
         ):
             raise _reject("RUNNER_SET_INVALID", field=f"runner_set[{index}].identity")
+        native_id = row["source_native_runner_id"]
+        if (
+            not isinstance(row["display_name"], str)
+            or _RUNNER_TEXT_RE.fullmatch(row["display_name"]) is None
+            or (
+                native_id is not None
+                and (
+                    not isinstance(native_id, str)
+                    or _RUNNER_TEXT_RE.fullmatch(native_id) is None
+                )
+            )
+        ):
+            raise _reject("RUNNER_SET_INVALID", field=f"runner_set[{index}].text")
         try:
             finite_odds = math.isfinite(float(odds))
         except OverflowError:
