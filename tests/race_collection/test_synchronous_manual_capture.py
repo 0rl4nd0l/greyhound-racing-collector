@@ -1129,7 +1129,8 @@ def test_atomic_publish_rejects_mutation_after_rename_and_fsync(
         "csv_malformed_encoding",
         "accepted_status_fail",
         "active_status_missing",
-        "future_observation",
+        "observation_beyond_bound",
+        "post_jump_observation",
         "post_jump_generation",
     ],
 )
@@ -1153,11 +1154,13 @@ def test_v2_runner_seal_rejects_untrusted_runner_sources(
         sidecar["prejump_shadow_metadata"]["status"] = "FAIL"
     elif case == "active_status_missing":
         sidecar["runner_completeness_after_canonical_alignment"].pop("status")
-    elif case == "future_observation":
+    elif case == "observation_beyond_bound":
+        generated = observed - timedelta(seconds=1201)
+    elif case == "post_jump_observation":
         sidecar["prejump_shadow_metadata"]["metadata_captured_at"] = (
-            observed + timedelta(seconds=1)
+            datetime.fromisoformat("2026-07-19T13:00:00+10:00")
         ).isoformat()
-    else:
+    elif case == "post_jump_generation":
         generated = datetime.fromisoformat("2026-07-19T13:00:00+10:00")
     sidecar_path.write_bytes(canonical_bytes(sidecar))
     race = {
@@ -1237,6 +1240,110 @@ def test_v2_runner_hash_binds_source_generated_at(tmp_path: Path):
     assert first[1]["source_generated_at"] == observed.isoformat()
     assert second[1]["source_generated_at"] == changed_at.isoformat()
     assert first[2] != second[2]
+
+
+def test_v2_runner_seal_accepts_later_prejump_observation_and_normalized_venue(
+    tmp_path: Path,
+):
+    evidence_root = tmp_path / "evidence"
+    race_url = "https://www.thedogs.com.au/racing/townsville/2026-07-19/5"
+    generated = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
+    observed = generated + timedelta(seconds=5)
+    coverage = _runner_coverage(evidence_root, race_url, observed)
+    sidecar_path = Path(coverage["races"][0]["sidecar_path"])
+    sidecar = json.loads(sidecar_path.read_bytes())
+    sidecar["prejump_shadow_metadata"]["venue"] = "TOWNSVILLE"
+    sidecar["prejump_shadow_metadata"]["runner_box_name_list"][0]["dog_name"] = "Alpha Display"
+    sidecar["runner_completeness_after_canonical_alignment"]["participants"][0]["dog_name"] = "Alpha Display"
+    Path(coverage["races"][0]["csv_path"]).write_bytes(
+        b"box|dog_name\n1|Alpha Display\n2|Beta\n"
+    )
+    sidecar_path.write_bytes(canonical_bytes(sidecar))
+
+    rows, _, _ = capture._v2_runner_rows(
+        {
+            "date": "2026-07-19", "jump_datetime": "2026-07-19T13:00:00+10:00",
+            "race_number": 5, "race_url": race_url, "venue": "TWN",
+        },
+        {"generated_at": generated.isoformat(), "sidecar_metadata_coverage": coverage},
+        evidence_root=evidence_root,
+    )
+
+    assert rows[0]["display_name"] == "Alpha Display"
+
+
+def test_v2_runner_seal_rejects_unrelated_venue(tmp_path: Path):
+    evidence_root = tmp_path / "evidence"
+    race_url = "https://www.thedogs.com.au/racing/townsville/2026-07-19/5"
+    observed = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
+    coverage = _runner_coverage(evidence_root, race_url, observed)
+
+    with pytest.raises(CaptureOneRejected) as rejected:
+        capture._v2_runner_rows(
+            {
+                "date": "2026-07-19", "jump_datetime": "2026-07-19T13:00:00+10:00",
+                "race_number": 5, "race_url": race_url, "venue": "TWN",
+            },
+            {"generated_at": observed.isoformat(), "sidecar_metadata_coverage": coverage},
+            evidence_root=evidence_root,
+        )
+
+    assert rejected.value.details["reason"] == "runner_race_identity_mismatch"
+
+
+def test_v2_runner_seal_accepts_expert_history_current_runner_prefixes(tmp_path: Path):
+    evidence_root = tmp_path / "evidence"
+    race_url = "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
+    observed = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
+    coverage = _runner_coverage(evidence_root, race_url, observed)
+    Path(coverage["races"][0]["csv_path"]).write_bytes(
+        b"Dog Name|Sex|PLC|BOX|WGT|DIST|DATE|TRACK\n"
+        b"1. Alpha|D|1|7|30|400|2026-07-01|GUNN\n"
+        b"|D|2|4|30|400|2026-06-20|GUNN\n"
+        b"2. Beta|B|3|1|29|400|2026-07-01|GUNN\n"
+        b"|B|1|8|29|400|2026-06-20|GUNN\n"
+    )
+
+    rows, _, _ = capture._v2_runner_rows(
+        {
+            "date": "2026-07-19", "jump_datetime": "2026-07-19T13:00:00+10:00",
+            "race_number": 5, "race_url": race_url, "venue": "GUNN",
+        },
+        {"generated_at": observed.isoformat(), "sidecar_metadata_coverage": coverage},
+        evidence_root=evidence_root,
+    )
+
+    assert [(row["box"], row["identity"]) for row in rows] == [(1, "ALPHA"), (2, "BETA")]
+
+
+@pytest.mark.parametrize("first_name", ["Alpha", "1 Alpha", "2. Alpha", "1. Gamma"])
+def test_v2_runner_seal_rejects_invalid_expert_history_current_prefix(
+    tmp_path: Path, first_name: str,
+):
+    evidence_root = tmp_path / "evidence"
+    race_url = "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
+    observed = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
+    coverage = _runner_coverage(evidence_root, race_url, observed)
+    Path(coverage["races"][0]["csv_path"]).write_text(
+        "Dog Name|PLC|BOX|DATE|TRACK\n"
+        f"{first_name}|1|7|2026-07-01|GUNN\n"
+        "2. Beta|2|1|2026-07-01|GUNN\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(CaptureOneRejected) as rejected:
+        capture._v2_runner_rows(
+            {
+                "date": "2026-07-19", "jump_datetime": "2026-07-19T13:00:00+10:00",
+                "race_number": 5, "race_url": race_url, "venue": "GUNN",
+            },
+            {"generated_at": observed.isoformat(), "sidecar_metadata_coverage": coverage},
+            evidence_root=evidence_root,
+        )
+
+    assert rejected.value.details["reason"] in {
+        "csv_runner_rows_invalid", "csv_sidecar_runner_mismatch"
+    }
 
 
 def test_v2_runner_seal_accepts_matching_name_prefix_with_explicit_box(tmp_path: Path):

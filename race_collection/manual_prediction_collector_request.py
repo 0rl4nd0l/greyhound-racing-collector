@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import stat
 import tempfile
 import time
 import uuid
@@ -215,6 +216,7 @@ def _validate_collector_source_report(
     *,
     race_id: str,
     collector_run_id: str,
+    emitted_at: str,
     capture_attempt_sha256: str,
     append_report_sha256: str,
 ) -> None:
@@ -224,23 +226,48 @@ def _validate_collector_source_report(
         raise ProtocolRejected("RECORD_MALFORMED") from exc
     if (
         type(report) is not dict
+        or set(report)
+        != {
+            "schema_version",
+            "collector_run_id",
+            "generated_at",
+            "race_id",
+            "source_race_id",
+            "source_plan_item",
+            "source_attempt",
+            "attempts",
+        }
         or canonical_bytes(report) != raw
         or report.get("schema_version") != "collector_exact_capture_source_v1"
         or report.get("race_id") != race_id
         or report.get("collector_run_id") != collector_run_id
+        or report.get("generated_at") != emitted_at
+    ):
+        raise ProtocolRejected("EXACT_RECEIPT_MALFORMED")
+    _timestamp(report["generated_at"], "source_report.generated_at")
+    source_race_id = _known_text(
+        report.get("source_race_id"), "source_report.source_race_id"
+    )
+    source_plan = report.get("source_plan_item")
+    source_attempt = report.get("source_attempt")
+    if (
+        type(source_plan) is not dict
+        or type(source_attempt) is not dict
+        or source_plan.get("schema_version")
+        != "autonomous_live_odds_capture_plan_item_v1"
+        or source_plan.get("status") != "READY_TO_CAPTURE"
+        or source_plan.get("race_id") != source_race_id
+        or source_attempt.get("schema_version")
+        != "autonomous_live_odds_capture_attempt_v1"
+        or source_attempt.get("race_id") != source_race_id
+        or source_attempt.get("status") != "APPENDED"
     ):
         raise ProtocolRejected("EXACT_RECEIPT_MALFORMED")
     attempts = report.get("attempts")
-    matches = [
-        attempt
-        for attempt in attempts or []
-        if isinstance(attempt, Mapping)
-        and attempt.get("race_id") == race_id
-        and attempt.get("status") == "APPENDED"
-    ]
-    if len(matches) != 1:
+    adapted_attempt = {**source_attempt, "race_id": race_id}
+    if type(attempts) is not list or attempts != [adapted_attempt]:
         raise ProtocolRejected("EXACT_RECEIPT_MALFORMED")
-    attempt = matches[0]
+    attempt = attempts[0]
     append_report = attempt.get("append_report")
     if (
         sha256_bytes(canonical_bytes(attempt)) != capture_attempt_sha256
@@ -413,6 +440,218 @@ class ManualPredictionCollectorProtocol:
             if len(matches) != 1:
                 raise ProtocolRejected("PROTOCOL_CHAIN_AMBIGUOUS")
             return matches[0]
+        except OSError as exc:
+            raise ProtocolRejected("PROTOCOL_PATH_UNSAFE") from exc
+        finally:
+            for descriptor in reversed(opened):
+                os.close(descriptor)
+
+    def snapshot_collector_exact_handoff(
+        self, public_handoff: Mapping[str, Any]
+    ) -> tuple[dict[str, str], dict[str, bytes], dict[str, bytes]]:
+        """Snapshot one scheduled exact receipt and all of its source members."""
+        race_id = public_handoff.get("race_id")
+        capture_attempt_sha = public_handoff.get("capture_attempt_sha256")
+        if (
+            not isinstance(race_id, str)
+            or not race_id
+            or not isinstance(capture_attempt_sha, str)
+            or _HASH_RE.fullmatch(capture_attempt_sha) is None
+        ):
+            raise ProtocolRejected("PROTOCOL_CHAIN_AMBIGUOUS")
+        opened: list[int] = []
+        retained_dirs: list[tuple[int, str, int, tuple[int, int, int, int]]] = []
+        retained_files: list[tuple[int, str, int, tuple[int, int, int, int]]] = []
+
+        def identity(descriptor: int) -> tuple[int, int, int, int]:
+            value = os.fstat(descriptor)
+            return value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns
+
+        def child(parent: int, name: str, *, directory: bool) -> int:
+            if not name or name in {".", ".."} or Path(name).name != name:
+                raise ProtocolRejected("PROTOCOL_PATH_UNSAFE")
+            flags = os.O_RDONLY | os.O_NOFOLLOW
+            if directory:
+                flags |= os.O_DIRECTORY
+            elif hasattr(os, "O_NONBLOCK"):
+                flags |= os.O_NONBLOCK
+            descriptor = os.open(name, flags, dir_fd=parent)
+            opened.append(descriptor)
+            opened_value = os.fstat(descriptor)
+            valid_type = (
+                stat.S_ISDIR(opened_value.st_mode)
+                if directory
+                else stat.S_ISREG(opened_value.st_mode)
+            )
+            if not valid_type:
+                raise ProtocolRejected("PROTOCOL_PATH_UNSAFE")
+            expected = identity(descriptor)
+            if directory:
+                retained_dirs.append((parent, name, descriptor, expected))
+            else:
+                retained_files.append((parent, name, descriptor, expected))
+            return descriptor
+
+        def directory(path: Path) -> int:
+            descriptor = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+            opened.append(descriptor)
+            for component in path.absolute().parts[1:]:
+                descriptor = child(descriptor, component, directory=True)
+            return descriptor
+
+        def read(descriptor: int, expected: tuple[int, int, int, int]) -> bytes:
+            chunks: list[bytes] = []
+            total = 0
+            while True:
+                chunk = os.read(
+                    descriptor,
+                    min(65536, _SNAPSHOT_MEMBER_MAX_BYTES + 1 - total),
+                )
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > _SNAPSHOT_MEMBER_MAX_BYTES:
+                    raise ProtocolRejected("PROTOCOL_MEMBER_OVERSIZED")
+                chunks.append(chunk)
+            if identity(descriptor) != expected:
+                raise ProtocolRejected("PROTOCOL_MEMBER_CHANGED")
+            return b"".join(chunks)
+
+        try:
+            protocol_root = directory(self.root)
+            collector_root = child(
+                protocol_root, "collector-exact-receipts", directory=True
+            )
+            race_directory = child(
+                collector_root,
+                hashlib.sha256(race_id.encode()).hexdigest(),
+                directory=True,
+            )
+            entries = os.listdir(race_directory)
+            if len(entries) > _EXACT_RECEIPT_ENTRY_LIMIT:
+                raise ProtocolRejected("EXACT_RECEIPT_INDEX_UNBOUNDED")
+            receipt_name = f"{capture_attempt_sha}.json"
+            receipt_descriptor = child(
+                race_directory, receipt_name, directory=False
+            )
+            receipt_raw = read(receipt_descriptor, identity(receipt_descriptor))
+            try:
+                receipt = json.loads(receipt_raw)
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                raise ProtocolRejected("PROTOCOL_MEMBER_MALFORMED") from exc
+            expected_receipt_keys = {
+                "schema_version",
+                "race_id",
+                "collector_run_id",
+                "captured_at",
+                "emitted_at",
+                "sealed_handoff",
+                "artifacts",
+                "form_name",
+            }
+            if (
+                type(receipt) is not dict
+                or set(receipt) != expected_receipt_keys
+                or canonical_bytes(receipt) != receipt_raw
+                or receipt.get("schema_version") != COLLECTOR_EXACT_RECEIPT_SCHEMA
+                or receipt.get("race_id") != race_id
+                or receipt.get("sealed_handoff") != dict(public_handoff)
+            ):
+                raise ProtocolRejected("EXACT_RECEIPT_MALFORMED")
+            collector_run_id = _known_text(
+                receipt.get("collector_run_id"), "collector_run_id"
+            )
+            artifacts = receipt.get("artifacts")
+            if type(artifacts) is not dict or set(artifacts) != {
+                "report",
+                "form",
+                "sidecar",
+            }:
+                raise ProtocolRejected("EXACT_RECEIPT_MALFORMED")
+
+            evidence_root = directory(self.root.parent)
+            artifact_raws: dict[str, bytes] = {}
+            artifact_paths: dict[str, Path] = {}
+            artifact_identities: dict[str, tuple[int, int]] = {}
+            for label, source_key in (
+                ("report", "source_report_sha256"),
+                ("form", "source_form_sha256"),
+                ("sidecar", "source_sidecar_sha256"),
+            ):
+                artifact = artifacts[label]
+                if type(artifact) is not dict or set(artifact) != {
+                    "path",
+                    "sha256",
+                }:
+                    raise ProtocolRejected("EXACT_RECEIPT_MALFORMED")
+                relative_text = _known_text(
+                    artifact.get("path"), f"artifacts.{label}.path"
+                )
+                relative = Path(relative_text)
+                if (
+                    len(relative_text) > 512
+                    or len(relative.parts) > _EXACT_RECEIPT_ENTRY_LIMIT
+                    or relative.is_absolute()
+                    or not relative.parts
+                ):
+                    raise ProtocolRejected("PROTOCOL_PATH_UNSAFE")
+                parent = evidence_root
+                for component in relative.parts[:-1]:
+                    parent = child(parent, component, directory=True)
+                descriptor = child(parent, relative.parts[-1], directory=False)
+                descriptor_identity = identity(descriptor)
+                artifact_identities[label] = descriptor_identity[:2]
+                raw = read(descriptor, descriptor_identity)
+                expected_hash = _hash(
+                    artifact.get("sha256"), f"artifacts.{label}.sha256"
+                )
+                if (
+                    sha256_bytes(raw) != expected_hash
+                    or public_handoff.get(source_key) != expected_hash
+                ):
+                    raise ProtocolRejected("HASH_DRIFT", field=label)
+                artifact_raws[label] = raw
+                artifact_paths[label] = relative
+            if (
+                len(set(artifact_paths.values())) != len(artifact_paths)
+                or len(set(artifact_identities.values())) != len(artifact_identities)
+                or receipt.get("form_name") != artifact_paths["form"].name
+            ):
+                raise ProtocolRejected("EXACT_RECEIPT_MALFORMED")
+            _validate_collector_source_report(
+                artifact_raws["report"],
+                race_id=race_id,
+                collector_run_id=collector_run_id,
+                emitted_at=str(receipt.get("emitted_at")),
+                capture_attempt_sha256=capture_attempt_sha,
+                append_report_sha256=str(
+                    public_handoff.get("append_report_sha256")
+                ),
+            )
+            for parent, name, descriptor, expected in retained_files:
+                named = os.stat(name, dir_fd=parent, follow_symlinks=False)
+                if (
+                    identity(descriptor) != expected
+                    or (named.st_dev, named.st_ino) != expected[:2]
+                ):
+                    raise ProtocolRejected("PROTOCOL_MEMBER_CHANGED")
+            for parent, name, descriptor, expected in retained_dirs:
+                named = os.stat(name, dir_fd=parent, follow_symlinks=False)
+                if (
+                    identity(descriptor) != expected
+                    or (named.st_dev, named.st_ino) != expected[:2]
+                ):
+                    raise ProtocolRejected("PROTOCOL_DIRECTORY_CHANGED")
+            return (
+                {
+                    "protocol_kind": "collector_exact_capture_v1",
+                    "collector_run_id": collector_run_id,
+                    "capture_attempt_sha256": capture_attempt_sha,
+                    "collector_exact_receipt_sha256": sha256_bytes(receipt_raw),
+                },
+                {"collector_exact_receipt": receipt_raw},
+                artifact_raws,
+            )
         except OSError as exc:
             raise ProtocolRejected("PROTOCOL_PATH_UNSAFE") from exc
         finally:
@@ -1225,6 +1464,7 @@ class ManualPredictionCollectorProtocol:
             Path(handoff["_report_path"]).read_bytes(),
             race_id=race_id,
             collector_run_id=collector_run,
+            emitted_at=emitted_text,
             capture_attempt_sha256=capture_attempt_sha,
             append_report_sha256=public_handoff["append_report_sha256"],
         )
@@ -1393,6 +1633,7 @@ class ManualPredictionCollectorProtocol:
                 raw_artifacts["report"],
                 race_id=race_id,
                 collector_run_id=value["collector_run_id"],
+                emitted_at=value["emitted_at"],
                 capture_attempt_sha256=capture_attempt_sha,
                 append_report_sha256=handoff["append_report_sha256"],
             )
@@ -1410,6 +1651,7 @@ class ManualPredictionCollectorProtocol:
                         "_form_name": _known_text(
                             value["form_name"], "form_name"
                         ),
+                        "_scheduled_exact_receipt": True,
                     },
                 )
             )

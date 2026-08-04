@@ -14,11 +14,13 @@ from typing import Any
 
 import pytest
 
+import race_collection.manual_prediction_collector_request as collector_protocol
 import race_collection.synchronous_manual_capture as synchronous_capture
 import scripts.predict_race_now as predict_now
 import src.predictor.on_demand as on_demand
 from race_collection.manual_prediction_collector_request import (
     ManualPredictionCollectorProtocol,
+    ProtocolRejected,
 )
 from race_collection.synchronous_manual_capture import (
     CollectorBusy as CollectorLockBusy,
@@ -796,9 +798,14 @@ def test_fixture_e2e_reuses_receipt_seals_features_selects_model_and_bundles(
     assert json.loads((bundle / "result.json").read_bytes()) == result
 
 
-def test_scheduled_exact_receipt_reuses_while_capture_authority_is_busy(
+def scheduled_exact_receipt(
     tmp_path: Path,
-):
+) -> tuple[
+    ManualPredictionCollectorProtocol,
+    dict[str, Any],
+    dict[str, Path],
+    dict[str, Any],
+]:
     protocol_root = tmp_path / "collector-requests"
     protocol = ManualPredictionCollectorProtocol(protocol_root)
     value = handoff()
@@ -811,11 +818,30 @@ def test_scheduled_exact_receipt_reuses_while_capture_authority_is_busy(
             "inserted_rows": 2,
         },
     }
+    source_plan_item = {
+        "schema_version": "autonomous_live_odds_capture_plan_item_v1",
+        "status": "READY_TO_CAPTURE",
+        "race_id": RACE_ID,
+        "venue": "GUNN",
+        "race_number": 5,
+        "race_date": "2026-07-19",
+        "race_time": "13:00",
+        "jump_datetime": "2026-07-19T13:00:00+10:00",
+        "thedogs_source_url": race()["url"],
+        "expected_runners": [
+            {"box_number": 1, "dog_name": "Alpha", "identity": "ALPHA"},
+            {"box_number": 2, "dog_name": "Beta", "identity": "BETA"},
+        ],
+    }
     value["_report_bytes"] = canonical_bytes(
         {
             "schema_version": "collector_exact_capture_source_v1",
-            "race_id": RACE_ID,
             "collector_run_id": collector_run_id,
+            "generated_at": NOW.isoformat(),
+            "race_id": RACE_ID,
+            "source_race_id": RACE_ID,
+            "source_plan_item": source_plan_item,
+            "source_attempt": source_attempt,
             "attempts": [source_attempt],
         }
     )
@@ -861,6 +887,13 @@ def test_scheduled_exact_receipt_reuses_while_capture_authority_is_busy(
         emitted_at=NOW,
         handoff=value,
     )
+    return protocol, value, paths, source_attempt
+
+
+def test_scheduled_exact_receipt_reuses_while_capture_authority_is_busy(
+    tmp_path: Path,
+):
+    protocol, value, paths, _ = scheduled_exact_receipt(tmp_path)
 
     calls = {"capture": 0, "score": 0}
     deps = dependencies(
@@ -876,13 +909,153 @@ def test_scheduled_exact_receipt_reuses_while_capture_authority_is_busy(
 
     deps.score_residual = score
     result = run_prediction(
-        args(tmp_path, collector_request_root=protocol_root),
+        args(tmp_path, collector_request_root=protocol.root),
         deps,
     )
 
     assert result["status"] == "PREDICTION_READY"
     assert calls == {"capture": 0, "score": 1}
     assert not protocol.outstanding_request_ids()
+    assert result["evidence"]["protocol_chain"]["protocol_kind"] == (
+        "collector_exact_capture_v1"
+    )
+    index = on_demand.verify_prediction_bundle_index(tmp_path / "bundles")
+    assert len(index["entries"]) == 1
+    bundle = tmp_path / "bundles" / index["entries"][0]["directory"]
+    verified = on_demand.verify_indexed_prediction_bundle(
+        tmp_path / "bundles", index["entries"][0]
+    )
+    assert verified.result == result
+    assert (bundle / "protocol/collector_exact_receipt.json").is_file()
+    assert not (bundle / "protocol/request.json").exists()
+    contents = {
+        path.relative_to(bundle).as_posix(): path.read_bytes()
+        for path in bundle.rglob("*")
+        if path.is_file() and path.name != "bundle_manifest.json"
+    }
+    tampered = json.loads(contents["protocol/collector_exact_receipt.json"])
+    tampered["collector_run_id"] = "substituted-run"
+    contents["protocol/collector_exact_receipt.json"] = canonical_bytes(tampered)
+    with pytest.raises(PredictionBlocked):
+        on_demand._validate_sealed_protocol(contents, result)
+
+    contents = {
+        path.relative_to(bundle).as_posix(): path.read_bytes()
+        for path in bundle.rglob("*")
+        if path.is_file() and path.name != "bundle_manifest.json"
+    }
+    contents["protocol/request.json"] = canonical_bytes({})
+    with pytest.raises(PredictionBlocked) as contradictory_protocol:
+        on_demand._validate_sealed_protocol(contents, result)
+    assert contradictory_protocol.value.code == "PREDICTION_BUNDLE_INVALID"
+    assert contradictory_protocol.value.details == {
+        "reason": "sealed_protocol_required"
+    }
+
+    contents.pop("protocol/request.json")
+    alias_result = json.loads(canonical_bytes(result))
+    alias_receipt = json.loads(contents["protocol/collector_exact_receipt.json"])
+    report_hash = alias_receipt["artifacts"]["report"]["sha256"]
+    alias_receipt["form_name"] = "capture.json"
+    alias_receipt["artifacts"]["form"] = {
+        "path": "capture.json",
+        "sha256": report_hash,
+    }
+    alias_receipt["sealed_handoff"]["source_form_sha256"] = report_hash
+    alias_raw = canonical_bytes(alias_receipt)
+    contents["protocol/collector_exact_receipt.json"] = alias_raw
+    alias_result["evidence"]["protocol_chain"][
+        "collector_exact_receipt_sha256"
+    ] = sha256_bytes(alias_raw)
+    with pytest.raises(PredictionBlocked) as aliased_source:
+        on_demand._validate_sealed_protocol(contents, alias_result)
+    assert aliased_source.value.code == "PREDICTION_BUNDLE_INVALID"
+    assert aliased_source.value.details == {"reason": "sealed_protocol_required"}
+
+    paths["form"].write_bytes(b"tampered after verified snapshot")
+    public_handoff = {
+        key: item for key, item in value.items() if not key.startswith("_")
+    }
+    with pytest.raises(ProtocolRejected):
+        protocol.snapshot_collector_exact_handoff(public_handoff)
+
+
+def test_scheduled_source_report_rejects_mismatched_source_identity(
+    tmp_path: Path,
+):
+    _, value, _, source_attempt = scheduled_exact_receipt(tmp_path)
+    report = json.loads(value["_report_bytes"])
+    report["source_race_id"] = "Race 5 - OTHER - 2026-07-19"
+
+    with pytest.raises(ProtocolRejected) as mismatch:
+        collector_protocol._validate_collector_source_report(
+            canonical_bytes(report),
+            race_id=RACE_ID,
+            collector_run_id=report["collector_run_id"],
+            emitted_at=NOW.isoformat(),
+            capture_attempt_sha256=sha256_bytes(canonical_bytes(source_attempt)),
+            append_report_sha256=sha256_bytes(
+                canonical_bytes(source_attempt["append_report"])
+            ),
+        )
+    assert mismatch.value.code == "EXACT_RECEIPT_MALFORMED"
+
+
+def test_scheduled_snapshot_rejects_fifo_without_blocking(tmp_path: Path):
+    protocol, value, paths, _ = scheduled_exact_receipt(tmp_path)
+    paths["form"].unlink()
+    os.mkfifo(paths["form"])
+    public_handoff = {
+        key: item for key, item in value.items() if not key.startswith("_")
+    }
+
+    with pytest.raises(ProtocolRejected) as fifo:
+        protocol.snapshot_collector_exact_handoff(public_handoff)
+    assert fifo.value.code == "PROTOCOL_PATH_UNSAFE"
+
+
+def test_scheduled_snapshot_rejects_hardlinked_source_members(tmp_path: Path):
+    protocol, value, paths, _ = scheduled_exact_receipt(tmp_path)
+    paths["sidecar"].unlink()
+    os.link(paths["form"], paths["sidecar"])
+    public_handoff = {
+        key: item for key, item in value.items() if not key.startswith("_")
+    }
+    public_handoff["source_sidecar_sha256"] = public_handoff[
+        "source_form_sha256"
+    ]
+    receipt_path = protocol.collector_exact_receipt_path(
+        RACE_ID, value["capture_attempt_sha256"]
+    )
+    receipt = json.loads(receipt_path.read_bytes())
+    receipt["sealed_handoff"] = public_handoff
+    receipt["artifacts"]["sidecar"]["sha256"] = public_handoff[
+        "source_sidecar_sha256"
+    ]
+    receipt_path.write_bytes(canonical_bytes(receipt))
+
+    with pytest.raises(ProtocolRejected) as hardlink:
+        protocol.snapshot_collector_exact_handoff(public_handoff)
+    assert hardlink.value.code == "EXACT_RECEIPT_MALFORMED"
+
+
+def test_scheduled_snapshot_rejects_unbounded_artifact_path(tmp_path: Path):
+    protocol, value, _, _ = scheduled_exact_receipt(tmp_path)
+    receipt_path = protocol.collector_exact_receipt_path(
+        RACE_ID, value["capture_attempt_sha256"]
+    )
+    receipt = json.loads(receipt_path.read_bytes())
+    receipt["artifacts"]["form"]["path"] = "/".join(
+        ["nested"] * 33 + ["gunnedah-r5.csv"]
+    )
+    receipt_path.write_bytes(canonical_bytes(receipt))
+    public_handoff = {
+        key: item for key, item in value.items() if not key.startswith("_")
+    }
+
+    with pytest.raises(ProtocolRejected) as unbounded:
+        protocol.snapshot_collector_exact_handoff(public_handoff)
+    assert unbounded.value.code == "PROTOCOL_PATH_UNSAFE"
 
 
 def test_operator_cli_emits_one_canonical_fixture_prediction(
@@ -1661,6 +1834,20 @@ def test_residual_bundle_replay_reruns_scorer_at_original_timestamp(tmp_path: Pa
         tmp_path / "bundles", index["entries"][0]
     )
     assert verified.result == result
+
+    bundle = tmp_path / "bundles" / index["entries"][0]["directory"]
+    contents = {
+        path.relative_to(bundle).as_posix(): path.read_bytes()
+        for path in bundle.rglob("*")
+        if path.is_file() and path.name != "bundle_manifest.json"
+    }
+    contents["protocol/collector_exact_receipt.json"] = canonical_bytes({})
+    with pytest.raises(PredictionBlocked) as contradictory_protocol:
+        on_demand._validate_sealed_protocol(contents, result)
+    assert contradictory_protocol.value.code == "PREDICTION_BUNDLE_INVALID"
+    assert contradictory_protocol.value.details == {
+        "reason": "sealed_protocol_required"
+    }
 
 
 def test_output_symlink_write_attempt_is_rejected(tmp_path: Path):

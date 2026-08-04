@@ -491,11 +491,25 @@ def _sealed_result(
     }
 
 
-def _selected_protocol_chain(protocol: ManualPredictionCollectorProtocol, handoff: Mapping[str, Any]) -> tuple[dict[str, str],dict[str,bytes]]:
+def _selected_protocol_chain(
+    protocol: ManualPredictionCollectorProtocol, handoff: Mapping[str, Any]
+) -> tuple[dict[str, str], dict[str, bytes], dict[str, Any]]:
     """Bind the already-validated exact handoff to its immutable protocol chain."""
     public={str(key):value for key,value in handoff.items() if not str(key).startswith("_")}
     try:
-        return protocol.snapshot_authenticated_handoff(public)
+        if handoff.get("_scheduled_exact_receipt") is True:
+            chain, members, artifacts = protocol.snapshot_collector_exact_handoff(
+                public
+            )
+            coherent = {
+                **handoff,
+                "_report_bytes": artifacts["report"],
+                "_form_bytes": artifacts["form"],
+                "_sidecar_bytes": artifacts["sidecar"],
+            }
+            return chain, members, coherent
+        chain, members = protocol.snapshot_authenticated_handoff(public)
+        return chain, members, dict(handoff)
     except ProtocolRejected as exc:
         raise PredictionBlocked("COLLECTOR_PROTOCOL_INVALID",reason=exc.code) from exc
 
@@ -1030,7 +1044,7 @@ def _run_prediction(
             fetch_timeout_seconds=float(args.fetch_timeout_seconds),
         )
     if handoff is not None:
-        state["protocol_chain"],protocol_members=_selected_protocol_chain(protocol,handoff)
+        state["protocol_chain"],protocol_members,handoff=_selected_protocol_chain(protocol,handoff)
         for member,raw in protocol_members.items():write_exact_bytes(bundle/"protocol"/(member+".json"),raw)
         receipt, capture_raw, form_raw, sidecar_raw = receipt_from_handoff(
             handoff,
