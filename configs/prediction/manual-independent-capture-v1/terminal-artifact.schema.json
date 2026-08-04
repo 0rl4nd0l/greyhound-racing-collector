@@ -159,11 +159,13 @@
     "source_file": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "content_class", "outcome_scope", "source_timestamp", "bytes", "sha256"],
+      "required": ["path", "content_class", "outcome_scope", "race_url", "race_identity_sha256", "source_timestamp", "bytes", "sha256"],
       "properties": {
         "path": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.?(?:/|$))[^\\u0000\\\\]+$"},
         "content_class": {"enum": ["prejump_race_source", "prejump_form", "prejump_sidecar"]},
         "outcome_scope": {"const": "target_same_future_outcomes_excluded"},
+        "race_url": {"type": "string", "format": "uri", "pattern": "^https://www\\.thedogs\\.com\\.au/racing/"},
+        "race_identity_sha256": {"$ref": "#/$defs/sha256"},
         "source_timestamp": {"$ref": "#/$defs/timestamp"},
         "bytes": {"type": "integer", "minimum": 1, "maximum": 2147483647},
         "sha256": {"$ref": "#/$defs/sha256"}

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from pathlib import Path
 
 import pytest
@@ -149,6 +150,8 @@ def ready_artifact() -> tuple[dict, dict[str, bytes]]:
                     "path": "sources/form.csv",
                     "content_class": "prejump_form",
                     "outcome_scope": "target_same_future_outcomes_excluded",
+                    "race_url": selected["url"],
+                    "race_identity_sha256": canonical_sha256(selected),
                     "source_timestamp": "2026-08-04T00:00:09+00:00",
                     "bytes": len(source),
                     "sha256": sha256_bytes(source),
@@ -274,6 +277,7 @@ def validate(artifact: dict, members: dict[str, bytes]) -> dict:
         expected_source_commit=COMMIT,
         expected_source_tree=TREE,
         expected_model_sha256=sha256_bytes(MODEL_BYTES),
+        expected_source_files=deepcopy(artifact["provenance"]["source_files"]),
         expected_run_id=artifact["run_id"],
         expected_request_id=request_value["request_id"],
         expected_request_sha256=canonical_sha256(request_value),
@@ -350,6 +354,9 @@ def test_missing_and_unknown_fields_are_rejected(location: str, mutation: str):
             expected_source_commit=COMMIT,
             expected_source_tree=TREE,
             expected_model_sha256=sha256_bytes(MODEL_BYTES),
+            expected_source_files=deepcopy(
+                artifact.get("provenance", {}).get("source_files", [])
+            ),
             expected_run_id=artifact.get("run_id", RUN_ID),
             expected_request_id=artifact.get("request", {}).get(
                 "request_id", REQUEST_ID
@@ -547,9 +554,13 @@ def test_outcome_fields_and_result_evidence_paths_are_not_expressible():
 
     for forbidden_variant in (
         "sources/official-results.json",
+        "sources/officialresults.json",
         "sources/race_outcome.csv",
+        "sources/raceoutcomes.csv",
         "capture/canonical-db.json",
+        "capture/canonicaldb.json",
         "capture/phase-7.json",
+        "capture/phase7data.json",
     ):
         artifact, members = ready_artifact()
         source = artifact["provenance"]["source_files"][0]
@@ -580,6 +591,7 @@ def test_replay_conflict_and_late_artifacts_fail_closed():
             expected_source_commit=COMMIT,
             expected_source_tree=TREE,
             expected_model_sha256=sha256_bytes(MODEL_BYTES),
+            expected_source_files=deepcopy(artifact["provenance"]["source_files"]),
             expected_run_id=RUN_ID,
             expected_request_id=REQUEST_ID,
             expected_request_sha256=canonical_sha256(artifact["request"]),
@@ -596,6 +608,7 @@ def test_replay_conflict_and_late_artifacts_fail_closed():
             expected_source_commit=COMMIT,
             expected_source_tree=TREE,
             expected_model_sha256=sha256_bytes(MODEL_BYTES),
+            expected_source_files=deepcopy(artifact["provenance"]["source_files"]),
             expected_run_id=RUN_ID,
             expected_request_id=REQUEST_ID,
             expected_request_sha256="0" * 64,
@@ -623,6 +636,7 @@ def test_success_updates_required_replay_inventories_and_second_use_is_rejected(
         "expected_source_commit": COMMIT,
         "expected_source_tree": TREE,
         "expected_model_sha256": sha256_bytes(MODEL_BYTES),
+        "expected_source_files": deepcopy(artifact["provenance"]["source_files"]),
         "expected_run_id": RUN_ID,
         "expected_request_id": REQUEST_ID,
         "expected_request_sha256": expected_request_sha256,
@@ -637,6 +651,44 @@ def test_success_updates_required_replay_inventories_and_second_use_is_rejected(
     assert seen_hashes == {expected_request_sha256}
     with pytest.raises(ManualIndependentCaptureRejected, match="REPLAYED_ARTIFACT"):
         validate_terminal_artifact(artifact, **arguments)
+
+
+def test_source_manifest_and_each_source_race_binding_are_trusted():
+    artifact, members = ready_artifact()
+    trusted_source_files = deepcopy(artifact["provenance"]["source_files"])
+    arguments = {
+        "config": config(),
+        "forbidden_paths": forbidden_paths(),
+        "member_bytes": members,
+        "expected_source_commit": COMMIT,
+        "expected_source_tree": TREE,
+        "expected_model_sha256": sha256_bytes(MODEL_BYTES),
+        "expected_source_files": trusted_source_files,
+        "expected_run_id": RUN_ID,
+        "expected_request_id": REQUEST_ID,
+        "expected_request_sha256": canonical_sha256(artifact["request"]),
+        "seen_run_ids": set(),
+        "seen_request_ids": set(),
+        "seen_request_sha256s": set(),
+    }
+    artifact["provenance"]["source_files"][0]["source_timestamp"] = (
+        "2026-08-04T00:00:08+00:00"
+    )
+    with pytest.raises(
+        ManualIndependentCaptureRejected, match="SOURCE_PROVENANCE_MISMATCH"
+    ):
+        validate_terminal_artifact(artifact, **arguments)
+
+    artifact, members = ready_artifact()
+    source = artifact["provenance"]["source_files"][0]
+    source["race_url"] = (
+        "https://www.thedogs.com.au/racing/richmond/2026-08-04/2/other-race"
+    )
+    source["race_identity_sha256"] = "0" * 64
+    with pytest.raises(
+        ManualIndependentCaptureRejected, match="RACE_IDENTITY_DISAGREEMENT"
+    ):
+        validate(artifact, members)
 
 
 @pytest.mark.parametrize(
@@ -656,6 +708,7 @@ def test_trusted_request_identity_is_mandatory(expected_override: dict[str, str]
         "expected_source_commit": COMMIT,
         "expected_source_tree": TREE,
         "expected_model_sha256": sha256_bytes(MODEL_BYTES),
+        "expected_source_files": deepcopy(artifact["provenance"]["source_files"]),
         "expected_run_id": RUN_ID,
         "expected_request_id": REQUEST_ID,
         "expected_request_sha256": canonical_sha256(artifact["request"]),

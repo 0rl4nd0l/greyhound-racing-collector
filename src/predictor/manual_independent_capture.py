@@ -554,12 +554,16 @@ def _relative_member_path(value: Any, label: str) -> str:
     contains_forbidden_sequence = False
     for part in path.parts:
         tokens = re.findall(r"[a-z0-9]+", part.lower())
+        compact = "".join(tokens)
         for forbidden in _FORBIDDEN_MEMBER_PARTS:
             forbidden_tokens = re.findall(r"[a-z0-9]+", forbidden)
             width = len(forbidden_tokens)
-            if any(
-                tokens[index : index + width] == forbidden_tokens
-                for index in range(len(tokens) - width + 1)
+            if (
+                any(
+                    tokens[index : index + width] == forbidden_tokens
+                    for index in range(len(tokens) - width + 1)
+                )
+                or "".join(forbidden_tokens) in compact
             ):
                 contains_forbidden_sequence = True
                 break
@@ -583,6 +587,8 @@ def _source_files(value: Any) -> list[dict[str, Any]]:
                 "path",
                 "content_class",
                 "outcome_scope",
+                "race_url",
+                "race_identity_sha256",
                 "source_timestamp",
                 "bytes",
                 "sha256",
@@ -597,6 +603,16 @@ def _source_files(value: Any) -> list[dict[str, Any]]:
             raise _reject("SOURCE_CLASS_INVALID", field=f"source_files[{index}]")
         if row["outcome_scope"] != "target_same_future_outcomes_excluded":
             raise _reject("OUTCOME_SCOPE_INVALID", field=f"source_files[{index}]")
+        if (
+            not isinstance(row["race_url"], str)
+            or not row["race_url"]
+            or row["race_url"] != row["race_url"].strip()
+        ):
+            raise _reject("RACE_IDENTITY_INVALID", field=f"source_files[{index}]")
+        _sha256(
+            row["race_identity_sha256"],
+            f"source_files[{index}].race_identity_sha256",
+        )
         path = _relative_member_path(row["path"], f"source_files[{index}].path")
         _timestamp(row["source_timestamp"], f"source_files[{index}].source_timestamp")
         _integer(
@@ -752,6 +768,7 @@ def validate_terminal_artifact(
     expected_source_commit: str,
     expected_source_tree: str,
     expected_model_sha256: str,
+    expected_source_files: list[Mapping[str, Any]],
     expected_run_id: str,
     expected_request_id: str,
     expected_request_sha256: str,
@@ -1009,6 +1026,9 @@ def validate_terminal_artifact(
         raise _reject("REQUEST_HASH_DRIFT")
 
     source_files = _source_files(provenance["source_files"])
+    trusted_source_files = _source_files(expected_source_files)
+    if source_files != trusted_source_files:
+        raise _reject("SOURCE_PROVENANCE_MISMATCH", field="source_files")
     artifact_hashes = _artifact_hashes(provenance["artifact_hashes"])
     capture, canonical_runners = _capture(artifact["capture"])
     capture_evidence = (
@@ -1023,6 +1043,12 @@ def validate_terminal_artifact(
         ):
             raise _reject("CAPTURE_EVIDENCE_INCOMPLETE")
         expected_race_sha = canonical_sha256(selected_race)
+        if any(
+            row["race_url"] != selected_race["url"]
+            or row["race_identity_sha256"] != expected_race_sha
+            for row in source_files
+        ):
+            raise _reject("RACE_IDENTITY_DISAGREEMENT", field="source_files")
         expected_runner_sha = sealed_runner_set_sha256(selected_race, canonical_runners)
         expected_odds_sha = canonical_sha256(
             [
@@ -1063,6 +1089,13 @@ def validate_terminal_artifact(
             ):
                 raise _reject("CAPTURE_EVIDENCE_FORBIDDEN")
         else:
+            expected_race_sha = canonical_sha256(selected_race)
+            if any(
+                row["race_url"] != selected_race["url"]
+                or row["race_identity_sha256"] != expected_race_sha
+                for row in source_files
+            ):
+                raise _reject("RACE_IDENTITY_DISAGREEMENT", field="source_files")
             _sha256(
                 provenance["race_identity_sha256"],
                 "artifact.provenance.race_identity_sha256",
