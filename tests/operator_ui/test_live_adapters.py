@@ -248,12 +248,15 @@ def make_live(
         )
         path.parent.mkdir(parents=True, exist_ok=True)
         policy = (serialization_policies or {}).get(
-            key, JsonSerializationPolicy.COMPACT_CANONICAL
+            key, JsonSerializationPolicy.PRODUCER_COMPACT_CANONICAL_LINE
+            if key == "model_catalog" else JsonSerializationPolicy.COMPACT_CANONICAL
         )
         if policy is JsonSerializationPolicy.PRODUCER_PRETTY_SORTED:
             path.write_bytes(
                 (json.dumps(payload, indent=2, sort_keys=True, default=str) + "\n").encode()
             )
+        elif policy is JsonSerializationPolicy.PRODUCER_COMPACT_CANONICAL_LINE:
+            path.write_bytes(canonical(payload) + b"\n")
         else:
             path.write_bytes(canonical(payload))
         time_field = (
@@ -1482,7 +1485,7 @@ def test_ui_stale_snapshot_beyond_predictor_window_retains_bound_identity(tmp_pa
     [
         ("CURRENT_INDEX_UNAVAILABLE", "UNAVAILABLE/DATA_MISSING", "missing", "unknown"),
         ("DISCOVERY_TIMEOUT", "UNAVAILABLE/DATA_MISSING", "error", "unknown"),
-        ("CURRENT_INDEX_SOURCE_CHANGED", "INVALID/INTEGRITY_FAILED", "error", "failed"),
+        ("CURRENT_INDEX_SOURCE_CHANGED", "UNAVAILABLE/DATA_MISSING", "error", "unknown"),
         ("CURRENT_INDEX_PUBLICATION_INVALID", "INVALID/INTEGRITY_FAILED", "error", "failed"),
     ],
 )

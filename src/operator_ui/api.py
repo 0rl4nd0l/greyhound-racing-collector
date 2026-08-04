@@ -44,6 +44,7 @@ _NON_HEALTHY_DISCLOSURE_STATUSES = frozenset(
         EvidenceStatus.DIVERGENT,
     }
 )
+_FINITE_EMPTY_INVALID_RESOURCES = frozenset({"upcoming_races", "race_detail", "collector"})
 
 _RESOURCE_POLICIES: Mapping[str, frozenset[str]] = MappingProxyType(
     {
@@ -1176,9 +1177,11 @@ def install_level_1_api(app: Flask) -> bool:
                         raise ValueError("available race evidence exceeds 300 seconds")
                 response["data"] = data
             elif (
-                resource == "system"
+                (
+                    resource in _FINITE_EMPTY_INVALID_RESOURCES
+                    or resource == "system" and not raw.data
+                )
                 and classification is EvidenceStatus.INVALID_INTEGRITY_FAILED
-                and not raw.data
             ):
                 response["data"] = {}
             elif raw.data:

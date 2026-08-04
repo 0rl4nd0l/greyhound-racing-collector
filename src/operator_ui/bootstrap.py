@@ -220,7 +220,7 @@ def _configured_live(layout:Mapping[str,Any])->LiveEvidenceAdapters:
         time_field=None if key in {"full_state","corpus_manifest","model_catalog"} else ("updated_at" if key=="odds_state" else "generated_at")
         evidence_root=layout["dirs"]["current_evidence"]
         allowlisted=sealed_root or (evidence_root if path.is_relative_to(evidence_root) else path.parent)
-        serialization=(JsonSerializationPolicy.COMPACT_CANONICAL if key=="model_catalog" else JsonSerializationPolicy.PRODUCER_PRETTY_SORTED)
+        serialization=(JsonSerializationPolicy.PRODUCER_COMPACT_CANONICAL_LINE if key=="model_catalog" else JsonSerializationPolicy.PRODUCER_PRETTY_SORTED)
         sources[key]=SourceConfig(path,allowlisted,"producer_report",str(schema or "shadow_autopilot_refresh_report"),f"operator_ui.{key}",policy,"Exact producer evidence only.",JsonSource("schema_version" if schema else None,schema,tuple(payload),time_field,max_items=100000,timestamp_syntax=TimestampSyntax.AWARE_ISO8601,serialization_policy=serialization,authority_observed_at=live["observed_at"] if key=="model_catalog" else None),expected_sha256=digest)
     raw_sources={}
     for key in live.get("raw_sources",{}):
