@@ -935,6 +935,7 @@ def test_corpus_accepts_genuine_relative_and_absolute_producer_locators_without_
 def test_corpus_accepts_scorecard_skips_over_the_full_race_union(tmp_path):
     values = actual_payloads()
     report = values["corpus_report"]
+    report["shadow_prediction_summary"]["shadow_prediction_race_count"] = 3598
     report["summary_counts"].update(
         race_union_count=5284,
         shadow_prediction_race_count=3598,
