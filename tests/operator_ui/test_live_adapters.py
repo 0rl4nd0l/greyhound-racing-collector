@@ -673,14 +673,25 @@ def test_corpus_exact_manifest_and_bound_file_tamper_fail_closed(tmp_path):
 
 
 def test_corpus_inventory_is_digest_only_but_final_status_retains_bytes(tmp_path, monkeypatch):
-    live = make_live(tmp_path)
+    values = actual_payloads()
+    live = make_live(tmp_path, values)
     observed = {}
     original = live._reader.read_raw_authenticated
     def capture(key):
         result = original(key); observed[key] = result; return result
     monkeypatch.setattr(live._reader, "read_raw_authenticated", capture)
-    assert live.corpus(NOW).evidence.status == "AVAILABLE/FRESH"
+    assert live.corpus(NOW).evidence.status == "UNAVAILABLE/DATA_MISSING"
+    csv_manifest = values["corpus_manifest"]["files"]["packet/race_evidence_inventory.csv"]
+    assert observed["corpus_inventory_csv"][0].content_sha256 == hashlib.sha256(
+        b"race_id\n1\n"
+    ).hexdigest() == csv_manifest["sha256"]
+    assert observed["corpus_inventory_csv"][2] == csv_manifest["bytes"]
     assert observed["corpus_inventory_csv"][1] is None
+    jsonl_manifest = values["corpus_manifest"]["files"]["packet/race_evidence_inventory.jsonl"]
+    assert observed["corpus_inventory_jsonl"][0].content_sha256 == hashlib.sha256(
+        b'{"race_id":"1"}\n'
+    ).hexdigest() == jsonl_manifest["sha256"]
+    assert observed["corpus_inventory_jsonl"][2] == jsonl_manifest["bytes"]
     assert observed["corpus_inventory_jsonl"][1] is None
     assert observed["corpus_final_status"][1] == b"RACE_EVIDENCE_INVENTORY_READY_FOR_EVALUATION\n"
 
