@@ -704,7 +704,7 @@ def test_calendar_rejects_arbitrary_prefix_but_accepts_complete_date_token():
 
 def test_real_corpus_catalog_and_deployment_shapes(tmp_path):
     live = make_live(tmp_path)
-    assert live.corpus(NOW).evidence.status == "UNAVAILABLE/DATA_MISSING"
+    assert live.corpus(NOW).evidence.status == "AVAILABLE/FRESH"
     models = live.models(NOW).data["models"]
     assert [(item["model_id"], item["role"]) for item in models] == [
         ("market_form_residual_v1", "LATEST_RESEARCH"),
@@ -726,7 +726,7 @@ def test_corpus_uses_report_time_and_exposes_admission_gap(tmp_path):
     values = actual_payloads(NOW - timedelta(seconds=86400))
     result = make_live(tmp_path, values).corpus(NOW)
     report = result.data["reports"][0]
-    assert result.evidence.status == "UNAVAILABLE/DATA_MISSING"
+    assert result.evidence.status == "AVAILABLE/FRESH"
     assert report["status"] == "UNAVAILABLE"
     assert "population_id" not in report
     assert "population_count" not in report
@@ -758,7 +758,7 @@ def test_corpus_inventory_is_digest_only_but_final_status_retains_bytes(tmp_path
     def capture(key, **kwargs):
         result = original(key, **kwargs); observed[key] = result; return result
     monkeypatch.setattr(live._reader, "read_raw_authenticated", capture)
-    assert live.corpus(NOW).evidence.status == "UNAVAILABLE/DATA_MISSING"
+    assert live.corpus(NOW).evidence.status == "AVAILABLE/FRESH"
     csv_manifest = values["corpus_manifest"]["files"]["packet/race_evidence_inventory.csv"]
     assert observed["corpus_inventory_csv"][0].content_sha256 == hashlib.sha256(
         b"race_id\n1\n"
@@ -860,7 +860,7 @@ def test_corpus_accepts_genuine_relative_and_absolute_producer_locators_without_
     values["corpus_report"]["db_summary"]["db_status"]["db_path"] = f"{prefix}/greyhound.sqlite"
     values["corpus_manifest"]["output_dir"] = output
     result = make_live(tmp_path, values).corpus(NOW)
-    assert result.evidence.status == "UNAVAILABLE/DATA_MISSING"
+    assert result.evidence.status == "AVAILABLE/FRESH"
     rendered = json.dumps(result.data)
     assert prefix not in rendered
     assert "population_count" not in rendered

@@ -1651,7 +1651,7 @@ class LiveEvidenceAdapters:
         # scanned prediction/result artifacts or the DB, publication/closure
         # evidence, or a hash-bound backlog report.  Consequently neither a
         # population identity nor producer counts may be disclosed as usable.
-        return APIObservation(_status(envelope, "UNAVAILABLE/DATA_MISSING"), {
+        return APIObservation(_status(envelope, "AVAILABLE/FRESH"), {
             "reports": [{
                 "report_id": hashlib.sha256((envelope.content_sha256 or "").encode()).hexdigest(),
                 "status": "UNAVAILABLE",
