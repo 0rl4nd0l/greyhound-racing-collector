@@ -437,7 +437,12 @@ def test_authority_matrix_forbids_all_shared_canonical_and_downstream_surfaces()
     assert matrix["browser_authority"] == "manual_browser_profile_only"
     assert matrix["downstream_admissibility"] == DOWNSTREAM_ADMISSIBILITY
     assert "autonomous_browser_profile_root" in matrix["forbidden_reads"]
+    assert "autonomous_current_index" in matrix["forbidden_reads"]
+    assert "autonomous_evidence_root" in matrix["forbidden_writes"]
+    assert "canonical_prediction_bundle_root" in matrix["forbidden_writes"]
     assert "model_artifacts_root" in matrix["forbidden_writes"]
+    assert "phase7_artifact_root" in matrix["forbidden_reads"]
+    assert "phase7_operations_database" in matrix["forbidden_writes"]
     matrix["allowed_reads"].append("canonical_database")
     assert "canonical_database" not in authority_matrix()["allowed_reads"]
     with pytest.raises(TypeError):
@@ -903,3 +908,8 @@ def test_noncanonical_duplicate_and_nonfinite_json_are_rejected():
         ManualIndependentCaptureRejected, match="CANONICAL_JSON_INVALID"
     ):
         parse_canonical_json(b'{"a":NaN}\n')
+    deeply_nested = b"[" * 1100 + b"0" + b"]" * 1100 + b"\n"
+    with pytest.raises(
+        ManualIndependentCaptureRejected, match="CANONICAL_JSON_INVALID"
+    ):
+        parse_canonical_json(deeply_nested)

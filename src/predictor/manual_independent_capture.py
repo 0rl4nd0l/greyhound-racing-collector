@@ -51,11 +51,16 @@ SAFETY_FIELDS = MappingProxyType(
 PROTECTED_PATH_KEYS = frozenset(
     {
         "autonomous_browser_profile_root",
+        "autonomous_current_index",
+        "autonomous_evidence_root",
         "autonomous_shared_lock",
         "canonical_database",
         "canonical_history_root",
+        "canonical_prediction_bundle_root",
         "live_odds_root",
         "model_artifacts_root",
+        "phase7_artifact_root",
+        "phase7_operations_database",
         "forward_corpus_root",
         "collector_requests_root",
         "collector_state_root",
@@ -226,10 +231,16 @@ def parse_canonical_json(
             object_pairs_hook=_unique_object,
             parse_constant=lambda token: (_ for _ in ()).throw(ValueError(token)),
         )
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+        _reject_nonfinite(value, "document")
+        is_canonical = canonical_bytes(value) == raw
+    except (
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        ValueError,
+        RecursionError,
+    ) as exc:
         raise _reject("CANONICAL_JSON_INVALID", reason="json") from exc
-    _reject_nonfinite(value, "document")
-    if canonical_bytes(value) != raw:
+    if not is_canonical:
         raise _reject("CANONICAL_JSON_INVALID", reason="noncanonical")
     return value
 

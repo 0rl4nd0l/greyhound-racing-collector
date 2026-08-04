@@ -13,7 +13,7 @@ canonically serializable, and validated by
 
 | Surface | Allowed | Forbidden |
 |---|---|---|
-| Reads | One exact canonical TheDogs race; declared pre-jump source bytes; explicit research model and manual config bytes | Autonomous shared lock and browser profile; canonical DB/history/`live_odds`; shared model storage; forward corpus; collector requests/state; result evidence; Phase 7; service/timer state |
+| Reads | One exact canonical TheDogs race; declared pre-jump source bytes; explicit research model and manual config bytes | Autonomous shared lock, browser profile, current index, and evidence root; canonical DB/history/`live_odds`/prediction bundles; shared model storage; forward corpus; collector requests/state; result evidence; Phase 7 artifacts/operations database; service/timer state |
 | Writes | `<operations_root>/manual-independent-capture-v1/runs`, its fixed `browser-profile`, and `manual-capture.lock` | Every protected read surface and every path outside the isolated manual root |
 | Lock | Exactly one manual process lock; at most one manual run | Inspecting, waiting on, acquiring, replacing, bypassing, or mutating the autonomous shared lock |
 | Browser | Fixed manual-only profile | Reading, writing, reusing, or controlling the autonomous/shared browser profile or processes |
