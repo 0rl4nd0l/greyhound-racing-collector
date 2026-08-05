@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://greyhound-racing-collector.invalid/schemas/manual-independent-capture-v1/embedded-form.schema.json",
+  "title": "manual research embedded form v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "safety", "source", "cutoff_timestamp", "target", "runners"],
+  "properties": {
+    "schema_version": {"const": "manual_research_embedded_form_v1"},
+    "safety": {"$ref": "#/$defs/safety"},
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["source_class", "source_timestamp"],
+      "properties": {
+        "source_class": {"const": "embedded_research_form_v1"},
+        "source_timestamp": {"$ref": "#/$defs/timestamp"}
+      }
+    },
+    "cutoff_timestamp": {"$ref": "#/$defs/timestamp"},
+    "target": {
+      "type": "object", "additionalProperties": false,
+      "required": ["race_identity_sha256", "race_id", "race_date", "venue", "distance_m", "grade"],
+      "properties": {
+        "race_identity_sha256": {"$ref": "#/$defs/sha256"},
+        "race_id": {"type": "string", "minLength": 1},
+        "race_date": {"type": "string", "format": "date"},
+        "venue": {"type": "string", "minLength": 1},
+        "distance_m": {"type": "number", "exclusiveMinimum": 0},
+        "grade": {"type": "string", "minLength": 1}
+      }
+    },
+    "runners": {
+      "type": "array", "minItems": 2, "maxItems": 10,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["box_number", "display_name", "history"],
+        "properties": {
+          "box_number": {"type": "integer", "minimum": 1, "maximum": 10},
+          "display_name": {"type": "string", "minLength": 1},
+          "history": {"type": "array", "items": {"$ref": "#/$defs/history"}}
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "timestamp": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$"},
+    "safety": {
+      "type": "object", "additionalProperties": false,
+      "required": ["research_only", "canonical", "phase7_excluded", "phase7_eligible", "phase7_exclusion_reason"],
+      "properties": {
+        "research_only": {"const": true}, "canonical": {"const": false},
+        "phase7_excluded": {"const": true}, "phase7_eligible": {"const": false},
+        "phase7_exclusion_reason": {"const": "manual_research_only_noncanonical"}
+      }
+    },
+    "history": {
+      "type": "object", "additionalProperties": false,
+      "required": ["prior_race_id", "event_timestamp", "race_date", "venue", "distance_m", "grade", "prior_finish", "prior_margin"],
+      "properties": {
+        "prior_race_id": {"type": "string", "minLength": 1},
+        "event_timestamp": {"$ref": "#/$defs/timestamp"},
+        "race_date": {"type": "string", "format": "date"},
+        "venue": {"type": "string", "minLength": 1},
+        "distance_m": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "grade": {"type": ["string", "null"], "minLength": 1},
+        "prior_finish": {"type": "integer", "minimum": 1, "maximum": 10},
+        "prior_margin": {"type": ["number", "null"]}
+      }
+    }
+  }
+}
