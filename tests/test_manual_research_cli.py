@@ -12,6 +12,7 @@ from jsonschema import Draft202012Validator
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tests"))
 
+import test_manual_independent_capture_executor as ghu051
 import test_manual_research_scoring as ghu053
 
 from src.predictor.manual_independent_capture import canonical_bytes
@@ -98,6 +99,91 @@ def test_valid_fixture_invocation_and_exact_replay_are_machine_readable(tmp_path
         (ROOT / "configs/prediction/manual-independent-capture-v1/manual-research-adapter-response.schema.json").read_bytes()
     )
     Draft202012Validator(schema).validate(first)
+
+
+def test_real_os_capture_seal_and_ghu054_response_is_one_attempt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Exercise the accepted chain with a real child process, not a mock."""
+
+    cfg = ghu051._config(tmp_path)
+    forbidden = ghu051._forbidden(tmp_path)
+    launches = []
+
+    def tracked_popen(*args, **kwargs):
+        launches.append((args, kwargs))
+        return ghu051.subprocess.Popen(*args, **kwargs)
+
+    original_model_bytes = ghu051.MODEL_BYTES
+    ghu051.MODEL_BYTES = ghu053.MODEL_BYTES
+    try:
+        execution = ghu051._execute(
+            tmp_path,
+            cfg=cfg,
+            forbidden=forbidden,
+            popen=tracked_popen,
+        )
+    finally:
+        ghu051.MODEL_BYTES = original_model_bytes
+    expected = ghu053.expectations_from_execution(execution)
+    identity = ghu053.build_sealing_identity(
+        repo_root=ghu053.ROOT,
+        source_commit=ghu051.SOURCE_COMMIT,
+        source_tree=ghu051.SOURCE_TREE,
+    )
+    sealed = ghu053.seal_manual_capture(
+        execution,
+        config=cfg,
+        forbidden_paths=forbidden,
+        expected=expected,
+        identity=identity,
+        repo_root=ghu053.ROOT,
+    )
+
+    arguments_root = tmp_path / "ghu054-arguments"
+    form_bytes = ghu053._form(sealed)
+    config_bytes = canonical_bytes(ghu053._config())
+    model_path = _write(arguments_root / "model.json", ghu053.MODEL_BYTES)
+    manifest_path = _write(
+        arguments_root / "model-manifest.json",
+        ghu053.MODEL_MANIFEST_PATH.read_bytes(),
+    )
+    form_path = _write(arguments_root / "form.json", form_bytes)
+    config_path = _write(arguments_root / "config.json", config_bytes)
+    expectations_path = _write(arguments_root / "evidence-expectations.json", asdict(expected))
+    sealing_identity_path = _write(arguments_root / "sealing-identity.json", asdict(identity))
+    scoring_identity_path = _write(
+        arguments_root / "scoring-identity.json", asdict(ghu053.SCORE_IDENTITY)
+    )
+    output_root = tmp_path / "ghu054-output"
+    output_root.mkdir()
+    import sqlite3
+
+    monkeypatch.setattr(
+        sqlite3,
+        "connect",
+        lambda *args, **kwargs: pytest.fail("GHU-054 chain opened SQLite"),
+    )
+    response = invoke_manual_research_prediction(
+        sealed_bundle_dir=sealed.bundle_dir,
+        run_dir=execution.run_dir,
+        evidence_expectations=expectations_path,
+        sealing_identity=sealing_identity_path,
+        embedded_form=form_path,
+        form_sha256=hashlib.sha256(form_bytes).hexdigest(),
+        model=model_path,
+        model_manifest=manifest_path,
+        model_sha256=hashlib.sha256(ghu053.MODEL_BYTES).hexdigest(),
+        model_manifest_sha256=hashlib.sha256(manifest_path.read_bytes()).hexdigest(),
+        config=config_path,
+        config_sha256=hashlib.sha256(config_bytes).hexdigest(),
+        scoring_identity=scoring_identity_path,
+        output_root=output_root,
+    )
+    assert len(launches) == 1
+    assert launches[0][1]["start_new_session"] is True
+    assert response["status"] == "SUCCESS"
+    assert response["verification_status"] == "VERIFIED"
 
 
 def test_cli_returns_only_the_verified_envelope(tmp_path: Path, capsys: pytest.CaptureFixture[str]):

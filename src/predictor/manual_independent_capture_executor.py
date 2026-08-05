@@ -59,6 +59,16 @@ _MAX_SOURCE_BYTES = 2 * 1024 * 1024
 _POLL_SECONDS = 0.01
 
 
+class ChildResponseRejected(ValueError):
+    """A bounded child response rejection with a durable terminal code."""
+
+    def __init__(self, code: str):
+        if code not in TERMINAL_STATUS_BY_FAILURE_CODE:
+            raise ValueError(f"unregistered child failure code: {code}")
+        super().__init__(code)
+        self.code = code
+
+
 class CancellationToken(Protocol):
     def is_set(self) -> bool: ...
 
@@ -371,11 +381,15 @@ def _child_value(
         "source",
     }:
         raise ValueError("SOURCE_MALFORMED")
+    if value["schema_version"] != CHILD_SCHEMA_VERSION:
+        raise ValueError("SOURCE_MALFORMED")
     if (
-        value["schema_version"] != CHILD_SCHEMA_VERSION
-        or value["requested_race_url"] != expected_url
+        value["requested_race_url"] != expected_url
         or value["race_identity_sha256"] != expected_race_sha
-        or not isinstance(value["runners"], list)
+    ):
+        raise ChildResponseRejected("IDENTITY_MISMATCH")
+    if (
+        not isinstance(value["runners"], list)
         or not isinstance(value["source"], Mapping)
         or set(value["source"]) != {
             "content_class",
@@ -437,19 +451,22 @@ def _child_value(
                     or native_id != native_id.strip()
                 )
             )
-            or isinstance(odds, bool)
+        ):
+            raise ChildResponseRejected("RUNNER_SET_MISMATCH")
+        if (
+            isinstance(odds, bool)
             or not isinstance(odds, (int, float))
             or not math.isfinite(float(odds))
             or odds <= 1
         ):
-            raise ValueError("SOURCE_MALFORMED")
+            raise ChildResponseRejected("ODDS_INVALID")
         canonical_runners.append(
             {key: item for key, item in row.items() if key != "decimal_odds"}
         )
     try:
         canonical_runner_set(canonical_runners, "fixture_child.runners")
     except PredictionBlocked as exc:
-        raise ValueError("SOURCE_MALFORMED") from exc
+        raise ChildResponseRejected("RUNNER_SET_MISMATCH") from exc
     try:
         source_bytes = base64.b64decode(value["source"]["bytes_base64"], validate=True)
         source_time = datetime.fromisoformat(value["source"]["source_timestamp"])
@@ -859,6 +876,9 @@ def execute_manual_capture_fixture(
                                     expected_url=requested_race_url,
                                     expected_race_sha=canonical_sha256(race),
                                 )
+                            except ChildResponseRejected as exc:
+                                failure_code = exc.code
+                                capture_at = None
                             except ValueError:
                                 failure_code = "SOURCE_MALFORMED"
                                 capture_at = None

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import signal
 import sqlite3
 import subprocess
@@ -677,3 +678,102 @@ def test_forbidden_apis_explode_and_autonomous_sentinel_is_byte_and_metadata_sta
         before.st_mtime_ns,
     )
     assert _revalidate(result, cfg, forbidden) == result.artifact
+
+
+@pytest.mark.parametrize(
+    ("mode", "failure_code"),
+    [
+        ("identity-mismatch", "IDENTITY_MISMATCH"),
+        ("runner-mismatch", "RUNNER_SET_MISMATCH"),
+        ("invalid-odds", "ODDS_INVALID"),
+    ],
+)
+def test_real_child_protocol_failures_have_specific_terminal_codes(
+    tmp_path: Path, mode: str, failure_code: str
+):
+    result = _execute(tmp_path, command=_command(mode))
+    assert result.artifact["terminal"] == {
+        "status": "FAILED",
+        "failure_code": failure_code,
+    }
+    assert result.artifact["attempt"] == {
+        "attempt_count": 1,
+        "source_attempt_count": 1,
+    }
+    assert result.artifact["capture"]["runner_set"] == []
+    assert result.cleanup.confirmed is True
+
+
+def test_cancellation_before_launch_is_terminal_without_source_attempt(
+    tmp_path: Path,
+):
+    cancelled = threading.Event()
+    cancelled.set()
+    launches = []
+    result = _execute(
+        tmp_path,
+        cancellation_token=cancelled,
+        popen=lambda *args, **kwargs: launches.append((args, kwargs)),
+    )
+    assert result.artifact["terminal"] == {
+        "status": "CANCELLED",
+        "failure_code": "CANCELLED",
+    }
+    assert result.artifact["attempt"] == {
+        "attempt_count": 1,
+        "source_attempt_count": 0,
+    }
+    assert launches == []
+    assert result.artifact["capture"]["runner_set"] == []
+
+
+def test_active_autonomous_fixture_process_and_sentinel_are_untouched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    import race_collection.synchronous_manual_capture as synchronous
+    import scripts.autonomous_live_odds_capture as autonomous_module
+
+    sentinel = tmp_path / "autonomous-shared.lock"
+    sentinel.write_bytes(b"autonomous-lock-sentinel-v1\n")
+    before = sentinel.stat()
+    before_bytes = sentinel.read_bytes()
+    autonomous_process = subprocess.Popen(
+        [sys.executable, "-c", "import time; time.sleep(60)"],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    autonomous_identity = (autonomous_process.pid, os.getpgid(autonomous_process.pid))
+    try:
+        def explode(*args, **kwargs):
+            raise AssertionError("autonomous or canonical surface touched")
+
+        monkeypatch.setattr(synchronous, "run_capture_one", explode)
+        monkeypatch.setattr(autonomous_module, "execute_capture_plan", explode)
+        monkeypatch.setattr(autonomous_module, "append_validated_capture", explode)
+        monkeypatch.setattr(sqlite3, "connect", explode)
+        result = _execute(
+            tmp_path,
+            forbidden=_forbidden(tmp_path, sentinel=sentinel),
+        )
+        after = sentinel.stat()
+        assert result.artifact["terminal"] == {
+            "status": "CAPTURE_READY",
+            "failure_code": None,
+        }
+        assert autonomous_process.poll() is None
+        assert (
+            autonomous_process.pid,
+            os.getpgid(autonomous_process.pid),
+        ) == autonomous_identity
+        assert sentinel.read_bytes() == before_bytes
+        assert (after.st_ino, after.st_mode, after.st_size, after.st_mtime_ns) == (
+            before.st_ino,
+            before.st_mode,
+            before.st_size,
+            before.st_mtime_ns,
+        )
+    finally:
+        autonomous_process.terminate()
+        autonomous_process.wait(timeout=3)
