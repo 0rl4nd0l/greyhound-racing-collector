@@ -527,6 +527,17 @@ def lock_owner_is_odds_capture(lock_details: Mapping[str, Any] | None) -> bool:
     return str(existing.get("run_id") or "").endswith("_odds_capture")
 
 
+def collector_lock_owner_is_odds_capture(
+    lock_details: Mapping[str, Any] | None,
+) -> bool:
+    if not isinstance(lock_details, Mapping):
+        return False
+    return (
+        str(lock_details.get("lock_owner_run_id") or "").endswith("_odds_capture")
+        and lock_details.get("lock_owner_phase") == "odds_capture"
+    )
+
+
 def lock_owner_is_full_daemon(lock_details: Mapping[str, Any] | None) -> bool:
     return lock_owner_report_fields(lock_details).get("lock_owner_kind") == "full_daemon"
 
@@ -550,6 +561,19 @@ def lock_owner_report_fields(lock_details: Mapping[str, Any] | None) -> dict[str
             "lock_owner_pid": wait_marker.get("pid"),
             "lock_owner_started_at": wait_marker.get("started_at"),
             "lock_owner_hostname": wait_marker.get("hostname"),
+        }
+    if "lock_owner_run_id" in lock_details:
+        return {
+            "lock_owner_kind": (
+                "odds_capture"
+                if collector_lock_owner_is_odds_capture(lock_details)
+                else "unknown_lock_owner"
+            ),
+            "lock_owner_run_id": lock_details.get("lock_owner_run_id"),
+            "lock_owner_output_dir": lock_details.get("lock_owner_output_dir"),
+            "lock_owner_pid": lock_details.get("lock_owner_pid"),
+            "lock_owner_started_at": lock_details.get("lock_owner_started_at"),
+            "lock_owner_hostname": lock_details.get("lock_owner_hostname"),
         }
     existing = lock_details.get("existing_lock")
     if not isinstance(existing, Mapping):
@@ -763,6 +787,105 @@ def acquire_lock_with_odds_capture_retry(
                     "last_lock": last_lock,
                 }
             return payload
+    finally:
+        if marker_written:
+            remove_full_daemon_lock_wait_marker(lock_path=lock_path, run_id=run_id)
+
+
+def acquire_observer_lock_with_odds_capture_retry(
+    *,
+    lock_path: Path,
+    run_id: str,
+    output_dir: Path,
+    retry_seconds: int | None = None,
+    poll_seconds: int | None = None,
+) -> tuple[Any, dict[str, Any] | None]:
+    retry_seconds = (
+        DEFAULT_FULL_DAEMON_ODDS_LOCK_RETRY_SECONDS
+        if retry_seconds is None
+        else retry_seconds
+    )
+    poll_seconds = (
+        DEFAULT_FULL_DAEMON_ODDS_LOCK_RETRY_POLL_SECONDS
+        if poll_seconds is None
+        else poll_seconds
+    )
+    first_lock: dict[str, Any] | None = None
+    last_lock: dict[str, Any] | None = None
+    attempt_count = 0
+    waited_seconds = 0.0
+    marker_written = False
+    try:
+        while True:
+            try:
+                lock = acquire_collector_lock_no_steal(
+                    lock_path,
+                    run_id=run_id,
+                    output_dir=output_dir,
+                    phase="forward_official_result_observer",
+                    acquisition_policy="forward_official_result_observer_no_steal_v1",
+                )
+            except CollectorBusy as exc:
+                attempt_count += 1
+                last_lock = dict(exc.evidence)
+                if first_lock is None:
+                    first_lock = dict(last_lock)
+                odds_capture_owner = collector_lock_owner_is_odds_capture(last_lock)
+                should_retry = (
+                    retry_seconds > 0
+                    and poll_seconds > 0
+                    and odds_capture_owner
+                    and waited_seconds < retry_seconds
+                )
+                if not should_retry:
+                    last_lock["lock_retry"] = {
+                        "schema_version": "shadow_autopilot_full_daemon_lock_retry_v1",
+                        "status": "GAVE_UP_LOCK_HELD",
+                        "attempt_count": attempt_count,
+                        "waited_seconds": waited_seconds,
+                        "retry_seconds": retry_seconds,
+                        "poll_seconds": poll_seconds,
+                        "retried_for_odds_capture_lock": odds_capture_owner,
+                        "first_lock": first_lock,
+                        "last_lock": dict(last_lock),
+                    }
+                    raise CollectorBusy(last_lock) from exc
+                if not marker_written:
+                    write_full_daemon_lock_wait_marker(
+                        lock_path=lock_path,
+                        run_id=run_id,
+                        output_dir=output_dir,
+                    )
+                    marker_written = True
+                write_full_daemon_lock_wait_report(
+                    output_dir=output_dir,
+                    lock_path=lock_path,
+                    lock_details=last_lock,
+                    first_lock=first_lock,
+                    attempt_count=attempt_count,
+                    waited_seconds=waited_seconds,
+                    retry_seconds=retry_seconds,
+                    poll_seconds=poll_seconds,
+                )
+                sleep_for = min(
+                    float(poll_seconds), float(retry_seconds) - waited_seconds
+                )
+                time.sleep(sleep_for)
+                waited_seconds += sleep_for
+                continue
+            if not attempt_count:
+                return lock, None
+            return lock, {
+                "schema_version": "shadow_autopilot_full_daemon_lock_retry_v1",
+                "status": "ACQUIRED_AFTER_ODDS_CAPTURE_WAIT",
+                "attempt_count": attempt_count + 1,
+                "waited_seconds": waited_seconds,
+                "retry_seconds": retry_seconds,
+                "poll_seconds": poll_seconds,
+                "retried_for_odds_capture_lock": True,
+                "first_lock": first_lock,
+                "last_lock": last_lock,
+            }
     finally:
         if marker_written:
             remove_full_daemon_lock_wait_marker(lock_path=lock_path, run_id=run_id)
@@ -9127,15 +9250,16 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
         "attempted_race_ids": [],
     }
     observer_shared_lock = None
+    observer_lock_retry = None
     if args.enable_forward_official_result_observer:
         try:
             lock_path.parent.mkdir(parents=True, exist_ok=True)
-            observer_shared_lock = acquire_collector_lock_no_steal(
-                lock_path,
-                run_id=run_id,
-                output_dir=output_dir,
-                phase="forward_official_result_observer",
-                acquisition_policy="forward_official_result_observer_no_steal_v1",
+            observer_shared_lock, observer_lock_retry = (
+                acquire_observer_lock_with_odds_capture_retry(
+                    lock_path=lock_path,
+                    run_id=run_id,
+                    output_dir=output_dir,
+                )
             )
         except CollectorBusy as exc:
             forward_official_result_observer = {
@@ -9236,6 +9360,11 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
                     "lock_path": relpath(lock_path),
                     "phase": "forward_official_result_observer",
                     "acquisition_policy": "forward_official_result_observer_no_steal_v1",
+                    **(
+                        {"lock_retry": observer_lock_retry}
+                        if observer_lock_retry is not None
+                        else {}
+                    ),
                     "release": observer_lock_release,
                 },
             }
