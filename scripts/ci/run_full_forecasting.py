@@ -28,6 +28,7 @@ COMMANDS = (
         "-q",
         "--noconftest",
         "tests/test_manual_independent_capture.py",
+        "tests/test_manual_independent_capture_executor.py",
         "tests/test_market_form_residual.py",
         "tests/test_market_form_residual_portability.py",
         "tests/test_predict_market_form_residual.py",

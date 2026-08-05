@@ -1,8 +1,10 @@
 # Manual independent capture V1 contract
 
-`manual-independent-capture-v1` is a future exact-race, research-only capture
-boundary. This change defines the boundary; it does not implement capture,
-browser/process control, scoring, UI, deployment, or runtime integration.
+`manual-independent-capture-v1` is an exact-race, research-only capture
+boundary. GHU-050 defines and validates the artifact contract. GHU-051 adds a
+fixture-only executor for its lock, path, process, timeout, cancellation, and
+terminal-artifact controls. It does not provide a live fetch implementation,
+scoring, UI, deployment, or runtime integration.
 
 Every accepted configuration and terminal artifact is versioned, exact-field,
 canonically serializable, and validated by
@@ -39,6 +41,33 @@ The policy values are constants: one concurrent manual run, one capture
 attempt, no retry, and no replay. Minimum pre-jump margin, one absolute hard
 timeout, and one cancellation cleanup grace are bounded integers. The
 configuration cannot claim canonical or Phase 7 authority.
+
+## GHU-051 fixture executor
+
+`src/predictor/manual_independent_capture_executor.py` accepts one exact
+canonical TheDogs URL and its complete bound race identity. It validates the
+GHU-050 configuration, acquires only `manual-capture.lock` without waiting,
+uses the fixed `browser-profile`, creates one UUID run directory beneath
+`runs`, and launches at most one caller-supplied reviewed fixture command in a
+new process session. The manual child environment contains only the exact race
+identity and the fixed manual profile/run locations; the API has no database
+argument, persistence-capable object, autonomous lock locator, retry, discovery,
+or race-substitution surface.
+
+The executor rechecks the configured pre-jump margin as its final wall-clock
+action before launch. A second invocation emits `MANUAL_BUSY` without launching
+a child. Cancellation and timeout use monotonic absolute deadlines, signal the
+whole process group with TERM and then KILL when necessary, reap the leader,
+and confirm that the process group is absent. PID, PGID, signal escalation, and
+reap proof are returned as `ManualCaptureExecution`; unconfirmed cleanup emits
+`PROCESS_REAP_UNCONFIRMED` and can never emit capture success.
+
+Fixture stdout is an exact-field, bounded child record. The parent accepts only
+the requested URL/race hash, one pre-jump source class, and a GHU-050-valid
+runner/odds set. It writes fixed members beneath the UUID run directory and
+writes `terminal.json` last, only after `validate_terminal_artifact` accepts the
+complete byte/hash binding. Tests—not production configuration—supply the
+fixture command. There is intentionally no CLI or default live/browser command.
 
 ## Terminal artifact
 
@@ -114,13 +143,13 @@ fields.
 
 ## Claims boundary and next ticket
 
-Acceptance supports only: `manual-independent-capture-v1 contract ready for
-implementation`. It does not support capture success, prediction readiness,
+GHU-051 acceptance supports only: `the isolated executor is fixture-proven to
+perform one exact-race attempt without canonical or autonomous state access`.
+It does not support live-source/browser success, prediction readiness, deployed
 runtime isolation, model quality, canonical coverage, Phase 7 eligibility,
 training, promotion, EV, staking, or betting.
 
-GHU-051 may begin only after the exact GHU-050 commit/tree is accepted, focused
-contract/schema tests and CI pass, and exact-diff review confirms the authority
-matrix, manual-only path/profile/lock ownership, one-attempt timing and terminal
-vocabulary, provenance bindings, outcome exclusion, and structural Phase 7
-exclusion without a blocking finding.
+GHU-052 may begin only from an accepted exact GHU-051 executor diff and must add
+the separately reviewed immutable evidence seal and tamper/identity validation.
+The GHU-051 process result or a passing fixture alone is not sealed GHU-052
+evidence and is not scoreable, canonical, or Phase 7-admissible.
