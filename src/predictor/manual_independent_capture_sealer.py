@@ -158,6 +158,7 @@ class SealedManualEvidence:
     bundle_dir: Path
     bundle: Mapping[str, Any]
     manifest: Mapping[str, Any]
+    normalized_odds: Mapping[str, Any]
     manifest_sha256: str
     replayed: bool
 
@@ -1521,6 +1522,7 @@ def verify_manual_evidence_bundle(
         bundle_dir=bundle_dir,
         bundle=bundle,
         manifest=manifest,
+        normalized_odds=normalized,
         manifest_sha256=sha256_bytes(manifest_raw),
         replayed=False,
     )
@@ -1603,6 +1605,7 @@ def seal_manual_capture(
                 bundle_dir=destination,
                 bundle=verified.bundle,
                 manifest=verified.manifest,
+                normalized_odds=verified.normalized_odds,
                 manifest_sha256=verified.manifest_sha256,
                 replayed=True,
             )
