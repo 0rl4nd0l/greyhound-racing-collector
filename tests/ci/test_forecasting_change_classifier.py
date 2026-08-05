@@ -190,6 +190,21 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
         self.assertEqual(result["tier"], "manual_prediction")
         self.assertIs(result["ci_contract_changed"], True)
 
+    def test_ghu_051_path_mix_selects_manual_prediction_with_ci_contract(self):
+        result = self.classify(
+            ("M", ".github/forecasting-paths.ini"),
+            ("M", ".github/workflows/forecasting-tests.yml"),
+            ("M", "docs/forecasting_ci_tiers.md"),
+            ("M", "docs/manual_independent_capture_v1.md"),
+            ("M", "scripts/ci/run_full_forecasting.py"),
+            ("A", "src/predictor/manual_independent_capture_executor.py"),
+            ("M", "tests/ci/test_forecasting_change_classifier.py"),
+            ("A", "tests/fixtures/manual_independent_capture_child.py"),
+            ("A", "tests/test_manual_independent_capture_executor.py"),
+        )
+        self.assertEqual(result["tier"], "manual_prediction")
+        self.assertIs(result["ci_contract_changed"], True)
+
     def test_future_manual_path_registration_stays_focused(self):
         future_path = "src/predictor/manual_isolated_executor.py"
         future_rules = dict(self.rules)
