@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://greyhound-racing-collector.invalid/schemas/manual-independent-capture-v1/manual-research-adapter-response.schema.json",
+  "title": "GHU-054 manual research adapter response",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "string"},
+    "status": {"type": "string"},
+    "bundle_id": {"type": "string"},
+    "bundle_path": {"type": "string"},
+    "verification_status": {"type": "string"},
+    "error_code": {"type": "string"}
+  },
+  "oneOf": [
+    {
+      "required": ["schema_version", "status", "bundle_id", "bundle_path", "verification_status"],
+      "properties": {
+        "schema_version": {"const": "manual_research_invocation_response_v1"},
+        "status": {"const": "SUCCESS"},
+        "bundle_id": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "bundle_path": {"type": "string", "minLength": 1},
+        "verification_status": {"const": "VERIFIED"}
+      },
+      "not": {"required": ["error_code"]}
+    },
+    {
+      "required": ["schema_version", "status", "error_code"],
+      "properties": {
+        "schema_version": {"const": "manual_research_invocation_response_v1"},
+        "status": {"const": "ERROR"},
+        "error_code": {"type": "string", "pattern": "^[A-Z][A-Z0-9_]*$"}
+      },
+      "not": {"anyOf": [
+        {"required": ["bundle_id"]},
+        {"required": ["bundle_path"]},
+        {"required": ["verification_status"]}
+      ]}
+    }
+  ]
+}
