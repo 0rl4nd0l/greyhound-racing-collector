@@ -54,6 +54,19 @@ def test_prediction_intent_and_reconnect_are_durable_and_bounded():
     assert "predictionSection.hidden=false" in source and "predictionSection.removeAttribute('aria-hidden')" in source
 
 
+def test_prediction_controls_bind_only_the_validated_research_selection():
+    source = SCRIPT.read_text(encoding="utf-8")
+    for value in (
+        "model.role==='LATEST_RESEARCH'",
+        "model.model_id==='market_form_residual_v1'",
+        "model.config_id==='market-form-residual-v1'",
+        "['latest-research',{configs:['manual-default'],odds:['auto']}]",
+    ):
+        assert value in source
+    assert "model.config_ids" not in source
+    assert "model.odds_source_ids" not in source
+
+
 def test_connected_authority_uses_finite_endpoint_validators():
     source = SCRIPT.read_text(encoding="utf-8")
     state = (ROOT / "static/js/operator-ui-state.js").read_text(encoding="utf-8")
