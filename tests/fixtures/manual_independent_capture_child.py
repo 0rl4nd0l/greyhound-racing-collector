@@ -30,6 +30,8 @@ def _success(source_timestamp: str, race_sha: str, *, mode: str = "success") -> 
         source = b'<div class="winners">Alpha Dog</div>\n'
         content_class = "prejump_race_source"
         content_type = "text/html"
+    if mode == "identity-mismatch":
+        race_sha = "0" * 64
     value = {
         "schema_version": "manual_independent_capture_child_fixture_v2",
         "requested_race_url": os.environ["MANUAL_CAPTURE_EXACT_URL"],
@@ -43,11 +45,11 @@ def _success(source_timestamp: str, race_sha: str, *, mode: str = "success") -> 
                 "decimal_odds": 2.5,
             },
             {
-                "box_number": 2,
+                "box_number": 1 if mode == "runner-mismatch" else 2,
                 "display_name": "Beta Dog",
                 "identity": "BETA DOG",
                 "source_native_runner_id": "dog-2",
-                "decimal_odds": 3.75,
+                "decimal_odds": float("nan") if mode == "invalid-odds" else 3.75,
             },
         ],
         "source": {
@@ -72,6 +74,9 @@ def main() -> int:
             "outcome-json",
             "outcome-csv",
             "outcome-html",
+            "identity-mismatch",
+            "runner-mismatch",
+            "invalid-odds",
             "malformed",
             "hang",
             "ignore-term",
@@ -81,8 +86,8 @@ def main() -> int:
     parser.add_argument("--source-timestamp", required=True)
     parser.add_argument("--race-sha", required=True)
     args = parser.parse_args()
-    if args.mode == "success":
-        return _success(args.source_timestamp, args.race_sha)
+    if args.mode in {"success", "identity-mismatch", "runner-mismatch", "invalid-odds"}:
+        return _success(args.source_timestamp, args.race_sha, mode=args.mode)
     if args.mode.startswith("outcome-"):
         return _success(args.source_timestamp, args.race_sha, mode=args.mode)
     if args.mode == "malformed":
