@@ -809,6 +809,71 @@ def test_full_daemon_lock_retry_budget_covers_odds_capture_timeout():
     )
 
 
+def test_observer_lock_retry_exhaustion_preserves_odds_owner_and_cleans_marker(
+    tmp_path, monkeypatch
+):
+    lock_path = tmp_path / "runtime" / "shadow_autopilot.lock"
+    output_dir = tmp_path / "packet"
+    lock_path.parent.mkdir(parents=True)
+    output_dir.mkdir()
+    owner = {
+        "schema_version": "shadow_autopilot_daemon_lock_v1",
+        "run_id": "20260613T182954+1000_odds_capture",
+        "pid": os.getpid(),
+        "hostname": "worker-host",
+        "started_at": "2026-06-13T18:29:54+10:00",
+        "output_dir": "/runtime/active-odds",
+        "phase": "odds_capture",
+    }
+    lock_bytes = json.dumps(owner, sort_keys=True).encode()
+    lock_path.write_bytes(lock_bytes)
+    evidence = {
+        "lock_path": str(lock_path),
+        "lock_owner_run_id": owner["run_id"],
+        "lock_owner_pid": owner["pid"],
+        "lock_owner_hostname": owner["hostname"],
+        "lock_owner_started_at": owner["started_at"],
+        "lock_owner_output_dir": owner["output_dir"],
+        "lock_owner_phase": owner["phase"],
+        "reason": "existing_lock_present_no_steal",
+    }
+    attempts = []
+    sleeps = []
+
+    def busy_acquire(*args, **kwargs):
+        attempts.append((args, kwargs))
+        raise daemon.CollectorBusy(evidence)
+
+    def fake_sleep(seconds):
+        sleeps.append(seconds)
+        marker = daemon.read_active_full_daemon_lock_wait_marker(lock_path)
+        assert marker is not None
+        assert marker["run_id"] == "20260613T183200+1000"
+        assert lock_path.read_bytes() == lock_bytes
+
+    monkeypatch.setattr(daemon, "acquire_collector_lock_no_steal", busy_acquire)
+    monkeypatch.setattr(daemon.time, "sleep", fake_sleep)
+
+    with pytest.raises(daemon.CollectorBusy) as exc_info:
+        daemon.acquire_observer_lock_with_odds_capture_retry(
+            lock_path=lock_path,
+            run_id="20260613T183200+1000",
+            output_dir=output_dir,
+            retry_seconds=10,
+            poll_seconds=5,
+        )
+
+    retry = exc_info.value.evidence["lock_retry"]
+    assert retry["status"] == "GAVE_UP_LOCK_HELD"
+    assert retry["attempt_count"] == 3
+    assert retry["waited_seconds"] == 10.0
+    assert retry["retried_for_odds_capture_lock"] is True
+    assert len(attempts) == 3
+    assert sleeps == [5.0, 5.0]
+    assert lock_path.read_bytes() == lock_bytes
+    assert not daemon.full_daemon_lock_wait_marker_path(lock_path).exists()
+
+
 def test_completed_daemon_run_report_envelope_is_self_describing(tmp_path, monkeypatch):
     monkeypatch.setattr(daemon, "ROOT", tmp_path)
     output_dir = tmp_path / "artifacts/full_evidence_orchestration_20260525/daemon"
@@ -980,6 +1045,119 @@ def test_run_once_defer_observes_result_before_odds_priority_return(
     ) == report["forward_official_result_observer"]
 
 
+def test_run_once_observer_waits_for_natural_odds_release_then_continues(
+    tmp_path, monkeypatch
+):
+    evidence_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
+    output_dir = evidence_root / "shadow_autopilot_daemonization_v1_observer_handoff"
+    odds_state_path = tmp_path / "runtime" / "odds_capture_state.json"
+    lock_path = tmp_path / "runtime" / "shadow_autopilot.lock"
+    lock_path.parent.mkdir(parents=True)
+    owner = {
+        "schema_version": "shadow_autopilot_daemon_lock_v1",
+        "run_id": "20260613T182954+1000_odds_capture",
+        "pid": os.getpid(),
+        "hostname": "worker-host",
+        "started_at": "2026-06-13T18:29:54+10:00",
+        "output_dir": "/runtime/active-odds",
+        "phase": "odds_capture",
+    }
+    lock_bytes = json.dumps(owner, sort_keys=True).encode()
+    lock_path.write_bytes(lock_bytes)
+    sleeps = []
+    observed = {
+        "status": "COMPLETED",
+        "attempted_race_ids": ["race-1"],
+        "counts": {"observed": 1},
+    }
+
+    monkeypatch.setattr(daemon, "ROOT", tmp_path)
+    monkeypatch.setattr(daemon, "copy_if_exists", lambda source, dest: None)
+    monkeypatch.setattr(
+        daemon,
+        "write_service_files",
+        lambda **kwargs: {
+            "status": "SERVICE_FILES_WRITTEN",
+            "systemd_deployment_ready": True,
+        },
+    )
+
+    def fake_sleep(seconds):
+        sleeps.append(seconds)
+        marker = daemon.read_active_full_daemon_lock_wait_marker(lock_path)
+        assert marker is not None
+        assert marker["run_id"] == "observer_handoff"
+        assert marker["reason"] == "full_daemon_waiting_for_odds_capture_lock_handoff"
+        waiting_report = json.loads((output_dir / "daemon_run_report.json").read_text())
+        assert waiting_report["lock_owner_kind"] == "odds_capture"
+        assert waiting_report["lock_retry"]["status"] == (
+            "WAITING_FOR_ODDS_CAPTURE_LOCK"
+        )
+        assert lock_path.read_bytes() == lock_bytes
+        lock_path.unlink()
+
+    def observe(args, run_id):
+        lock = json.loads(lock_path.read_text())
+        assert lock["run_id"] == run_id
+        assert lock["phase"] == "forward_official_result_observer"
+        return observed | {"run_id": run_id}
+
+    monkeypatch.setattr(daemon.time, "sleep", fake_sleep)
+    monkeypatch.setattr(daemon, "run_forward_official_result_observer", observe)
+    monkeypatch.setattr(
+        daemon,
+        "full_daemon_odds_window_defer_decision",
+        lambda odds_state, current_time: {
+            "should_defer": True,
+            "reason": "test_fixed_window_open",
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "acquire_lock_with_odds_capture_retry",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("odds-priority return must remain before the full lock")
+        ),
+    )
+    args = daemon.parse_args(
+        [
+            "run-once",
+            "--run-id",
+            "observer_handoff",
+            "--evidence-root",
+            str(evidence_root),
+            "--output-dir",
+            str(output_dir),
+            "--current-time",
+            "2026-06-13T18:32:06+10:00",
+            "--lock-path",
+            str(lock_path),
+            "--enable-forward-official-result-observer",
+            "--forward-corpus-root",
+            str(tmp_path / "forward-corpus"),
+            "--enable-autonomous-odds-capture",
+            "--odds-capture-state-path",
+            str(odds_state_path),
+        ]
+    )
+
+    report = daemon.run_once(args)
+
+    assert report["final_verdict"] == "DAEMON_DEFERRED_TO_ODDS_CAPTURE_ONLY"
+    assert sleeps == [5.0]
+    shared_lock = report["forward_official_result_observer"]["shared_lock"]
+    assert shared_lock["lock_retry"]["status"] == (
+        "ACQUIRED_AFTER_ODDS_CAPTURE_WAIT"
+    )
+    assert shared_lock["lock_retry"]["attempt_count"] == 2
+    assert shared_lock["release"] == {
+        "released": True,
+        "reason": "released_by_observer_owner",
+    }
+    assert not lock_path.exists()
+    assert not daemon.full_daemon_lock_wait_marker_path(lock_path).exists()
+
+
 def test_run_once_observer_failure_stops_before_odds_defer_and_full_lock(
     tmp_path, monkeypatch
 ):
@@ -1077,12 +1255,12 @@ def test_live_shared_lock_defers_before_observer_service_or_corpus_mutation(
     lock_bytes = json.dumps(
         {
             "schema_version": "shadow_autopilot_daemon_lock_v1",
-            "run_id": "active_odds_capture",
+            "run_id": "active_full_producer",
             "pid": os.getpid(),
             "hostname": "test-host",
             "started_at": "2026-06-13T15:16:00+10:00",
-            "output_dir": "/runtime/active-odds",
-            "phase": "odds_capture",
+            "output_dir": "/runtime/active-full",
+            "phase": "full_daemon",
         },
         sort_keys=True,
     ).encode()
@@ -1101,6 +1279,13 @@ def test_live_shared_lock_defers_before_observer_service_or_corpus_mutation(
         "run_forward_official_result_observer",
         lambda *args, **kwargs: (_ for _ in ()).throw(
             AssertionError("live shared owner must prevent observer I/O")
+        ),
+    )
+    monkeypatch.setattr(
+        daemon.time,
+        "sleep",
+        lambda seconds: (_ for _ in ()).throw(
+            AssertionError("non-odds owner must not enter bounded handoff")
         ),
     )
     args = daemon.parse_args(
@@ -1124,10 +1309,14 @@ def test_live_shared_lock_defers_before_observer_service_or_corpus_mutation(
 
     assert report["status"] == "SKIPPED_LOCK_HELD"
     assert report["runtime_action"] == "DEFER_FORWARD_OBSERVER_SHARED_LOCK_HELD"
-    assert report["lock_owner_phase"] == "odds_capture"
+    assert report["lock_owner_phase"] == "full_daemon"
     assert report["lock_owner_pid"] == os.getpid()
+    assert report["forward_official_result_observer"]["shared_lock"]["lock_retry"][
+        "retried_for_odds_capture_lock"
+    ] is False
     assert report["forward_official_result_observer"]["attempted_race_ids"] == []
     assert lock_path.read_bytes() == lock_bytes
+    assert not daemon.full_daemon_lock_wait_marker_path(lock_path).exists()
     assert list(corpus_root.iterdir()) == [sentinel]
     assert sentinel.read_bytes() == b'{"immutable":true}\n'
 
