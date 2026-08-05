@@ -189,6 +189,13 @@ def test_success_is_one_isolated_fixture_attempt_and_valid_ghu050_artifact(tmp_p
     assert result.pid == result.pgid
     assert result.cleanup.confirmed is True
     assert result.cleanup.process_group_absent is True
+    assert result.source_response is not None
+    assert result.source_response.final_url == _race()["url"]
+    assert result.source_response.status_code == 200
+    assert result.source_response.content_type == "text/csv; charset=utf-8"
+    assert result.source_response.body_sha256 == result.artifact["provenance"][
+        "source_files"
+    ][0]["sha256"]
     assert _revalidate(result, cfg, forbidden) == result.artifact
     manual_root = Path(cfg["paths"]["manual_root"]).resolve()
     assert all(path.resolve().is_relative_to(manual_root) for path in result.run_dir.rglob("*"))
@@ -476,6 +483,7 @@ def test_malformed_child_output_is_one_attempt_and_no_capture(tmp_path: Path):
     assert launches == 1
     assert result.artifact["terminal"]["failure_code"] == "SOURCE_MALFORMED"
     assert result.artifact["attempt"]["source_attempt_count"] == 1
+    assert result.source_response is None
     assert result.artifact["capture"]["runner_set"] == []
     assert _revalidate(result, cfg, forbidden) == result.artifact
 

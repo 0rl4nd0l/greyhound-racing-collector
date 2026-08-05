@@ -175,9 +175,11 @@ jobs:
             manual_prediction)
               selected_command=(
                 uv run --no-project --with-requirements requirements/all.in
+                --with jsonschema
                 python -m pytest -q --noconftest
                 tests/test_manual_independent_capture.py \
                 tests/test_manual_independent_capture_executor.py \
+                tests/test_manual_independent_capture_sealer.py \
                 tests/test_market_form_residual.py \
                 tests/test_market_form_residual_portability.py \
                 tests/test_predict_market_form_residual.py
@@ -226,7 +228,8 @@ jobs:
             full_forecasting)
               selected_command=(
                 uv run --no-project --with-requirements requirements/all.in
-                --with PyYAML python scripts/ci/run_full_forecasting.py
+                --with PyYAML --with jsonschema
+                python scripts/ci/run_full_forecasting.py
               )
               ;;
             *)

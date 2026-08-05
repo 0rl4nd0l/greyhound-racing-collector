@@ -77,8 +77,10 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
                 "docs/manual_independent_capture_v1.md",
                 "scripts/predict_market_form_residual.py",
                 "src/predictor/manual_independent_capture.py",
+                "src/predictor/manual_independent_capture_sealer.py",
                 "src/predictor/market_form_residual.py",
                 "tests/test_manual_independent_capture.py",
+                "tests/test_manual_independent_capture_sealer.py",
                 "tests/test_predict_market_form_residual.py",
             ),
             "official_results": (
@@ -201,6 +203,31 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
             ("M", "tests/ci/test_forecasting_change_classifier.py"),
             ("A", "tests/fixtures/manual_independent_capture_child.py"),
             ("A", "tests/test_manual_independent_capture_executor.py"),
+        )
+        self.assertEqual(result["tier"], "manual_prediction")
+        self.assertIs(result["ci_contract_changed"], True)
+
+    def test_ghu_052_path_mix_selects_manual_prediction_with_ci_contract(self):
+        result = self.classify(
+            ("M", ".github/forecasting-paths.ini"),
+            ("M", ".github/workflows/forecasting-tests.yml"),
+            (
+                "A",
+                "configs/prediction/manual-independent-capture-v1/evidence-bundle.schema.json",
+            ),
+            (
+                "A",
+                "configs/prediction/manual-independent-capture-v1/evidence-manifest.schema.json",
+            ),
+            ("M", "docs/forecasting_ci_tiers.md"),
+            ("M", "docs/manual_independent_capture_v1.md"),
+            ("M", "scripts/ci/run_full_forecasting.py"),
+            ("M", "src/predictor/manual_independent_capture_executor.py"),
+            ("A", "src/predictor/manual_independent_capture_sealer.py"),
+            ("M", "tests/ci/test_forecasting_change_classifier.py"),
+            ("M", "tests/fixtures/manual_independent_capture_child.py"),
+            ("M", "tests/test_manual_independent_capture_executor.py"),
+            ("A", "tests/test_manual_independent_capture_sealer.py"),
         )
         self.assertEqual(result["tier"], "manual_prediction")
         self.assertIs(result["ci_contract_changed"], True)
@@ -538,6 +565,7 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
         self.assertIn('"scripts/ci/run_forecasting_ci_contract.py"', runner)
         self.assertIn('"tests/race_collection"', runner)
         self.assertIn('"tests/test_predict_market_form_residual.py"', runner)
+        self.assertIn('"tests/test_manual_independent_capture_sealer.py"', runner)
         self.assertIn('"tests/test_predict_race_now.py"', runner)
         self.assertIn('"tests/test_results_ingest_official_first.py"', runner)
         self.assertIn('"tests/operator_ui/test_foundation.py"', runner)

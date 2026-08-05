@@ -12,14 +12,26 @@ import sys
 import time
 
 
-def _success(source_timestamp: str, race_sha: str) -> int:
+def _success(source_timestamp: str, race_sha: str, *, mode: str = "success") -> int:
     profile = os.environ["MANUAL_CAPTURE_PROFILE"]
     run_dir = os.environ["MANUAL_CAPTURE_RUN_DIR"]
     if not os.path.isabs(profile) or not os.path.isabs(run_dir):
         return 4
-    source = b"box,dog\n1,Alpha Dog\n2,Beta Dog\n"
+    source = b"box,dog,decimal_odds\n1,Alpha Dog,2.5\n2,Beta Dog,3.75\n"
+    content_class = "prejump_form"
+    content_type = "text/csv; charset=utf-8"
+    if mode == "outcome-json":
+        source = b'{"winners":[1],"runners":[]}\n'
+        content_class = "prejump_sidecar"
+        content_type = "application/json"
+    elif mode == "outcome-csv":
+        source = b"box,dog,decimal_odds,placings\n1,Alpha Dog,2.5,1\n"
+    elif mode == "outcome-html":
+        source = b'<div class="winners">Alpha Dog</div>\n'
+        content_class = "prejump_race_source"
+        content_type = "text/html"
     value = {
-        "schema_version": "manual_independent_capture_child_fixture_v1",
+        "schema_version": "manual_independent_capture_child_fixture_v2",
         "requested_race_url": os.environ["MANUAL_CAPTURE_EXACT_URL"],
         "race_identity_sha256": race_sha,
         "runners": [
@@ -39,8 +51,11 @@ def _success(source_timestamp: str, race_sha: str) -> int:
             },
         ],
         "source": {
-            "content_class": "prejump_form",
+            "content_class": content_class,
             "source_timestamp": source_timestamp,
+            "final_url": os.environ["MANUAL_CAPTURE_EXACT_URL"],
+            "status_code": 200,
+            "content_type": content_type,
             "bytes_base64": base64.b64encode(source).decode("ascii"),
         },
     }
@@ -54,6 +69,9 @@ def main() -> int:
         "mode",
         choices=(
             "success",
+            "outcome-json",
+            "outcome-csv",
+            "outcome-html",
             "malformed",
             "hang",
             "ignore-term",
@@ -65,6 +83,8 @@ def main() -> int:
     args = parser.parse_args()
     if args.mode == "success":
         return _success(args.source_timestamp, args.race_sha)
+    if args.mode.startswith("outcome-"):
+        return _success(args.source_timestamp, args.race_sha, mode=args.mode)
     if args.mode == "malformed":
         sys.stdout.write("not-json")
         return 0

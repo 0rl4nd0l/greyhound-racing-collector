@@ -52,7 +52,7 @@ from utils.csv_metadata import (
     canonical_thedogs_venue_identity,
 )
 
-CHILD_SCHEMA_VERSION = "manual_independent_capture_child_fixture_v1"
+CHILD_SCHEMA_VERSION = "manual_independent_capture_child_fixture_v2"
 TERMINAL_FILENAME = "terminal.json"
 _MAX_CHILD_OUTPUT_BYTES = 2 * 1024 * 1024
 _MAX_SOURCE_BYTES = 2 * 1024 * 1024
@@ -84,6 +84,14 @@ class CleanupProof:
 
 
 @dataclass(frozen=True)
+class SourceResponseProof:
+    final_url: str
+    status_code: int
+    content_type: str
+    body_sha256: str
+
+
+@dataclass(frozen=True)
 class ManualCaptureExecution:
     artifact: Mapping[str, Any]
     terminal_path: Path
@@ -91,6 +99,7 @@ class ManualCaptureExecution:
     pid: int | None
     pgid: int | None
     cleanup: CleanupProof
+    source_response: SourceResponseProof | None
 
 
 def _aware_seconds(value: datetime, field: str) -> datetime:
@@ -371,10 +380,25 @@ def _child_value(
         or set(value["source"]) != {
             "content_class",
             "source_timestamp",
+            "final_url",
+            "status_code",
+            "content_type",
             "bytes_base64",
         }
         or value["source"]["content_class"] not in SOURCE_PATH_BY_CLASS
         or not isinstance(value["source"]["source_timestamp"], str)
+        or value["source"]["final_url"] != expected_url
+        or value["source"]["status_code"] != 200
+        or isinstance(value["source"]["status_code"], bool)
+        or not isinstance(value["source"]["content_type"], str)
+        or not value["source"]["content_type"]
+        or len(value["source"]["content_type"]) > 256
+        or value["source"]["content_type"]
+        != value["source"]["content_type"].strip()
+        or any(
+            not 32 <= ord(character) <= 126
+            for character in value["source"]["content_type"]
+        )
         or not isinstance(value["source"]["bytes_base64"], str)
     ):
         raise ValueError("SOURCE_MALFORMED")
@@ -444,6 +468,12 @@ def _child_value(
         "source_content_class": value["source"]["content_class"],
         "source_timestamp": value["source"]["source_timestamp"],
         "source_bytes": source_bytes,
+        "source_response": SourceResponseProof(
+            final_url=value["source"]["final_url"],
+            status_code=value["source"]["status_code"],
+            content_type=value["source"]["content_type"],
+            body_sha256=sha256_bytes(source_bytes),
+        ),
     }
 
 
@@ -888,6 +918,9 @@ def execute_manual_capture_fixture(
             pid=None if process is None else process.pid,
             pgid=pgid,
             cleanup=cleanup,
+            source_response=(
+                None if child is None else child["source_response"]
+            ),
         )
     except BaseException:
         if process is not None and pgid is not None:
