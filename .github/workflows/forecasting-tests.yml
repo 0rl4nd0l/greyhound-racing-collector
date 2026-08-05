@@ -22,6 +22,7 @@ jobs:
     outputs:
       tier: ${{ steps.classify.outputs.tier }}
       reason: ${{ steps.classify.outputs.reason }}
+      ci_contract_changed: ${{ steps.classify.outputs.ci_contract_changed }}
 
     steps:
       - name: Check out exact validation head with history
@@ -55,6 +56,7 @@ jobs:
 
       - name: Summarize classification
         env:
+          CI_CONTRACT_CHANGED: ${{ steps.classify.outputs.ci_contract_changed }}
           CLASSIFICATION_REASON: ${{ steps.classify.outputs.reason }}
           FORECASTING_TIER: ${{ steps.classify.outputs.tier }}
         run: |
@@ -63,6 +65,7 @@ jobs:
             echo
             echo "- Tier: \`$FORECASTING_TIER\`"
             echo "- Reason: \`$CLASSIFICATION_REASON\`"
+            echo "- CI contract changed: \`$CI_CONTRACT_CHANGED\`"
             echo "- Explicit PR override label: \`ci:full-forecasting\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -78,13 +81,20 @@ jobs:
         if: >-
           needs.classify.result != 'success' ||
           !contains(fromJSON('["ci_contract","manual_prediction","official_results","forward_corpus","operator_ui","forecasting_core","full_forecasting","non_forecasting"]'),
-          needs.classify.outputs.tier)
+          needs.classify.outputs.tier) ||
+          !contains(fromJSON('["true","false"]'),
+          needs.classify.outputs.ci_contract_changed) ||
+          (needs.classify.outputs.tier == 'ci_contract' &&
+          needs.classify.outputs.ci_contract_changed != 'true') ||
+          (needs.classify.outputs.tier == 'non_forecasting' &&
+          needs.classify.outputs.ci_contract_changed != 'false')
         env:
+          CI_CONTRACT_CHANGED: ${{ needs.classify.outputs.ci_contract_changed }}
           CLASSIFIER_RESULT: ${{ needs.classify.result }}
           FORECASTING_TIER: ${{ needs.classify.outputs.tier }}
         run: |
           echo "Change classification did not produce a trusted tier."
-          echo "classifier_result=$CLASSIFIER_RESULT tier=$FORECASTING_TIER"
+          echo "classifier_result=$CLASSIFIER_RESULT tier=$FORECASTING_TIER ci_contract_changed=$CI_CONTRACT_CHANGED"
           exit 1
 
       - name: No forecasting contracts changed
@@ -113,6 +123,7 @@ jobs:
         id: forecasting
         continue-on-error: true
         env:
+          CI_CONTRACT_CHANGED: ${{ needs.classify.outputs.ci_contract_changed }}
           FORECASTING_TIER: ${{ needs.classify.outputs.tier }}
           TMPDIR: ${{ runner.temp }}
         shell: bash
@@ -120,12 +131,46 @@ jobs:
           set -o pipefail
           evidence_dir="${RUNNER_TEMP}/forecasting-acceptance-${GITHUB_RUN_ID}"
           mkdir -p "$evidence_dir"
+          command_manifest="$evidence_dir/forecasting-command-manifest.tsv"
+          combined_command="$evidence_dir/forecasting-command.txt"
+          combined_log="$evidence_dir/forecasting-suite.log"
+          : > "$command_manifest"
+          : > "$combined_command"
+          : > "$combined_log"
+
+          ci_contract_command=(
+            uv run --no-project --with-requirements requirements/all.in
+            --with PyYAML python scripts/ci/run_forecasting_ci_contract.py
+          )
+
+          run_command() {
+            local name="$1"
+            shift
+            local command_file="$evidence_dir/${name}-command.txt"
+            local log_file="$evidence_dir/${name}.log"
+            local exit_code
+            local -a pipeline_status
+            printf '%q ' "$@" > "$command_file"
+            printf '\n' >> "$command_file"
+            printf '%q ' "$@" >> "$combined_command"
+            printf '\n' >> "$combined_command"
+            printf '===== %s =====\n' "$name" >> "$combined_log"
+            "$@" 2>&1 | tee "$log_file" | tee -a "$combined_log"
+            pipeline_status=("${PIPESTATUS[@]}")
+            exit_code="${pipeline_status[0]}"
+            if (( pipeline_status[1] != 0 || pipeline_status[2] != 0 )); then
+              exit_code=125
+            fi
+            printf '%s\t%s\t%s\t%s\n' \
+              "$name" "$exit_code" \
+              "$(basename "$command_file")" "$(basename "$log_file")" \
+              >> "$command_manifest"
+            return "$exit_code"
+          }
+
           case "$FORECASTING_TIER" in
             ci_contract)
-              selected_command=(
-                uv run --no-project --with-requirements requirements/all.in
-                --with PyYAML python scripts/ci/run_forecasting_ci_contract.py
-              )
+              selected_command=("${ci_contract_command[@]}")
               ;;
             manual_prediction)
               selected_command=(
@@ -188,13 +233,20 @@ jobs:
               exit 1
               ;;
           esac
-          printf '%q ' "${selected_command[@]}" > "$evidence_dir/forecasting-command.txt"
-          printf '\n' >> "$evidence_dir/forecasting-command.txt"
-          "${selected_command[@]}" 2>&1 | tee "$evidence_dir/forecasting-suite.log"
+
+          overall_status=0
+          if [[ "$CI_CONTRACT_CHANGED" == "true" && \
+                "$FORECASTING_TIER" != "ci_contract" && \
+                "$FORECASTING_TIER" != "full_forecasting" ]]; then
+            run_command ci_contract "${ci_contract_command[@]}" || overall_status=1
+          fi
+          run_command "$FORECASTING_TIER" "${selected_command[@]}" || overall_status=1
+          exit "$overall_status"
 
       - name: Bind validation evidence to exact commit and tree
         if: always() && needs.classify.outputs.tier != 'non_forecasting'
         env:
+          CI_CONTRACT_CHANGED: ${{ needs.classify.outputs.ci_contract_changed }}
           CLASSIFICATION_REASON: ${{ needs.classify.outputs.reason }}
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
           FORECASTING_TIER: ${{ needs.classify.outputs.tier }}
@@ -213,25 +265,74 @@ jobs:
               Path(os.environ["RUNNER_TEMP"])
               / f"forecasting-acceptance-{os.environ['GITHUB_RUN_ID']}"
           )
-          log = evidence_dir / "forecasting-suite.log"
+          combined_log = evidence_dir / "forecasting-suite.log"
+          manifest = evidence_dir / "forecasting-command-manifest.tsv"
           tier = os.environ["FORECASTING_TIER"]
+          ci_contract_changed_text = os.environ["CI_CONTRACT_CHANGED"]
+          if ci_contract_changed_text not in {"true", "false"}:
+              raise SystemExit("invalid ci_contract_changed classifier output")
+          ci_contract_changed = ci_contract_changed_text == "true"
+          commit = subprocess.check_output(
+              ["git", "rev-parse", "HEAD"], text=True
+          ).strip()
+          tree = subprocess.check_output(
+              ["git", "rev-parse", "HEAD^{tree}"], text=True
+          ).strip()
+          commands = []
+          for line in manifest.read_text(encoding="utf-8").splitlines():
+              fields = line.split("\t")
+              if len(fields) != 4:
+                  raise SystemExit("malformed forecasting command manifest")
+              name, exit_code_text, command_name, log_name = fields
+              if Path(command_name).name != command_name or Path(log_name).name != log_name:
+                  raise SystemExit("unsafe forecasting evidence filename")
+              command_file = evidence_dir / command_name
+              log = evidence_dir / log_name
+              exit_code = int(exit_code_text)
+              commands.append(
+                  {
+                      "name": name,
+                      "command": command_file.read_text(encoding="utf-8").strip(),
+                      "exit_code": exit_code,
+                      "outcome": "success" if exit_code == 0 else "failure",
+                      "log": log.name,
+                      "log_sha256": hashlib.sha256(log.read_bytes()).hexdigest(),
+                      "commit": commit,
+                      "tree": tree,
+                  }
+              )
+          if tier == "ci_contract":
+              expected_commands = ["ci_contract"]
+          elif tier == "full_forecasting":
+              expected_commands = ["full_forecasting"]
+          elif ci_contract_changed:
+              expected_commands = ["ci_contract", tier]
+          else:
+              expected_commands = [tier]
+          if [command["name"] for command in commands] != expected_commands:
+              raise SystemExit("forecasting command manifest does not match classification")
+          expected_outcome = (
+              "success"
+              if all(command["exit_code"] == 0 for command in commands)
+              else "failure"
+          )
+          if os.environ["SUITE_OUTCOME"] != expected_outcome:
+              raise SystemExit("forecasting command outcomes do not match step outcome")
           evidence = {
-              "schema_version": "forecasting-ci-attestation-v2",
+              "schema_version": "forecasting-ci-attestation-v3",
               "tier": tier,
+              "ci_contract_changed": ci_contract_changed,
               "classification_reason": os.environ["CLASSIFICATION_REASON"],
               "command": (evidence_dir / "forecasting-command.txt")
               .read_text(encoding="utf-8")
               .strip(),
+              "commands": commands,
               "outcome": os.environ["SUITE_OUTCOME"],
               "event_sha": os.environ["GITHUB_SHA"],
               "expected_head": os.environ["EXPECTED_HEAD"],
-              "commit": subprocess.check_output(
-                  ["git", "rev-parse", "HEAD"], text=True
-              ).strip(),
-              "tree": subprocess.check_output(
-                  ["git", "rev-parse", "HEAD^{tree}"], text=True
-              ).strip(),
-              "log_sha256": hashlib.sha256(log.read_bytes()).hexdigest(),
+              "commit": commit,
+              "tree": tree,
+              "log_sha256": hashlib.sha256(combined_log.read_bytes()).hexdigest(),
               "python": platform.python_version(),
               "platform": platform.platform(),
               "uv": subprocess.check_output(["uv", "--version"], text=True).strip(),
@@ -250,9 +351,7 @@ jobs:
           name: forecasting-acceptance-${{ github.run_id }}
           if-no-files-found: error
           path: |
-            ${{ runner.temp }}/forecasting-acceptance-${{ github.run_id }}/forecasting-suite.log
-            ${{ runner.temp }}/forecasting-acceptance-${{ github.run_id }}/forecasting-command.txt
-            ${{ runner.temp }}/forecasting-acceptance-${{ github.run_id }}/forecasting-ci-attestation.json
+            ${{ runner.temp }}/forecasting-acceptance-${{ github.run_id }}/
 
       - name: Enforce forecasting acceptance gate
         if: >-

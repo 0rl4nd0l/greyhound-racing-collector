@@ -26,9 +26,9 @@ TIERS = (
     "full_forecasting",
 )
 TIER_RANK = {tier: rank for rank, tier in enumerate(TIERS)}
-KNOWN_STATUS_PREFIXES = frozenset({"A", "C", "D", "M", "R", "T"})
 DESTRUCTIVE_STATUS_PREFIXES = frozenset({"C", "D", "R", "T"})
 FOCUSED_TIERS = frozenset(TIERS) - {"non_forecasting", "full_forecasting"}
+PRODUCT_TIERS = FOCUSED_TIERS - {"ci_contract"}
 
 
 class ClassificationError(RuntimeError):
@@ -39,6 +39,29 @@ class ClassificationError(RuntimeError):
 class Change:
     status: str
     paths: tuple[str, ...]
+
+
+def _is_known_status(status: str) -> bool:
+    if status in {"A", "D", "M", "T"}:
+        return True
+    score = status[1:]
+    if status[:1] not in {"C", "R"} or not 1 <= len(score) <= 3 or not score.isdigit():
+        return False
+    return 0 <= int(score) <= 100
+
+
+def _full_result(
+    reason: str,
+    paths: Sequence[Mapping[str, Any]] = (),
+    *,
+    ci_contract_changed: bool = False,
+) -> dict[str, Any]:
+    return {
+        "tier": "full_forecasting",
+        "reason": reason,
+        "ci_contract_changed": ci_contract_changed,
+        "paths": list(paths),
+    }
 
 
 def _normalize_path(path: str) -> str:
@@ -101,23 +124,19 @@ def classify_changes(
 ) -> dict[str, Any]:
     change_list = list(changes)
     if not change_list:
-        return {
-            "tier": "full_forecasting",
-            "reason": "empty_change_set_defaults_to_full",
-            "paths": [],
-        }
+        return _full_result("empty_change_set_defaults_to_full")
 
     classified_paths: list[dict[str, Any]] = []
     selected_tiers: set[str] = set()
     destructive_change = False
     for change in change_list:
         prefix = change.status[:1]
-        if prefix not in KNOWN_STATUS_PREFIXES or not change.paths:
-            return {
-                "tier": "full_forecasting",
-                "reason": f"unknown_change_status:{change.status or 'empty'}",
-                "paths": classified_paths,
-            }
+        if not _is_known_status(change.status) or not change.paths:
+            return _full_result(
+                f"unknown_change_status:{change.status or 'empty'}",
+                classified_paths,
+                ci_contract_changed="ci_contract" in selected_tiers,
+            )
         destructive_change = (
             destructive_change or prefix in DESTRUCTIVE_STATUS_PREFIXES
         )
@@ -126,11 +145,11 @@ def classify_changes(
                 tier, matched = _path_tier(path, rules)
                 normalized = _normalize_path(path)
             except ClassificationError as exc:
-                return {
-                    "tier": "full_forecasting",
-                    "reason": f"uncertain_path:{exc}",
-                    "paths": classified_paths,
-                }
+                return _full_result(
+                    f"uncertain_path:{exc}",
+                    classified_paths,
+                    ci_contract_changed="ci_contract" in selected_tiers,
+                )
             classified_paths.append(
                 {
                     "path": normalized,
@@ -140,9 +159,11 @@ def classify_changes(
                     "defaulted_to_full": not matched,
                 }
             )
-            selected_tiers.add(tier)
+            selected_tiers.update(matched or (tier,))
 
     risk_tiers = selected_tiers - {"non_forecasting"}
+    ci_contract_changed = "ci_contract" in risk_tiers
+    product_tiers = risk_tiers & PRODUCT_TIERS
     if destructive_change:
         selected = "full_forecasting"
         reason = "destructive_change_defaults_to_full"
@@ -152,16 +173,28 @@ def classify_changes(
     elif "full_forecasting" in risk_tiers:
         selected = "full_forecasting"
         reason = "shared_or_high_risk_path_requires_full"
-    elif len(risk_tiers & FOCUSED_TIERS) > 1:
+    elif len(product_tiers) > 1:
         selected = "full_forecasting"
         reason = "incompatible_mixed_tiers_default_to_full"
-    elif risk_tiers:
-        selected = next(iter(risk_tiers))
+    elif product_tiers:
+        selected = next(iter(product_tiers))
+        reason = (
+            "single_product_tier_with_ci_contract"
+            if ci_contract_changed
+            else "single_trusted_tier"
+        )
+    elif ci_contract_changed:
+        selected = "ci_contract"
         reason = "single_trusted_tier"
     else:
         selected = "non_forecasting"
         reason = "known_non_forecasting_paths"
-    return {"tier": selected, "reason": reason, "paths": classified_paths}
+    return {
+        "tier": selected,
+        "reason": reason,
+        "ci_contract_changed": ci_contract_changed,
+        "paths": classified_paths,
+    }
 
 
 def parse_name_status(raw: bytes) -> list[Change]:
@@ -211,6 +244,10 @@ def write_github_output(path: Path, result: Mapping[str, Any]) -> None:
     with path.open("a", encoding="utf-8") as output:
         output.write(f"tier={result['tier']}\n")
         output.write(f"reason={result['reason']}\n")
+        output.write(
+            "ci_contract_changed="
+            f"{str(bool(result['ci_contract_changed'])).lower()}\n"
+        )
 
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
@@ -228,19 +265,15 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
-    try:
-        rules = load_rules(args.rules)
-        if args.force_full:
-            result = {
-                "tier": "full_forecasting",
-                "reason": "explicit_full_validation",
-                "paths": [],
-            }
-        else:
+    if args.force_full:
+        result = _full_result("explicit_full_validation")
+    else:
+        try:
+            rules = load_rules(args.rules)
             result = classify_changes(git_changes(args.base, args.head), rules)
-    except ClassificationError as exc:
-        print(f"classifier error: {exc}", file=sys.stderr)
-        return 2
+        except ClassificationError as exc:
+            print(f"classifier warning: {exc}; defaulting to full", file=sys.stderr)
+            result = _full_result("classifier_error_defaults_to_full")
     print(json.dumps(result, indent=2, sort_keys=True))
     if args.github_output:
         write_github_output(args.github_output, result)

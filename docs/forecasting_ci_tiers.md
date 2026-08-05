@@ -1,9 +1,9 @@
 # Forecasting CI tiers
 
 The stable pull-request check is `tests-race-collection`. A classifier selects
-one tier for the complete change set; unknown paths, destructive changes, shared
-surfaces, and incompatible tier combinations fail closed to
-`full_forecasting`.
+one primary tier for the complete change set and separately reports whether the
+CI contract changed. Unknown paths, destructive changes, shared surfaces, and
+incompatible product-tier combinations fail closed to `full_forecasting`.
 
 | Tier | Intended paths | Validation command |
 | --- | --- | --- |
@@ -16,9 +16,14 @@ surfaces, and incompatible tier combinations fail closed to
 | `full_forecasting` | shared/high-risk, unknown, destructive, or unsafe mixed changes | `uv run --no-project --with-requirements requirements/all.in --with PyYAML python scripts/ci/run_full_forecasting.py` |
 | `non_forecasting` | known unrelated documentation and presentation paths | no Forecasting test command |
 
-`ci_contract` validates the classifier contracts and all workflow YAML files,
-then runs one named smoke from every focused tier. It never invokes the complete
-`tests/race_collection` directory.
+Pure CI routing changes select `ci_contract`. When CI-contract paths accompany
+exactly one focused product tier, the product tier remains primary and
+`ci_contract_changed=true`: the stable job runs the CI-contract command first,
+then that focused product suite. Each command, exit code, log hash, commit, and
+tree is retained in the exact-head attestation. `ci_contract` validates the
+classifier contracts and all workflow YAML files, then runs one named smoke from
+every focused tier. It never invokes the complete `tests/race_collection`
+directory.
 
 The full runner executes the CI contract, the complete `tests/race_collection`
 directory, and the top-level focused suites. It runs weekly, on every workflow dispatch, for PRs
@@ -27,4 +32,5 @@ labeled `ci:full-forecasting`, and whenever the classifier escalates risk.
 Shared identity, timing, provenance, feature, schema, dependency, training,
 evaluation, promotion, runtime-adapter, synchronous-capture, Operator UI
 bootstrap/deployment/live-adapter, and on-demand collector-protocol paths remain
-full. New paths are full until explicitly and safely assigned.
+full. Two or more focused product tiers remain full even when the CI contract
+also changes. New paths are full until explicitly and safely assigned.

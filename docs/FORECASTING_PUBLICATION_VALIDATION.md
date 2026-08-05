@@ -22,9 +22,10 @@ its checked-in fixture cases, and selects one of the eight risk tiers documented
 in [forecasting_ci_tiers.md](forecasting_ci_tiers.md). CI contract, manual
 prediction, official-result, forward-corpus, Operator UI, and isolated
 forecasting-core changes receive focused validation. Shared or high-risk paths,
-unknown paths, destructive changes, and incompatible focused-tier combinations
-fail closed to `full_forecasting`. Renames and copies classify both old and new
-paths; empty or malformed change sets also fail closed.
+unknown paths, destructive changes, and combinations of two or more focused
+product tiers fail closed to `full_forecasting`. Renames and copies classify
+both old and new paths; empty or malformed change sets and uncertain rules also
+fail closed.
 
 The stable gate checks out the pull-request head explicitly. The full tier runs
 the complete `tests/race_collection` suite plus directly associated top-level
@@ -32,14 +33,20 @@ manual, official-result, and Operator UI tests. It runs on scheduled and manual
 dispatches, for PRs labeled `ci:full-forecasting`, and whenever risk
 classification escalates. CI-only routing changes select `ci_contract`, which
 validates classifier and workflow contracts plus one named smoke from each
-focused tier without invoking the complete race-collection suite.
+focused tier without invoking the complete race-collection suite. If CI routing
+paths accompany exactly one focused product tier, that product tier stays
+primary with `ci_contract_changed=true`; the stable job runs the CI-contract
+command first and then the product suite. CI-contract changes are not
+transparent to two product tiers, a full-risk path, or any uncertain change.
 
 Every tier except `non_forecasting` uploads:
 
-- `forecasting-suite.log`, the complete combined test output; and
+- `forecasting-suite.log`, the complete combined test output, plus one command
+  file and log per executed validation; and
 - `forecasting-ci-attestation.json`, containing the exact expected head, checked
-  out commit, tree, selected tier and command, result, Python/platform/uv
-  environment, and log SHA-256.
+  out commit, tree, selected primary tier, `ci_contract_changed`, ordered
+  commands, per-command result and log SHA-256, combined log SHA-256, and the
+  Python/platform/uv environment.
 
 The unrelated tier returns successfully without dependency setup after stating
 that no forecasting contracts changed. The stable job fails if classification

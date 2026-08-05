@@ -1,9 +1,15 @@
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
 import itertools
+import json
+import os
+import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 from pathlib import Path
 
@@ -132,7 +138,11 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
         for expected, paths in fixtures.items():
             for path in paths:
                 with self.subTest(expected=expected, path=path):
-                    self.assertEqual(self.classify(("M", path))["tier"], expected)
+                    result = self.classify(("M", path))
+                    self.assertEqual(result["tier"], expected)
+                    self.assertIs(
+                        result["ci_contract_changed"], expected == "ci_contract"
+                    )
 
     def test_ci_only_routing_change_never_selects_complete_suite(self):
         result = self.classify(
@@ -143,6 +153,61 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
         )
         self.assertEqual(result["tier"], "ci_contract")
         self.assertEqual(result["reason"], "single_trusted_tier")
+        self.assertIs(result["ci_contract_changed"], True)
+
+    def test_ci_contract_is_transparent_with_each_single_product_tier(self):
+        for tier, path in self.representative.items():
+            if tier == "ci_contract":
+                continue
+            with self.subTest(tier=tier):
+                result = self.classify(
+                    ("M", ".github/forecasting-paths.ini"),
+                    ("M", path),
+                )
+                self.assertEqual(result["tier"], tier)
+                self.assertEqual(
+                    result["reason"], "single_product_tier_with_ci_contract"
+                )
+                self.assertIs(result["ci_contract_changed"], True)
+
+    def test_ghu_050_path_mix_selects_manual_prediction_with_ci_contract(self):
+        result = self.classify(
+            ("M", ".github/forecasting-paths.ini"),
+            ("M", ".github/workflows/forecasting-tests.yml"),
+            ("A", "configs/prediction/manual-independent-capture-v1/config.schema.json"),
+            ("A", "configs/prediction/manual-independent-capture-v1/example-config.json"),
+            (
+                "A",
+                "configs/prediction/manual-independent-capture-v1/terminal-artifact.schema.json",
+            ),
+            ("M", "docs/forecasting_ci_tiers.md"),
+            ("A", "docs/manual_independent_capture_v1.md"),
+            ("M", "scripts/ci/run_full_forecasting.py"),
+            ("A", "src/predictor/manual_independent_capture.py"),
+            ("M", "tests/ci/test_forecasting_change_classifier.py"),
+            ("A", "tests/test_manual_independent_capture.py"),
+        )
+        self.assertEqual(result["tier"], "manual_prediction")
+        self.assertIs(result["ci_contract_changed"], True)
+
+    def test_future_manual_path_registration_stays_focused(self):
+        future_path = "src/predictor/manual_isolated_executor.py"
+        future_rules = dict(self.rules)
+        future_rules["manual_prediction"] = (
+            *future_rules["manual_prediction"],
+            future_path,
+        )
+        result = CLASSIFIER.classify_changes(
+            [
+                CLASSIFIER.Change(
+                    status="M", paths=(".github/forecasting-paths.ini",)
+                ),
+                CLASSIFIER.Change(status="A", paths=(future_path,)),
+            ],
+            future_rules,
+        )
+        self.assertEqual(result["tier"], "manual_prediction")
+        self.assertIs(result["ci_contract_changed"], True)
 
     def test_same_focused_family_and_docs_are_compatible(self):
         for tier, path in self.representative.items():
@@ -151,16 +216,46 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
                 self.assertEqual(result["tier"], tier)
 
     def test_every_cross_tier_focused_combination_escalates(self):
-        for left, right in itertools.combinations(self.representative, 2):
+        product_tiers = {
+            tier: path
+            for tier, path in self.representative.items()
+            if tier != "ci_contract"
+        }
+        for left, right in itertools.combinations(product_tiers, 2):
             with self.subTest(left=left, right=right):
                 result = self.classify(
-                    ("M", self.representative[left]),
-                    ("M", self.representative[right]),
+                    ("M", product_tiers[left]),
+                    ("M", product_tiers[right]),
                 )
                 self.assertEqual(result["tier"], "full_forecasting")
                 self.assertEqual(
                     result["reason"], "incompatible_mixed_tiers_default_to_full"
                 )
+
+    def test_ci_contract_does_not_hide_two_product_tiers(self):
+        result = self.classify(
+            ("M", ".github/workflows/forecasting-tests.yml"),
+            ("M", "scripts/predict_market_form_residual.py"),
+            ("M", "scripts/ingest_results_for_date.py"),
+        )
+        self.assertEqual(result["tier"], "full_forecasting")
+        self.assertEqual(result["reason"], "incompatible_mixed_tiers_default_to_full")
+        self.assertIs(result["ci_contract_changed"], True)
+
+    def test_one_path_matching_two_product_rules_escalates(self):
+        overlapping_rules = dict(self.rules)
+        path = "src/predictor/manual_independent_capture.py"
+        overlapping_rules["official_results"] = (
+            *overlapping_rules["official_results"],
+            path,
+        )
+        result = CLASSIFIER.classify_changes(
+            [CLASSIFIER.Change(status="M", paths=(path,))],
+            overlapping_rules,
+        )
+        self.assertEqual(result["tier"], "full_forecasting")
+        self.assertEqual(result["reason"], "incompatible_mixed_tiers_default_to_full")
+        self.assertIs(result["ci_contract_changed"], False)
 
     def test_shared_core_mixed_with_focused_escalates(self):
         result = self.classify(
@@ -169,6 +264,16 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
         )
         self.assertEqual(result["tier"], "full_forecasting")
         self.assertEqual(result["reason"], "shared_or_high_risk_path_requires_full")
+
+    def test_full_path_escalates_even_with_ci_contract_and_one_product_tier(self):
+        result = self.classify(
+            ("M", ".github/workflows/forecasting-tests.yml"),
+            ("M", "scripts/predict_market_form_residual.py"),
+            ("M", "race_collection/source_admission.py"),
+        )
+        self.assertEqual(result["tier"], "full_forecasting")
+        self.assertEqual(result["reason"], "shared_or_high_risk_path_requires_full")
+        self.assertIs(result["ci_contract_changed"], True)
 
     def test_unknown_path_escalates(self):
         result = self.classify(("A", "new_subsystem/adapter.py"))
@@ -197,6 +302,9 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
         for change in (
             CLASSIFIER.Change(status="?", paths=("README.md",)),
             CLASSIFIER.Change(status="X", paths=("README.md",)),
+            CLASSIFIER.Change(status="M100", paths=("README.md",)),
+            CLASSIFIER.Change(status="R101", paths=("README.md", "docs/moved.md")),
+            CLASSIFIER.Change(status="R0000", paths=("README.md", "docs/moved.md")),
             CLASSIFIER.Change(status="M", paths=("../outside.py",)),
             CLASSIFIER.Change(status="M", paths=("/absolute.py",)),
         ):
@@ -240,6 +348,48 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
             )
             with self.assertRaises(CLASSIFIER.ClassificationError):
                 CLASSIFIER.load_rules(rules)
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                exit_code = CLASSIFIER.main(
+                    ["--base", "HEAD", "--head", "HEAD", "--rules", str(rules)]
+                )
+            self.assertEqual(exit_code, 0)
+            result = json.loads(stdout.getvalue())
+            self.assertEqual(result["tier"], "full_forecasting")
+            self.assertEqual(result["reason"], "classifier_error_defaults_to_full")
+            self.assertIs(result["ci_contract_changed"], False)
+
+    def test_github_outputs_include_exact_ci_contract_boolean(self):
+        result = self.classify(
+            ("M", ".github/forecasting-paths.ini"),
+            ("M", "scripts/predict_market_form_residual.py"),
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = Path(temp_dir) / "github-output"
+            CLASSIFIER.write_github_output(output, result)
+            self.assertEqual(
+                output.read_text(encoding="utf-8"),
+                "tier=manual_prediction\n"
+                "reason=single_product_tier_with_ci_contract\n"
+                "ci_contract_changed=true\n",
+            )
+
+    def test_force_full_writes_exact_safe_outputs(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output = Path(temp_dir) / "github-output"
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                exit_code = CLASSIFIER.main(
+                    ["--force-full", "--github-output", str(output)]
+                )
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(json.loads(stdout.getvalue())["tier"], "full_forecasting")
+            self.assertEqual(
+                output.read_text(encoding="utf-8"),
+                "tier=full_forecasting\n"
+                "reason=explicit_full_validation\n"
+                "ci_contract_changed=false\n",
+            )
 
     def test_workflow_preserves_stable_gate_and_full_escape_hatches(self):
         workflow = (ROOT / ".github/workflows/forecasting-tests.yml").read_text(
@@ -251,19 +401,109 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
             "workflow_dispatch:",
             "ci:full-forecasting",
             "--force-full",
-            "forecasting-ci-attestation-v2",
+            "forecasting-ci-attestation-v3",
             '"tier": tier',
-            '"${selected_command[@]}"',
+            "ci_contract_changed: ${{ steps.classify.outputs.ci_contract_changed }}",
+            'CI_CONTRACT_CHANGED: ${{ needs.classify.outputs.ci_contract_changed }}',
+            'run_command ci_contract "${ci_contract_command[@]}"',
+            'run_command "$FORECASTING_TIER" "${selected_command[@]}"',
+            'if [[ "$CI_CONTRACT_CHANGED" == "true"',
+            '"ci_contract_changed": ci_contract_changed',
+            '"commands": commands',
+            '"exit_code": exit_code',
+            '"log_sha256": hashlib.sha256(log.read_bytes()).hexdigest()',
+            "forecasting-command-manifest.tsv",
             'forecasting-command.txt',
             '--with PyYAML python scripts/ci/run_forecasting_ci_contract.py',
-            '"commit": subprocess.check_output',
-            '"tree": subprocess.check_output',
-            '"log_sha256": hashlib.sha256',
+            "commit = subprocess.check_output",
+            "tree = subprocess.check_output",
         ):
             with self.subTest(expected=expected):
                 self.assertIn(expected, workflow)
         for tier in CLASSIFIER.TIERS:
             self.assertIn(tier, workflow)
+        self.assertEqual(workflow.count("scripts/ci/run_full_forecasting.py"), 1)
+        self.assertLess(
+            workflow.index('run_command ci_contract "${ci_contract_command[@]}"'),
+            workflow.index(
+                'run_command "$FORECASTING_TIER" "${selected_command[@]}"'
+            ),
+        )
+
+    def test_mixed_command_attestation_binds_both_logs_to_exact_head_and_tree(self):
+        workflow = (ROOT / ".github/workflows/forecasting-tests.yml").read_text(
+            encoding="utf-8"
+        )
+        marker = "          python - <<'PY'\n"
+        start = workflow.index(marker) + len(marker)
+        source = textwrap.dedent(workflow[start : workflow.index("\n          PY", start)])
+        with tempfile.TemporaryDirectory() as temp_dir:
+            run_id = "123"
+            fake_bin = Path(temp_dir) / "bin"
+            fake_bin.mkdir()
+            fake_uv = fake_bin / "uv"
+            fake_uv.write_text("#!/bin/sh\nprintf 'uv-test 0.0\\n'\n", encoding="utf-8")
+            fake_uv.chmod(0o755)
+            evidence_dir = Path(temp_dir) / f"forecasting-acceptance-{run_id}"
+            evidence_dir.mkdir()
+            (evidence_dir / "forecasting-command-manifest.tsv").write_text(
+                "ci_contract\t0\tci_contract-command.txt\tci_contract.log\n"
+                "manual_prediction\t0\tmanual_prediction-command.txt\tmanual_prediction.log\n",
+                encoding="utf-8",
+            )
+            (evidence_dir / "ci_contract-command.txt").write_text(
+                "ci-contract-command\n", encoding="utf-8"
+            )
+            (evidence_dir / "manual_prediction-command.txt").write_text(
+                "manual-command\n", encoding="utf-8"
+            )
+            (evidence_dir / "ci_contract.log").write_text(
+                "ci contract passed\n", encoding="utf-8"
+            )
+            (evidence_dir / "manual_prediction.log").write_text(
+                "manual suite passed\n", encoding="utf-8"
+            )
+            (evidence_dir / "forecasting-command.txt").write_text(
+                "ci-contract-command\nmanual-command\n", encoding="utf-8"
+            )
+            (evidence_dir / "forecasting-suite.log").write_text(
+                "ci contract passed\nmanual suite passed\n", encoding="utf-8"
+            )
+            head = subprocess.check_output(
+                ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
+            ).strip()
+            tree = subprocess.check_output(
+                ["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT, text=True
+            ).strip()
+            env = {
+                **os.environ,
+                "CI_CONTRACT_CHANGED": "true",
+                "CLASSIFICATION_REASON": "single_product_tier_with_ci_contract",
+                "EXPECTED_HEAD": head,
+                "FORECASTING_TIER": "manual_prediction",
+                "GITHUB_RUN_ID": run_id,
+                "GITHUB_SHA": head,
+                "PATH": f"{fake_bin}:{os.environ['PATH']}",
+                "RUNNER_TEMP": temp_dir,
+                "SUITE_OUTCOME": "success",
+            }
+            subprocess.run([sys.executable, "-c", source], cwd=ROOT, env=env, check=True)
+            attestation = json.loads(
+                (evidence_dir / "forecasting-ci-attestation.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+        self.assertEqual(attestation["schema_version"], "forecasting-ci-attestation-v3")
+        self.assertIs(attestation["ci_contract_changed"], True)
+        self.assertEqual(attestation["uv"], "uv-test 0.0")
+        self.assertEqual(
+            [command["name"] for command in attestation["commands"]],
+            ["ci_contract", "manual_prediction"],
+        )
+        for command in attestation["commands"]:
+            self.assertEqual(command["commit"], head)
+            self.assertEqual(command["tree"], tree)
+            self.assertEqual(len(command["log_sha256"]), 64)
 
     def test_ci_contract_runner_has_only_named_fast_smokes(self):
         runner = (
