@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://greyhound-racing-collector.invalid/schemas/manual-independent-capture-v1/evidence-bundle.schema.json",
+  "title": "manual independent evidence bundle v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "contract_version", "implementation_version", "bundle_id", "safety", "authority_profile", "race", "race_identity_sha256", "runner_set", "runner_set_sha256", "timing", "attempt", "source", "normalized_odds", "producer", "implementation", "cleanup", "closure", "publication"],
+  "properties": {
+    "schema_version": {"const": "manual_independent_evidence_bundle_v1"},
+    "contract_version": {"const": "manual-independent-capture-v1"},
+    "implementation_version": {"const": "manual_independent_evidence_sealer_v1"},
+    "bundle_id": {"$ref": "#/$defs/sha256"},
+    "safety": {"$ref": "#/$defs/safety"},
+    "authority_profile": {"const": "manual_independent_capture_research_only_v1"},
+    "race": {"$ref": "#/$defs/race"},
+    "race_identity_sha256": {"$ref": "#/$defs/sha256"},
+    "runner_set": {"type": "array", "minItems": 1, "maxItems": 10, "items": {"$ref": "#/$defs/runner"}},
+    "runner_set_sha256": {"$ref": "#/$defs/sha256"},
+    "timing": {"$ref": "#/$defs/timing"},
+    "attempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attempt_count", "source_attempt_count"],
+      "properties": {"attempt_count": {"const": 1}, "source_attempt_count": {"const": 1}}
+    },
+    "source": {"$ref": "#/$defs/source"},
+    "normalized_odds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "odds_sha256"],
+      "properties": {
+        "path": {"const": "normalized/odds.json"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "odds_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "producer": {"$ref": "#/$defs/producer"},
+    "implementation": {"$ref": "#/$defs/implementation"},
+    "cleanup": {"$ref": "#/$defs/cleanup"},
+    "closure": {"$ref": "#/$defs/closure"},
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["protocol", "manifest_path"],
+      "properties": {
+        "protocol": {"const": "same_filesystem_fsync_atomic_directory_rename_v1"},
+        "manifest_path": {"const": "manifest.json"}
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "git_object": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "uuid": {"type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "timestamp": {"type": "string", "format": "date-time", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$"},
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["research_only", "canonical", "phase7_excluded", "phase7_eligible", "phase7_exclusion_reason"],
+      "properties": {
+        "research_only": {"const": true},
+        "canonical": {"const": false},
+        "phase7_excluded": {"const": true},
+        "phase7_eligible": {"const": false},
+        "phase7_exclusion_reason": {"const": "manual_research_only_noncanonical"}
+      }
+    },
+    "race": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "race_id", "race_date", "venue", "venue_slug", "race_number", "scheduled_start"],
+      "properties": {
+        "url": {"type": "string", "pattern": "^(?![\\s\\S]*[\\s\\u0000-\\u001f\\u007f-\\u009f])https://www\\.thedogs\\.com\\.au/racing/[\\s\\S]+$"},
+        "race_id": {"type": "string", "minLength": 1, "pattern": "^(?!\\s)(?![\\s\\S]*\\s$)(?![\\s\\S]*[\\u0000-\\u001f\\u007f-\\u009f])[\\s\\S]+$"},
+        "race_date": {"type": "string", "format": "date"},
+        "venue": {"type": "string", "minLength": 1, "pattern": "^(?!\\s)(?![\\s\\S]*\\s$)(?![\\s\\S]*[\\u0000-\\u001f\\u007f-\\u009f])[\\s\\S]+$"},
+        "venue_slug": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+        "race_number": {"type": "integer", "minimum": 1},
+        "scheduled_start": {"$ref": "#/$defs/timestamp"}
+      }
+    },
+    "runner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["box_number", "display_name", "identity", "source_native_runner_id"],
+      "properties": {
+        "box_number": {"type": "integer", "minimum": 1, "maximum": 10},
+        "display_name": {"type": "string", "minLength": 1, "pattern": "^(?![\\s\\S]*[\\u0000-\\u001f\\u007f-\\u009f])\\S(?:[\\s\\S]*\\S)?$"},
+        "identity": {"type": "string", "minLength": 1, "pattern": "^(?!.*[a-z])(?![\\s\\S]*\\s$)[\\u0021-\\u007e](?:[\\u0020-\\u007e]*[\\u0021-\\u007e])?$"},
+        "source_native_runner_id": {"anyOf": [{"type": "string", "minLength": 1, "pattern": "^(?![\\s\\S]*[\\u0000-\\u001f\\u007f-\\u009f])\\S(?:[\\s\\S]*\\S)?$"}, {"type": "null"}]}
+      }
+    },
+    "timing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capture_started_at", "readiness_checked_at", "capture_completed_at", "capture_timestamp", "source_timestamp", "minimum_prejump_margin_seconds", "final_prejump_margin_seconds"],
+      "properties": {
+        "capture_started_at": {"$ref": "#/$defs/timestamp"},
+        "readiness_checked_at": {"$ref": "#/$defs/timestamp"},
+        "capture_completed_at": {"$ref": "#/$defs/timestamp"},
+        "capture_timestamp": {"$ref": "#/$defs/timestamp"},
+        "source_timestamp": {"$ref": "#/$defs/timestamp"},
+        "minimum_prejump_margin_seconds": {"type": "integer", "minimum": 1, "maximum": 7200},
+        "final_prejump_margin_seconds": {"type": "integer", "minimum": 1}
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["content_class", "final_url", "status_code", "content_type", "metadata_sha256", "odds_parser", "parsed_odds_sha256", "raw_path", "bytes", "sha256"],
+      "properties": {
+        "content_class": {"enum": ["prejump_race_source", "prejump_form", "prejump_sidecar"]},
+        "final_url": {"type": "string", "format": "uri", "pattern": "^(?![\\s\\S]*[\\s\\u0000-\\u001f\\u007f-\\u009f])https://www\\.thedogs\\.com\\.au/racing/[\\s\\S]+$"},
+        "status_code": {"const": 200},
+        "content_type": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^(?!\\s)(?![\\s\\S]*\\s$)[\\u0020-\\u007e]+$"},
+        "metadata_sha256": {"$ref": "#/$defs/sha256"},
+        "odds_parser": {"enum": ["manual_fixture_csv_odds_v1", "manual_fixture_json_odds_v1"]},
+        "parsed_odds_sha256": {"$ref": "#/$defs/sha256"},
+        "raw_path": {"const": "source/raw.bin"},
+        "bytes": {"type": "integer", "minimum": 1, "maximum": 2097152},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_id", "request_id", "request_sha256", "terminal_path", "terminal_sha256", "config_sha256", "model_sha256"],
+      "properties": {
+        "run_id": {"$ref": "#/$defs/uuid"},
+        "request_id": {"$ref": "#/$defs/uuid"},
+        "request_sha256": {"$ref": "#/$defs/sha256"},
+        "terminal_path": {"const": "producer/terminal.json"},
+        "terminal_sha256": {"$ref": "#/$defs/sha256"},
+        "config_sha256": {"$ref": "#/$defs/sha256"},
+        "model_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "implementation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source_commit", "source_tree", "executor_sha256", "sealer_sha256", "config_schema_sha256", "terminal_schema_sha256", "evidence_bundle_schema_sha256", "evidence_manifest_schema_sha256"],
+      "properties": {
+        "source_commit": {"$ref": "#/$defs/git_object"},
+        "source_tree": {"$ref": "#/$defs/git_object"},
+        "executor_sha256": {"$ref": "#/$defs/sha256"},
+        "sealer_sha256": {"$ref": "#/$defs/sha256"},
+        "config_schema_sha256": {"$ref": "#/$defs/sha256"},
+        "terminal_schema_sha256": {"$ref": "#/$defs/sha256"},
+        "evidence_bundle_schema_sha256": {"$ref": "#/$defs/sha256"},
+        "evidence_manifest_schema_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pid", "pgid", "reason", "term_sent", "kill_sent", "leader_reaped", "process_group_absent", "confirmed", "cancellation_status"],
+      "properties": {
+        "pid": {"type": ["integer", "null"], "minimum": 1},
+        "pgid": {"type": ["integer", "null"], "minimum": 1},
+        "reason": {"type": "string", "minLength": 1, "pattern": "^[a-z0-9_]+$"},
+        "term_sent": {"type": "boolean"},
+        "kill_sent": {"type": "boolean"},
+        "leader_reaped": {"const": true},
+        "process_group_absent": {"const": true},
+        "confirmed": {"const": true},
+        "cancellation_status": {"const": "not_requested"}
+      }
+    },
+    "closure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bundle_closed", "outcome_accessed", "canonical_accessed", "canonical_write_claimed", "phase7_accessed", "phase7_eligible", "downstream_admissibility"],
+      "properties": {
+        "bundle_closed": {"const": true},
+        "outcome_accessed": {"const": false},
+        "canonical_accessed": {"const": false},
+        "canonical_write_claimed": {"const": false},
+        "phase7_accessed": {"const": false},
+        "phase7_eligible": {"const": false},
+        "downstream_admissibility": {"const": "research_only_noncanonical_phase7_excluded"}
+      }
+    }
+  }
+}

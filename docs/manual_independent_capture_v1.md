@@ -3,8 +3,10 @@
 `manual-independent-capture-v1` is an exact-race, research-only capture
 boundary. GHU-050 defines and validates the artifact contract. GHU-051 adds a
 fixture-only executor for its lock, path, process, timeout, cancellation, and
-terminal-artifact controls. It does not provide a live fetch implementation,
-scoring, UI, deployment, or runtime integration.
+terminal-artifact controls. GHU-052 adds an immutable atomic evidence seal and
+read-only verifier for terminal-success fixture captures with confirmed cleanup.
+The lane still does not provide a live fetch implementation, scoring, UI,
+deployment, or runtime integration.
 
 Every accepted configuration and terminal artifact is versioned, exact-field,
 canonically serializable, and validated by
@@ -63,11 +65,71 @@ reap proof are returned as `ManualCaptureExecution`; unconfirmed cleanup emits
 `PROCESS_REAP_UNCONFIRMED` and can never emit capture success.
 
 Fixture stdout is an exact-field, bounded child record. The parent accepts only
-the requested URL/race hash, one pre-jump source class, and a GHU-050-valid
-runner/odds set. It writes fixed members beneath the UUID run directory and
-writes `terminal.json` last, only after `validate_terminal_artifact` accepts the
-complete byte/hash binding. Tests—not production configuration—supply the
-fixture command. There is intentionally no CLI or default live/browser command.
+the requested URL/race hash, one pre-jump source class, final URL equal to the
+requested exact race, HTTP status `200`, a control-free content type, and a
+GHU-050-valid runner/odds set. The returned execution binds those response
+values and the exact source-body hash for the immediate GHU-052 seal. It writes
+fixed members beneath the UUID run directory and writes `terminal.json` last,
+only after `validate_terminal_artifact` accepts the complete byte/hash binding.
+Tests—not production configuration—supply the fixture command. There is
+intentionally no CLI or default live/browser command.
+
+## GHU-052 immutable evidence bundle
+
+GHU-052 was refreshed against merged GHU-051 master
+`47e76063cfa14d697a4f4805f75aeaf9d597762e` / tree
+`5cc7625500e0d84979de365e5155b45ef28df6af`. The older planning ticket named
+shared capture and scoring validators from its then-current base. The accepted
+implementation instead consumes only the isolated GHU-051 execution and the
+existing pure GHU-050 validator. It does not import a canonical receipt,
+database, autonomous collector, forward-corpus, scoring, or browser surface.
+
+`src/predictor/manual_independent_capture_sealer.py` accepts only
+`CAPTURE_READY` with one source attempt, no cancellation, and cleanup proving
+the leader reaped and process group absent. It re-reads canonical
+`terminal.json`, revalidates the exact config, protected-path set, trusted
+commit/tree/model/request/runner/odds expectations, and requires the run
+directory to be the UUID child of the configured isolated `runs` root. The
+actual source response must bind the same exact race URL and bytes, status 200,
+an allowed content type for its source class, and no target outcome-shaped
+JSON/CSV/HTML field. The fixture child protocol is
+`manual_independent_capture_child_fixture_v2`; its source bytes carry the odds
+that the sealer parses through a closed, versioned parser vocabulary.
+
+The final directory is:
+
+```text
+<run>/sealed-evidence/<bundle-sha256>/
+├── bundle.json
+├── manifest.json
+├── normalized/odds.json
+├── producer/terminal.json
+└── source/raw.bin
+```
+
+Raw source bytes are preserved verbatim. Normalized odds are canonical JSON and
+retain the exact ordered runner set, capture/source timestamps, runner hash, and
+odds hash. The bundle also binds the parser identity and a canonical hash of the
+box/name/odds rows re-derived from those preserved bytes; a source/envelope odds
+disagreement fails closed. `bundle.json` binds race URL/identity,
+venue/date/race/jump, capture
+start/end and final margin, one-attempt proof, response metadata and hash,
+cleanup status, GHU-050 config/model/producer identities, and SHA-256 identities
+for the executor, sealer, and all four versioned schemas. Both JSON schemas
+reject unknown fields and retain `research_only=true`, `canonical=false`, and
+the explicit Phase 7 exclusion.
+
+Publication takes a per-run isolated seal lock, removes only safe stale staging
+directories, writes every fixed member with exclusive no-follow opens and file
+`fsync`, writes the manifest last, makes the staged tree read-only, fsyncs its
+directories, and renames the complete staged directory within the same parent
+filesystem. It then fsyncs the parent directory. Readers accept only the final
+hash-named directory, require the exact closed member set, canonical JSON, and
+all manifest/member/relationship hashes, and reject symlinks, partial output,
+tampering, path escape, outcome leakage, or identity drift.
+
+An exact concurrent or later replay verifies and returns the identical bundle.
+Any disagreement fails closed and never replaces the existing directory.
 
 ## Terminal artifact
 
@@ -143,13 +205,12 @@ fields.
 
 ## Claims boundary and next ticket
 
-GHU-051 acceptance supports only: `the isolated executor is fixture-proven to
-perform one exact-race attempt without canonical or autonomous state access`.
+GHU-052 acceptance supports only: `fixture-proven sealed manual evidence`.
 It does not support live-source/browser success, prediction readiness, deployed
 runtime isolation, model quality, canonical coverage, Phase 7 eligibility,
 training, promotion, EV, staking, or betting.
 
-GHU-052 may begin only from an accepted exact GHU-051 executor diff and must add
-the separately reviewed immutable evidence seal and tamper/identity validation.
-The GHU-051 process result or a passing fixture alone is not sealed GHU-052
-evidence and is not scoreable, canonical, or Phase 7-admissible.
+GHU-053 may begin only from the accepted merged GHU-052 head and its reviewed
+exact tree, with the read-only verifier as its sole capture input. It must retain
+the current no-SQLite, no-result, research-only, canonical-false and Phase-7-
+excluded boundary; the presence of a sealed bundle is not scoring authority.
