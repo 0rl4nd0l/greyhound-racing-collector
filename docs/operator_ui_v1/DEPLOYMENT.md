@@ -44,6 +44,20 @@ complete live authority observation, but is not permission to install or start a
 The separate unit does not replace the existing UI, which remains available
 until an accepted deployment deliberately changes that state.
 
+## Independent manual research package
+
+`bin/operator-ui-deployment generate-manual` emits the separate
+`greyhound-manual-research.service` package for the GHU-054 bounded adapter.
+It is always generated with `MANUAL_RESEARCH_ENABLED=0`; this command does not
+enable, install, start, or inspect a service. The binding records only the
+manual operations/profile/runs/lock paths, explicit timeout and margin, exact
+source/model/config identities, and pinned executable. The generated unit
+places the repository-declared autonomous and canonical roots in
+`InaccessiblePaths`, grants writes only to the manual operations root, and
+uses control-group TERM/KILL cleanup. Protected roots are rejected when they
+alias or overlap manual paths. Any later activation requires separate
+deployment and runtime authority.
+
 ## Bind and access
 
 The default bind is `127.0.0.1:5055`. The generator accepts only an IP address

@@ -629,6 +629,17 @@ def _parser() -> argparse.ArgumentParser:
     generate.add_argument("--ui-version", default="operator-ui-v1"); generate.add_argument("--profile-id", default="repository-v1")
     generate.add_argument("--bind-address", default="127.0.0.1"); generate.add_argument("--port", type=int, default=5055); generate.add_argument("--enable", action="store_true", dest="enabled")
     generate.add_argument("--live-authority", type=Path)
+    manual = commands.add_parser("generate-manual")
+    for name in (
+        "source-root", "pinned-python", "manual-root", "browser-profile-root",
+        "manual-runs-root", "manual-lock", "model", "model-manifest", "config", "output-dir",
+    ):
+        manual.add_argument(f"--{name}", required=True, type=Path)
+    manual.add_argument("--source-commit", required=True)
+    manual.add_argument("--source-tree", required=True)
+    manual.add_argument("--timeout-seconds", type=int, default=900)
+    manual.add_argument("--margin-seconds", type=int, default=120)
+    manual.add_argument("--protected-path", action="append", required=True, metavar="NAME=PATH")
     serve = commands.add_parser("serve")
     serve.add_argument("--source-root", required=True, type=Path); serve.add_argument("--host", required=True); serve.add_argument("--port", required=True, type=int)
     return parser
@@ -636,6 +647,23 @@ def _parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    if args.command == "generate-manual":
+        from src.predictor.manual_research_deployment import generate_manual_package
+
+        values = vars(args)
+        raw_protected = values.pop("protected_path")
+        protected: dict[str, Path] = {}
+        for item in raw_protected:
+            name, separator, value = item.partition("=")
+            if not separator or name in protected:
+                raise DeploymentRejected("invalid --protected-path")
+            protected[name] = Path(value)
+        result = generate_manual_package(
+            **{key: value for key, value in values.items() if key != "command"},
+            protected_paths=protected,
+        )
+        print(json.dumps(result, sort_keys=True))
+        return 0
     if args.command == "serve":
         if os.environ.get("OPERATOR_UI_CONNECTED_MODE") != "1" or os.environ.get("OPERATOR_UI_R3_PROFILE") != "repository-v1":
             return 0
