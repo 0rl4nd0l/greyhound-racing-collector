@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://greyhound-racing-collector.invalid/schemas/market-form-residual-v1/scoring-core-output.schema.json",
+  "title": "market form residual canonical scoring core output v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "scoring_input_sha256", "race_id", "runner_set_sha256", "identities", "ranking", "predictions", "ranks"],
+  "properties": {
+    "schema_version": {"const": "market_form_residual_scoring_core_output_v1"},
+    "scoring_input_sha256": {"$ref": "#/$defs/sha256"}, "race_id": {"type": "string", "minLength": 1}, "runner_set_sha256": {"$ref": "#/$defs/sha256"},
+    "identities": {
+      "type": "object", "additionalProperties": false,
+      "required": ["model_id", "model_sha256", "manifest_sha256", "effective_state_schema", "effective_state_sha256", "config_sha256", "numeric_canonicalization_schema", "numeric_canonicalization_sha256"],
+      "properties": {
+        "model_id": {"type": "string", "minLength": 1}, "model_sha256": {"$ref": "#/$defs/sha256"}, "manifest_sha256": {"$ref": "#/$defs/sha256"}, "effective_state_schema": {"const": "market_form_residual_effective_state_v2"}, "effective_state_sha256": {"$ref": "#/$defs/sha256"}, "config_sha256": {"$ref": "#/$defs/sha256"}, "numeric_canonicalization_schema": {"const": "market_form_residual_numeric_canonicalization_v1"}, "numeric_canonicalization_sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "ranking": {"type": "object", "additionalProperties": false, "required": ["primary_probability", "tie_break"], "properties": {"primary_probability": {"const": "full_probability"}, "tie_break": {"const": "box_ascending"}}},
+    "predictions": {"type": "array", "minItems": 2, "maxItems": 10, "items": {"$ref": "#/$defs/prediction"}},
+    "ranks": {"type": "array", "minItems": 2, "maxItems": 10, "items": {"type": "object", "additionalProperties": false, "required": ["rank", "runner_id", "box_number"], "properties": {"rank": {"type": "integer", "minimum": 1}, "runner_id": {"type": "string", "minLength": 1}, "box_number": {"type": "integer", "minimum": 1, "maximum": 10}}}}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "probability": {"type": "number", "minimum": 0, "maximum": 1},
+    "prediction": {
+      "type": "object", "additionalProperties": false,
+      "required": ["runner_id", "box_number", "dog_name", "strict_win_odds", "market_probability", "residual_adjustment", "full_probability", "half_probability"],
+      "properties": {
+        "runner_id": {"type": "string", "minLength": 1}, "box_number": {"type": "integer", "minimum": 1, "maximum": 10}, "dog_name": {"type": "string", "minLength": 1}, "strict_win_odds": {"type": "number", "exclusiveMinimum": 1}, "market_probability": {"$ref": "#/$defs/probability"}, "residual_adjustment": {"type": "number"}, "full_probability": {"$ref": "#/$defs/probability"}, "half_probability": {"$ref": "#/$defs/probability"}
+      }
+    }
+  }
+}

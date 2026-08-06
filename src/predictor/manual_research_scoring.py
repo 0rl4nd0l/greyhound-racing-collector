@@ -38,6 +38,16 @@ from src.predictor.market_form_residual import (
     ResidualContractError,
     score_race,
 )
+from src.predictor.scoring_parity import (
+    NUMERIC_CANONICALIZATION_SHA256,
+    SCORING_CONFIG_SHA256,
+    SCORING_CORE_OUTPUT_SCHEMA,
+    SCORING_INPUT_SCHEMA,
+    ScoringParityRejected,
+    build_core_output,
+    build_scoring_input,
+    parity_binding,
+)
 
 EMBEDDED_FORM_SCHEMA = "manual_research_embedded_form_v1"
 PREDICTION_SCHEMA = "manual_research_prediction_v1"
@@ -110,6 +120,8 @@ class ResearchPredictionExpectations:
     effective_state_sha256: str
     implementation: ResearchScoringIdentity
     feature_sha256: str | None = None
+    scoring_input_sha256: str | None = None
+    scoring_core_output_sha256: str | None = None
 
 
 @dataclass(frozen=True)
@@ -445,7 +457,7 @@ def _feature_payload(
 def _prediction_payload(
     *, evidence: SealedManualEvidence, form_sha256: str, config_sha256: str, model: FrozenResidualModel,
     identity: Mapping[str, str], feature_payload: Mapping[str, Any], feature_sha256: str, record: Mapping[str, Any],
-    config: Mapping[str, Any], cutoff: datetime,
+    config: Mapping[str, Any], cutoff: datetime, scoring_parity: Mapping[str, str],
 ) -> dict[str, Any]:
     bundle = evidence.bundle
     normalized = evidence.normalized_odds
@@ -479,6 +491,8 @@ def _prediction_payload(
         "model_manifest_sha256": model.manifest_sha256,
         "feature_sha256": feature_sha256,
         "effective_state_sha256": record["effective_state_sha256"],
+        "scoring_input_sha256": scoring_parity["input_sha256"],
+        "scoring_core_output_sha256": scoring_parity["core_output_sha256"],
         "implementation": identity,
         "runner_set_sha256": bundle["runner_set_sha256"],
         "cutoff_timestamp": cutoff.isoformat(),
@@ -535,6 +549,7 @@ def _prediction_payload(
             "schema_version": config["schema_version"],
             "sha256": config_sha256,
         },
+        "scoring_parity": dict(scoring_parity),
         "implementation": dict(identity),
         "ranking": {"primary_probability": "full_probability", "tie_break": "box_ascending"},
         "predictions": ranked,
@@ -655,7 +670,7 @@ def _publish_prediction(
 
 def _validate_prediction_document(prediction: Mapping[str, Any], expected: ResearchPredictionExpectations) -> dict[str, Any]:
     if set(prediction) != {
-        "schema_version", "bundle_id", "safety", "scorer_id", "race", "race_identity_sha256", "runner_set_sha256", "timing", "evidence", "form", "features", "model", "config", "implementation", "ranking", "predictions"
+        "schema_version", "bundle_id", "safety", "scorer_id", "race", "race_identity_sha256", "runner_set_sha256", "timing", "evidence", "form", "features", "model", "config", "scoring_parity", "implementation", "ranking", "predictions"
     }:
         raise _reject("PREDICTION_SCHEMA_INVALID")
     if prediction["schema_version"] != PREDICTION_SCHEMA or prediction["safety"] != {
@@ -713,6 +728,33 @@ def _validate_prediction_document(prediction: Mapping[str, Any], expected: Resea
         raise _reject("CONFIG_BINDING_INVALID")
     if prediction["scorer_id"] != SCORER_VERSION or prediction["ranking"] != {"primary_probability": "full_probability", "tie_break": "box_ascending"}:
         raise _reject("PREDICTION_CONTRACT_INVALID")
+    parity = _exact(
+        prediction["scoring_parity"],
+        {
+            "input_schema_version",
+            "input_sha256",
+            "core_output_schema_version",
+            "core_output_sha256",
+            "config_sha256",
+            "numeric_canonicalization_sha256",
+        },
+        "scoring_parity",
+    )
+    if (
+        parity["input_schema_version"] != SCORING_INPUT_SCHEMA
+        or parity["core_output_schema_version"] != SCORING_CORE_OUTPUT_SCHEMA
+        or parity["config_sha256"] != SCORING_CONFIG_SHA256
+        or parity["numeric_canonicalization_sha256"] != NUMERIC_CANONICALIZATION_SHA256
+    ):
+        raise _reject("SCORING_PARITY_BINDING_INVALID")
+    _sha(parity["input_sha256"], "scoring_input_sha256")
+    _sha(parity["core_output_sha256"], "scoring_core_output_sha256")
+    _sha(parity["config_sha256"], "scoring_config_sha256")
+    _sha(parity["numeric_canonicalization_sha256"], "numeric_canonicalization_sha256")
+    if expected.scoring_input_sha256 is not None and parity["input_sha256"] != expected.scoring_input_sha256:
+        raise _reject("SCORING_PARITY_BINDING_INVALID")
+    if expected.scoring_core_output_sha256 is not None and parity["core_output_sha256"] != expected.scoring_core_output_sha256:
+        raise _reject("SCORING_PARITY_BINDING_INVALID")
     if not isinstance(prediction["predictions"], list) or len(prediction["predictions"]) < 2:
         raise _reject("PREDICTION_RUNNER_SET_INVALID")
     seen_boxes: set[int] = set()
@@ -852,6 +894,8 @@ def verify_research_prediction_bundle(bundle_dir: Path, *, output_root: Path, ex
         "model_manifest_sha256": validated["model"]["manifest_sha256"],
         "feature_sha256": validated["features"]["sha256"],
         "effective_state_sha256": validated["model"]["effective_state_sha256"],
+        "scoring_input_sha256": validated["scoring_parity"]["input_sha256"],
+        "scoring_core_output_sha256": validated["scoring_parity"]["core_output_sha256"],
         "implementation": validated["implementation"],
         "runner_set_sha256": validated["runner_set_sha256"],
         "cutoff_timestamp": validated["timing"]["sealed_cutoff_timestamp"],
@@ -936,16 +980,40 @@ def score_verified_manual_evidence(
                 "odds_capture_timestamp": evidence.bundle["timing"]["capture_timestamp"],
             }
         )
-    provenance = {
-        "race_id": evidence.bundle["race"]["race_id"],
-        "expected_runner_ids": sorted(runner_ids),
-        "runner_set_sha256": _scorer_runner_set_sha256(runner_ids),
-        "jump_timestamp": evidence.bundle["race"]["scheduled_start"],
-        "score_timestamp": evidence.bundle["timing"]["capture_timestamp"],
-    }
     try:
-        record = score_race(frozen_model, scorer_runners, provenance)
-    except ResidualContractError as exc:
+        scoring_input = build_scoring_input(
+            race_id=evidence.bundle["race"]["race_id"],
+            runner_set_sha256=_scorer_runner_set_sha256(runner_ids),
+            runners=[
+                {key: value for key, value in runner.items() if key != "race_id"}
+                for runner in scorer_runners
+            ],
+            cutoff_timestamp=cutoff.isoformat(),
+            capture_timestamp=evidence.bundle["timing"]["capture_timestamp"],
+            score_timestamp=evidence.bundle["timing"]["capture_timestamp"],
+            jump_timestamp=evidence.bundle["race"]["scheduled_start"],
+            model_sha256=frozen_model.model_sha256,
+            manifest_sha256=frozen_model.manifest_sha256,
+            effective_state_sha256=frozen_model.effective_state_sha256,
+            config_sha256=SCORING_CONFIG_SHA256,
+            scoring_parameters={
+                "full_strength": frozen_model.full_strength,
+                "half_strength": frozen_model.half_strength,
+                "residual_cap": frozen_model.residual_cap,
+                "within_race_centering": frozen_model.within_race_centering,
+                "market_offset": frozen_model.market_offset,
+                "normalization": frozen_model.normalization,
+            },
+        )
+    except ScoringParityRejected as exc:
+        raise _reject("SCORING_BLOCKED", reason=str(exc)) from exc
+    try:
+        record = score_race(
+            frozen_model, scoring_input.scorer_runners, scoring_input.provenance
+        )
+        core_output = build_core_output(scoring_input, record)
+        scoring_parity = parity_binding(scoring_input, core_output)
+    except (ResidualContractError, ScoringParityRejected) as exc:
         raise _reject("SCORING_BLOCKED", reason=str(exc)) from exc
     if record["schema_version"] != SHADOW_RECORD_SCHEMA:
         raise _reject("SCORING_SCHEMA_MISMATCH")
@@ -960,6 +1028,7 @@ def score_verified_manual_evidence(
         record=record,
         config=config,
         cutoff=cutoff,
+        scoring_parity=scoring_parity,
     )
     expected = ResearchPredictionExpectations(
         evidence_bundle_id=evidence.bundle["bundle_id"],
@@ -976,6 +1045,8 @@ def score_verified_manual_evidence(
         effective_state_sha256=record["effective_state_sha256"],
         implementation=scoring_identity,
         feature_sha256=feature_sha256,
+        scoring_input_sha256=scoring_parity["input_sha256"],
+        scoring_core_output_sha256=scoring_parity["core_output_sha256"],
     )
     destination, replayed = _publish_prediction(prediction, output_root=output_root, stage_hook=stage_hook)
     verified = verify_research_prediction_bundle(destination, output_root=output_root, expected=expected)

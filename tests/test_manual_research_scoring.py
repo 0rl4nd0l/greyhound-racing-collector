@@ -185,6 +185,8 @@ def _prediction_expected(result, *, form_bytes: bytes, config_bytes: bytes) -> R
         effective_state_sha256=row["model"]["effective_state_sha256"],
         implementation=SCORE_IDENTITY,
         feature_sha256=row["features"]["sha256"],
+        scoring_input_sha256=row["scoring_parity"]["input_sha256"],
+        scoring_core_output_sha256=row["scoring_parity"]["core_output_sha256"],
     )
 
 
@@ -210,6 +212,10 @@ def test_verified_fixture_scores_and_replays_byte_identically(tmp_path: Path):
     assert first.replayed is False
     assert second.replayed is True
     assert first.prediction["safety"] == sealed.bundle["safety"]
+    assert first.prediction["scoring_parity"]["input_schema_version"] == "market_form_residual_scoring_input_v1"
+    assert first.prediction["scoring_parity"]["core_output_schema_version"] == "market_form_residual_scoring_core_output_v1"
+    assert len(first.prediction["scoring_parity"]["input_sha256"]) == 64
+    assert len(first.prediction["scoring_parity"]["core_output_sha256"]) == 64
     assert all(0.0 <= row[field] <= 1.0 for row in first.prediction["predictions"] for field in ("market_probability", "half_probability", "full_probability"))
     assert [row["rank"] for row in first.prediction["predictions"]] == [1, 2]
     assert not any(key in first.prediction for key in ("ev", "stake", "bet", "outcome", "result"))

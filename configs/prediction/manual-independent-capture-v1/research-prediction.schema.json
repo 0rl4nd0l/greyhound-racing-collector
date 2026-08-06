@@ -4,7 +4,7 @@
   "title": "manual research prediction v1",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "bundle_id", "safety", "scorer_id", "race", "race_identity_sha256", "runner_set_sha256", "timing", "evidence", "form", "features", "model", "config", "implementation", "ranking", "predictions"],
+  "required": ["schema_version", "bundle_id", "safety", "scorer_id", "race", "race_identity_sha256", "runner_set_sha256", "timing", "evidence", "form", "features", "model", "config", "scoring_parity", "implementation", "ranking", "predictions"],
   "properties": {
     "schema_version": {"const": "manual_research_prediction_v1"},
     "bundle_id": {"$ref": "#/$defs/sha256"},
@@ -59,6 +59,18 @@
       "properties": {
         "schema_version": {"const": "manual_research_scoring_config_v1"},
         "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "scoring_parity": {
+      "type": "object", "additionalProperties": false,
+      "required": ["input_schema_version", "input_sha256", "core_output_schema_version", "core_output_sha256", "config_sha256", "numeric_canonicalization_sha256"],
+      "properties": {
+        "input_schema_version": {"const": "market_form_residual_scoring_input_v1"},
+        "input_sha256": {"$ref": "#/$defs/sha256"},
+        "core_output_schema_version": {"const": "market_form_residual_scoring_core_output_v1"},
+        "core_output_sha256": {"$ref": "#/$defs/sha256"},
+        "config_sha256": {"$ref": "#/$defs/sha256"},
+        "numeric_canonicalization_sha256": {"$ref": "#/$defs/sha256"}
       }
     },
     "implementation": {"$ref": "#/$defs/implementation"},
