@@ -10,8 +10,11 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import re
+import stat
 import subprocess
+import uuid
 from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
@@ -46,6 +49,9 @@ MANUAL_CONFIG_RELATIVE = Path(
     "configs/prediction/manual-independent-capture-v1/example-config.json"
 )
 PREDICTION_CONFIG_RELATIVE = Path("configs/prediction/manual-default.json")
+READINESS_SCHEMA_RELATIVE = Path(
+    "configs/prediction/manual-readiness-v1/scoring-readiness.schema.json"
+)
 MODEL_RELATIVE = Path("artifacts/frozen_models/market_form_residual_v1/model.json")
 MANIFEST_RELATIVE = Path(
     "artifacts/frozen_models/market_form_residual_v1/manifest.json"
@@ -107,6 +113,17 @@ GHU_PINNED_FILES = {
         "ops/systemd/manual-research-api.service.in",
     ),
 }
+_AUTHORITATIVE_PATHS = frozenset(
+    {
+        "race_collection/manual_scoring_readiness.py",
+        MANUAL_CONFIG_RELATIVE.as_posix(),
+        PREDICTION_CONFIG_RELATIVE.as_posix(),
+        READINESS_SCHEMA_RELATIVE.as_posix(),
+        MODEL_RELATIVE.as_posix(),
+        MANIFEST_RELATIVE.as_posix(),
+        *(path for paths in GHU_PINNED_FILES.values() for path in paths),
+    }
+)
 
 
 class ManualReadinessRejected(RuntimeError):
@@ -131,20 +148,85 @@ def _reject(code: str, **details: Any) -> ManualReadinessRejected:
 def _git_identity(repo_root: Path) -> tuple[str, str]:
     try:
         result = subprocess.run(
-            ["git", "-C", str(repo_root), "rev-parse", "HEAD", "HEAD^{tree}"],
+            [
+                "git",
+                "--no-optional-locks",
+                "-C",
+                str(repo_root),
+                "rev-parse",
+                "HEAD",
+                "HEAD^{tree}",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        tracked = subprocess.run(
+            [
+                "git",
+                "--no-optional-locks",
+                "-C",
+                str(repo_root),
+                "diff",
+                "--name-only",
+                "HEAD",
+                "--",
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        untracked = subprocess.run(
+            [
+                "git",
+                "--no-optional-locks",
+                "-C",
+                str(repo_root),
+                "ls-files",
+                "--others",
+                "--exclude-standard",
+            ],
             check=True,
             capture_output=True,
             text=True,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         raise _reject("GLOBAL_REPOSITORY_IDENTITY_UNAVAILABLE") from exc
+    dirty = {
+        path
+        for output in (tracked.stdout, untracked.stdout)
+        for path in output.splitlines()
+        if path
+    }
+    relevant_dirty = sorted(dirty & _AUTHORITATIVE_PATHS)
+    if relevant_dirty:
+        raise _reject("GLOBAL_REPOSITORY_DIRTY", paths=relevant_dirty)
     values = result.stdout.splitlines()
     if len(values) != 2 or not _GIT_RE.fullmatch(values[0]) or not _GIT_RE.fullmatch(values[1]):
         raise _reject("GLOBAL_REPOSITORY_IDENTITY_INVALID")
     return values[0], values[1]
 
 
-def _repo_bytes(repo_root: Path, relative: str) -> bytes:
+def _git_tree_bytes(repo_root: Path, source_commit: str, relative: str) -> bytes:
+    try:
+        result = subprocess.run(
+            [
+                "git",
+                "--no-optional-locks",
+                "-C",
+                str(repo_root),
+                "show",
+                f"{source_commit}:{relative}",
+            ],
+            check=True,
+            capture_output=True,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise _reject("GLOBAL_PINNED_IDENTITY_UNAVAILABLE", path=relative) from exc
+    return result.stdout
+
+
+def _repo_bytes(repo_root: Path, relative: str, source_commit: str) -> bytes:
     path = repo_root / relative
     try:
         if path.is_symlink() or not path.is_file() or path.resolve().relative_to(repo_root.resolve()) != Path(relative):
@@ -156,6 +238,8 @@ def _repo_bytes(repo_root: Path, relative: str) -> bytes:
         raise _reject("GLOBAL_PINNED_FILE_UNAVAILABLE", path=relative) from exc
     if not raw:
         raise _reject("GLOBAL_PINNED_FILE_EMPTY", path=relative)
+    if raw != _git_tree_bytes(repo_root, source_commit, relative):
+        raise _reject("GLOBAL_PINNED_IDENTITY_MISMATCH", path=relative)
     return raw
 
 
@@ -166,8 +250,7 @@ def _sha256(raw: bytes, field: str) -> str:
     return value
 
 
-def _pinned_lane_identity(repo_root: Path) -> dict[str, Any]:
-    source_commit, _ = _git_identity(repo_root)
+def _pinned_lane_identity(repo_root: Path, source_commit: str) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for ticket, paths in GHU_PINNED_FILES.items():
         try:
@@ -190,7 +273,7 @@ def _pinned_lane_identity(repo_root: Path) -> dict[str, Any]:
             raise _reject("GLOBAL_PINNED_IDENTITY_MISMATCH", ticket=ticket)
         members = []
         for relative in paths:
-            raw = _repo_bytes(repo_root, relative)
+            raw = _repo_bytes(repo_root, relative, source_commit)
             members.append({"path": relative, "bytes": len(raw), "sha256": _sha256(raw, relative)})
         result[ticket] = {
             "merge_commit": GHU_MERGE_COMMITS[ticket],
@@ -199,8 +282,10 @@ def _pinned_lane_identity(repo_root: Path) -> dict[str, Any]:
     return result
 
 
-def _read_pinned_config(repo_root: Path, relative: Path) -> tuple[Mapping[str, Any], str]:
-    raw = _repo_bytes(repo_root, relative.as_posix())
+def _read_pinned_config(
+    repo_root: Path, relative: Path, source_commit: str
+) -> tuple[Mapping[str, Any], str]:
+    raw = _repo_bytes(repo_root, relative.as_posix(), source_commit)
     try:
         value = parse_canonical_json(raw, max_bytes=256 * 1024)
     except Exception as exc:
@@ -230,9 +315,9 @@ def _reject_nonfinite(value: Any) -> None:
             _reject_nonfinite(item)
 
 
-def _model_identity(repo_root: Path) -> dict[str, Any]:
-    model_raw = _repo_bytes(repo_root, MODEL_RELATIVE.as_posix())
-    manifest_raw = _repo_bytes(repo_root, MANIFEST_RELATIVE.as_posix())
+def _model_identity(repo_root: Path, source_commit: str) -> dict[str, Any]:
+    model_raw = _repo_bytes(repo_root, MODEL_RELATIVE.as_posix(), source_commit)
+    manifest_raw = _repo_bytes(repo_root, MANIFEST_RELATIVE.as_posix(), source_commit)
     try:
         model = load_frozen_model(
             repo_root / MODEL_RELATIVE,
@@ -299,7 +384,7 @@ def _race_failure(exc: BaseException) -> tuple[str, str | None]:
     if isinstance(exc, CaptureOneRejected):
         detail = str(exc.details.get("reason") or "")
         if exc.code == "CURRENT_INDEX_PATH_UNSAFE":
-            return "SOURCE_PATH_UNSAFE", detail or None
+            return "GLOBAL_SOURCE_PATH_UNSAFE", detail or None
         if exc.code == "CURRENT_INDEX_SOURCE_MISSING":
             return "FORM_SOURCE_MISSING", detail or None
         if detail in {"race_identity_invalid", "race_id_mismatch_or_duplicate"}:
@@ -332,7 +417,43 @@ def _validate_source(source_raw: bytes, source_path: Path, evidence_root: Path) 
         raise _reject("GLOBAL_SOURCE_PACKET_UNSAFE_STATUS")
     if not isinstance(source.get("selected_races"), list) or not isinstance(source.get("selected_count"), int) or isinstance(source.get("selected_count"), bool) or source["selected_count"] != len(source["selected_races"]):
         raise _reject("GLOBAL_SOURCE_PACKET_SELECTION_INVALID")
-    if not isinstance(source.get("sidecar_metadata_coverage"), Mapping) or not isinstance(source["sidecar_metadata_coverage"].get("races"), list):
+    coverage = source.get("sidecar_metadata_coverage")
+    required_coverage_fields = {
+        "schema_version",
+        "status",
+        "selected_race_count",
+        "accepted_selected_csv_count",
+        "safe_weather_race_count",
+        "safe_track_condition_race_count",
+        "safe_both_weather_track_race_count",
+        "safe_expert_form_race_count",
+        "safe_all_weather_track_expert_form_race_count",
+        "races",
+    }
+    if (
+        not isinstance(coverage, Mapping)
+        or coverage.get("schema_version") != "prejump_sidecar_metadata_coverage_v1"
+        or not required_coverage_fields <= set(coverage)
+        or not isinstance(coverage.get("races"), list)
+        or coverage.get("selected_race_count") != source["selected_count"]
+        or len(coverage["races"]) != source["selected_count"]
+        or coverage.get("status")
+        not in {"READY", "PARTIAL", "DATA_MISSING", "NOT_REQUESTED_NO_SELECTED_RACES"}
+        or any(
+            not isinstance(coverage.get(field), int)
+            or isinstance(coverage.get(field), bool)
+            or coverage[field] < 0
+            for field in required_coverage_fields - {"schema_version", "status", "races"}
+        )
+        or any(
+            not isinstance(row, Mapping)
+            or not {"race_url", "csv_path", "sidecar_path"} <= set(row)
+            or not isinstance(row.get("race_url"), (str, type(None)))
+            or not isinstance(row.get("csv_path"), (str, type(None)))
+            or not isinstance(row.get("sidecar_path"), (str, type(None)))
+            for row in coverage["races"]
+        )
+    ):
         raise _reject("GLOBAL_SOURCE_PACKET_COVERAGE_INVALID")
     try:
         generated = datetime.fromisoformat(str(source["generated_at"]))
@@ -364,10 +485,41 @@ def _validate_source(source_raw: bytes, source_path: Path, evidence_root: Path) 
     return source
 
 
+def _validate_global_packet_identities(selected: list[Any]) -> None:
+    tokens: dict[str, tuple[int, str]] = {}
+    urls: dict[str, int] = {}
+    for index, raw in enumerate(selected):
+        if not isinstance(raw, Mapping):
+            continue
+        race_id = raw.get("race_id")
+        race_url = raw.get("race_url")
+        aliases = raw.get("race_id_aliases")
+        if (
+            not isinstance(race_id, str)
+            or not isinstance(race_url, str)
+            or not isinstance(aliases, list)
+            or any(not isinstance(alias, str) for alias in aliases)
+        ):
+            continue
+        if race_url in urls and urls[race_url] != index:
+            raise _reject("GLOBAL_PACKET_IDENTITY_AMBIGUOUS")
+        urls[race_url] = index
+        for token in [race_id, *aliases]:
+            previous = tokens.get(token)
+            if previous is not None and previous[0] != index:
+                raise _reject("GLOBAL_PACKET_IDENTITY_AMBIGUOUS")
+            tokens[token] = (index, race_url)
+
+
 def _global_identity(repo_root: Path) -> dict[str, Any]:
     source_commit, source_tree = _git_identity(repo_root)
-    manual_config, manual_config_sha = _read_pinned_config(repo_root, MANUAL_CONFIG_RELATIVE)
-    prediction_config, prediction_config_sha = _read_pinned_config(repo_root, PREDICTION_CONFIG_RELATIVE)
+    _repo_bytes(repo_root, READINESS_SCHEMA_RELATIVE.as_posix(), source_commit)
+    manual_config, manual_config_sha = _read_pinned_config(
+        repo_root, MANUAL_CONFIG_RELATIVE, source_commit
+    )
+    prediction_config, prediction_config_sha = _read_pinned_config(
+        repo_root, PREDICTION_CONFIG_RELATIVE, source_commit
+    )
     if (
         manual_config.get("schema_version") != "manual_independent_capture_config_v1"
         or manual_config.get("contract_version") != "manual-independent-capture-v1"
@@ -387,7 +539,7 @@ def _global_identity(repo_root: Path) -> dict[str, Any]:
         raise _reject("GLOBAL_CONFIG_CONTRACT_MISMATCH")
     return {
         "repository": {"commit": source_commit, "tree": source_tree},
-        "model": _model_identity(repo_root),
+        "model": _model_identity(repo_root, source_commit),
         "config": {
             "manual_capture": {"path": MANUAL_CONFIG_RELATIVE.as_posix(), "sha256": manual_config_sha},
             "prediction": {"path": PREDICTION_CONFIG_RELATIVE.as_posix(), "sha256": prediction_config_sha},
@@ -398,8 +550,120 @@ def _global_identity(repo_root: Path) -> dict[str, Any]:
             "sha256": SCORING_CONFIG_SHA256,
             "numeric_canonicalization_sha256": NUMERIC_CANONICALIZATION_SHA256,
         },
-        "ghu_050_056": _pinned_lane_identity(repo_root),
+        "ghu_050_056": _pinned_lane_identity(repo_root, source_commit),
     }
+
+
+def _read_prior_readiness_bytes(
+    index_path: Path, *, evidence_root: Path, retained: _RetainedSafeFiles
+) -> tuple[bool, bytes | None]:
+    root = evidence_root.absolute()
+    target = index_path.absolute()
+    try:
+        relative = target.relative_to(root)
+    except ValueError as exc:
+        raise _reject("GLOBAL_SOURCE_PATH_UNSAFE") from exc
+    if not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
+        raise _reject("GLOBAL_SOURCE_PATH_UNSAFE")
+    try:
+        named = target.lstat()
+    except FileNotFoundError:
+        return False, None
+    except OSError as exc:
+        raise _reject("GLOBAL_SOURCE_PATH_UNSAFE") from exc
+    if stat.S_ISLNK(named.st_mode) or not stat.S_ISREG(named.st_mode):
+        raise _reject("GLOBAL_SOURCE_PATH_UNSAFE")
+    try:
+        return True, retained.read(
+            target, missing_code="GLOBAL_READINESS_PRIOR_UNAVAILABLE"
+        )
+    except CaptureOneRejected as exc:
+        raise _reject("GLOBAL_READINESS_PRIOR_UNAVAILABLE") from exc
+
+
+def _restore_readiness_bytes(
+    parent_fd: int, target_name: str, prior_exists: bool, prior_raw: bytes | None
+) -> None:
+    if not prior_exists:
+        try:
+            os.unlink(target_name, dir_fd=parent_fd)
+        except FileNotFoundError:
+            pass
+        os.fsync(parent_fd)
+        return
+    if prior_raw is None:
+        raise OSError("missing prior readiness bytes")
+    temporary = f".{target_name}.{os.getpid()}.{uuid.uuid4().hex}.rollback"
+    descriptor = os.open(
+        temporary,
+        os.O_WRONLY
+        | os.O_CREAT
+        | os.O_EXCL
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+        dir_fd=parent_fd,
+    )
+    try:
+        written = 0
+        while written < len(prior_raw):
+            written += os.write(descriptor, prior_raw[written:])
+        os.fsync(descriptor)
+        os.replace(
+            temporary,
+            target_name,
+            src_dir_fd=parent_fd,
+            dst_dir_fd=parent_fd,
+        )
+        os.fsync(parent_fd)
+    finally:
+        os.close(descriptor)
+        try:
+            os.unlink(temporary, dir_fd=parent_fd)
+        except FileNotFoundError:
+            pass
+
+
+def _restore_readiness_path(
+    index_path: Path,
+    *,
+    evidence_root: Path,
+    prior_exists: bool,
+    prior_raw: bytes | None,
+) -> None:
+    root = evidence_root.absolute()
+    target = index_path.absolute()
+    relative = target.relative_to(root)
+    if not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
+        raise OSError("unsafe readiness rollback path")
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_CLOEXEC", 0)
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    descriptors = [os.open(root, flags)]
+    try:
+        for component in relative.parts[:-1]:
+            descriptors.append(os.open(component, flags, dir_fd=descriptors[-1]))
+        _restore_readiness_bytes(
+            descriptors[-1], relative.parts[-1], prior_exists, prior_raw
+        )
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+
+
+def _global_report_reason(exc: BaseException) -> str:
+    if isinstance(exc, ManualReadinessRejected):
+        return exc.code
+    if isinstance(exc, CaptureOneRejected):
+        if exc.code == "CURRENT_INDEX_PATH_UNSAFE":
+            return "GLOBAL_SOURCE_PATH_UNSAFE"
+        if exc.code == "CURRENT_INDEX_SIZE_INVALID":
+            return "GLOBAL_SOURCE_PACKET_INVALID"
+        return exc.code
+    return type(exc).__name__
 
 
 def publish_manual_scoring_readiness_index(
@@ -430,11 +694,15 @@ def publish_manual_scoring_readiness_index(
         source_path = Path(source_refresh_report_path).absolute()
         identities = _global_identity(Path(repo_root or Path(__file__).resolve().parents[1]).absolute())
         with _RetainedSafeFiles(root) as retained:
+            prior_exists, prior_raw = _read_prior_readiness_bytes(
+                index_path, evidence_root=root, retained=retained
+            )
             source_raw = retained.read(source_path, missing_code="GLOBAL_SOURCE_PACKET_UNAVAILABLE")
             source = _validate_source(source_raw, source_path, root)
             selected = source["selected_races"]
             if len(selected) > max_races:
                 raise _reject("GLOBAL_SELECTION_LIMIT_EXCEEDED")
+            _validate_global_packet_identities(selected)
             minimum_margin = int(identities["config"]["minimum_prejump_margin_seconds"])
             eligible: list[dict[str, Any]] = []
             exclusions: list[dict[str, Any]] = []
@@ -509,6 +777,8 @@ def publish_manual_scoring_readiness_index(
                     TypeError,
                     ValueError,
                 ) as exc:
+                    if isinstance(exc, CaptureOneRejected) and exc.code == "CURRENT_INDEX_PATH_UNSAFE":
+                        raise _reject("GLOBAL_SOURCE_PATH_UNSAFE") from exc
                     code, detail = _race_failure(exc)
                     if code.startswith("GLOBAL_"):
                         raise
@@ -537,7 +807,26 @@ def publish_manual_scoring_readiness_index(
                 "races": eligible,
                 "exclusions": exclusions,
             }
-            _atomic_replace_canonical(index_path, packet, evidence_root=root)
+            try:
+                _atomic_replace_canonical(
+                    index_path,
+                    packet,
+                    evidence_root=root,
+                    _on_replace_failure=lambda parent_fd, target_name: _restore_readiness_bytes(
+                        parent_fd, target_name, prior_exists, prior_raw
+                    ),
+                )
+            except (CaptureOneRejected, OSError, TypeError, ValueError):
+                try:
+                    _restore_readiness_path(
+                        index_path,
+                        evidence_root=root,
+                        prior_exists=prior_exists,
+                        prior_raw=prior_raw,
+                    )
+                except OSError as rollback_error:
+                    del rollback_error
+                raise
             packet_raw = canonical_bytes(packet)
     except (
         AttributeError,
@@ -549,7 +838,7 @@ def publish_manual_scoring_readiness_index(
         TypeError,
         ValueError,
     ) as exc:
-        report["reason"] = exc.code if isinstance(exc, ManualReadinessRejected) else type(exc).__name__
+        report["reason"] = _global_report_reason(exc)
         return report
     report.update(
         {

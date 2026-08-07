@@ -1058,6 +1058,7 @@ def _v2_runner_rows(
 def _atomic_replace_canonical(
     path: Path, payload: Mapping[str, Any], *, evidence_root: Path,
     _pre_replace: Callable[[], None] | None = None,
+    _on_replace_failure: Callable[[int, str], None] | None = None,
 ) -> None:
     root = evidence_root.absolute()
     target = path.absolute()
@@ -1100,8 +1101,8 @@ def _atomic_replace_canonical(
             identities.append(opened)
         identities[:] = [os.fstat(retained) for retained in descriptors]
         parent_fd = descriptors[-1]
-        parent_identity = identities[-1]
         temporary = f".{relative.parts[-1]}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
+        replaced = False
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
         flags |= getattr(os, "O_NOFOLLOW", 0)
         descriptor = os.open(temporary, flags, 0o600, dir_fd=parent_fd)
@@ -1126,6 +1127,7 @@ def _atomic_replace_canonical(
                 identities[-1] = os.fstat(parent_fd)
                 _recheck_directory_chain(root_parent_fd, root_name, relative.parts[:-1], descriptors, identities, root_parent_identity, path)
             os.replace(temporary, relative.parts[-1], src_dir_fd=parent_fd, dst_dir_fd=parent_fd)
+            replaced = True
             identities[-1] = os.fstat(parent_fd)
             published = os.stat(relative.parts[-1], dir_fd=parent_fd, follow_symlinks=False)
             published_opened = os.fstat(descriptor)
@@ -1143,6 +1145,13 @@ def _atomic_replace_canonical(
             if _retained_read_identity(published) != _retained_read_identity(published_identity) or _retained_read_identity(os.fstat(descriptor)) != _retained_read_identity(published_identity):
                 raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", path=str(path), reason="publish_final_mutated")
             _recheck_directory_chain(root_parent_fd, root_name, relative.parts[:-1], descriptors, identities, root_parent_identity, path)
+        except (CaptureOneRejected, OSError, TypeError, ValueError):
+            if replaced and _on_replace_failure is not None:
+                try:
+                    _on_replace_failure(parent_fd, relative.parts[-1])
+                except OSError as rollback_error:
+                    del rollback_error
+            raise
         finally:
             os.close(descriptor)
             try:

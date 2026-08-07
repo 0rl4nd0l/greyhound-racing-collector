@@ -1,18 +1,21 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, FormatChecker
 
+import race_collection.synchronous_manual_capture as capture
 from race_collection.manual_scoring_readiness import (
     GHU_MERGE_COMMITS,
     READINESS_SCHEMA,
     manual_scoring_readiness_index_path,
     publish_manual_scoring_readiness_index,
 )
+from race_collection.synchronous_manual_capture import publish_current_race_index
 from src.predictor.on_demand import canonical_bytes
 
 NOW = datetime.fromisoformat("2026-08-07T10:00:00+10:00")
@@ -115,6 +118,16 @@ def _source_files(root: Path, race: dict, *, bad_csv: bool = False) -> dict:
     return {"race_url": race["race_url"], "csv_path": str(csv_path), "sidecar_path": str(sidecar_path)}
 
 
+def _missing_coverage(race: dict) -> dict:
+    return {
+        "race_id": race["race_id"],
+        "race_url": race["race_url"],
+        "csv_path": None,
+        "sidecar_path": None,
+        "sidecar_status": "accepted_csv_missing",
+    }
+
+
 def _write_source(root: Path, races: list[dict], coverage: list[dict], *, status: str = "METADATA_COVERAGE_INCOMPLETE") -> Path:
     source = root / "reports" / "odds_capture_refresh_report.json"
     source.parent.mkdir(parents=True, exist_ok=True)
@@ -128,6 +141,14 @@ def _write_source(root: Path, races: list[dict], coverage: list[dict], *, status
                 "selected_races": races,
                 "sidecar_metadata_coverage": {
                     "schema_version": "prejump_sidecar_metadata_coverage_v1",
+                    "status": "PARTIAL" if status != "SUCCESS" else "READY",
+                    "selected_race_count": len(races),
+                    "accepted_selected_csv_count": sum(1 for row in coverage if row.get("csv_path")),
+                    "safe_weather_race_count": 0,
+                    "safe_track_condition_race_count": 0,
+                    "safe_both_weather_track_race_count": 0,
+                    "safe_expert_form_race_count": 0,
+                    "safe_all_weather_track_expert_form_race_count": 0,
                     "races": coverage,
                 },
             }
@@ -161,7 +182,7 @@ def test_mixed_metadata_packet_publishes_only_race_with_capture_prerequisites(tm
     root = tmp_path / "evidence"
     first = _race(1)
     second = _race(2, jump=NOW + timedelta(minutes=25))
-    coverage = [_source_files(root, first)]
+    coverage = [_source_files(root, first), _missing_coverage(second)]
     source = _write_source(root, [first, second], coverage)
 
     result = _publish(tmp_path, source, monkeypatch)
@@ -172,6 +193,14 @@ def test_mixed_metadata_packet_publishes_only_race_with_capture_prerequisites(tm
     assert [row["race_id"] for row in packet["races"]] == [first["race_id"]]
     assert packet["races"][0]["odds"]["status"] == "PENDING_GHU_051"
     assert packet["exclusions"][0]["reason_code"] == "FORM_SOURCE_MISSING"
+    legacy = publish_current_race_index(
+        state_path=root / "shadow_autopilot_daemon_runtime" / "odds_capture_state.json",
+        evidence_root=root,
+        source_refresh_report_path=source,
+        run_id="legacy-incomplete",
+    )
+    assert legacy["status"] == "REJECTED"
+    assert legacy["reason"] == "CURRENT_INDEX_SOURCE_INVALID"
 
 
 @pytest.mark.parametrize(
@@ -234,9 +263,10 @@ def test_global_ambiguous_identity_preserves_prior_readiness_bytes(tmp_path, mon
     first = _race(1)
     second = _race(2, url=first["race_url"].replace("/1", "/2"))
     second["race_id"] = first["race_id"]
-    source = _write_source(root, [first, second], [])
-    state = root / "runtime" / "state.json"
-    index = manual_scoring_readiness_index_path(state)
+    source = _write_source(
+        root, [first, second], [_missing_coverage(first), _missing_coverage(second)]
+    )
+    index = _published_index(tmp_path)
     index.parent.mkdir(parents=True)
     prior = b"prior-readiness-bytes"
     index.write_bytes(prior)
@@ -252,14 +282,18 @@ def test_atomic_publication_failure_preserves_prior_readiness_bytes(tmp_path, mo
     root = tmp_path / "evidence"
     race = _race(1)
     source = _write_source(root, [race], [_source_files(root, race)], status="SUCCESS")
-    state = root / "runtime" / "state.json"
-    index = manual_scoring_readiness_index_path(state)
+    index = _published_index(tmp_path)
     index.parent.mkdir(parents=True)
     prior = b"prior-readiness-bytes"
     index.write_bytes(prior)
+    def partial_replace(path, _payload, *, evidence_root, **_kwargs):
+        del evidence_root
+        Path(path).write_bytes(b"new")
+        raise OSError("atomic failure after replace")
+
     monkeypatch.setattr(
         "race_collection.manual_scoring_readiness._atomic_replace_canonical",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("atomic failure")),
+        partial_replace,
     )
 
     result = _publish(tmp_path, source, monkeypatch)
@@ -278,6 +312,158 @@ def test_readiness_packet_matches_own_schema_and_does_not_change_parity_hashes(t
     packet_path = _published_index(tmp_path)
     packet = json.loads(packet_path.read_bytes())
     schema = json.loads((ROOT / "configs/prediction/manual-readiness-v1/scoring-readiness.schema.json").read_bytes())
-    Draft202012Validator(schema).validate(packet)
+    Draft202012Validator(schema, format_checker=FormatChecker()).validate(packet)
     assert packet["schema_version"] == READINESS_SCHEMA
     assert packet["safety"]["canonical"] is False
+
+
+def test_real_global_identity_rejects_corrupt_pinned_member_and_preserves_prior_bytes(tmp_path):
+    clone = tmp_path / "repo"
+    subprocess.run(
+        ["git", "clone", "--no-local", str(ROOT), str(clone)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    member = clone / "src/predictor/manual_independent_capture.py"
+    member.write_bytes(member.read_bytes() + b"\ncorrupt\n")
+    root = tmp_path / "evidence"
+    source = _write_source(root, [], [])
+    index = _published_index(tmp_path)
+    state = root / "shadow_autopilot_daemon_runtime" / "odds_capture_state.json"
+    index.parent.mkdir(parents=True)
+    prior = b"exact-prior-readiness-bytes"
+    index.write_bytes(prior)
+
+    result = publish_manual_scoring_readiness_index(
+        state_path=state,
+        evidence_root=root,
+        source_refresh_report_path=source,
+        now=NOW,
+        repo_root=clone,
+    )
+
+    assert result["status"] == "REJECTED"
+    assert result["reason"] in {
+        "GLOBAL_REPOSITORY_DIRTY",
+        "GLOBAL_PINNED_IDENTITY_MISMATCH",
+    }
+    assert index.read_bytes() == prior
+
+
+def test_global_tampered_coverage_schema_preserves_prior_bytes(tmp_path, monkeypatch):
+    root = tmp_path / "evidence"
+    race = _race(1)
+    source = _write_source(root, [race], [_missing_coverage(race)])
+    payload = json.loads(source.read_bytes())
+    payload["sidecar_metadata_coverage"]["schema_version"] = "TAMPERED"
+    source.write_bytes(canonical_bytes(payload))
+    index = _published_index(tmp_path)
+    index.parent.mkdir(parents=True)
+    prior = b"exact-prior-readiness-bytes"
+    index.write_bytes(prior)
+
+    result = _publish(tmp_path, source, monkeypatch)
+
+    assert result["status"] == "REJECTED"
+    assert result["reason"] == "GLOBAL_SOURCE_PACKET_COVERAGE_INVALID"
+    assert index.read_bytes() == prior
+
+
+def test_unsafe_race_source_path_is_global_and_preserves_prior_bytes(tmp_path, monkeypatch):
+    root = tmp_path / "evidence"
+    good = _race(1)
+    bad = _race(2, jump=NOW + timedelta(minutes=25))
+    coverage = [
+        _source_files(root, good),
+        {
+            "race_url": bad["race_url"],
+            "csv_path": "../outside.csv",
+            "sidecar_path": "../outside.csv.metadata.json",
+        },
+    ]
+    source = _write_source(root, [good, bad], coverage)
+    index = _published_index(tmp_path)
+    index.parent.mkdir(parents=True)
+    prior = b"exact-prior-readiness-bytes"
+    index.write_bytes(prior)
+
+    result = _publish(tmp_path, source, monkeypatch)
+
+    assert result["status"] == "REJECTED"
+    assert result["reason"] == "GLOBAL_SOURCE_PATH_UNSAFE"
+    assert index.read_bytes() == prior
+
+
+def test_cross_race_alias_collision_is_global_and_preserves_prior_bytes(tmp_path, monkeypatch):
+    root = tmp_path / "evidence"
+    first = _race(1)
+    second = _race(2, jump=NOW + timedelta(minutes=25))
+    second["race_id_aliases"] = [first["race_id"]]
+    coverage = [_missing_coverage(first), _missing_coverage(second)]
+    source = _write_source(root, [first, second], coverage)
+    index = _published_index(tmp_path)
+    index.parent.mkdir(parents=True)
+    prior = b"exact-prior-readiness-bytes"
+    index.write_bytes(prior)
+
+    result = _publish(tmp_path, source, monkeypatch)
+
+    assert result["status"] == "REJECTED"
+    assert result["reason"] == "GLOBAL_PACKET_IDENTITY_AMBIGUOUS"
+    assert index.read_bytes() == prior
+
+
+def test_post_replace_atomic_failure_rolls_back_exact_prior_bytes(tmp_path, monkeypatch):
+    root = tmp_path / "evidence"
+    race = _race(1)
+    source = _write_source(root, [race], [_source_files(root, race)], status="SUCCESS")
+    index = _published_index(tmp_path)
+    index.parent.mkdir(parents=True)
+    prior = b"exact-prior-readiness-bytes"
+    index.write_bytes(prior)
+    calls = 0
+    real_fsync = capture.os.fsync
+
+    def fail_after_replace(fd):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("post-replace fsync failure")
+        return real_fsync(fd)
+
+    monkeypatch.setattr(capture.os, "fsync", fail_after_replace)
+
+    result = _publish(tmp_path, source, monkeypatch)
+
+    assert result["status"] == "REJECTED"
+    assert result["reason"] == "OSError"
+    assert index.read_bytes() == prior
+
+
+def test_pr125_golden_hashes_are_explicitly_recorded():
+    golden = {
+        "input": "030625e0d9123eeed8b622bf7b418472ce531ba06f94d793ccdc61b3cd1f46b6",
+        "core": "e3dab9dc3abe3d4385abf6ca309b313fbfd83b7f867c7985abe47dfa120715f1",
+    }
+    assert golden == {
+        "input": "030625e0d9123eeed8b622bf7b418472ce531ba06f94d793ccdc61b3cd1f46b6",
+        "core": "e3dab9dc3abe3d4385abf6ca309b313fbfd83b7f867c7985abe47dfa120715f1",
+    }
+    changed = subprocess.run(
+        [
+            "git",
+            "diff",
+            "--name-only",
+            "5e9a370477a905a67bdcb26c9b9315ef0050b362",
+            "HEAD",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    assert not {
+        "src/predictor/scoring_parity.py",
+        "configs/prediction/market-form-residual-v1/scoring-input.schema.json",
+        "configs/prediction/market-form-residual-v1/scoring-core-output.schema.json",
+    } & set(changed)
