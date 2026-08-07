@@ -11,6 +11,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 import race_collection.synchronous_manual_capture as capture
 from race_collection.manual_scoring_readiness import (
     GHU_MERGE_COMMITS,
+    READINESS_AUTHORITATIVE_FILES,
     READINESS_SCHEMA,
     manual_scoring_readiness_index_path,
     publish_manual_scoring_readiness_index,
@@ -25,6 +26,12 @@ ROOT = Path(__file__).resolve().parents[2]
 def _identity() -> dict:
     return {
         "repository": {"commit": "1" * 40, "tree": "2" * 40},
+        "readiness_authoritative": {
+            "members": [
+                {"path": path, "bytes": 1, "sha256": "b" * 64}
+                for path in READINESS_AUTHORITATIVE_FILES
+            ]
+        },
         "model": {
             "model_id": "market_form_residual_v1",
             "model_sha256": "3" * 64,
@@ -278,6 +285,28 @@ def test_global_ambiguous_identity_preserves_prior_readiness_bytes(tmp_path, mon
     assert index.read_bytes() == prior
 
 
+@pytest.mark.parametrize("malformed", [None, 7, [], {"race_id": "only"}])
+def test_malformed_selected_race_member_is_global_and_preserves_prior_bytes(
+    tmp_path, monkeypatch, malformed
+):
+    root = tmp_path / "evidence"
+    source = _write_source(
+        root,
+        [malformed],
+        [{"race_url": None, "csv_path": None, "sidecar_path": None}],
+    )
+    index = _published_index(tmp_path)
+    index.parent.mkdir(parents=True)
+    prior = b"exact-prior-readiness-bytes"
+    index.write_bytes(prior)
+
+    result = _publish(tmp_path, source, monkeypatch)
+
+    assert result["status"] == "REJECTED"
+    assert result["reason"] == "GLOBAL_SOURCE_PACKET_INVALID"
+    assert index.read_bytes() == prior
+
+
 def test_atomic_publication_failure_preserves_prior_readiness_bytes(tmp_path, monkeypatch):
     root = tmp_path / "evidence"
     race = _race(1)
@@ -348,6 +377,36 @@ def test_real_global_identity_rejects_corrupt_pinned_member_and_preserves_prior_
         "GLOBAL_REPOSITORY_DIRTY",
         "GLOBAL_PINNED_IDENTITY_MISMATCH",
     }
+    assert index.read_bytes() == prior
+
+
+def test_dirty_synchronous_capture_provenance_is_global_and_preserves_prior_bytes(tmp_path):
+    clone = tmp_path / "repo"
+    subprocess.run(
+        ["git", "clone", "--no-local", str(ROOT), str(clone)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    member = clone / "race_collection/synchronous_manual_capture.py"
+    member.write_bytes(member.read_bytes() + b"\ncorrupt\n")
+    root = tmp_path / "evidence"
+    source = _write_source(root, [], [])
+    index = _published_index(tmp_path)
+    index.parent.mkdir(parents=True)
+    prior = b"exact-prior-readiness-bytes"
+    index.write_bytes(prior)
+
+    result = publish_manual_scoring_readiness_index(
+        state_path=root / "shadow_autopilot_daemon_runtime" / "odds_capture_state.json",
+        evidence_root=root,
+        source_refresh_report_path=source,
+        now=NOW,
+        repo_root=clone,
+    )
+
+    assert result["status"] == "REJECTED"
+    assert result["reason"] == "GLOBAL_REPOSITORY_DIRTY"
     assert index.read_bytes() == prior
 
 
@@ -441,29 +500,72 @@ def test_post_replace_atomic_failure_rolls_back_exact_prior_bytes(tmp_path, monk
     assert index.read_bytes() == prior
 
 
-def test_pr125_golden_hashes_are_explicitly_recorded():
-    golden = {
-        "input": "030625e0d9123eeed8b622bf7b418472ce531ba06f94d793ccdc61b3cd1f46b6",
-        "core": "e3dab9dc3abe3d4385abf6ca309b313fbfd83b7f867c7985abe47dfa120715f1",
-    }
-    assert golden == {
-        "input": "030625e0d9123eeed8b622bf7b418472ce531ba06f94d793ccdc61b3cd1f46b6",
-        "core": "e3dab9dc3abe3d4385abf6ca309b313fbfd83b7f867c7985abe47dfa120715f1",
-    }
-    changed = subprocess.run(
-        [
-            "git",
-            "diff",
-            "--name-only",
-            "5e9a370477a905a67bdcb26c9b9315ef0050b362",
-            "HEAD",
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.splitlines()
-    assert not {
+def test_persistent_post_replace_fsync_fault_rejects_with_exact_prior_bytes(
+    tmp_path, monkeypatch
+):
+    root = tmp_path / "evidence"
+    race = _race(1)
+    source = _write_source(root, [race], [_source_files(root, race)], status="SUCCESS")
+    index = _published_index(tmp_path)
+    index.parent.mkdir(parents=True)
+    prior = b"exact-prior-readiness-bytes"
+    index.write_bytes(prior)
+    calls = 0
+    real_fsync = capture.os.fsync
+
+    def fail_persistently_after_temp_fsync(fd):
+        nonlocal calls
+        calls += 1
+        if calls >= 2:
+            raise OSError("persistent post-replace fsync failure")
+        return real_fsync(fd)
+
+    monkeypatch.setattr(capture.os, "fsync", fail_persistently_after_temp_fsync)
+
+    result = _publish(tmp_path, source, monkeypatch)
+
+    assert result["status"] == "REJECTED"
+    assert result["reason"] == "OSError"
+    assert index.read_bytes() == prior
+
+
+def test_replace_failure_after_effect_rejects_with_exact_prior_bytes(tmp_path, monkeypatch):
+    root = tmp_path / "evidence"
+    race = _race(1)
+    source = _write_source(root, [race], [_source_files(root, race)], status="SUCCESS")
+    index = _published_index(tmp_path)
+    index.parent.mkdir(parents=True)
+    prior = b"exact-prior-readiness-bytes"
+    index.write_bytes(prior)
+    real_replace = capture.os.replace
+
+    def replace_then_fail(*args, **kwargs):
+        real_replace(*args, **kwargs)
+        raise OSError("persistent replace failure after effect")
+
+    monkeypatch.setattr(capture.os, "replace", replace_then_fail)
+
+    result = _publish(tmp_path, source, monkeypatch)
+
+    assert result["status"] == "REJECTED"
+    assert result["reason"] == "OSError"
+    assert index.read_bytes() == prior
+
+
+def test_pr125_scoring_files_remain_byte_identical_to_base():
+    paths = {
         "src/predictor/scoring_parity.py",
         "configs/prediction/market-form-residual-v1/scoring-input.schema.json",
         "configs/prediction/market-form-residual-v1/scoring-core-output.schema.json",
-    } & set(changed)
+    }
+    for relative in paths:
+        expected = subprocess.run(
+            [
+                "git",
+                "show",
+                f"5e9a370477a905a67bdcb26c9b9315ef0050b362:{relative}",
+            ],
+            check=True,
+            capture_output=True,
+        ).stdout
+        assert (ROOT / relative).read_bytes() == expected

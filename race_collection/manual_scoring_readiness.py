@@ -14,7 +14,6 @@ import os
 import re
 import stat
 import subprocess
-import uuid
 from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
@@ -66,6 +65,24 @@ _SAFETY = {
     "phase7_exclusion_reason": "manual_research_only_noncanonical",
 }
 
+# Readiness decisions call these local modules directly or through the
+# collector-owned normalisation/runner helpers. Their exact bytes must remain
+# bound to the repository commit recorded in a published packet.
+READINESS_AUTHORITATIVE_FILES = (
+    "race_collection/manual_scoring_readiness.py",
+    "race_collection/synchronous_manual_capture.py",
+    "race_collection/manual_prediction_collector_request.py",
+    "config/venue_mapping.py",
+    "configs/prediction/manual-readiness-v1/scoring-readiness.schema.json",
+    "scripts/refresh_prejump_upcoming.py",
+    "src/predictor/manual_independent_capture.py",
+    "src/predictor/market_form_residual.py",
+    "src/predictor/on_demand.py",
+    "src/predictor/scoring_parity.py",
+    "utils/csv_metadata.py",
+    "utils/runner_completeness.py",
+)
+
 # These are the accepted lane merge points on the requested exact base.  The
 # file hashes below still bind the actual checked-out implementation and
 # schemas; the merge points make the ticket lineage explicit in the packet.
@@ -115,7 +132,7 @@ GHU_PINNED_FILES = {
 }
 _AUTHORITATIVE_PATHS = frozenset(
     {
-        "race_collection/manual_scoring_readiness.py",
+        *READINESS_AUTHORITATIVE_FILES,
         MANUAL_CONFIG_RELATIVE.as_posix(),
         PREDICTION_CONFIG_RELATIVE.as_posix(),
         READINESS_SCHEMA_RELATIVE.as_posix(),
@@ -463,12 +480,11 @@ def _validate_source(source_raw: bytes, source_path: Path, evidence_root: Path) 
         raise _reject("GLOBAL_SOURCE_PACKET_TIMESTAMP_INVALID")
     if _source_locator(source_path, evidence_root) == "":
         raise _reject("GLOBAL_SOURCE_PATH_UNSAFE")
+    _validate_selected_race_structure(source["selected_races"])
     identities: set[str] = set()
     race_urls_by_id: dict[str, str] = {}
     race_ids_by_url: dict[str, str] = {}
     for raw in source["selected_races"]:
-        if not isinstance(raw, Mapping):
-            continue
         race_id = raw.get("race_id")
         race_url = raw.get("race_url")
         identity = f"{race_id}\x00{race_url}"
@@ -485,12 +501,48 @@ def _validate_source(source_raw: bytes, source_path: Path, evidence_root: Path) 
     return source
 
 
+def _validate_selected_race_structure(selected: list[Any]) -> None:
+    required = {
+        "race_id",
+        "race_id_aliases",
+        "race_url",
+        "race_number",
+        "venue",
+        "date",
+        "race_time",
+        "jump_datetime",
+    }
+    for member in selected:
+        if not isinstance(member, Mapping) or not required <= set(member):
+            raise _reject("GLOBAL_SOURCE_PACKET_INVALID")
+        if (
+            not isinstance(member["race_id"], str)
+            or not member["race_id"].strip()
+            or not isinstance(member["race_id_aliases"], list)
+            or not member["race_id_aliases"]
+            or any(
+                not isinstance(alias, str) or not alias.strip()
+                for alias in member["race_id_aliases"]
+            )
+            or not isinstance(member["race_url"], str)
+            or not member["race_url"].strip()
+            or isinstance(member["race_number"], bool)
+            or not isinstance(member["race_number"], int)
+            or member["race_number"] < 1
+            or any(
+                not isinstance(member[field], str) or not member[field].strip()
+                for field in ("venue", "date", "race_time", "jump_datetime")
+            )
+        ):
+            raise _reject("GLOBAL_SOURCE_PACKET_INVALID")
+
+
 def _validate_global_packet_identities(selected: list[Any]) -> None:
     tokens: dict[str, tuple[int, str]] = {}
     urls: dict[str, int] = {}
     for index, raw in enumerate(selected):
         if not isinstance(raw, Mapping):
-            continue
+            raise _reject("GLOBAL_SOURCE_PACKET_INVALID")
         race_id = raw.get("race_id")
         race_url = raw.get("race_url")
         aliases = raw.get("race_id_aliases")
@@ -500,7 +552,7 @@ def _validate_global_packet_identities(selected: list[Any]) -> None:
             or not isinstance(aliases, list)
             or any(not isinstance(alias, str) for alias in aliases)
         ):
-            continue
+            raise _reject("GLOBAL_SOURCE_PACKET_INVALID")
         if race_url in urls and urls[race_url] != index:
             raise _reject("GLOBAL_PACKET_IDENTITY_AMBIGUOUS")
         urls[race_url] = index
@@ -513,6 +565,12 @@ def _validate_global_packet_identities(selected: list[Any]) -> None:
 
 def _global_identity(repo_root: Path) -> dict[str, Any]:
     source_commit, source_tree = _git_identity(repo_root)
+    authoritative_members = []
+    for relative in READINESS_AUTHORITATIVE_FILES:
+        raw = _repo_bytes(repo_root, relative, source_commit)
+        authoritative_members.append(
+            {"path": relative, "bytes": len(raw), "sha256": _sha256(raw, relative)}
+        )
     _repo_bytes(repo_root, READINESS_SCHEMA_RELATIVE.as_posix(), source_commit)
     manual_config, manual_config_sha = _read_pinned_config(
         repo_root, MANUAL_CONFIG_RELATIVE, source_commit
@@ -539,6 +597,7 @@ def _global_identity(repo_root: Path) -> dict[str, Any]:
         raise _reject("GLOBAL_CONFIG_CONTRACT_MISMATCH")
     return {
         "repository": {"commit": source_commit, "tree": source_tree},
+        "readiness_authoritative": {"members": authoritative_members},
         "model": _model_identity(repo_root, source_commit),
         "config": {
             "manual_capture": {"path": MANUAL_CONFIG_RELATIVE.as_posix(), "sha256": manual_config_sha},
@@ -589,39 +648,55 @@ def _restore_readiness_bytes(
             os.unlink(target_name, dir_fd=parent_fd)
         except FileNotFoundError:
             pass
-        os.fsync(parent_fd)
-        return
+        try:
+            os.fsync(parent_fd)
+        except OSError:
+            pass
+        try:
+            os.stat(target_name, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return
+        raise OSError("readiness rollback left a target")
     if prior_raw is None:
         raise OSError("missing prior readiness bytes")
-    temporary = f".{target_name}.{os.getpid()}.{uuid.uuid4().hex}.rollback"
     descriptor = os.open(
-        temporary,
+        target_name,
         os.O_WRONLY
-        | os.O_CREAT
-        | os.O_EXCL
+        | os.O_TRUNC
         | getattr(os, "O_CLOEXEC", 0)
         | getattr(os, "O_NOFOLLOW", 0),
-        0o600,
         dir_fd=parent_fd,
     )
     try:
         written = 0
         while written < len(prior_raw):
             written += os.write(descriptor, prior_raw[written:])
-        os.fsync(descriptor)
-        os.replace(
-            temporary,
-            target_name,
-            src_dir_fd=parent_fd,
-            dst_dir_fd=parent_fd,
-        )
-        os.fsync(parent_fd)
+        try:
+            os.fsync(descriptor)
+        except OSError:
+            pass
     finally:
         os.close(descriptor)
-        try:
-            os.unlink(temporary, dir_fd=parent_fd)
-        except FileNotFoundError:
-            pass
+    verify = os.open(
+        target_name,
+        os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0),
+        dir_fd=parent_fd,
+    )
+    try:
+        restored = bytearray()
+        while True:
+            chunk = os.read(verify, 1024 * 1024)
+            if not chunk:
+                break
+            restored.extend(chunk)
+    finally:
+        os.close(verify)
+    if bytes(restored) != prior_raw:
+        raise OSError("readiness rollback bytes mismatch")
+    try:
+        os.fsync(parent_fd)
+    except OSError:
+        pass
 
 
 def _restore_readiness_path(
@@ -807,6 +882,8 @@ def publish_manual_scoring_readiness_index(
                 "races": eligible,
                 "exclusions": exclusions,
             }
+            packet_raw = canonical_bytes(packet)
+            packet_sha256 = sha256_bytes(packet_raw)
             try:
                 _atomic_replace_canonical(
                     index_path,
@@ -825,9 +902,8 @@ def publish_manual_scoring_readiness_index(
                         prior_raw=prior_raw,
                     )
                 except OSError as rollback_error:
-                    del rollback_error
+                    raise _reject("GLOBAL_PUBLICATION_STATE_UNCERTAIN") from rollback_error
                 raise
-            packet_raw = canonical_bytes(packet)
     except (
         AttributeError,
         CaptureOneRejected,
@@ -838,13 +914,18 @@ def publish_manual_scoring_readiness_index(
         TypeError,
         ValueError,
     ) as exc:
+        if (
+            isinstance(exc, ManualReadinessRejected)
+            and exc.code == "GLOBAL_PUBLICATION_STATE_UNCERTAIN"
+        ):
+            report["status"] = "INDETERMINATE"
         report["reason"] = _global_report_reason(exc)
         return report
     report.update(
         {
             "status": "PUBLISHED",
             "packet_schema_version": READINESS_SCHEMA,
-            "packet_sha256": sha256_bytes(packet_raw),
+            "packet_sha256": packet_sha256,
             "source_refresh_report_sha256": packet["source_refresh_report"]["sha256"],
             "selected_race_count": packet["selected_race_count"],
             "eligible_race_count": packet["eligible_race_count"],
