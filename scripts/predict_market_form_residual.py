@@ -44,6 +44,12 @@ from src.predictor.market_form_residual import (  # noqa: E402
     load_frozen_model,
     score_race,
 )
+from src.predictor.scoring_parity import (  # noqa: E402
+    SCORING_CONFIG_SHA256,
+    build_core_output,
+    build_scoring_input,
+    parity_binding,
+)
 from config.venue_mapping import normalize_venue  # noqa: E402
 from utils.csv_metadata import (  # noqa: E402
     THEDOGS_EXACT_RACE_PAGE_GRADE_SOURCE,
@@ -251,6 +257,7 @@ EARLY_RESIDUAL_PREDICTION_KEYS = frozenset(
         "runner_set_sha256",
         "schema_version",
         "score_timestamp",
+        "scoring_parity",
         "shadow_output_path",
         "source_contract",
         "status",
@@ -292,6 +299,16 @@ EARLY_RESIDUAL_SOURCE_CONTRACT_KEYS = frozenset(
     }
 )
 EARLY_RESIDUAL_VARIANT_KEYS = frozenset({"full_strength", "half_strength"})
+EARLY_RESIDUAL_PARITY_KEYS = frozenset(
+    {
+        "input_schema_version",
+        "input_sha256",
+        "core_output_schema_version",
+        "core_output_sha256",
+        "config_sha256",
+        "numeric_canonicalization_sha256",
+    }
+)
 VENUE_CODE_PATTERN = r"[A-Z0-9_]+(?:-[A-Z0-9_]+)*"
 FORBIDDEN_EVIDENCE_PATH_MARKERS = frozenset({"form_only_v1", "pr51"})
 # Finite union of the exact GRADE_MAP and GRADE_VOCAB_MAP contracts, their
@@ -538,6 +555,7 @@ def _validate_index_prediction(value: Any, *, expected_race_id: Any) -> None:
         "probability_sums": EARLY_RESIDUAL_PROBABILITY_SUM_KEYS,
         "source_contract": EARLY_RESIDUAL_SOURCE_CONTRACT_KEYS,
         "variants": EARLY_RESIDUAL_VARIANT_KEYS,
+        "scoring_parity": EARLY_RESIDUAL_PARITY_KEYS,
     }
     for key, allowed_keys in nested_mappings.items():
         if key not in prediction:
@@ -2681,16 +2699,35 @@ def score_from_artifacts(
         )
     frozen = load_frozen_model(model_path, manifest_path)
     expected_ids = sorted(runner_ids)
-    provenance = {
-        "race_id": race_id,
-        "expected_runner_ids": expected_ids,
-        "runner_set_sha256": _runner_set_sha256(expected_ids),
-        "jump_timestamp": jump.isoformat(),
-        "score_timestamp": score_time.isoformat(),
-    }
-    record = score_race(frozen, runners, provenance)
+    scoring_input = build_scoring_input(
+        race_id=race_id,
+        runner_set_sha256=_runner_set_sha256(expected_ids),
+        runners=[
+            {key: value for key, value in runner.items() if key != "race_id"}
+            for runner in runners
+        ],
+        cutoff_timestamp=feature_time.isoformat(),
+        capture_timestamp=fetch_time.isoformat(),
+        score_timestamp=score_time.isoformat(),
+        jump_timestamp=jump.isoformat(),
+        model_sha256=frozen.model_sha256,
+        manifest_sha256=frozen.manifest_sha256,
+        effective_state_sha256=frozen.effective_state_sha256,
+        config_sha256=SCORING_CONFIG_SHA256,
+        scoring_parameters={
+            "full_strength": frozen.full_strength,
+            "half_strength": frozen.half_strength,
+            "residual_cap": frozen.residual_cap,
+            "within_race_centering": frozen.within_race_centering,
+            "market_offset": frozen.market_offset,
+            "normalization": frozen.normalization,
+        },
+    )
+    record = score_race(frozen, scoring_input.scorer_runners, scoring_input.provenance)
     if record.get("schema_version") != SHADOW_RECORD_SCHEMA:
         raise ManualPredictionError("scorer_record_schema_mismatch")
+    core_output = build_core_output(scoring_input, record)
+    scoring_parity = parity_binding(scoring_input, core_output)
     ranking = sorted(
         record["predictions"],
         key=lambda row: (-float(row["full_probability"]), int(row["box_number"])),
@@ -2712,6 +2749,7 @@ def score_from_artifacts(
         "record_key": record["record_key"],
         "record_schema_version": record["schema_version"],
         "record_checksum_sha256": record["record_checksum_sha256"],
+        "scoring_parity": scoring_parity,
         "effective_state_schema_version": EFFECTIVE_STATE_SCHEMA,
         "effective_state_sha256": record["effective_state_sha256"],
         "numerical_canonicalization_contract": dict(

@@ -426,6 +426,10 @@ def test_scores_exact_packet_deterministically(tmp_path):
         "history_migration_performed": False,
     }
     assert first["record_schema_version"] == "market_form_residual_shadow_record_v3"
+    assert first["scoring_parity"]["input_schema_version"] == "market_form_residual_scoring_input_v1"
+    assert first["scoring_parity"]["core_output_schema_version"] == "market_form_residual_scoring_core_output_v1"
+    assert len(first["scoring_parity"]["input_sha256"]) == 64
+    assert len(first["scoring_parity"]["core_output_sha256"]) == 64
     assert first["effective_state_schema_version"] == (
         "market_form_residual_effective_state_v2"
     )
