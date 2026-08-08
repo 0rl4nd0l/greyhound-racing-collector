@@ -56,6 +56,7 @@ allowed_files:
   - src/predictor/manual_live_capture_child.py
   - src/predictor/manual_research_deployment.py
   - src/predictor/manual_research_worker.py
+  - tests/ci/test_forecasting_change_classifier.py
   - tests/test_manual_independent_capture_executor.py
   - tests/test_manual_independent_capture_sealer.py
   - tests/test_manual_live_capture.py
