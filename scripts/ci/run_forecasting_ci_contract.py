@@ -18,11 +18,43 @@ SMOKE_NODES = (
     "tests/operator_ui/test_foundation.py::test_valid_envelope_is_deterministic_finite_immutable_and_serializable",
     "tests/race_collection/test_phase3_forecasting.py::test_prediction_rejected_before_close_and_binds_exact_seal_and_pin",
 )
+FORECASTING_WORKFLOW = WORKFLOWS / "forecasting-tests.yml"
 
 
 def _run(command: list[str]) -> None:
     print("+ " + " ".join(command), flush=True)
     subprocess.run(command, cwd=ROOT, check=True)
+
+
+def _validate_focused_checkout_history(parsed: object) -> None:
+    if not isinstance(parsed, dict):
+        raise SystemExit("forecasting workflow root must be a mapping")
+    jobs = parsed.get("jobs")
+    if not isinstance(jobs, dict):
+        raise SystemExit("forecasting workflow jobs must be a mapping")
+    gate = jobs.get("forecasting-gate")
+    if not isinstance(gate, dict):
+        raise SystemExit("forecasting-gate job is missing")
+    steps = gate.get("steps")
+    if not isinstance(steps, list):
+        raise SystemExit("forecasting-gate steps must be a list")
+    checkout_steps = [
+        step
+        for step in steps
+        if isinstance(step, dict)
+        and step.get("name") == "Check out exact validation head"
+    ]
+    if len(checkout_steps) != 1:
+        raise SystemExit(
+            "forecasting-gate must contain exactly one exact-head checkout step"
+        )
+    checkout_with = checkout_steps[0].get("with")
+    if not isinstance(checkout_with, dict):
+        raise SystemExit("forecasting-gate exact-head checkout is missing with")
+    if checkout_with.get("fetch-depth") != "0":
+        raise SystemExit(
+            "forecasting-gate exact-head checkout must fetch base history"
+        )
 
 
 def _validate_workflow_yaml() -> None:
@@ -38,6 +70,8 @@ def _validate_workflow_yaml() -> None:
             raise SystemExit(f"invalid workflow YAML: {workflow}: {exc}") from exc
         if not isinstance(parsed, dict):
             raise SystemExit(f"workflow root must be a mapping: {workflow}")
+        if workflow == FORECASTING_WORKFLOW:
+            _validate_focused_checkout_history(parsed)
     print(f"validated {len(workflow_files)} workflow YAML files", flush=True)
 
 

@@ -107,6 +107,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
 
       - name: Set up Python 3.13
         if: needs.classify.outputs.tier != 'non_forecasting'
@@ -184,7 +185,9 @@ jobs:
                 tests/test_manual_research_cli.py \
                 tests/test_market_form_residual.py \
                 tests/test_market_form_residual_portability.py \
-                tests/test_predict_market_form_residual.py
+                tests/test_predict_market_form_residual.py \
+                tests/race_collection/test_manual_scoring_readiness.py \
+                tests/test_scoring_parity.py
               )
               ;;
             official_results)

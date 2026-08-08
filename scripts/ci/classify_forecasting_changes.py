@@ -30,6 +30,16 @@ DESTRUCTIVE_STATUS_PREFIXES = frozenset({"C", "D", "R", "T"})
 FOCUSED_TIERS = frozenset(TIERS) - {"non_forecasting", "full_forecasting"}
 PRODUCT_TIERS = FOCUSED_TIERS - {"ci_contract"}
 
+# GHU-058 changes this shared helper only to add a readiness-publication
+# rollback hook. Keep unrelated future changes to the shared file full-risk by
+# admitting only this exact base/head blob pair into manual_prediction.
+EXACT_MANUAL_PREDICTION_BLOB_PAIRS = {
+    "race_collection/synchronous_manual_capture.py": (
+        "77b8aa8dd7391203162876c384e823e5c696d47d",
+        "6a984e546c08494cbaa561b5aedd202087b7be6f",
+    ),
+}
+
 
 class ClassificationError(RuntimeError):
     """The change set or rules cannot be classified safely."""
@@ -39,6 +49,7 @@ class ClassificationError(RuntimeError):
 class Change:
     status: str
     paths: tuple[str, ...]
+    manual_prediction_paths: tuple[str, ...] = ()
 
 
 def _is_known_status(status: str) -> bool:
@@ -142,8 +153,15 @@ def classify_changes(
         )
         for path in change.paths:
             try:
-                tier, matched = _path_tier(path, rules)
                 normalized = _normalize_path(path)
+                if (
+                    change.status == "M"
+                    and normalized in change.manual_prediction_paths
+                    and normalized in EXACT_MANUAL_PREDICTION_BLOB_PAIRS
+                ):
+                    tier, matched = "manual_prediction", ("manual_prediction",)
+                else:
+                    tier, matched = _path_tier(normalized, rules)
             except ClassificationError as exc:
                 return _full_result(
                     f"uncertain_path:{exc}",
@@ -221,6 +239,37 @@ def parse_name_status(raw: bytes) -> list[Change]:
     return changes
 
 
+def _exact_manual_prediction_paths(
+    base: str, head: str, changes: Sequence[Change]
+) -> frozenset[str]:
+    eligible: set[str] = set()
+    for change in changes:
+        if change.status != "M":
+            continue
+        for path in change.paths:
+            expected = EXACT_MANUAL_PREDICTION_BLOB_PAIRS.get(path)
+            if expected is None:
+                continue
+            try:
+                base_blob = subprocess.check_output(
+                    ["git", "rev-parse", f"{base}:{path}"],
+                    cwd=ROOT,
+                    text=True,
+                ).strip()
+                head_blob = subprocess.check_output(
+                    ["git", "rev-parse", f"{head}:{path}"],
+                    cwd=ROOT,
+                    text=True,
+                ).strip()
+            except (OSError, subprocess.CalledProcessError) as exc:
+                raise ClassificationError(
+                    f"unable to verify exact shared-path change: {path}"
+                ) from exc
+            if (base_blob, head_blob) == expected:
+                eligible.add(path)
+    return frozenset(eligible)
+
+
 def git_changes(base: str, head: str) -> list[Change]:
     command = [
         "git",
@@ -232,12 +281,21 @@ def git_changes(base: str, head: str) -> list[Change]:
         f"{base}...{head}",
     ]
     try:
-        raw = subprocess.check_output(command)
-    except subprocess.CalledProcessError as exc:
-        raise ClassificationError(
-            f"git diff failed with exit {exc.returncode}"
-        ) from exc
-    return parse_name_status(raw)
+        raw = subprocess.check_output(command, cwd=ROOT)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise ClassificationError(f"git diff failed: {exc}") from exc
+    changes = parse_name_status(raw)
+    manual_prediction_paths = _exact_manual_prediction_paths(base, head, changes)
+    return [
+        Change(
+            status=change.status,
+            paths=change.paths,
+            manual_prediction_paths=tuple(
+                path for path in change.paths if path in manual_prediction_paths
+            ),
+        )
+        for change in changes
+    ]
 
 
 def write_github_output(path: Path, result: Mapping[str, Any]) -> None:

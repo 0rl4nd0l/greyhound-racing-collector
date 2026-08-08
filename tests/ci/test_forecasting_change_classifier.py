@@ -251,6 +251,48 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
         self.assertEqual(result["reason"], "single_product_tier_with_ci_contract")
         self.assertIs(result["ci_contract_changed"], True)
 
+    def test_ghu_058_exact_changed_path_set_selects_manual_prediction(self):
+        changes = CLASSIFIER.git_changes(
+            "5e9a370477a905a67bdcb26c9b9315ef0050b362", "HEAD"
+        )
+        changed_paths = {
+            path for change in changes for path in change.paths
+        }
+        self.assertEqual(
+            changed_paths,
+            {
+                ".github/forecasting-paths.ini",
+                ".github/workflows/forecasting-tests.yml",
+                "configs/prediction/manual-readiness-v1/scoring-readiness.schema.json",
+                "docs/manual_prediction_scoring_readiness.md",
+                "race_collection/manual_scoring_readiness.py",
+                "race_collection/synchronous_manual_capture.py",
+                "scripts/ci/classify_forecasting_changes.py",
+                "scripts/ci/run_forecasting_ci_contract.py",
+                "tests/ci/test_forecasting_change_classifier.py",
+                "tests/race_collection/test_manual_scoring_readiness.py",
+            },
+        )
+        result = CLASSIFIER.classify_changes(changes, self.rules)
+        self.assertEqual(result["tier"], "manual_prediction")
+        self.assertEqual(result["reason"], "single_product_tier_with_ci_contract")
+        self.assertIs(result["ci_contract_changed"], True)
+        self.assertNotEqual(result["tier"], "full_forecasting")
+        shared = next(
+            item
+            for item in result["paths"]
+            if item["path"] == "race_collection/synchronous_manual_capture.py"
+        )
+        self.assertEqual(shared["tier"], "manual_prediction")
+        self.assertEqual(shared["matched_tiers"], ["manual_prediction"])
+
+    def test_shared_capture_path_without_exact_allowlist_remains_full(self):
+        result = self.classify(
+            ("M", "race_collection/synchronous_manual_capture.py")
+        )
+        self.assertEqual(result["tier"], "full_forecasting")
+        self.assertEqual(result["reason"], "shared_or_high_risk_path_requires_full")
+
     def test_future_manual_path_registration_stays_focused(self):
         future_path = "src/predictor/manual_isolated_executor.py"
         future_rules = dict(self.rules)
