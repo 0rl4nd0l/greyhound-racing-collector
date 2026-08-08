@@ -1,6 +1,8 @@
 import json
 import os
+import shlex
 import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -34,6 +36,21 @@ def _git_identity(monkeypatch, commit: str, tree: str) -> None:
         return subprocess.CompletedProcess(command, 0, output, "")
 
     monkeypatch.setattr("src.predictor.manual_research_deployment.subprocess.run", run)
+
+
+def _controlled_pinned_python(tmp_path: Path) -> Path:
+    path = tmp_path / "pinned-python"
+    path.write_text(
+        "#!/bin/sh\n"
+        f"exec {shlex.quote(str(Path(sys.executable).resolve()))} \"$@\"\n"
+    )
+    path.chmod(0o755)
+    info = path.stat()
+    assert path.is_file()
+    assert not path.is_symlink()
+    assert info.st_uid == os.geteuid()
+    assert stat.S_IMODE(info.st_mode) == 0o755
+    return path
 
 
 @pytest.fixture
@@ -82,7 +99,7 @@ def deployment_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     _git_identity(monkeypatch, commit, tree)
     return {
         "source_root": source,
-        "pinned_python": Path(sys.executable).resolve(),
+        "pinned_python": _controlled_pinned_python(tmp_path),
         "manual_root": manual,
         "browser_profile_root": profile,
         "manual_runs_root": runs,
@@ -121,6 +138,7 @@ def test_default_off_package_isolated_and_template_bound(deployment_inputs):
     assert binding["research_only"] is True
     assert binding["canonical"] is False
     assert binding["phase7_excluded"] is True
+    assert binding["executable"] == str(values["pinned_python"])
     assert set(binding) == {"artifacts", "canonical", "default_enabled", "deployment", "entrypoint", "executable", "live_capture", "manual", "phase7_excluded", "research_only", "schema_version"}
     assert set(binding["artifacts"]) == {"config", "live_capture", "live_capture_child", "model", "model_manifest"}
     assert binding["live_capture"] == {
@@ -178,6 +196,23 @@ def test_generator_rejects_manual_protected_overlap_without_partial_output(deplo
     protected["canonical_database"] = values["manual_root"]
     values["protected_paths"] = protected
     with pytest.raises(ManualDeploymentRejected, match="overlap"):
+        generate_manual_package(**values)
+    assert not any(values["output_dir"].iterdir())
+
+
+@pytest.mark.parametrize("mode", [0o775, 0o777])
+def test_generator_rejects_group_or_world_writable_pinned_executable(
+    deployment_inputs, monkeypatch, mode
+):
+    values = dict(deployment_inputs)
+    unsafe = values["source_root"].parent / f"unsafe-pinned-python-{mode:o}"
+    unsafe.write_text("#!/bin/sh\nexit 0\n")
+    unsafe.chmod(mode)
+    values["pinned_python"] = unsafe
+    if mode & 0o020 and not mode & 0o002:
+        owner = os.geteuid()
+        monkeypatch.setattr(os, "geteuid", lambda: owner + 1)
+    with pytest.raises(ManualDeploymentRejected, match="unsafe permissions"):
         generate_manual_package(**values)
     assert not any(values["output_dir"].iterdir())
 
