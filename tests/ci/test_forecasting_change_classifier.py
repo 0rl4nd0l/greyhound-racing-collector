@@ -268,6 +268,7 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
                 "race_collection/manual_scoring_readiness.py",
                 "race_collection/synchronous_manual_capture.py",
                 "scripts/ci/classify_forecasting_changes.py",
+                "scripts/ci/run_forecasting_ci_contract.py",
                 "tests/ci/test_forecasting_change_classifier.py",
                 "tests/race_collection/test_manual_scoring_readiness.py",
             },
