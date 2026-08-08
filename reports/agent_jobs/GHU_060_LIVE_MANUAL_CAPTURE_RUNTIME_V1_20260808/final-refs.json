@@ -6,6 +6,9 @@
   "pull_request": 128,
   "pull_request_url": "https://github.com/0rl4nd0l/greyhound-racing-collector/pull/128",
   "pr_head_commit": "3d5409a7d55b46007dc559328f88b642daba8f59",
+  "final_head_commit": "0869b11567cc7bfbdec9f4ccc77e1ad664ef2c0c",
+  "final_head_tree": "e0b0316ef095793724eaecdc1638b66c95ef72ac",
+  "draft": true,
   "merged": false,
   "deployed": false,
   "live_attempt": false
