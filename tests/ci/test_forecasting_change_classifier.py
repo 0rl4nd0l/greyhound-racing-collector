@@ -78,9 +78,11 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
                 "scripts/predict_market_form_residual.py",
                 "src/predictor/manual_independent_capture.py",
                 "src/predictor/manual_independent_capture_sealer.py",
+                "src/predictor/manual_research_scoring.py",
                 "src/predictor/market_form_residual.py",
                 "tests/test_manual_independent_capture.py",
                 "tests/test_manual_independent_capture_sealer.py",
+                "tests/test_manual_research_scoring.py",
                 "tests/test_predict_market_form_residual.py",
             ),
             "official_results": (
@@ -476,6 +478,8 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
             "forecasting-command-manifest.tsv",
             'forecasting-command.txt',
             '--with PyYAML python scripts/ci/run_forecasting_ci_contract.py',
+            "tests/test_manual_research_scoring.py",
+            "tests/test_manual_research_cli.py",
             "commit = subprocess.check_output",
             "tree = subprocess.check_output",
         ):
@@ -585,6 +589,8 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
         self.assertIn('"tests/race_collection"', runner)
         self.assertIn('"tests/test_predict_market_form_residual.py"', runner)
         self.assertIn('"tests/test_manual_independent_capture_sealer.py"', runner)
+        self.assertIn('"tests/test_manual_research_scoring.py"', runner)
+        self.assertIn('"tests/test_manual_research_cli.py"', runner)
         self.assertIn('"tests/test_predict_race_now.py"', runner)
         self.assertIn('"tests/test_results_ingest_official_first.py"', runner)
         self.assertIn('"tests/operator_ui/test_foundation.py"', runner)
