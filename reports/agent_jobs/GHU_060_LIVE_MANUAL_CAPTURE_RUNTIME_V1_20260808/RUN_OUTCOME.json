@@ -1,0 +1,17 @@
+{
+  "status": "IMPLEMENTATION_READY_FOR_REVIEW",
+  "implementation_commit": "a053e5b2cb03102468b87c9ebb0bc9f0d9922730",
+  "implementation_tree": "deb36fa709161985516da41404d97e46e65dbe65",
+  "base_commit": "1c937b53491787f1e54b16d235f7536af48c3c85",
+  "base_tree": "78ffa1301b064136f688697ac6881e700232b0ee",
+  "classifier": {
+    "tier": "manual_prediction",
+    "ci_contract_changed": true,
+    "reason": "single_product_tier_with_ci_contract"
+  },
+  "tests": "785 passed",
+  "live_attempt": false,
+  "deployment": false,
+  "merge": false,
+  "canonical_or_phase7_mutation": false
+}

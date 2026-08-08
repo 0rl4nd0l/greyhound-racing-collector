@@ -1,0 +1,12 @@
+{
+  "schema": "tenn_git_guard_preflight_v2",
+  "head_at_check": "a053e5b2cb03102468b87c9ebb0bc9f0d9922730",
+  "canonical_head": "1c937b53491787f1e54b16d235f7536af48c3c85",
+  "merge_base": "1c937b53491787f1e54b16d235f7536af48c3c85",
+  "task_worktree": "VALID_TASK_WORKTREE",
+  "dirty_status": [],
+  "decision_ledger_status": "PASS",
+  "ledger_status": "DATA_MISSING",
+  "final_decision": "warning",
+  "warnings": ["committed and live task ledgers are absent", "unrelated stale registry jobs are present"]
+}
