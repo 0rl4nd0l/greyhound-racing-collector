@@ -1,9 +1,9 @@
-"""Fixture-only executor for one isolated manual research capture.
+"""Bounded executor for one isolated manual research capture.
 
 The executor owns process, lock, path, timeout, and terminal-artifact control.
-It deliberately has no live fetch implementation, database argument, retry
-surface, autonomous lock locator, or persistence-capable dependency.  A caller
-must supply one reviewed fixture child command.
+It deliberately has no discovery, database argument, retry surface, autonomous
+lock locator, or persistence-capable dependency. A caller must supply one
+reviewed child command; the legacy fixture command remains supported.
 """
 
 from __future__ import annotations
@@ -53,6 +53,7 @@ from utils.csv_metadata import (
 )
 
 CHILD_SCHEMA_VERSION = "manual_independent_capture_child_fixture_v2"
+LIVE_CHILD_SCHEMA_VERSION = "manual_independent_capture_child_live_v1"
 TERMINAL_FILENAME = "terminal.json"
 _MAX_CHILD_OUTPUT_BYTES = 2 * 1024 * 1024
 _MAX_SOURCE_BYTES = 2 * 1024 * 1024
@@ -74,11 +75,15 @@ class CancellationToken(Protocol):
 
 
 @dataclass(frozen=True)
-class FixtureChildLaunch:
+class ManualChildLaunch:
     requested_race_url: str
     selected_race: Mapping[str, Any]
     browser_profile: Path
     run_dir: Path
+
+
+# Compatibility name retained for the existing fixture executor contract.
+FixtureChildLaunch = ManualChildLaunch
 
 
 @dataclass(frozen=True)
@@ -364,8 +369,59 @@ def _no_process_cleanup(reason: str) -> CleanupProof:
     )
 
 
+def _expected_runner_set(value: Sequence[Mapping[str, Any]] | None) -> list[dict[str, Any]] | None:
+    if value is None:
+        return None
+    expected: list[dict[str, Any]] = []
+    for row in value:
+        if not isinstance(row, Mapping) or set(row) != {
+            "runner_id",
+            "box_number",
+            "dog_name",
+            "source_native_runner_id",
+        }:
+            raise ValueError("RUNNER_SET_MISMATCH")
+        runner_id = row["runner_id"]
+        dog_name = row["dog_name"]
+        native_id = row["source_native_runner_id"]
+        if (
+            not isinstance(runner_id, str)
+            or not runner_id
+            or not isinstance(dog_name, str)
+            or not dog_name
+            or isinstance(row["box_number"], bool)
+            or not isinstance(row["box_number"], int)
+            or not 1 <= row["box_number"] <= 10
+            or (
+                native_id is not None
+                and (not isinstance(native_id, str) or not native_id)
+            )
+        ):
+            raise ValueError("RUNNER_SET_MISMATCH")
+        expected.append(
+            {
+                "box_number": row["box_number"],
+                "display_name": dog_name,
+                # The child protocol uses the existing uppercase identity
+                # invariant; readiness runner IDs are case-normalized only
+                # for this parent-side binding comparison.
+                "identity": runner_id.upper(),
+                "source_native_runner_id": native_id,
+            }
+        )
+    try:
+        canonical_runner_set(expected, "expected_runner_set")
+    except PredictionBlocked as exc:
+        raise ValueError("RUNNER_SET_MISMATCH") from exc
+    return expected
+
+
 def _child_value(
-    raw: bytes, *, expected_url: str, expected_race_sha: str
+    raw: bytes,
+    *,
+    expected_url: str,
+    expected_race_sha: str,
+    expected_runner_set: Sequence[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     if not raw or len(raw) > _MAX_CHILD_OUTPUT_BYTES:
         raise ValueError("SOURCE_MALFORMED")
@@ -381,7 +437,7 @@ def _child_value(
         "source",
     }:
         raise ValueError("SOURCE_MALFORMED")
-    if value["schema_version"] != CHILD_SCHEMA_VERSION:
+    if value["schema_version"] not in {CHILD_SCHEMA_VERSION, LIVE_CHILD_SCHEMA_VERSION}:
         raise ValueError("SOURCE_MALFORMED")
     if (
         value["requested_race_url"] != expected_url
@@ -467,6 +523,9 @@ def _child_value(
         canonical_runner_set(canonical_runners, "fixture_child.runners")
     except PredictionBlocked as exc:
         raise ChildResponseRejected("RUNNER_SET_MISMATCH") from exc
+    expected = _expected_runner_set(expected_runner_set)
+    if expected is not None and canonical_runners != expected:
+        raise ChildResponseRejected("RUNNER_SET_MISMATCH")
     try:
         source_bytes = base64.b64decode(value["source"]["bytes_base64"], validate=True)
         source_time = datetime.fromisoformat(value["source"]["source_timestamp"])
@@ -665,6 +724,7 @@ def execute_manual_capture_fixture(
     source_commit: str,
     source_tree: str,
     fixture_child_command: Callable[[FixtureChildLaunch], Sequence[str]],
+    expected_runner_set: Sequence[Mapping[str, Any]] | None = None,
     cancellation_token: CancellationToken | None = None,
     now: Callable[[], datetime] = lambda: datetime.now(timezone.utc),
     monotonic: Callable[[], float] = time.monotonic,
@@ -673,7 +733,7 @@ def execute_manual_capture_fixture(
     killpg: Callable[[int, int], None] = os.killpg,
     uuid4: Callable[[], uuid.UUID] = uuid.uuid4,
 ) -> ManualCaptureExecution:
-    """Run one fixture child and emit one validator-accepted terminal bundle."""
+    """Run one reviewed child and emit one validator-accepted terminal bundle."""
 
     validated_config = validate_config(config, forbidden_paths=forbidden_paths)
     if not isinstance(model_bytes, bytes) or not model_bytes:
@@ -768,6 +828,8 @@ def execute_manual_capture_fixture(
                         "MANUAL_CAPTURE_RUN_DIR": str(run_dir),
                         "MANUAL_CAPTURE_EXACT_URL": requested_race_url,
                         "MANUAL_CAPTURE_RACE_ID": race["race_id"],
+                        "MANUAL_CAPTURE_RACE_IDENTITY_SHA256": canonical_sha256(race),
+                        "MANUAL_CAPTURE_EXECUTOR_PROTOCOL": "ghu051-bounded-v1",
                         "PYTHONDONTWRITEBYTECODE": "1",
                     }
                 )
@@ -875,6 +937,7 @@ def execute_manual_capture_fixture(
                                     stdout,
                                     expected_url=requested_race_url,
                                     expected_race_sha=canonical_sha256(race),
+                                    expected_runner_set=expected_runner_set,
                                 )
                             except ChildResponseRejected as exc:
                                 failure_code = exc.code

@@ -628,7 +628,11 @@ def _reject_outcome_material(raw: bytes, content_type: str) -> None:
         text = raw.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
         raise _reject("SOURCE_CONTENT_INVALID", reason="utf8") from exc
-    if media_type in {"application/json", "text/json"}:
+    if media_type in {
+        "application/json",
+        "text/json",
+        "application/vnd.greyhound.manual-live+json",
+    }:
         try:
             value = json.loads(text)
         except (json.JSONDecodeError, RecursionError) as exc:
@@ -709,7 +713,11 @@ def _validate_parsed_odds(
                     ),
                 }
             )
-    elif media_type in {"application/json", "text/json"}:
+    elif media_type in {
+        "application/json",
+        "text/json",
+        "application/vnd.greyhound.manual-live+json",
+    }:
         try:
             value = json.loads(text)
         except (json.JSONDecodeError, RecursionError) as exc:
@@ -717,7 +725,11 @@ def _validate_parsed_odds(
         envelope = _exact(value, {"runners"}, "source.odds")
         if not isinstance(envelope["runners"], list):
             raise _reject("ODDS_PROVENANCE_AMBIGUOUS", reason="json_runners")
-        parser = "manual_fixture_json_odds_v1"
+        parser = (
+            "manual_live_json_odds_v1"
+            if media_type == "application/vnd.greyhound.manual-live+json"
+            else "manual_fixture_json_odds_v1"
+        )
         for index, item in enumerate(envelope["runners"]):
             row = _exact(
                 item,
@@ -790,7 +802,11 @@ def _validate_response(
     media_type = response.content_type.split(";", 1)[0].strip().lower()
     permitted = {
         "prejump_form": {"text/csv", "application/csv"},
-        "prejump_sidecar": {"application/json", "text/json"},
+        "prejump_sidecar": {
+            "application/json",
+            "text/json",
+            "application/vnd.greyhound.manual-live+json",
+        },
         "prejump_race_source": {"application/json", "text/html", "text/json"},
     }
     if (
@@ -1191,7 +1207,11 @@ def _validate_bundle_document(
     )
     permitted_media = {
         "prejump_form": {"text/csv", "application/csv"},
-        "prejump_sidecar": {"application/json", "text/json"},
+        "prejump_sidecar": {
+            "application/json",
+            "text/json",
+            "application/vnd.greyhound.manual-live+json",
+        },
         "prejump_race_source": {"application/json", "text/html", "text/json"},
     }
     if not isinstance(source["content_type"], str) or not isinstance(
@@ -1225,7 +1245,11 @@ def _validate_bundle_document(
         or source["content_type"] != expected.content_type
         or media_type not in permitted_media.get(source["content_class"], set())
         or source["odds_parser"]
-        not in {"manual_fixture_csv_odds_v1", "manual_fixture_json_odds_v1"}
+        not in {
+            "manual_fixture_csv_odds_v1",
+            "manual_fixture_json_odds_v1",
+            "manual_live_json_odds_v1",
+        }
         or not isinstance(source["parsed_odds_sha256"], str)
         or _SHA256_RE.fullmatch(source["parsed_odds_sha256"]) is None
         or source["raw_path"] != "source/raw.bin"

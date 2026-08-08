@@ -1,4 +1,5 @@
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -43,6 +44,8 @@ def deployment_inputs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         "ops/systemd/manual-research-api.service.in",
         "src/predictor/manual_research_cli.py",
         "src/predictor/manual_research_worker.py",
+        "src/predictor/manual_live_capture.py",
+        "src/predictor/manual_live_capture_child.py",
         "configs/prediction/manual-default.json",
         "artifacts/frozen_models/market_form_residual_v1/model.json",
         "artifacts/frozen_models/market_form_residual_v1/manifest.json",
@@ -118,7 +121,28 @@ def test_default_off_package_isolated_and_template_bound(deployment_inputs):
     assert binding["research_only"] is True
     assert binding["canonical"] is False
     assert binding["phase7_excluded"] is True
-    assert set(binding) == {"artifacts", "canonical", "default_enabled", "deployment", "entrypoint", "executable", "manual", "phase7_excluded", "research_only", "schema_version"}
+    assert set(binding) == {"artifacts", "canonical", "default_enabled", "deployment", "entrypoint", "executable", "live_capture", "manual", "phase7_excluded", "research_only", "schema_version"}
+    assert set(binding["artifacts"]) == {"config", "live_capture", "live_capture_child", "model", "model_manifest"}
+    assert binding["live_capture"] == {
+        "entrypoint": "src.predictor.manual_live_capture:main",
+        "child": "src.predictor.manual_live_capture_child:main",
+        "entrypoint_sha256": binding["artifacts"]["live_capture"],
+        "child_sha256": binding["artifacts"]["live_capture_child"],
+    }
+    assert "MANUAL_RESEARCH_LIVE_CAPTURE_ENTRYPOINT=src.predictor.manual_live_capture:main" in environment
+    assert "MANUAL_RESEARCH_LIVE_CAPTURE_CHILD=src.predictor.manual_live_capture_child:main" in environment
+    worker = values["source_root"] / "src/predictor/manual_research_worker.py"
+    binding_path = output / "manual-research.binding.json"
+    def run_worker(environment=None):
+        process = subprocess.Popen(
+            [sys.executable, str(worker), "--binding", str(binding_path)],
+            env=environment,
+        )
+        return process.wait()
+
+    assert run_worker() == 0
+    enabled_env = dict(os.environ, MANUAL_RESEARCH_ENABLED="1")
+    assert run_worker(enabled_env) == 78
     assert "KillMode=control-group" in service
     assert "FinalKillSignal=SIGKILL" in service
     assert "RestrictAddressFamilies=AF_UNIX" in service

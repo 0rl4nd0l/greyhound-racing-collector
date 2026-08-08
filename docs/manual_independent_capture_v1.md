@@ -1,12 +1,13 @@
 # Manual independent capture V1 contract
 
 `manual-independent-capture-v1` is an exact-race, research-only capture
-boundary. GHU-050 defines and validates the artifact contract. GHU-051 adds a
-fixture-only executor for its lock, path, process, timeout, cancellation, and
-terminal-artifact controls. GHU-052 adds an immutable atomic evidence seal and
-read-only verifier for terminal-success fixture captures with confirmed cleanup.
-The lane still does not provide a live fetch implementation, scoring, UI,
-deployment, or runtime integration.
+boundary. GHU-050 defines and validates the artifact contract. GHU-051 adds the
+executor for its lock, path, process, timeout, cancellation, and
+terminal-artifact controls; its original fixture child protocol remains
+unchanged. GHU-052 adds an immutable atomic evidence seal and read-only
+verifier. GHU-060 adds one versioned live child behind the same executor, plus
+an explicit default-off deployment binding. The lane still has no scoring,
+canonical, Phase 7, or autonomous-runtime authority.
 
 Every accepted configuration and terminal artifact is versioned, exact-field,
 canonically serializable, and validated by
@@ -44,7 +45,7 @@ attempt, no retry, and no replay. Minimum pre-jump margin, one absolute hard
 timeout, and one cancellation cleanup grace are bounded integers. The
 configuration cannot claim canonical or Phase 7 authority.
 
-## GHU-051 fixture executor
+## GHU-051 executor and GHU-060 live child
 
 `src/predictor/manual_independent_capture_executor.py` accepts one exact
 canonical TheDogs URL and its complete bound race identity. It validates the
@@ -64,15 +65,37 @@ and confirm that the process group is absent. PID, PGID, signal escalation, and
 reap proof are returned as `ManualCaptureExecution`; unconfirmed cleanup emits
 `PROCESS_REAP_UNCONFIRMED` and can never emit capture success.
 
-Fixture stdout is an exact-field, bounded child record. The parent accepts only
+Child stdout is an exact-field, bounded record. The parent accepts only
 the requested URL/race hash, one pre-jump source class, final URL equal to the
 requested exact race, HTTP status `200`, a control-free content type, and a
 GHU-050-valid runner/odds set. The returned execution binds those response
 values and the exact source-body hash for the immediate GHU-052 seal. It writes
 fixed members beneath the UUID run directory and writes `terminal.json` last,
 only after `validate_terminal_artifact` accepts the complete byte/hash binding.
-Tests—not production configuration—supply the fixture command. There is
-intentionally no CLI or default live/browser command.
+The legacy fixture schema is still accepted. The live child uses
+`manual_independent_capture_child_live_v1` and additionally binds the exact
+readiness runner set supplied by the parent; it cannot substitute a race or
+runner.
+
+`src/predictor/manual_live_capture_child.py` is the only live source adapter.
+It receives only the parent-exported URL, race identity/hash, dedicated manual
+profile, and run directory. It opens one persistent manual Playwright context,
+performs one `goto` to that exact canonical TheDogs URL, rejects redirects,
+non-200 responses, login/challenge markers, result selectors, and malformed
+runner rows, and closes the context on every terminal path. It reads only the
+fixed runner-row selectors and explicit decimal WIN odds. It emits a canonical
+runner/odds sidecar with media type
+`application/vnd.greyhound.manual-live+json`; GHU-052 recognizes that media
+through the distinct `manual_live_json_odds_v1` parser identity while retaining
+the same strict odds, source-hash, timing, and outcome rejection semantics.
+There is no discovery, retry, fallback, directory scan, autonomous state read,
+or result/outcome request.
+
+`src/predictor/manual_live_capture.py` is an explicit request-scoped wrapper,
+not a service mode. It requires one caller-supplied canonical race document
+and protected-path inventory, then delegates to the existing executor. The
+deployment generator records hashes and entrypoints for this wrapper and child
+but keeps the generated service and `MANUAL_RESEARCH_ENABLED=0` default-off.
 
 ## GHU-052 immutable evidence bundle
 
@@ -94,7 +117,10 @@ actual source response must bind the same exact race URL and bytes, status 200,
 an allowed content type for its source class, and no target outcome-shaped
 JSON/CSV/HTML field. The fixture child protocol is
 `manual_independent_capture_child_fixture_v2`; its source bytes carry the odds
-that the sealer parses through a closed, versioned parser vocabulary.
+that the sealer parses through a closed, versioned parser vocabulary. The live
+child's normalized sidecar is likewise bounded source bytes; it uses the
+distinct `manual_live_json_odds_v1` parser identity and is not an unrestricted
+page-body capture.
 
 The final directory is:
 
@@ -205,10 +231,11 @@ fields.
 
 ## Claims boundary and next ticket
 
-GHU-052 acceptance supports only: `fixture-proven sealed manual evidence`.
-It does not support live-source/browser success, prediction readiness, deployed
-runtime isolation, model quality, canonical coverage, Phase 7 eligibility,
-training, promotion, EV, staking, or betting.
+GHU-060 acceptance supports only controlled-fixture proof of the live child
+through the existing executor and sealer. It does not prove real live-source
+success, a real pre-jump prediction, deployed runtime isolation, model quality,
+canonical coverage, Phase 7 eligibility, training, promotion, EV, staking, or
+betting.
 
 GHU-053 may begin only from the accepted merged GHU-052 head and its reviewed
 exact tree, with the read-only verifier as its sole capture input. It must retain
