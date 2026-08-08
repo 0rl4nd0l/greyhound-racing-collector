@@ -252,8 +252,33 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
         self.assertIs(result["ci_contract_changed"], True)
 
     def test_ghu_058_exact_changed_path_set_selects_manual_prediction(self):
-        changes = CLASSIFIER.git_changes(
-            "5e9a370477a905a67bdcb26c9b9315ef0050b362", "HEAD"
+        changes = [
+            CLASSIFIER.Change(status=status, paths=(path,))
+            for status, path in (
+                ("M", ".github/forecasting-paths.ini"),
+                ("M", ".github/workflows/forecasting-tests.yml"),
+                (
+                    "A",
+                    "configs/prediction/manual-readiness-v1/scoring-readiness.schema.json",
+                ),
+                ("A", "docs/manual_prediction_scoring_readiness.md"),
+                ("A", "race_collection/manual_scoring_readiness.py"),
+                ("M", "scripts/ci/classify_forecasting_changes.py"),
+                ("M", "scripts/ci/run_forecasting_ci_contract.py"),
+                ("M", "tests/ci/test_forecasting_change_classifier.py"),
+                ("A", "tests/race_collection/test_manual_scoring_readiness.py"),
+            )
+        ]
+        changes.extend(
+            [
+                CLASSIFIER.Change(
+                    status="M",
+                    paths=("race_collection/synchronous_manual_capture.py",),
+                    manual_prediction_paths=(
+                        "race_collection/synchronous_manual_capture.py",
+                    ),
+                ),
+            ]
         )
         changed_paths = {
             path for change in changes for path in change.paths

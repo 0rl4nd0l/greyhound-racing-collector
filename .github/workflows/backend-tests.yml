@@ -14,7 +14,64 @@ env:
   OPENAI_USE_LIVE: 0
 
 jobs:
-  test:
+  classify:
+    name: backend-tests-routing
+    runs-on: ubuntu-latest
+    outputs:
+      backend_required: ${{ steps.classify.outputs.backend_required }}
+      ui_e2e_required: ${{ steps.classify.outputs.ui_e2e_required }}
+      trusted: ${{ steps.classify.outputs.trusted }}
+      reason: ${{ steps.classify.outputs.reason }}
+
+    steps:
+      - name: Check out exact validation head with history
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Validate backend routing contract
+        run: python3 tests/ci/test_backend_change_classifier.py
+
+      - name: Classify changed paths
+        id: classify
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          if [[ "$EVENT_NAME" != "pull_request" ]]; then
+            python3 scripts/ci/classify_backend_changes.py \
+              --force-all \
+              --github-output "$GITHUB_OUTPUT"
+          else
+            python3 scripts/ci/classify_backend_changes.py \
+              --base "$BASE_SHA" \
+              --head "$HEAD_SHA" \
+              --github-output "$GITHUB_OUTPUT"
+          fi
+
+      - name: Summarize backend routing
+        env:
+          BACKEND_REQUIRED: ${{ steps.classify.outputs.backend_required }}
+          CLASSIFIER_REASON: ${{ steps.classify.outputs.reason }}
+          ROUTING_TRUSTED: ${{ steps.classify.outputs.trusted }}
+          UI_E2E_REQUIRED: ${{ steps.classify.outputs.ui_e2e_required }}
+        run: |
+          {
+            echo "### Backend test routing"
+            echo
+            echo "- Backend validation: \`$BACKEND_REQUIRED\`"
+            echo "- UI E2E validation: \`$UI_E2E_REQUIRED\`"
+            echo "- Trusted classification: \`$ROUTING_TRUSTED\`"
+            echo "- Reason: \`$CLASSIFIER_REASON\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  backend_heavy:
+    name: backend-unit-tests (3.11)
+    needs: classify
+    if: needs.classify.result == 'success' && needs.classify.outputs.backend_required == 'true'
     runs-on: ubuntu-latest
     
     services:
@@ -151,7 +208,36 @@ jobs:
         name: coverage-report-${{ matrix.python-version }}
         path: htmlcov/
 
-  comprehensive-tests:
+  test:
+    name: test (3.11)
+    needs: [classify, backend_heavy]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Enforce backend classification and report stable check
+        env:
+          BACKEND_REQUIRED: ${{ needs.classify.outputs.backend_required }}
+          BACKEND_RESULT: ${{ needs.backend_heavy.result }}
+          CLASSIFIER_RESULT: ${{ needs.classify.result }}
+          ROUTING_TRUSTED: ${{ needs.classify.outputs.trusted }}
+        run: |
+          if [[ "$CLASSIFIER_RESULT" != "success" || "$ROUTING_TRUSTED" != "true" ]]; then
+            echo "Backend routing classification was not trusted."
+            exit 1
+          fi
+          if [[ "$BACKEND_REQUIRED" == "true" && "$BACKEND_RESULT" != "success" ]]; then
+            echo "Backend validation result: $BACKEND_RESULT"
+            exit 1
+          fi
+          if [[ "$BACKEND_REQUIRED" == "false" ]]; then
+            echo "Backend validation skipped: classified as non-backend scope."
+          fi
+
+  comprehensive_heavy:
+    name: comprehensive-backend-tests
+    needs: classify
+    if: needs.classify.result == 'success' && needs.classify.outputs.backend_required == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     
@@ -199,9 +285,40 @@ jobs:
         fail_ci_if_error: false
       if: success()
 
-  ui-e2e:
+  comprehensive-tests:
+    name: comprehensive-tests
+    needs: [classify, comprehensive_heavy]
+    if: always()
     runs-on: ubuntu-latest
-    needs: [test]
+
+    steps:
+      - name: Enforce backend classification and report stable check
+        env:
+          BACKEND_REQUIRED: ${{ needs.classify.outputs.backend_required }}
+          CLASSIFIER_RESULT: ${{ needs.classify.result }}
+          COMPREHENSIVE_RESULT: ${{ needs.comprehensive_heavy.result }}
+          ROUTING_TRUSTED: ${{ needs.classify.outputs.trusted }}
+        run: |
+          if [[ "$CLASSIFIER_RESULT" != "success" || "$ROUTING_TRUSTED" != "true" ]]; then
+            echo "Backend routing classification was not trusted."
+            exit 1
+          fi
+          if [[ "$BACKEND_REQUIRED" == "true" && "$COMPREHENSIVE_RESULT" != "success" ]]; then
+            echo "Comprehensive backend validation result: $COMPREHENSIVE_RESULT"
+            exit 1
+          fi
+          if [[ "$BACKEND_REQUIRED" == "false" ]]; then
+            echo "Comprehensive backend validation skipped: classified as non-backend scope."
+          fi
+
+  ui_e2e_heavy:
+    name: ui-e2e-tests
+    needs: [classify, test]
+    if: >-
+      needs.classify.result == 'success' &&
+      needs.test.result == 'success' &&
+      needs.classify.outputs.ui_e2e_required == 'true'
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
       PORT: 5002
@@ -299,3 +416,29 @@ jobs:
           if [ -f server.pid ]; then kill $(cat server.pid) || true; fi
           sleep 1
           pkill -f "python app.py" || true
+
+  ui-e2e:
+    name: ui-e2e
+    needs: [classify, ui_e2e_heavy]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Enforce UI E2E classification and report stable check
+        env:
+          CLASSIFIER_RESULT: ${{ needs.classify.result }}
+          ROUTING_TRUSTED: ${{ needs.classify.outputs.trusted }}
+          UI_E2E_REQUIRED: ${{ needs.classify.outputs.ui_e2e_required }}
+          UI_E2E_RESULT: ${{ needs.ui_e2e_heavy.result }}
+        run: |
+          if [[ "$CLASSIFIER_RESULT" != "success" || "$ROUTING_TRUSTED" != "true" ]]; then
+            echo "Backend routing classification was not trusted."
+            exit 1
+          fi
+          if [[ "$UI_E2E_REQUIRED" == "true" && "$UI_E2E_RESULT" != "success" ]]; then
+            echo "UI E2E validation result: $UI_E2E_RESULT"
+            exit 1
+          fi
+          if [[ "$UI_E2E_REQUIRED" == "false" ]]; then
+            echo "UI E2E validation skipped: no UI/API integration paths changed."
+          fi
