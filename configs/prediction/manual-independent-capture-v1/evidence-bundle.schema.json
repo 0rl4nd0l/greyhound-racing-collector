@@ -114,7 +114,7 @@
         "status_code": {"const": 200},
         "content_type": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^(?!\\s)(?![\\s\\S]*\\s$)[\\u0020-\\u007e]+$"},
         "metadata_sha256": {"$ref": "#/$defs/sha256"},
-        "odds_parser": {"enum": ["manual_fixture_csv_odds_v1", "manual_fixture_json_odds_v1"]},
+        "odds_parser": {"enum": ["manual_fixture_csv_odds_v1", "manual_fixture_json_odds_v1", "manual_live_json_odds_v1"]},
         "parsed_odds_sha256": {"$ref": "#/$defs/sha256"},
         "raw_path": {"const": "source/raw.bin"},
         "bytes": {"type": "integer", "minimum": 1, "maximum": 2097152},

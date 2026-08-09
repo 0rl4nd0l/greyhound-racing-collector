@@ -260,6 +260,16 @@ def generate_manual_package(
     output = _existing(output_dir, directory=True, label="output_dir")
     _existing(source / "src/predictor/manual_research_cli.py", directory=False, label="manual adapter")
     _existing(source / "src/predictor/manual_research_worker.py", directory=False, label="manual worker")
+    live_entrypoint = _existing(
+        source / "src/predictor/manual_live_capture.py",
+        directory=False,
+        label="live manual entrypoint",
+    )
+    live_child = _existing(
+        source / "src/predictor/manual_live_capture_child.py",
+        directory=False,
+        label="live manual child",
+    )
     if not isinstance(timeout_seconds, int) or isinstance(timeout_seconds, bool) or not 1 <= timeout_seconds <= 900:
         raise _reject("timeout_seconds is invalid")
     if not isinstance(margin_seconds, int) or isinstance(margin_seconds, bool) or not 1 <= margin_seconds <= 7200:
@@ -299,17 +309,27 @@ def generate_manual_package(
     model_bytes = _retained_file_read(model_path)
     manifest_bytes = _retained_file_read(manifest_path)
     config_bytes = _retained_file_read(config_path)
+    live_entrypoint_bytes = _retained_file_read(live_entrypoint)
+    live_child_bytes = _retained_file_read(live_child)
     _source_identity(source, source_commit, source_tree)
     hashes = {
         "model": hashlib.sha256(model_bytes).hexdigest(),
         "model_manifest": hashlib.sha256(manifest_bytes).hexdigest(),
         "config": hashlib.sha256(config_bytes).hexdigest(),
+        "live_capture": hashlib.sha256(live_entrypoint_bytes).hexdigest(),
+        "live_capture_child": hashlib.sha256(live_child_bytes).hexdigest(),
     }
     binding = {
         "schema_version": "manual_research_deployment_binding_v1",
         "deployment": {"source_commit": source_commit, "source_tree": source_tree, "lane": "manual-research-v1"},
         "executable": str(python),
         "entrypoint": "src.predictor.manual_research_cli:main",
+        "live_capture": {
+            "entrypoint": "src.predictor.manual_live_capture:main",
+            "child": "src.predictor.manual_live_capture_child:main",
+            "entrypoint_sha256": hashes["live_capture"],
+            "child_sha256": hashes["live_capture_child"],
+        },
         "manual": {
             "operations_root": str(manual),
             "browser_profile_root": str(profile),
@@ -343,6 +363,10 @@ def generate_manual_package(
             f"MANUAL_RESEARCH_MODEL_SHA256={hashes['model']}",
             f"MANUAL_RESEARCH_MODEL_MANIFEST_SHA256={hashes['model_manifest']}",
             f"MANUAL_RESEARCH_CONFIG_SHA256={hashes['config']}",
+            "MANUAL_RESEARCH_LIVE_CAPTURE_ENTRYPOINT=src.predictor.manual_live_capture:main",
+            "MANUAL_RESEARCH_LIVE_CAPTURE_CHILD=src.predictor.manual_live_capture_child:main",
+            f"MANUAL_RESEARCH_LIVE_CAPTURE_SHA256={hashes['live_capture']}",
+            f"MANUAL_RESEARCH_LIVE_CAPTURE_CHILD_SHA256={hashes['live_capture_child']}",
             "",
         )
     ).encode()

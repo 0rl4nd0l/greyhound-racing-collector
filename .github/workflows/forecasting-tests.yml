@@ -183,6 +183,8 @@ jobs:
                 tests/test_manual_independent_capture_sealer.py \
                 tests/test_manual_research_scoring.py \
                 tests/test_manual_research_cli.py \
+                tests/test_manual_live_capture.py \
+                tests/test_manual_research_deployment.py \
                 tests/test_market_form_residual.py \
                 tests/test_market_form_residual_portability.py \
                 tests/test_predict_market_form_residual.py \
