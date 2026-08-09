@@ -1,5 +1,9 @@
 {
   "status": "ADVANCED",
+  "implementation_commit": "216eca848462e3f690274be23758fbdc4221b934",
+  "implementation_tree": "d01b77f385ce5a4aa9495210270fac7c2160b7d2",
+  "base_commit": "0a67f95ea06effa04609faabe0103fe2e69ff94e",
+  "pr_head_before_fix": "8bcb9cd574549871b5f6de71edd4a62e4a2a0cd7",
   "scope_fingerprint": "17db5f2dddf295bb1d4e04b4794acb35cd0714a6bf35a235cb1e168646d97c98",
   "state_before": "PR_HEAD_8BCB9CD5_BLACKLISTED_SUBREQUESTS",
   "state_after": "ALLOWLIST_IMPLEMENTED_VALIDATED_PENDING_PUBLICATION",
