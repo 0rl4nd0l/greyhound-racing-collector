@@ -2,46 +2,35 @@
   "status": "SUCCESS",
   "work_log": {
     "assumptions": [
-      "The existing GHU-051 executor remains the authority for process, timeout, lock, identity, and terminal artifacts.",
-      "No live browser or source execution is permitted by this ticket."
+      "The existing GHU-051 executor and GHU-052 sealer remain authoritative.",
+      "No live browser or source execution is permitted for this corrective pass."
     ],
     "sources_used": [
       "AGENTS.md",
       "docs/agent_tasks/ghu_060_live_manual_capture_runtime_v1_20260808.md",
-      "GHU-050/GHU-051/GHU-052 implementation and schemas",
-      "staged git diff"
+      "src/predictor/manual_live_capture_child.py",
+      "tests/test_manual_live_capture.py",
+      "docs/manual_independent_capture_v1.md",
+      "git diff"
     ],
     "files_read": [
-      "src/predictor/manual_independent_capture_executor.py",
-      "src/predictor/manual_independent_capture_sealer.py",
-      "src/predictor/manual_live_capture.py",
       "src/predictor/manual_live_capture_child.py",
-      "src/predictor/manual_research_deployment.py",
-      "src/predictor/manual_research_worker.py",
       "tests/test_manual_live_capture.py",
-      "tests/test_manual_research_deployment.py",
-      ".github/forecasting-paths.ini",
-      ".github/workflows/forecasting-tests.yml"
-    ],
-    "files_modified": [
-      ".github/forecasting-paths.ini",
-      ".github/workflows/forecasting-tests.yml",
-      "configs/prediction/manual-independent-capture-v1/evidence-bundle.schema.json",
       "docs/manual_independent_capture_v1.md",
       "src/predictor/manual_independent_capture_executor.py",
-      "src/predictor/manual_independent_capture_sealer.py",
-      "src/predictor/manual_live_capture.py",
+      "src/predictor/manual_independent_capture_sealer.py"
+    ],
+    "files_modified": [
       "src/predictor/manual_live_capture_child.py",
-      "src/predictor/manual_research_deployment.py",
-      "src/predictor/manual_research_worker.py",
       "tests/test_manual_live_capture.py",
-      "tests/test_manual_research_deployment.py"
+      "docs/manual_independent_capture_v1.md",
+      "reports/agent_jobs/GHU_060_LIVE_MANUAL_CAPTURE_RUNTIME_V1_20260808/"
     ],
     "validation_checks": [
-      "git diff --cached --check",
-      "ruff check on modified implementation and tests",
-      "785 focused manual-tier tests passed",
-      "No live browser, service, lock, database, Phase-7, or merge action performed"
+      "31 focused network-policy tests passed",
+      "806 exact manual_prediction tests passed",
+      "forecasting and backend classifier contracts passed",
+      "Ruff, py_compile, YAML, JSON, schema, hardening, and diff checks passed"
     ]
   },
   "result": {

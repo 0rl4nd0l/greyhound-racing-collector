@@ -21,12 +21,13 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from src.predictor.manual_independent_capture import canonical_bytes
 from src.predictor.manual_independent_capture_executor import (
     LIVE_CHILD_SCHEMA_VERSION,
 )
-from utils.csv_metadata import canonical_thedogs_race_identity
+from utils.csv_metadata import THEDOGS_CANONICAL_HOST, canonical_thedogs_race_identity
 
 CONTENT_TYPE = "application/vnd.greyhound.manual-live+json"
 _MAX_RUNNER_COUNT = 10
@@ -48,7 +49,13 @@ _OUTCOME_SELECTORS = (
     ".race-results",
     ".race-result__winner",
 )
-_OUTCOME_URL_MARKERS = ("/result", "/results", "dividend", "payout", "outcome")
+_STATIC_ASSET_EXTENSIONS = {
+    "stylesheet": (".css",),
+    "script": (".js", ".mjs"),
+    "image": (".gif", ".ico", ".jpeg", ".jpg", ".png", ".svg", ".webp"),
+    "font": (".eot", ".otf", ".ttf", ".woff", ".woff2"),
+}
+_STATIC_ASSET_PATH_PREFIX = "/assets/"
 
 
 class LiveCaptureRejected(RuntimeError):
@@ -57,6 +64,48 @@ class LiveCaptureRejected(RuntimeError):
     def __init__(self, code: str):
         super().__init__(code)
         self.code = code
+
+
+def network_request_allowed(
+    *,
+    url: str,
+    resource_type: str,
+    is_navigation_request: bool,
+    method: str,
+    exact_race_url: str,
+) -> bool:
+    """Return whether one browser request is inside the reviewed allowlist."""
+
+    if not all(isinstance(value, str) for value in (url, resource_type, method, exact_race_url)):
+        return False
+    if not isinstance(is_navigation_request, bool):
+        return False
+    bound_identity = canonical_thedogs_race_identity(exact_race_url)
+    if bound_identity is None or bound_identity["canonical_url"] != exact_race_url:
+        return False
+    if is_navigation_request:
+        return (
+            url == exact_race_url
+            and resource_type == "document"
+            and method == "GET"
+        )
+    if method != "GET" or resource_type not in _STATIC_ASSET_EXTENSIONS:
+        return False
+    try:
+        requested = urlparse(url)
+        bound = urlparse(exact_race_url)
+    except ValueError:
+        return False
+    if (
+        requested.scheme != "https"
+        or requested.netloc != bound.netloc
+        or requested.netloc != THEDOGS_CANONICAL_HOST
+        or requested.query
+        or requested.fragment
+        or not requested.path.startswith(_STATIC_ASSET_PATH_PREFIX)
+    ):
+        return False
+    return requested.path.lower().endswith(_STATIC_ASSET_EXTENSIONS[resource_type])
 
 
 def _required_env(name: str) -> str:
@@ -176,10 +225,12 @@ def _page_probe(page: Any, exact_url: str) -> tuple[int, str]:
 def _install_navigation_guard(page: Any, exact_url: str) -> None:
     def guard(route: Any) -> None:
         request = route.request
-        request_url = str(request.url)
-        if request_url != exact_url and (
-            request.is_navigation_request()
-            or any(marker in request_url.lower() for marker in _OUTCOME_URL_MARKERS)
+        if not network_request_allowed(
+            url=request.url,
+            resource_type=request.resource_type,
+            is_navigation_request=request.is_navigation_request(),
+            method=request.method,
+            exact_race_url=exact_url,
         ):
             route.abort()
             return
@@ -319,4 +370,10 @@ if __name__ == "__main__":
     raise SystemExit(main())
 
 
-__all__ = ["CONTENT_TYPE", "LiveCaptureRejected", "capture_from_page", "main"]
+__all__ = [
+    "CONTENT_TYPE",
+    "LiveCaptureRejected",
+    "capture_from_page",
+    "main",
+    "network_request_allowed",
+]

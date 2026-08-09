@@ -25,6 +25,7 @@ from src.predictor.manual_live_capture_child import (
     LiveCaptureRejected,
     _install_navigation_guard,
     capture_from_page,
+    network_request_allowed,
 )
 
 NOW = datetime(2026, 8, 5, 1, 0, 0, tzinfo=timezone.utc)
@@ -94,17 +95,25 @@ class _TimeoutPage(_Page):
 
 
 class _Request:
-    def __init__(self, url: str, navigation: bool):
+    def __init__(self, url: str, navigation: bool, resource_type: str, method: str):
         self.url = url
         self.navigation = navigation
+        self.resource_type = resource_type
+        self.method = method
 
     def is_navigation_request(self) -> bool:
         return self.navigation
 
 
 class _Route:
-    def __init__(self, url: str, navigation: bool):
-        self.request = _Request(url, navigation)
+    def __init__(
+        self,
+        url: str,
+        navigation: bool,
+        resource_type: str = "other",
+        method: str = "GET",
+    ):
+        self.request = _Request(url, navigation, resource_type, method)
         self.action = None
 
     def abort(self):
@@ -276,13 +285,49 @@ def test_live_child_timeout_is_one_terminal_attempt():
     assert page.goto_urls == [_url()]
 
 
-def test_navigation_guard_blocks_redirects_and_outcome_subresources():
+@pytest.mark.parametrize(
+    ("url", "resource_type", "is_navigation", "method", "expected"),
+    [
+        (_url(), "document", True, "GET", True),
+        (_url(), "document", False, "GET", False),
+        (_url(), "document", True, "POST", False),
+        ("https://www.thedogs.com.au/racing/richmond/2026-08-05/2/other", "document", True, "GET", False),
+        ("https://www.thedogs.com.au/api/race/123/data", "xhr", False, "GET", False),
+        ("https://www.thedogs.com.au/api/meeting/123", "fetch", False, "GET", False),
+        ("https://www.thedogs.com.au/api/race/123/details", "xhr", False, "GET", False),
+        ("wss://www.thedogs.com.au/socket/race/123", "websocket", False, "GET", False),
+        ("https://www.thedogs.com.au/events/race/123", "eventsource", False, "GET", False),
+        ("https://www.thedogs.com.au/assets/race.css", "stylesheet", False, "GET", True),
+        ("https://www.thedogs.com.au/assets/race.js", "script", False, "GET", True),
+        ("https://www.thedogs.com.au/assets/runner.png", "image", False, "GET", True),
+        ("https://www.thedogs.com.au/assets/site.woff2", "font", False, "GET", True),
+        ("https://evil.example/assets/race.css", "stylesheet", False, "GET", False),
+        ("https://www.thedogs.com.au/static/race.css", "stylesheet", False, "GET", False),
+        ("https://www.thedogs.com.au/assets/race.css?outcome=1", "stylesheet", False, "GET", False),
+        ("https://www.thedogs.com.au/api/outcome/1", "xhr", False, "GET", False),
+        ("https://www.thedogs.com.au/assets/race.css", "stylesheet", False, "POST", False),
+        ("https://www.thedogs.com.au/assets/data", "other", False, "GET", False),
+    ],
+)
+def test_network_request_policy_is_explicit_and_fail_closed(
+    url, resource_type, is_navigation, method, expected
+):
+    assert network_request_allowed(
+        url=url,
+        resource_type=resource_type,
+        is_navigation_request=is_navigation,
+        method=method,
+        exact_race_url=_url(),
+    ) is expected
+
+
+def test_navigation_guard_applies_the_allowlist_to_routes():
     page = _RoutePage()
     _install_navigation_guard(page, _url())
-    exact = _Route(_url(), True)
-    redirect = _Route("https://www.thedogs.com.au/results/richmond", True)
-    outcome_api = _Route("https://www.thedogs.com.au/api/outcome/1", False)
-    asset = _Route("https://www.thedogs.com.au/assets/race.css", False)
+    exact = _Route(_url(), True, "document")
+    redirect = _Route("https://www.thedogs.com.au/results/richmond", True, "document")
+    outcome_api = _Route("https://www.thedogs.com.au/api/outcome/1", False, "xhr")
+    asset = _Route("https://www.thedogs.com.au/assets/race.css", False, "stylesheet")
     for route in (exact, redirect, outcome_api, asset):
         page.guard(route)
     assert [route.action for route in (exact, redirect, outcome_api, asset)] == [

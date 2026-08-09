@@ -1,17 +1,52 @@
 {
-  "status": "IMPLEMENTATION_READY_FOR_REVIEW",
-  "implementation_commit": "a053e5b2cb03102468b87c9ebb0bc9f0d9922730",
-  "implementation_tree": "deb36fa709161985516da41404d97e46e65dbe65",
-  "base_commit": "1c937b53491787f1e54b16d235f7536af48c3c85",
-  "base_tree": "78ffa1301b064136f688697ac6881e700232b0ee",
-  "classifier": {
-    "tier": "manual_prediction",
-    "ci_contract_changed": true,
-    "reason": "single_product_tier_with_ci_contract"
+  "status": "ADVANCED",
+  "scope_fingerprint": "17db5f2dddf295bb1d4e04b4794acb35cd0714a6bf35a235cb1e168646d97c98",
+  "state_before": "PR_HEAD_8BCB9CD5_BLACKLISTED_SUBREQUESTS",
+  "state_after": "ALLOWLIST_IMPLEMENTED_VALIDATED_PENDING_PUBLICATION",
+  "decision_delta": "Replaced arbitrary same-origin subrequest continuation with an exact-navigation and reviewed-static allowlist; no odds API was admitted.",
+  "reused_claims": [
+    "GHU-051 remains the sole process, timeout, lock, identity, runner, and artifact authority.",
+    "GHU-052 media/parser, sealing, hash, timestamp, and outcome-rejection semantics remain unchanged.",
+    "No live browser/source attempt, deployment, service, lock, database, model, scoring, or Phase 7 action is permitted."
+  ],
+  "changed_claims": [
+    "Only exact canonical race document GET navigation can pass as navigation.",
+    "Only query-free canonical-host /assets/ GET stylesheet, script, image, or font resources can pass as static assets.",
+    "XHR, fetch, websocket, event-stream, API, result-like, unknown, and unclassified requests abort."
+  ],
+  "new_evidence": [
+    "31 adversarial pure-policy and route-guard tests passed.",
+    "806 exact manual_prediction tests passed.",
+    "Forecasting classifier 28 tests and backend classifier 12 tests passed.",
+    "Forecasting CI contract validated 9 workflow YAML files and 5 focused checks.",
+    "Ruff, py_compile, JSON/schema, hardening, and diff checks passed."
+  ],
+  "produced_artifacts": [
+    "src/predictor/manual_live_capture_child.py",
+    "tests/test_manual_live_capture.py",
+    "docs/manual_independent_capture_v1.md",
+    "reports/agent_jobs/GHU_060_LIVE_MANUAL_CAPTURE_RUNTIME_V1_20260808/CODE_REVIEW.json",
+    "reports/agent_jobs/GHU_060_LIVE_MANUAL_CAPTURE_RUNTIME_V1_20260808/VALIDATION.md"
+  ],
+  "resume_only_if": "Continue only from the clean task worktree while PR #128 remains bound to the expected pre-fix head until publication, the diff stays inside the task-card allowlist, and no live/autonomous authority is crossed.",
+  "new_goal_permitted": false,
+  "used_capabilities": [
+    "READ",
+    "REPORT_WRITE",
+    "CODE_EDIT",
+    "PUBLISH"
+  ],
+  "network_policy": {
+    "navigation": "exact canonical race URL, document, top-level, GET only",
+    "static": "canonical host, /assets/ path, query-free GET, reviewed CSS/JS/image/font extensions",
+    "reviewed_odds_api": false
   },
-  "tests": "785 passed",
+  "docs_impact": "DOCS_UPDATED",
   "live_attempt": false,
   "deployment": false,
   "merge": false,
-  "canonical_or_phase7_mutation": false
+  "canonical_or_phase7_mutation": false,
+  "production_permission_safety_changed": false,
+  "code_review": "SUCCESS; no critical, warning, or suggestion findings",
+  "focused_validation_environment": "uv ephemeral environment; no project dependency files changed"
 }

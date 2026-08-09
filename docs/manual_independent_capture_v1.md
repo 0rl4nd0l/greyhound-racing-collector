@@ -80,11 +80,18 @@ runner.
 `src/predictor/manual_live_capture_child.py` is the only live source adapter.
 It receives only the parent-exported URL, race identity/hash, dedicated manual
 profile, and run directory. It opens one persistent manual Playwright context,
-performs one `goto` to that exact canonical TheDogs URL, rejects redirects,
-non-200 responses, login/challenge markers, result selectors, and malformed
-runner rows, and closes the context on every terminal path. It reads only the
-fixed runner-row selectors and explicit decimal WIN odds. It emits a canonical
-runner/odds sidecar with media type
+performs one `goto` to that exact canonical TheDogs URL, and installs a
+fail-closed request allowlist before the navigation. The allowlist permits only
+that exact top-level `GET` document navigation and query-free `GET` static
+assets under the trusted `https://www.thedogs.com.au/assets/` path, limited to
+reviewed stylesheet, script, image, and font extensions. It does not use
+same-origin as a safety rule; XHR, fetch, websocket, event-stream, document,
+subframe, API, result-like, unknown, and all other unclassified requests abort.
+The reviewed surface exposes no odds API endpoint, so no data-bearing request
+family is admitted. Redirects, non-200 responses, login/challenge markers,
+result selectors, and malformed runner rows are also rejected, and the context
+closes on every terminal path. It reads only the fixed runner-row selectors and
+explicit decimal WIN odds. It emits a canonical runner/odds sidecar with media type
 `application/vnd.greyhound.manual-live+json`; GHU-052 recognizes that media
 through the distinct `manual_live_json_odds_v1` parser identity while retaining
 the same strict odds, source-hash, timing, and outcome rejection semantics.
