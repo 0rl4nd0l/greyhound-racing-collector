@@ -1,0 +1,21 @@
+[Unit]
+Description=Greyhound Operator UI R3 (generated, private)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/l4nd0/operator-ui-r3-ticket01-authoritative-HCOLll/source
+EnvironmentFile=/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-ticket02-candidate-20260810-xoXmLv/operator-ui-r3.env
+EnvironmentFile=/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/.config/greyhound-operator-ui-r3-9d58f340/operator-ui-r3.secrets
+ExecStart=/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-python311-20260803-9d58f340/bin/python -m src.operator_ui.deployment serve --source-root /home/l4nd0/operator-ui-r3-ticket01-authoritative-HCOLll/source --host 127.0.0.1 --port 5055
+Restart=no
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadOnlyPaths=/home/l4nd0/operator-ui-r3-ticket01-authoritative-HCOLll/source /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525 /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-manual-collector-live-deploy-20260730-9be52ecd /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/greyhound_racing_data.db
+ReadWritePaths=/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-ticket02-operations-20260810-IX5u7P
+
+[Install]
+WantedBy=default.target

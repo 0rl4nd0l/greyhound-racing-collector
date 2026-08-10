@@ -1,0 +1,15 @@
+{
+  "schema_version": "operator_ui_deployment_manifest_v1",
+  "generated_at": "2026-08-10T20:28:33+10:00",
+  "source_commit": null,
+  "source_tree": null,
+  "deployed_commit": null,
+  "deployed_tree": null,
+  "working_directory": null,
+  "installed_unit_sha256": {
+    "full_timer": "8cbf2c51c7f11f029c2b9b3cf6bf221df38039c68a95a39816ea9704e6caecaf",
+    "full_service": "4f606f21c1215006d43acf3df8db9e1390f70226b03de118030efb63940d9630",
+    "odds_timer": "f359bc6327a5e1d3094844d58305a1eabc9304f5f8c7ceac7826285e0cdad1e1",
+    "odds_service": "f85170b90735dfe98a7f6e13355be466c1811b7b9d7f393e25dda2a8e97682d7"
+  }
+}
