@@ -216,6 +216,8 @@ jobs:
               selected_command=(
                 uv run --no-project --with-requirements requirements/all.in
                 python -m pytest -q
+                tests/operator_ui/test_bootstrap.py \
+                tests/operator_ui/test_deployment_generator.py \
                 tests/operator_ui/test_foundation.py \
                 tests/operator_ui/test_job_store.py \
                 tests/operator_ui/test_prediction_worker.py \

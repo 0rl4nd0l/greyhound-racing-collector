@@ -107,6 +107,8 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
                 "static/css/operator-ui.css",
                 "static/js/operator-ui-connected.js",
                 "templates/operator_ui_connected.jinja",
+                "tests/operator_ui/test_bootstrap.py",
+                "tests/operator_ui/test_deployment_generator.py",
                 "tests/operator_ui/test_foundation.py",
             ),
             "forecasting_core": (
@@ -133,7 +135,6 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
                 "scripts/predict_race_now.py",
                 "src/operator_ui/bootstrap.py",
                 "tests/race_collection/test_phase5_ordered_finish_training.py",
-                "tests/operator_ui/test_deployment_generator.py",
                 "tests/test_predict_race_now.py",
                 "utils/csv_metadata.py",
             ),
@@ -186,6 +187,15 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
                 self.assertEqual(
                     result["reason"], "shared_or_high_risk_path_requires_full"
                 )
+
+    def test_fixed_runtime_operator_ui_tests_stay_focused(self):
+        result = self.classify(
+            ("M", "tests/operator_ui/test_bootstrap.py"),
+            ("M", "tests/operator_ui/test_deployment_generator.py"),
+        )
+        self.assertEqual(result["tier"], "operator_ui")
+        self.assertEqual(result["reason"], "single_trusted_tier")
+        self.assertFalse(result["ci_contract_changed"])
 
     def test_ci_only_routing_change_never_selects_complete_suite(self):
         result = self.classify(
