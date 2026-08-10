@@ -188,6 +188,7 @@ jobs:
                 tests/test_market_form_residual.py \
                 tests/test_market_form_residual_portability.py \
                 tests/test_predict_market_form_residual.py \
+                tests/test_strict_win_odds_fixture_capture.py \
                 tests/race_collection/test_manual_scoring_readiness.py \
                 tests/test_scoring_parity.py
               )
