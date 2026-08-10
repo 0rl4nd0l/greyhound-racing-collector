@@ -197,6 +197,18 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
         self.assertEqual(result["reason"], "single_trusted_tier")
         self.assertFalse(result["ci_contract_changed"])
 
+    def test_fixed_runtime_pr_with_ci_contract_stays_operator_ui_focused(self):
+        result = self.classify(
+            ("M", ".github/forecasting-paths.ini"),
+            ("M", ".github/workflows/forecasting-tests.yml"),
+            ("M", "tests/ci/test_forecasting_change_classifier.py"),
+            ("M", "tests/operator_ui/test_bootstrap.py"),
+            ("M", "tests/operator_ui/test_deployment_generator.py"),
+        )
+        self.assertEqual(result["tier"], "operator_ui")
+        self.assertEqual(result["reason"], "single_product_tier_with_ci_contract")
+        self.assertTrue(result["ci_contract_changed"])
+
     def test_ci_only_routing_change_never_selects_complete_suite(self):
         result = self.classify(
             ("M", ".github/forecasting-paths.ini"),
