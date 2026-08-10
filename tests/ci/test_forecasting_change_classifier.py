@@ -82,6 +82,8 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
                 "tests/test_manual_independent_capture.py",
                 "tests/test_manual_independent_capture_sealer.py",
                 "tests/test_predict_market_form_residual.py",
+                "scripts/strict_win_odds_fixture_capture.py",
+                "tests/test_strict_win_odds_fixture_capture.py",
             ),
             "official_results": (
                 "scripts/autonomous_official_result_capture.py",
@@ -114,6 +116,8 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
                 "tests/race_collection/test_phase4_model_serving.py",
             ),
             "full_forecasting": (
+                "AGENTS.md",
+                "artifacts/frozen_models/model.bin",
                 "race_collection/domain.py",
                 "race_collection/features.py",
                 "race_collection/identity.py",
@@ -133,6 +137,8 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
                 "README.md",
                 "docs/race_evidence_inventory.md",
                 "reports/agent_jobs/example/README.md",
+                ".playwright-mcp/page.yml",
+                "artifacts/report_only/packet.json",
                 "static/css/base.css",
                 "templates/index.html",
             ),
@@ -145,6 +151,25 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
                     self.assertIs(
                         result["ci_contract_changed"], expected == "ci_contract"
                     )
+
+    def test_report_only_artifacts_and_strict_fixture_lane_stay_focused(self):
+        result = self.classify(
+            ("A", ".playwright-mcp/page-2026-07-09.yml"),
+            (
+                "A",
+                "artifacts/full_evidence_orchestration_20260525/report_only/packet.json",
+            ),
+            ("A", "scripts/strict_win_odds_fixture_capture.py"),
+            ("A", "tests/test_strict_win_odds_fixture_capture.py"),
+        )
+        self.assertEqual(result["tier"], "manual_prediction")
+        self.assertEqual(result["reason"], "single_trusted_tier")
+        self.assertFalse(result["ci_contract_changed"])
+
+    def test_artifact_allowlist_does_not_hide_frozen_models(self):
+        result = self.classify(("M", "artifacts/frozen_models/model.bin"))
+        self.assertEqual(result["tier"], "full_forecasting")
+        self.assertEqual(result["reason"], "shared_or_high_risk_path_requires_full")
 
     def test_ci_only_routing_change_never_selects_complete_suite(self):
         result = self.classify(
@@ -543,6 +568,7 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
             "forecasting-command-manifest.tsv",
             'forecasting-command.txt',
             '--with PyYAML python scripts/ci/run_forecasting_ci_contract.py',
+            'tests/test_strict_win_odds_fixture_capture.py',
             "commit = subprocess.check_output",
             "tree = subprocess.check_output",
         ):
