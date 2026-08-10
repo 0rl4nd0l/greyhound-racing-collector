@@ -1,0 +1,101 @@
+{
+  "schema_version": "operator_ui_r3_authoritative_source_proof_v1",
+  "status": "PASS_WITH_REPOSITORY_WIDE_COLLECTION_LIMITATION",
+  "observed_at": "2026-08-10T19:37:32+10:00",
+  "authoritative_source": {
+    "checkout": "/home/l4nd0/operator-ui-r3-ticket01-authoritative-HCOLll/source",
+    "clean": true,
+    "commit": "d343af94a57af80327dd41f18433f7466f86ca0d",
+    "tree": "a04197ba455de2549f9c76adcd474d1feb520bd1",
+    "proof_commands": [
+      "git rev-parse HEAD",
+      "git rev-parse HEAD^{tree}",
+      "git status --porcelain=v1"
+    ],
+    "contracts": {
+      "configs/operator_ui/repository-v1.toml": "eb6f2018a086e7543d4ae8a6705d6e2b3fb9972128cc33f102eab7dda6342aff",
+      "src/operator_ui/deployment.py": "7584c80957460bdd1c81d292ff59d7dec2a54adf8a828bff52c2113b7fab25b0",
+      "src/operator_ui/prediction_worker.py": "72fc69df95c409ecb83e1ebd9018e1e7b6826679eff27ad111889a2d38aee9d0",
+      "artifacts/frozen_models/market_form_residual_v1/model.json": "624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d",
+      "artifacts/frozen_models/market_form_residual_v1/manifest.json": "8537cbc3d843d106a1fe48793ef01197454ef092c0244025fd65685636a42080",
+      "configs/prediction/schemas/market_form_residual_v1.schema.json": "89c1c758adb037ed1213ecd9bd29fd2cc0e470e86d06bf4654ccecefa140bdb2",
+      "docs/manual_live_market_form_residual_prediction.md": "adf2c16a2d3638c170de7fd675715458081d7d1c17b17114ad41b615bad7ad5f"
+    }
+  },
+  "runtime": {
+    "python": "3.11.15",
+    "numpy": "1.26.4"
+  },
+  "tests": [
+    {
+      "path": "tests/operator_ui/test_deployment_generator.py",
+      "command": "<pinned-python> -m pytest -q tests/operator_ui/test_deployment_generator.py",
+      "exit_code": 0,
+      "passed": 112,
+      "seconds": 69.20,
+      "status": "PASS"
+    },
+    {
+      "path": "tests/operator_ui/test_r3_e2e_safety.py",
+      "command": "<pinned-python> -m pytest -q tests/operator_ui/test_r3_e2e_safety.py",
+      "exit_code": 0,
+      "passed": 2,
+      "seconds": 15.35,
+      "status": "PASS"
+    },
+    {
+      "path": "tests/test_market_form_residual.py tests/test_market_form_residual_portability.py",
+      "command": "<pinned-python> -m pytest -q tests/test_market_form_residual.py tests/test_market_form_residual_portability.py",
+      "exit_code": 0,
+      "passed": 114,
+      "seconds": 943.62,
+      "status": "PASS"
+    },
+    {
+      "path": "tests/test_predict_race_now.py::test_model_config_mismatch_and_alias_resolution_fail_or_resolve_exactly",
+      "command": "<pinned-python> -m pytest -q tests/test_predict_race_now.py::test_model_config_mismatch_and_alias_resolution_fail_or_resolve_exactly",
+      "exit_code": 0,
+      "passed": 1,
+      "seconds": 12.97,
+      "status": "PASS"
+    }
+  ],
+  "repository_wide_suite": {
+    "command": "python -m pytest -q",
+    "status": "COLLECTION_TERMINATED",
+    "diagnostic_exit_code": 143,
+    "tests_executed": false
+  },
+  "selector": {
+    "requested": "latest-research",
+    "resolved": "market_form_residual_v1",
+    "alias_resolved": true,
+    "model_sha256": "624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d",
+    "manifest_sha256": "8537cbc3d843d106a1fe48793ef01197454ef092c0244025fd65685636a42080",
+    "schema_sha256": "89c1c758adb037ed1213ecd9bd29fd2cc0e470e86d06bf4654ccecefa140bdb2",
+    "config_id": "manual-default",
+    "config_sha256": "f8a3c321dca12321a38a4d12a08f4f43461e1c1e73100eda871fd60252ed1820"
+  },
+  "observed_active_runtime": {
+    "unit": "greyhound-operator-ui-r3.service",
+    "load_state": "loaded",
+    "active_state": "active",
+    "sub_state": "running",
+    "pid": 1692390,
+    "fragment_path": "/home/l4nd0/.config/systemd/user/greyhound-operator-ui-r3.service",
+    "working_directory": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-patch-deploy-20260810-f0b",
+    "executable": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-python311-20260803-9d58f340/bin/python",
+    "exec_start": "<executable> -m src.operator_ui.deployment serve --source-root <working-directory> --host 127.0.0.1 --port 5055",
+    "commit": "7b6143259b201242cb667c6b6c9056defbaec73d",
+    "tree": "7f354484077eef0478c5487d9f829d666006a9e9",
+    "qualified": false,
+    "listener": "127.0.0.1:5055"
+  },
+  "mutations": {
+    "services": false,
+    "runtime_databases": false,
+    "external_sources": false,
+    "model_registry": false,
+    "remote_repository": false
+  }
+}
