@@ -1,6 +1,9 @@
 import pytest
 import shutil
 import hashlib
+import os
+import stat
+import tempfile
 import threading
 import json
 from dataclasses import replace
@@ -19,6 +22,19 @@ import src.operator_ui.bootstrap as bootstrap_module
 from src.predictor.on_demand import resolve_model
 from race_collection.synchronous_manual_capture import VerifiedCurrentRaceIndex
 from src.operator_ui.job_store import Phase
+
+
+@pytest.fixture
+def tmp_path():
+    """Keep trusted fixed-runtime fixtures outside foreign-owned /tmp."""
+    source_root = Path(__file__).resolve().parents[2]
+    with tempfile.TemporaryDirectory(prefix=".pytest-bootstrap-", dir=source_root) as raw:
+        root = Path(raw)
+        info = root.stat()
+        assert root == root.resolve()
+        assert info.st_uid == os.geteuid()
+        assert stat.S_IMODE(info.st_mode) == 0o700
+        yield root
 
 
 def installed_app(tmp_path):
@@ -310,6 +326,20 @@ def test_repository_profile_missing_or_unsafe_authoritative_sources_fail_closed(
     app=Flask(__name__);app.config[R3_PROFILE_KEY]="repository-v1"
     with pytest.raises(RuntimeError,match="generated repository-v1 binding|fixed R3 runtime"):
         bootstrap_module.configure_r3_startup(app)
+
+
+@pytest.mark.skipif(
+    not (
+        stat.S_IMODE(Path("/tmp").stat().st_mode) & 0o020
+        and Path("/tmp").stat().st_uid != os.geteuid()
+    ),
+    reason="host has no foreign-owned group-writable /tmp ancestor",
+)
+def test_fixed_path_rejects_foreign_owned_group_writable_ancestor():
+    """Keep the production foreign-owner rejection covered explicitly."""
+    with tempfile.NamedTemporaryFile(dir="/tmp") as unsafe_file:
+        with pytest.raises(RuntimeError, match="fixed R3 runtime unsafe"):
+            bootstrap_module._open_fixed(Path(unsafe_file.name), directory=False)
 
 
 def test_finite_testing_fixture_profile_builds_real_repository_composition(tmp_path, monkeypatch):

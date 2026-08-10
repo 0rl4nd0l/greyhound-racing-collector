@@ -31,6 +31,19 @@ AUTHORITY_RELATIVES = (
 )
 
 
+@pytest.fixture
+def tmp_path():
+    """Keep retained-authority fixtures outside foreign-owned /tmp ancestry."""
+    repository = Path(__file__).resolve().parents[2]
+    with TemporaryDirectory(prefix=".pytest-deployment-", dir=repository) as raw:
+        root = Path(raw)
+        info = root.stat()
+        assert root == root.resolve()
+        assert info.st_uid == os.geteuid()
+        assert stat.S_IMODE(info.st_mode) == 0o700
+        yield root
+
+
 def deployment_inputs(tmp_path: Path) -> dict[str, object]:
     source = tmp_path / "source"
     repository = Path(__file__).parents[2]
