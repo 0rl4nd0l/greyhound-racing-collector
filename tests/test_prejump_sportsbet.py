@@ -1,6 +1,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from upcoming_race_browser import UpcomingRaceBrowser
 from utils.prejump_sportsbet import collect_sportsbet_track_metadata
 
 
@@ -27,6 +28,18 @@ class FakeSportsbetSession:
 
     def get(self, url, **kwargs):
         self.calls.append((url, kwargs))
+        return FakeSportsbetResponse(self.payload)
+
+
+class OneSuccessfulSportsbetSession:
+    def __init__(self, payload):
+        self.payload = payload
+        self.calls = []
+
+    def get(self, url, **kwargs):
+        self.calls.append((url, kwargs))
+        if len(self.calls) > 1:
+            raise AssertionError("Sportsbet meeting snapshot fetched more than once")
         return FakeSportsbetResponse(self.payload)
 
 
@@ -69,6 +82,44 @@ def test_sportsbet_track_metadata_accepts_matched_pre_race_event():
     assert metadata["weather_track_metadata_is_leakage_safe"] is True
     assert metadata["weather_track_metadata_detail"]["event_id"] == 10597250
     assert session.calls
+
+
+def test_browser_reuses_one_sportsbet_snapshot_across_same_refresh():
+    events = [
+        _sale_r9_event(),
+        _sale_r9_event(
+            id=10597251,
+            raceNumber=10,
+            startTime=int(
+                datetime(
+                    2026, 6, 17, 14, 17,
+                    tzinfo=ZoneInfo("Australia/Melbourne"),
+                ).timestamp()
+            ),
+        ),
+    ]
+    browser = object.__new__(UpcomingRaceBrowser)
+    browser.session = OneSuccessfulSportsbetSession(events)
+    browser._sportsbet_next_events_snapshot = None
+
+    race_9 = browser._collect_safe_track_metadata_from_sportsbet(
+        {
+            "date": "2026-06-17", "venue": "SAL", "race_number": "9",
+            "race_time": "1:57 PM",
+            "url": "https://www.thedogs.com.au/racing/sale/2026-06-17/9/example",
+        }
+    )
+    race_10 = browser._collect_safe_track_metadata_from_sportsbet(
+        {
+            "date": "2026-06-17", "venue": "SAL", "race_number": "10",
+            "race_time": "2:17 PM",
+            "url": "https://www.thedogs.com.au/racing/sale/2026-06-17/10/example",
+        }
+    )
+
+    assert race_9["track_condition"] == "Good"
+    assert race_10["track_condition"] == "Good"
+    assert len(browser.session.calls) == 1
 
 
 def test_sportsbet_track_metadata_accepts_sandown_park_alias():
