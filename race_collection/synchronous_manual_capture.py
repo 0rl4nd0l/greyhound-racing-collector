@@ -35,6 +35,7 @@ from src.predictor.on_demand import (
     receipt_from_handoff,
     sha256_bytes,
 )
+from utils.csv_metadata import canonical_thedogs_race_identity
 from utils.runner_completeness import normalise_runner_name
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -686,6 +687,24 @@ def _time_matches(value: str, pattern: str) -> bool:
     return True
 
 
+def _current_index_race_url_identity(value: object) -> Mapping[str, Any] | None:
+    raw = str(value or "")
+    identity = canonical_thedogs_race_identity(raw)
+    if identity is None or raw not in {
+        identity["canonical_url"],
+        f'{identity["canonical_url"]}?trial=false',
+    }:
+        return None
+    return identity
+
+
+def _parse_current_index_datetime(value: object) -> datetime:
+    raw = str(value or "")
+    if raw.endswith("Z"):
+        raw = f"{raw[:-1]}+00:00"
+    return datetime.fromisoformat(raw)
+
+
 def _normalize_current_index_rows(
     source: Mapping[str, Any],
     *,
@@ -707,7 +726,6 @@ def _normalize_current_index_rows(
             max_races=max_races,
         )
     from scripts.refresh_prejump_upcoming import stable_race_id, stable_race_id_variants
-    from utils.csv_metadata import canonical_thedogs_race_identity
 
     normalized: list[dict[str, Any]] = []
     identities: set[str] = set()
@@ -716,7 +734,7 @@ def _normalize_current_index_rows(
         if not isinstance(raw, Mapping):
             raise CaptureOneRejected("CURRENT_INDEX_INVALID", reason="race_not_mapping")
         race_url = str(raw.get("race_url") or "")
-        identity = canonical_thedogs_race_identity(race_url)
+        identity = _current_index_race_url_identity(race_url)
         try:
             race_number = int(raw["race_number"])
             jump = datetime.fromisoformat(str(raw["jump_datetime"]))
@@ -799,10 +817,19 @@ def _v2_runner_rows(
     coverage = source.get("sidecar_metadata_coverage")
     if not isinstance(coverage, Mapping) or coverage.get("schema_version") != "prejump_sidecar_metadata_coverage_v1":
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_coverage_missing")
-    matches = [
-        item for item in coverage.get("races", [])
-        if isinstance(item, Mapping) and item.get("race_url") == race["race_url"]
-    ]
+    race_identity = _current_index_race_url_identity(race["race_url"])
+    if race_identity is None:
+        raise CaptureOneRejected(
+            "CURRENT_INDEX_SOURCE_INVALID", reason="runner_race_identity_mismatch"
+        )
+    race_url_key = race_identity["canonical_url"]
+    matches = []
+    for item in coverage.get("races", []):
+        if not isinstance(item, Mapping):
+            continue
+        item_identity = _current_index_race_url_identity(item.get("race_url"))
+        if item_identity is not None and item_identity["canonical_url"] == race_url_key:
+            matches.append(item)
     if len(matches) != 1:
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_source_misaligned")
     record = matches[0]
@@ -831,14 +858,15 @@ def _v2_runner_rows(
     if not isinstance(alignment, Mapping) or alignment.get("status") != "aligned" or alignment.get("canonical_runner_set_status") != "available":
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_source_not_aligned")
     if (
-        shadow.get("source_url") != race["race_url"]
+        _current_index_race_url_identity(shadow.get("source_url"))
+        != race_identity
         or shadow.get("race_date") != race["date"]
         or not isinstance(shadow.get("venue"), str)
         or normalize_venue(shadow["venue"]) != normalize_venue(race["venue"])
         or shadow.get("race_number") != race["race_number"]
     ):
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_race_identity_mismatch")
-    observed = datetime.fromisoformat(str(shadow.get("metadata_captured_at") or ""))
+    observed = _parse_current_index_datetime(shadow.get("metadata_captured_at"))
     if observed.tzinfo is None or observed.utcoffset() is None:
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_observation_invalid")
     generated = datetime.fromisoformat(str(source.get("generated_at") or ""))
@@ -1162,13 +1190,23 @@ def _seal_current_index_races(
         )
     by_url: dict[str, Mapping[str, Any]] = {}
     for row in coverage_rows:
-        race_url = str(row["race_url"])
-        if race_url in by_url:
+        identity = _current_index_race_url_identity(row["race_url"])
+        if identity is None:
             raise CaptureOneRejected(
                 "CURRENT_INDEX_SOURCE_INVALID", reason="runner_source_misaligned"
             )
-        by_url[race_url] = row
-    if set(by_url) != {race["race_url"] for race in races}:
+        race_url_key = identity["canonical_url"]
+        if race_url_key in by_url:
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_SOURCE_INVALID", reason="runner_source_misaligned"
+            )
+        by_url[race_url_key] = row
+    race_keys = {
+        identity["canonical_url"]
+        for race in races
+        if (identity := _current_index_race_url_identity(race["race_url"])) is not None
+    }
+    if len(race_keys) != len(races) or set(by_url) != race_keys:
         raise CaptureOneRejected(
             "CURRENT_INDEX_SOURCE_INVALID", reason="runner_source_misaligned"
         )
@@ -1176,7 +1214,9 @@ def _seal_current_index_races(
     sealed_races: list[dict[str, Any]] = []
     exclusions: list[dict[str, str]] = []
     for race in races:
-        record = by_url[race["race_url"]]
+        identity = _current_index_race_url_identity(race["race_url"])
+        assert identity is not None
+        record = by_url[identity["canonical_url"]]
         if (
             record["safe_all_weather_track_expert_form_present"] is not True
             or not isinstance(record.get("csv_path"), str)

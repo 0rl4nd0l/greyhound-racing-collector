@@ -36,8 +36,15 @@ from race_collection.synchronous_manual_capture import (
 from src.predictor.on_demand import canonical_bytes, sha256_bytes
 
 
-def _runner_coverage(evidence_root: Path, race_url: str, observed_at: datetime | None = None) -> dict:
+def _runner_coverage(
+    evidence_root: Path,
+    race_url: str,
+    observed_at: datetime | None = None,
+    *,
+    source_race_url: str | None = None,
+) -> dict:
     observed_at = observed_at or NOW
+    source_race_url = source_race_url or race_url
     csv_path = evidence_root / "upcoming/Race 5 - GUNN - 2026-07-19.csv"
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     csv_path.write_bytes(b"box|dog_name\n1|Alpha\n2|Beta\n")
@@ -53,7 +60,7 @@ def _runner_coverage(evidence_root: Path, race_url: str, observed_at: datetime |
         "prejump_shadow_metadata": {
             "status": "PASS", "metadata_is_leakage_safe": True,
             "race_date": "2026-07-19", "venue": "GUNN", "race_number": 5,
-            "source_url": race_url, "metadata_captured_at": observed_at.isoformat(),
+            "source_url": source_race_url, "metadata_captured_at": observed_at.isoformat(),
             "runner_box_name_list": [
                 {"box_number": 1, "dog_name": "Alpha"},
                 {"box_number": 2, "dog_name": "Beta"},
@@ -64,7 +71,7 @@ def _runner_coverage(evidence_root: Path, race_url: str, observed_at: datetime |
         }
     }))
     return {"schema_version": "prejump_sidecar_metadata_coverage_v1", "races": [{
-        "race_url": race_url, "csv_path": str(csv_path), "sidecar_path": str(sidecar)
+        "race_url": source_race_url, "csv_path": str(csv_path), "sidecar_path": str(sidecar)
     }]}
 
 
@@ -325,14 +332,18 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
         )
     )
     index_now = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
-    race_url = "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
+    canonical_race_url = "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
+    race_url = f"{canonical_race_url}?trial=false"
     source.write_bytes(
         canonical_bytes(
             {
                 "status": "SUCCESS",
                 "generated_at": index_now.isoformat(),
                 "sidecar_metadata_coverage": _runner_coverage(
-                    evidence_root, race_url, index_now
+                    evidence_root,
+                    race_url,
+                    index_now,
+                    source_race_url=canonical_race_url,
                 ),
                 "selected_count": 1,
                 "selected_races": [
@@ -979,6 +990,33 @@ def test_current_index_requires_time_and_normalizes_producer_time():
         capture._normalize_current_index_rows(
             {"selected_count": 1, "selected_races": [row]}, max_races=32
         )
+
+
+@pytest.mark.parametrize("suffix", ["?trial=true", "?foo=bar", "#fragment"])
+def test_current_index_rejects_unsafe_race_url_aliases(suffix: str):
+    row = race_window_record(
+        {
+            "date": "2026-07-19",
+            "race_number": 5,
+            "race_time": "1:00 PM",
+            "url": f"https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5{suffix}",
+            "venue": "GUNN",
+        },
+        now=datetime.fromisoformat("2026-07-19T12:00:00+10:00"),
+    )
+
+    with pytest.raises(CaptureOneRejected) as rejected:
+        capture._normalize_current_index_rows(
+            {"selected_count": 1, "selected_races": [row]}, max_races=32
+        )
+
+    assert rejected.value.code == "CURRENT_INDEX_INVALID"
+
+
+def test_current_index_accepts_utc_z_runner_observation_timestamp():
+    observed = capture._parse_current_index_datetime("2026-08-11T09:34:06Z")
+
+    assert observed.isoformat() == "2026-08-11T09:34:06+00:00"
 
 
 @pytest.mark.parametrize("mutation", ["arbitrary", "extra", "substitution", "omission"])
