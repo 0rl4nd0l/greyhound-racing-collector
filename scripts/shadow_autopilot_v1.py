@@ -44,6 +44,7 @@ from race_collection.manual_prediction_collector_request import (  # noqa: E402
 )
 from race_collection.synchronous_manual_capture import (  # noqa: E402
     bind_current_race_index_publication_lifecycle,
+    current_race_index_path,
     publish_current_race_index,
 )
 from scripts.shadow_feature_audit_packet import feature_activation_gate_input_paths  # noqa: E402
@@ -58,9 +59,10 @@ DEFAULT_ODDS_CAPTURE_MIN_MINUTES = 0.0
 DEFAULT_ODDS_CAPTURE_MAX_MINUTES = 60.0
 DEFAULT_ODDS_CAPTURE_REFRESH_LIMIT = 16
 DEFAULT_AUTONOMOUS_ODDS_CAPTURE_LIMIT: int | None = None
-CURRENT_INDEX_LIVENESS_REFRESH_LIMIT = 2
+CURRENT_INDEX_LIVENESS_REFRESH_LIMIT = 1
 CURRENT_INDEX_LIVENESS_STEP_TIMEOUT_SECONDS = 120
 CURRENT_INDEX_LIVENESS_PAUSE_SECONDS = 5
+CURRENT_INDEX_LIVENESS_MAX_AGE_SECONDS = 300
 DEFAULT_HISTORICAL_UNIFIED_EVIDENCE_REPORT_LIMIT = 600
 DEFAULT_RESULT_BACKLOG_LIMIT = 128
 DEFAULT_RESULT_BACKLOG_SHADOW_RUN_LIMIT = 200
@@ -6693,6 +6695,65 @@ def run_current_index_liveness(
     return records
 
 
+def current_index_liveness_refresh_command(
+    *,
+    args: argparse.Namespace,
+    liveness_dir: Path,
+    refreshed_at: datetime,
+    odds_capture_limit: int,
+    priority_race_id: str | None,
+) -> list[str]:
+    """Build one race-atomic liveness refresh command."""
+
+    command = [
+        *refresh_command_prefix(args.refresh_command_mode),
+        str(ROOT / "scripts/refresh_prejump_upcoming.py"),
+        "--upcoming-dir",
+        str(liveness_dir / "upcoming"),
+        "--days-ahead",
+        str(args.days_ahead),
+        "--min-minutes",
+        str(args.odds_capture_min_minutes),
+        "--max-minutes",
+        str(args.odds_capture_max_minutes),
+        "--limit",
+        str(min(CURRENT_INDEX_LIVENESS_REFRESH_LIMIT, odds_capture_limit)),
+        "--current-time",
+        refreshed_at.isoformat(),
+        "--output",
+        str(liveness_dir / "odds_capture_refresh_report.json"),
+    ]
+    if args.require_safe_refresh_metadata:
+        command.append("--require-safe-metadata")
+    if priority_race_id is not None:
+        command.extend(["--priority-race-id", priority_race_id])
+    return command
+
+
+def current_index_liveness_freshness(
+    *, publication: Mapping[str, Any], observed_at: datetime
+) -> dict[str, Any]:
+    """Describe whether one candidate publication met the admission deadline."""
+
+    source_generated_at = publication.get("source_generated_at")
+    source_age_seconds = None
+    if isinstance(source_generated_at, str):
+        source_age_seconds = max(
+            0.0,
+            (observed_at - datetime.fromisoformat(source_generated_at)).total_seconds(),
+        )
+    return {
+        "publication_observed_at": observed_at.isoformat(),
+        "source_age_seconds": source_age_seconds,
+        "freshness_limit_seconds": CURRENT_INDEX_LIVENESS_MAX_AGE_SECONDS,
+        "freshness_guarantee_met": (
+            publication.get("status") == "PUBLISHED"
+            and source_age_seconds is not None
+            and source_age_seconds <= CURRENT_INDEX_LIVENESS_MAX_AGE_SECONDS
+        ),
+    }
+
+
 def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
     generated_at = datetime.now().astimezone()
     run_id = args.run_id or now_id(generated_at)
@@ -6897,6 +6958,16 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
     current_index_liveness_records: list[dict[str, Any]] = []
     current_index_liveness_stop: threading.Event | None = None
     current_index_liveness_thread: threading.Thread | None = None
+    current_index_liveness_race_ids: list[str] = []
+    if current_race_index_publish.get("status") == "PUBLISHED":
+        current_index_packet = load_json(
+            current_race_index_path(args.current_race_index_state_path)
+        )
+        current_index_liveness_race_ids = [
+            str(row["race_id"])
+            for row in (current_index_packet or {}).get("races") or []
+            if isinstance(row, Mapping) and row.get("race_id")
+        ]
     if args.enable_autonomous_odds_capture:
         capture_current_time = (
             str(manual_request.claim["claimed_at"])
@@ -6947,26 +7018,20 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             def refresh_current_index_once(iteration: int) -> Mapping[str, Any]:
                 refreshed_at = datetime.now().astimezone()
                 liveness_dir = output_dir / f"current_index_liveness_{iteration:03d}"
-                refresh_command = [
-                    *refresh_command_prefix(args.refresh_command_mode),
-                    str(ROOT / "scripts/refresh_prejump_upcoming.py"),
-                    "--upcoming-dir",
-                    str(liveness_dir / "upcoming"),
-                    "--days-ahead",
-                    str(args.days_ahead),
-                    "--min-minutes",
-                    str(args.odds_capture_min_minutes),
-                    "--max-minutes",
-                    str(args.odds_capture_max_minutes),
-                    "--limit",
-                    str(min(CURRENT_INDEX_LIVENESS_REFRESH_LIMIT, odds_capture_limit)),
-                    "--current-time",
-                    refreshed_at.isoformat(),
-                    "--output",
-                    str(liveness_dir / "odds_capture_refresh_report.json"),
-                ]
-                if args.require_safe_refresh_metadata:
-                    refresh_command.append("--require-safe-metadata")
+                priority_race_id = (
+                    current_index_liveness_race_ids[
+                        (iteration - 1) % len(current_index_liveness_race_ids)
+                    ]
+                    if current_index_liveness_race_ids
+                    else None
+                )
+                refresh_command = current_index_liveness_refresh_command(
+                    args=args,
+                    liveness_dir=liveness_dir,
+                    refreshed_at=refreshed_at,
+                    odds_capture_limit=odds_capture_limit,
+                    priority_race_id=priority_race_id,
+                )
                 refresh_step = step_command(
                     name=f"current_index_liveness_{iteration:03d}",
                     command=refresh_command,
@@ -6985,11 +7050,18 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
                 write_json(
                     liveness_dir / "current_race_index_publish.json", publication
                 )
+                observed_at = datetime.now().astimezone()
+                freshness = current_index_liveness_freshness(
+                    publication=publication,
+                    observed_at=observed_at,
+                )
                 return {
                     "iteration": iteration,
+                    "priority_race_id": priority_race_id,
                     "status": publication.get("status"),
                     "reason": publication.get("reason"),
                     "source_generated_at": publication.get("source_generated_at"),
+                    **freshness,
                     "race_count": publication.get("race_count"),
                     "refresh_step": refresh_step,
                 }

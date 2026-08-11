@@ -144,6 +144,49 @@ def test_current_index_liveness_refreshes_until_stop():
     ]
 
 
+def test_current_index_liveness_refresh_command_is_one_race_atomic(tmp_path):
+    command = autopilot.current_index_liveness_refresh_command(
+        args=autopilot.parse_args([]),
+        liveness_dir=tmp_path / "liveness",
+        refreshed_at=datetime.fromisoformat("2026-08-11T22:00:00+10:00"),
+        odds_capture_limit=16,
+        priority_race_id="Race 9 - WAG - 2026-08-11",
+    )
+
+    assert command[command.index("--limit") + 1] == "1"
+    assert command[command.index("--current-time") + 1] == (
+        "2026-08-11T22:00:00+10:00"
+    )
+    assert command[command.index("--priority-race-id") + 1] == (
+        "Race 9 - WAG - 2026-08-11"
+    )
+
+
+def test_current_index_liveness_reports_source_age_and_failed_guarantee():
+    observed_at = datetime.fromisoformat("2026-08-11T22:04:00+10:00")
+
+    fresh = autopilot.current_index_liveness_freshness(
+        publication={
+            "status": "PUBLISHED",
+            "source_generated_at": "2026-08-11T22:02:00+10:00",
+        },
+        observed_at=observed_at,
+    )
+    rejected = autopilot.current_index_liveness_freshness(
+        publication={"status": "REJECTED"},
+        observed_at=observed_at,
+    )
+
+    assert fresh == {
+        "publication_observed_at": "2026-08-11T22:04:00+10:00",
+        "source_age_seconds": 120.0,
+        "freshness_limit_seconds": 300,
+        "freshness_guarantee_met": True,
+    }
+    assert rejected["source_age_seconds"] is None
+    assert rejected["freshness_guarantee_met"] is False
+
+
 def test_current_index_liveness_flag_is_opt_in():
     assert autopilot.parse_args([]).maintain_current_index_liveness is False
     assert (
