@@ -105,6 +105,8 @@ VENUE_WEATHER_LOCATIONS: dict[str, VenueWeatherLocation] = {
     "TRARALGON": VenueWeatherLocation("TRA", "Traralgon", -38.1833, 146.5333, "Australia/Melbourne"),
     "TWN": VenueWeatherLocation("TWN", "Townsville", -19.2589, 146.8169, "Australia/Brisbane"),
     "TOWNSVILLE": VenueWeatherLocation("TWN", "Townsville", -19.2589, 146.8169, "Australia/Brisbane"),
+    "WAG": VenueWeatherLocation("WAG", "Wagga", -35.1082, 147.3598, "Australia/Sydney"),
+    "WAGGA": VenueWeatherLocation("WAG", "Wagga", -35.1082, 147.3598, "Australia/Sydney"),
     "WAR": VenueWeatherLocation("WAR", "Warrnambool", -38.3779, 142.4668, "Australia/Melbourne"),
     "WARRNAMBOOL": VenueWeatherLocation("WAR", "Warrnambool", -38.3779, 142.4668, "Australia/Melbourne"),
     "WRGL": VenueWeatherLocation("WRGL", "Warragul", -38.1667, 145.9333, "Australia/Melbourne"),
