@@ -108,7 +108,7 @@ def test_one_authenticated_submission_reaches_real_worker_once_without_false_rea
     install_connected_mode(app)
     store = JobStore(tmp_path / "jobs.db", separate_from=(tmp_path / "audit.db", tmp_path / "canonical.db"))
     runners = ({"box": 1, "name": "ALPHA", "identity": "ALPHA"},)
-    inp = JobInput(RACE_ID, "2026-08-01T01:00:00+00:00", DIGEST, "latest-research", "market_form_residual_v1", DIGEST, DIGEST, DIGEST, "manual-default", DIGEST, "auto", runners)
+    inp = JobInput(RACE_ID, "2026-08-01T01:00:00+00:00", DIGEST, "latest-research", "market_form_residual_v1", DIGEST, DIGEST, DIGEST, "manual-default", DIGEST, "receipt", runners)
     resolved = lambda selected, now: ResolvedSubmission(inp, runners)
     launches = []
 
@@ -126,7 +126,7 @@ def test_one_authenticated_submission_reaches_real_worker_once_without_false_rea
     client = app.test_client()
     token = client.get("/operator-ui/login", base_url="https://localhost").get_json()["csrf_token"]
     token = client.post("/operator-ui/login", base_url="https://localhost", data={"username": "operator", "password": "safe-password", "csrf_token": token}).get_json()["csrf_token"]
-    payload = {"race_id": RACE_ID, "model_id": "latest-research", "config_id": "manual-default", "odds_source_id": "auto", "idempotency_key": "12345678-1234-4123-8123-123456789abc"}
+    payload = {"race_id": RACE_ID, "model_id": "latest-research", "config_id": "manual-default", "odds_source_id": "receipt", "idempotency_key": "12345678-1234-4123-8123-123456789abc"}
     first = client.post("/operator-ui/api/v1/prediction-jobs", base_url="https://localhost", json=payload, headers={"X-CSRF-Token": token})
     duplicate = client.post("/operator-ui/api/v1/prediction-jobs", base_url="https://localhost", json=payload, headers={"X-CSRF-Token": token})
     assert first.status_code == 202 and duplicate.status_code == 200

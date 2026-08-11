@@ -1507,11 +1507,23 @@ def bounded_current_race_index(
                 not isinstance(state, Mapping)
                 or state.get("schema_version")
                 != "shadow_autopilot_odds_capture_only_state_v1"
-                or state.get("run_id") != packet["run_id"]
             ):
                 raise CaptureOneRejected("CURRENT_INDEX_REPORT_INVALID")
+            index_state = state.get("current_race_index_state", state)
+            if index_state is not state and (
+                not isinstance(index_state, Mapping)
+                or set(index_state) != {
+                    "schema_version", "updated_at", "run_id", "output_dir",
+                    "autopilot_output_dir", "final_status", "status",
+                }
+                or index_state.get("schema_version")
+                != "collector_current_race_index_state_v1"
+            ):
+                raise CaptureOneRejected("CURRENT_INDEX_REPORT_INVALID")
+            if index_state.get("run_id") != packet["run_id"]:
+                raise CaptureOneRejected("CURRENT_INDEX_REPORT_INVALID")
             output_dir = _evidence_locator_path(
-                state.get("output_dir"), evidence_root=evidence_root
+                index_state.get("output_dir"), evidence_root=evidence_root
             )
             report_raw = snapshot.read(
                 output_dir / ODDS_CAPTURE_ONLY_REPORT_FILENAME,
@@ -1539,12 +1551,12 @@ def bounded_current_race_index(
                 or report.get("schema_version")
                 != "shadow_autopilot_odds_capture_only_daemon_report_v1"
                 or report.get("run_id") != packet["run_id"]
-                or report.get("output_dir") != state.get("output_dir")
+                or report.get("output_dir") != index_state.get("output_dir")
                 or report.get("current_race_index_publish") != expected_publish
             ):
                 raise CaptureOneRejected("CURRENT_INDEX_REPORT_INVALID")
             _validate_current_odds_evidence(
-                state=state,
+                state=index_state,
                 report=report,
                 packet=packet,
                 publication=publication,
