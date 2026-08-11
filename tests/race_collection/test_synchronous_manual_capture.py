@@ -596,6 +596,90 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
     assert index_path.read_bytes() == original
 
 
+def test_empty_current_index_candidate_preserves_last_valid_publication(tmp_path: Path):
+    evidence_root = tmp_path / "evidence"
+    state = evidence_root / "runtime/odds_capture_state.json"
+    source = evidence_root / "run/odds_capture_refresh_report.json"
+    source.parent.mkdir(parents=True)
+    canonical_race_url = "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
+    race_url = f"{canonical_race_url}?trial=false"
+    observed = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
+    non_empty = {
+        "status": "SUCCESS",
+        "generated_at": observed.isoformat(),
+        "sidecar_metadata_coverage": _runner_coverage(
+            evidence_root,
+            race_url,
+            observed,
+            source_race_url=canonical_race_url,
+        ),
+        "selected_count": 1,
+        "selected_races": [
+            {
+                "date": "2026-07-19",
+                "jump_datetime": "2026-07-19T13:00:00+10:00",
+                "race_id": "Race 5 - GUNN - 2026-07-19",
+                "race_id_aliases": [
+                    "Race 5 - GUNN - 2026-07-19",
+                    "Race 5 - GUNNEDAH - 2026-07-19",
+                ],
+                "race_number": 5,
+                "race_time": "13:00",
+                "race_url": race_url,
+                "venue": "GUNN",
+            }
+        ],
+    }
+    source.write_bytes(canonical_bytes(non_empty))
+    first = publish_current_race_index(
+        state_path=state,
+        evidence_root=evidence_root,
+        source_refresh_report_path=source,
+        run_id="valid-before-empty",
+    )
+    assert first["status"] == "PUBLISHED", first
+    index_path = current_race_index_path(state)
+    publication_path = (
+        index_path.parent / capture.CURRENT_RACE_INDEX_PUBLICATION_FILENAME
+    )
+    retained_index = index_path.read_bytes()
+    retained_publication = publication_path.read_bytes()
+
+    source.write_bytes(
+        canonical_bytes(
+            {
+                "status": "SUCCESS",
+                "generated_at": (observed + timedelta(minutes=1)).isoformat(),
+                "selected_count": 0,
+                "selected_races": [],
+            }
+        )
+    )
+    empty = publish_current_race_index(
+        state_path=state,
+        evidence_root=evidence_root,
+        source_refresh_report_path=source,
+        run_id="empty-candidate",
+    )
+
+    assert empty["status"] == "REJECTED"
+    assert empty["reason"] == "CURRENT_INDEX_NO_ELIGIBLE_RACES"
+    assert empty["source_selected_race_count"] == 0
+    assert empty["excluded_race_count"] == 0
+    assert index_path.read_bytes() == retained_index
+    assert publication_path.read_bytes() == retained_publication
+
+    source.write_bytes(canonical_bytes(non_empty))
+    recovered = publish_current_race_index(
+        state_path=state,
+        evidence_root=evidence_root,
+        source_refresh_report_path=source,
+        run_id="valid-after-empty",
+    )
+    assert recovered["status"] == "PUBLISHED"
+    assert json.loads(index_path.read_bytes())["run_id"] == "valid-after-empty"
+
+
 def test_current_race_index_survives_a_later_rejected_publication(tmp_path: Path):
     evidence_root = tmp_path / "evidence"
     state = evidence_root / "shadow_autopilot_daemon_runtime/odds_capture_state.json"
