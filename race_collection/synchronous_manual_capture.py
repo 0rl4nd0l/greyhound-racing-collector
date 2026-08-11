@@ -1055,6 +1055,169 @@ def _v2_runner_rows(
     return rows, provenance, runner_hash
 
 
+def _seal_current_index_races(
+    source: Mapping[str, Any],
+    *,
+    evidence_root: Path,
+    snapshot: _RetainedSafeFiles,
+    max_races: int,
+) -> tuple[list[dict[str, Any]], list[dict[str, str]], int]:
+    """Seal safe races and make race-local metadata gaps explicit."""
+
+    races = _normalize_current_index_rows(source, max_races=max_races)
+    status = source.get("status")
+    if status == "SUCCESS":
+        sealed = []
+        for race in races:
+            runners, runner_source, runner_hash = _v2_runner_rows(
+                race, source, evidence_root=evidence_root, snapshot=snapshot
+            )
+            sealed.append(
+                {
+                    **race,
+                    "runners": runners,
+                    "runner_set_sha256": runner_hash,
+                    "runner_source": runner_source,
+                }
+            )
+        return sealed, [], len(races)
+    if status != "METADATA_COVERAGE_INCOMPLETE":
+        raise CaptureOneRejected(
+            "CURRENT_INDEX_SOURCE_INVALID", reason="refresh_not_accepted_status"
+        )
+
+    coverage = source.get("sidecar_metadata_coverage")
+    flags = (
+        "safe_weather_present",
+        "safe_track_condition_present",
+        "safe_both_weather_track_present",
+        "safe_expert_form_present",
+        "safe_all_weather_track_expert_form_present",
+    )
+    counters = {
+        "safe_weather_present": "safe_weather_race_count",
+        "safe_track_condition_present": "safe_track_condition_race_count",
+        "safe_both_weather_track_present": "safe_both_weather_track_race_count",
+        "safe_expert_form_present": "safe_expert_form_race_count",
+        "safe_all_weather_track_expert_form_present": (
+            "safe_all_weather_track_expert_form_race_count"
+        ),
+    }
+    if (
+        not isinstance(coverage, Mapping)
+        or coverage.get("schema_version")
+        != "prejump_sidecar_metadata_coverage_v1"
+        or coverage.get("status") not in {"PARTIAL", "DATA_MISSING"}
+        or coverage.get("selected_race_count") != len(races)
+        or not isinstance(coverage.get("races"), list)
+        or len(coverage["races"]) != len(races)
+    ):
+        raise CaptureOneRejected(
+            "CURRENT_INDEX_SOURCE_INVALID", reason="runner_coverage_invalid"
+        )
+    coverage_rows = coverage["races"]
+    if any(
+        not isinstance(row, Mapping)
+        or not isinstance(row.get("race_url"), str)
+        or any(not isinstance(row.get(flag), bool) for flag in flags)
+        or row.get("safe_both_weather_track_present")
+        is not (
+            row.get("safe_weather_present") is True
+            and row.get("safe_track_condition_present") is True
+        )
+        or row.get("safe_all_weather_track_expert_form_present")
+        is not (
+            row.get("safe_both_weather_track_present") is True
+            and row.get("safe_expert_form_present") is True
+        )
+        for row in coverage_rows
+    ):
+        raise CaptureOneRejected(
+            "CURRENT_INDEX_SOURCE_INVALID", reason="runner_coverage_invalid"
+        )
+    for flag, counter in counters.items():
+        value = coverage.get(counter)
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or value != sum(row[flag] is True for row in coverage_rows)
+        ):
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_SOURCE_INVALID", reason="runner_coverage_invalid"
+            )
+    accepted_count = coverage.get("accepted_selected_csv_count")
+    if (
+        isinstance(accepted_count, bool)
+        or not isinstance(accepted_count, int)
+        or accepted_count
+        != sum(
+            isinstance(row.get("csv_path"), str) and bool(row["csv_path"])
+            for row in coverage_rows
+        )
+        or coverage["safe_all_weather_track_expert_form_race_count"]
+        >= len(races)
+    ):
+        raise CaptureOneRejected(
+            "CURRENT_INDEX_SOURCE_INVALID", reason="runner_coverage_invalid"
+        )
+    by_url: dict[str, Mapping[str, Any]] = {}
+    for row in coverage_rows:
+        race_url = str(row["race_url"])
+        if race_url in by_url:
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_SOURCE_INVALID", reason="runner_source_misaligned"
+            )
+        by_url[race_url] = row
+    if set(by_url) != {race["race_url"] for race in races}:
+        raise CaptureOneRejected(
+            "CURRENT_INDEX_SOURCE_INVALID", reason="runner_source_misaligned"
+        )
+
+    sealed_races: list[dict[str, Any]] = []
+    exclusions: list[dict[str, str]] = []
+    for race in races:
+        record = by_url[race["race_url"]]
+        if (
+            record["safe_all_weather_track_expert_form_present"] is not True
+            or not isinstance(record.get("csv_path"), str)
+            or not record["csv_path"]
+            or not isinstance(record.get("sidecar_path"), str)
+            or not record["sidecar_path"]
+        ):
+            exclusions.append(
+                {
+                    "race_id": race["race_id"],
+                    "race_url": race["race_url"],
+                    "reason": "runner_source_missing",
+                }
+            )
+            continue
+        try:
+            runners, runner_source, runner_hash = _v2_runner_rows(
+                race, source, evidence_root=evidence_root, snapshot=snapshot
+            )
+        except CaptureOneRejected as exc:
+            if exc.code == "CURRENT_INDEX_PATH_UNSAFE":
+                raise
+            exclusions.append(
+                {
+                    "race_id": race["race_id"],
+                    "race_url": race["race_url"],
+                    "reason": str(exc.details.get("reason") or exc.code),
+                }
+            )
+            continue
+        sealed_races.append(
+            {
+                **race,
+                "runners": runners,
+                "runner_set_sha256": runner_hash,
+                "runner_source": runner_source,
+            }
+        )
+    return sealed_races, exclusions, len(races)
+
+
 def _atomic_replace_canonical(
     path: Path, payload: Mapping[str, Any], *, evidence_root: Path,
     _pre_replace: Callable[[], None] | None = None,
@@ -1216,28 +1379,24 @@ def publish_current_race_index(
             source = json.loads(source_raw)
             if not isinstance(source, Mapping):
                 raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
-            if source.get("status") != "SUCCESS" or source.get("dry_run") is True:
-                raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="refresh_not_accepted_success")
+            if source.get("dry_run") is True:
+                raise CaptureOneRejected(
+                    "CURRENT_INDEX_SOURCE_INVALID", reason="refresh_not_accepted_dry_run"
+                )
             source_generated_at = datetime.fromisoformat(str(source["generated_at"]))
             if (
                 source_generated_at.tzinfo is None
                 or source_generated_at.utcoffset() is None
             ):
                 raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
-            races = _normalize_current_index_rows(source, max_races=max_races)
-            sealed_races = []
-            for race in races:
-                runners, runner_source, runner_hash = _v2_runner_rows(
-                    race, source, evidence_root=evidence_root, snapshot=retained
+            sealed_races, excluded_races, source_selected_race_count = (
+                _seal_current_index_races(
+                    source,
+                    evidence_root=evidence_root,
+                    snapshot=retained,
+                    max_races=max_races,
                 )
-                sealed_races.append(
-                    {
-                        **race,
-                        "runners": runners,
-                        "runner_set_sha256": runner_hash,
-                        "runner_source": runner_source,
-                    }
-                )
+            )
             root = evidence_root.absolute()
             refresh_locator = source_refresh_report_path.absolute().relative_to(root).as_posix()
             packet = {
@@ -1246,10 +1405,17 @@ def publish_current_race_index(
                 "source_generated_at": source_generated_at.isoformat(),
                 "source_refresh_report_path": refresh_locator,
                 "source_refresh_report_sha256": sha256_bytes(source_raw),
-                "race_count": len(races),
+                "race_count": len(sealed_races),
                 "max_races": max_races,
                 "races": sealed_races,
             }
+            if excluded_races:
+                packet.update(
+                    {
+                        "source_selected_race_count": source_selected_race_count,
+                        "excluded_races": excluded_races,
+                    }
+                )
             _atomic_replace_canonical(index_path, packet, evidence_root=evidence_root)
             packet_raw = canonical_bytes(packet)
             publication = {
@@ -1276,6 +1442,13 @@ def publish_current_race_index(
                 "runner_set_sha256": [race["runner_set_sha256"] for race in sealed_races],
                 "runner_sources": [race["runner_source"] for race in sealed_races],
             }
+            if excluded_races:
+                publication.update(
+                    {
+                        "source_selected_race_count": source_selected_race_count,
+                        "excluded_races": excluded_races,
+                    }
+                )
             _atomic_replace_canonical(
                 index_path.parent / CURRENT_RACE_INDEX_PUBLICATION_FILENAME,
                 publication,
@@ -1309,6 +1482,13 @@ def publish_current_race_index(
             "runner_sources": [race["runner_source"] for race in sealed_races],
         }
     )
+    if excluded_races:
+        report.update(
+            {
+                "source_selected_race_count": source_selected_race_count,
+                "excluded_races": excluded_races,
+            }
+        )
     return report
 
 
@@ -1409,12 +1589,16 @@ def bounded_current_race_index(
             "source_refresh_report_path", "source_refresh_report_sha256",
             "race_count", "max_races", "races",
         }
+        partial_packet_keys = packet_keys | {
+            "source_selected_race_count", "excluded_races",
+        }
         if (
             not isinstance(packet, Mapping)
             or packet.get("schema_version") not in {CURRENT_RACE_INDEX_V1_SCHEMA, CURRENT_RACE_INDEX_SCHEMA}
             or canonical_bytes(packet) != packet_raw
             or packet.get("max_races") != max_races
-            or set(packet) != packet_keys
+            or frozenset(packet)
+            not in {frozenset(packet_keys), frozenset(partial_packet_keys)}
         ):
             raise CaptureOneRejected("CURRENT_INDEX_INVALID")
         source_generated_at = datetime.fromisoformat(
@@ -1449,22 +1633,36 @@ def bounded_current_race_index(
         source = json.loads(source_raw)
         if not isinstance(source, Mapping):
             raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
-        if packet.get("schema_version") == CURRENT_RACE_INDEX_SCHEMA and (
-            source.get("status") != "SUCCESS" or source.get("dry_run") is True
-        ):
+        if packet.get("schema_version") == CURRENT_RACE_INDEX_SCHEMA and source.get(
+            "dry_run"
+        ) is True:
             raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
         races = _normalize_current_index_rows(source, max_races=max_races)
         expected_races: list[Mapping[str, Any]] = races
+        expected_exclusions: list[dict[str, str]] = []
+        source_selected_race_count = len(races)
         if packet.get("schema_version") == CURRENT_RACE_INDEX_SCHEMA:
-            sealed = []
-            for race in races:
-                runners, runner_source, runner_hash = _v2_runner_rows(
-                    race, source, evidence_root=evidence_root,
+            expected_races, expected_exclusions, source_selected_race_count = (
+                _seal_current_index_races(
+                    source,
+                    evidence_root=evidence_root,
                     snapshot=snapshot,
+                    max_races=max_races,
                 )
-                sealed.append({**race, "runners": runners, "runner_set_sha256": runner_hash, "runner_source": runner_source})
-            expected_races = sealed
-        if packet.get("race_count") != len(expected_races) or packet.get("races") != expected_races:
+            )
+        if (
+            packet.get("race_count") != len(expected_races)
+            or packet.get("races") != expected_races
+            or bool(expected_exclusions) != (set(packet) == partial_packet_keys)
+            or (
+                expected_exclusions
+                and (
+                    packet.get("excluded_races") != expected_exclusions
+                    or packet.get("source_selected_race_count")
+                    != source_selected_race_count
+                )
+            )
+        ):
             raise CaptureOneRejected("CURRENT_INDEX_INVALID")
         if packet.get("schema_version") == CURRENT_RACE_INDEX_SCHEMA:
             publication_raw = snapshot.read(
@@ -1494,6 +1692,13 @@ def bounded_current_race_index(
                 "runner_set_sha256": [race["runner_set_sha256"] for race in packet["races"]],
                 "runner_sources": [race["runner_source"] for race in packet["races"]],
             }
+            if expected_exclusions:
+                expected_publication.update(
+                    {
+                        "source_selected_race_count": source_selected_race_count,
+                        "excluded_races": expected_exclusions,
+                    }
+                )
             if (
                 not isinstance(publication, Mapping)
                 or canonical_bytes(publication) != publication_raw
@@ -1546,6 +1751,13 @@ def bounded_current_race_index(
                 "runner_set_sha256": publication["runner_set_sha256"],
                 "runner_sources": publication["runner_sources"],
             }
+            if expected_exclusions:
+                expected_publish.update(
+                    {
+                        "source_selected_race_count": source_selected_race_count,
+                        "excluded_races": expected_exclusions,
+                    }
+                )
             if (
                 not isinstance(report, Mapping)
                 or report.get("schema_version")

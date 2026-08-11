@@ -122,7 +122,16 @@ def _source_files(root: Path, race: dict, *, bad_csv: bool = False) -> dict:
             }
         )
     )
-    return {"race_url": race["race_url"], "csv_path": str(csv_path), "sidecar_path": str(sidecar_path)}
+    return {
+        "race_url": race["race_url"],
+        "csv_path": str(csv_path),
+        "sidecar_path": str(sidecar_path),
+        "safe_weather_present": True,
+        "safe_track_condition_present": True,
+        "safe_both_weather_track_present": True,
+        "safe_expert_form_present": True,
+        "safe_all_weather_track_expert_form_present": True,
+    }
 
 
 def _missing_coverage(race: dict) -> dict:
@@ -132,6 +141,11 @@ def _missing_coverage(race: dict) -> dict:
         "csv_path": None,
         "sidecar_path": None,
         "sidecar_status": "accepted_csv_missing",
+        "safe_weather_present": False,
+        "safe_track_condition_present": False,
+        "safe_both_weather_track_present": False,
+        "safe_expert_form_present": False,
+        "safe_all_weather_track_expert_form_present": False,
     }
 
 
@@ -151,11 +165,26 @@ def _write_source(root: Path, races: list[dict], coverage: list[dict], *, status
                     "status": "PARTIAL" if status != "SUCCESS" else "READY",
                     "selected_race_count": len(races),
                     "accepted_selected_csv_count": sum(1 for row in coverage if row.get("csv_path")),
-                    "safe_weather_race_count": 0,
-                    "safe_track_condition_race_count": 0,
-                    "safe_both_weather_track_race_count": 0,
-                    "safe_expert_form_race_count": 0,
-                    "safe_all_weather_track_expert_form_race_count": 0,
+                    "safe_weather_race_count": sum(
+                        row.get("safe_weather_present") is True for row in coverage
+                    ),
+                    "safe_track_condition_race_count": sum(
+                        row.get("safe_track_condition_present") is True
+                        for row in coverage
+                    ),
+                    "safe_both_weather_track_race_count": sum(
+                        row.get("safe_both_weather_track_present") is True
+                        for row in coverage
+                    ),
+                    "safe_expert_form_race_count": sum(
+                        row.get("safe_expert_form_present") is True
+                        for row in coverage
+                    ),
+                    "safe_all_weather_track_expert_form_race_count": sum(
+                        row.get("safe_all_weather_track_expert_form_present")
+                        is True
+                        for row in coverage
+                    ),
                     "races": coverage,
                 },
             }
@@ -200,14 +229,84 @@ def test_mixed_metadata_packet_publishes_only_race_with_capture_prerequisites(tm
     assert [row["race_id"] for row in packet["races"]] == [first["race_id"]]
     assert packet["races"][0]["odds"]["status"] == "PENDING_GHU_051"
     assert packet["exclusions"][0]["reason_code"] == "FORM_SOURCE_MISSING"
-    legacy = publish_current_race_index(
+    current = publish_current_race_index(
         state_path=root / "shadow_autopilot_daemon_runtime" / "odds_capture_state.json",
         evidence_root=root,
         source_refresh_report_path=source,
-        run_id="legacy-incomplete",
+        run_id="mixed-current-index",
     )
-    assert legacy["status"] == "REJECTED"
-    assert legacy["reason"] == "CURRENT_INDEX_SOURCE_INVALID"
+    assert current["status"] == "PUBLISHED"
+    assert current["race_count"] == 1
+    current_packet = json.loads(
+        (
+            root
+            / "shadow_autopilot_daemon_runtime"
+            / "manual_prediction_current_race_index.json"
+        ).read_bytes()
+    )
+    assert [row["race_id"] for row in current_packet["races"]] == [first["race_id"]]
+    assert current_packet["source_selected_race_count"] == 2
+    assert current_packet["excluded_races"] == [
+        {
+            "race_id": second["race_id"],
+            "race_url": second["race_url"],
+            "reason": "runner_source_missing",
+        }
+    ]
+    state = root / "shadow_autopilot_daemon_runtime" / "odds_capture_state.json"
+    output_locator = "daemon-publication"
+    output_dir = root / output_locator
+    output_dir.mkdir()
+    state.write_bytes(
+        canonical_bytes(
+            {
+                "schema_version": "shadow_autopilot_odds_capture_only_state_v1",
+                "updated_at": current["source_generated_at"],
+                "run_id": current["run_id"],
+                "output_dir": output_locator,
+                "autopilot_output_dir": output_locator,
+                "final_status": "ODDS_CAPTURE_ONLY_READY",
+                "status": "READY",
+            }
+        )
+    )
+    (output_dir / capture.ODDS_CAPTURE_ONLY_REPORT_FILENAME).write_bytes(
+        canonical_bytes(
+            {
+                "schema_version": "shadow_autopilot_odds_capture_only_daemon_report_v1",
+                "generated_at": current["source_generated_at"],
+                "run_id": current["run_id"],
+                "output_dir": output_locator,
+                "autopilot_output_dir": output_locator,
+                "final_status": "ODDS_CAPTURE_ONLY_READY",
+                "status": "READY",
+                "current_race_index_publish": current,
+            }
+        )
+    )
+    verified = capture.bounded_current_race_index(
+        current_time=NOW,
+        timeout_seconds=1,
+        index_path=capture.current_race_index_path(state),
+        evidence_root=root,
+        max_age_seconds=300,
+        return_verified_view=True,
+    )
+    assert [row["race_id"] for row in verified.races] == [first["race_id"]]
+
+    retained_packet = capture.current_race_index_path(state).read_bytes()
+    malformed = json.loads(source.read_bytes())
+    malformed["sidecar_metadata_coverage"]["safe_weather_race_count"] += 1
+    source.write_bytes(canonical_bytes(malformed))
+    rejected = publish_current_race_index(
+        state_path=state,
+        evidence_root=root,
+        source_refresh_report_path=source,
+        run_id="malformed-partial-coverage",
+    )
+    assert rejected["status"] == "REJECTED"
+    assert rejected["reason"] == "CURRENT_INDEX_SOURCE_INVALID"
+    assert capture.current_race_index_path(state).read_bytes() == retained_packet
 
 
 @pytest.mark.parametrize(
