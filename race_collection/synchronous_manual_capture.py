@@ -1492,6 +1492,87 @@ def publish_current_race_index(
     return report
 
 
+def bind_current_race_index_publication_lifecycle(
+    *,
+    state_path: Path,
+    evidence_root: Path,
+    output_dir: Path,
+    publication: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Bind a completed index publication before unrelated odds work finishes."""
+
+    if publication.get("status") != "PUBLISHED":
+        raise CaptureOneRejected(
+            "CURRENT_INDEX_PUBLICATION_INVALID", reason="publication_not_complete"
+        )
+    source_generated_at = datetime.fromisoformat(
+        str(publication["source_generated_at"])
+    )
+    if (
+        source_generated_at.tzinfo is None
+        or source_generated_at.utcoffset() is None
+    ):
+        raise CaptureOneRejected("CURRENT_INDEX_PUBLICATION_INVALID")
+    root = evidence_root.absolute()
+    output_locator = output_dir.absolute().relative_to(root).as_posix()
+    report = {
+        "schema_version": "collector_current_race_index_lifecycle_report_v1",
+        "generated_at": source_generated_at.isoformat(),
+        "run_id": publication["run_id"],
+        "final_status": "CURRENT_INDEX_PUBLISHED_CAPTURE_IN_PROGRESS",
+        "status": "READY",
+        "output_dir": output_locator,
+        "autopilot_output_dir": output_locator,
+        "current_race_index_publish": dict(publication),
+    }
+    report_path = output_dir / ODDS_CAPTURE_ONLY_REPORT_FILENAME
+    with _RetainedSafeFiles(root) as retained:
+        if state_path.exists():
+            state_raw = retained.read(
+                state_path, missing_code="CURRENT_INDEX_REPORT_MISSING"
+            )
+            state = json.loads(state_raw)
+            if (
+                not isinstance(state, Mapping)
+                or state.get("schema_version")
+                != "shadow_autopilot_odds_capture_only_state_v1"
+            ):
+                raise CaptureOneRejected("CURRENT_INDEX_REPORT_INVALID")
+            state_payload = dict(state)
+        else:
+            state_payload = {
+                "schema_version": "shadow_autopilot_odds_capture_only_state_v1"
+            }
+        state_payload["current_race_index_state"] = {
+            "schema_version": "collector_current_race_index_state_v1",
+            "updated_at": source_generated_at.isoformat(),
+            "run_id": publication["run_id"],
+            "output_dir": output_locator,
+            "autopilot_output_dir": output_locator,
+            "final_status": report["final_status"],
+            "status": report["status"],
+        }
+        _atomic_replace_canonical(
+            report_path,
+            report,
+            evidence_root=root,
+            _pre_replace=retained.validate,
+        )
+        _atomic_replace_canonical(
+            state_path,
+            state_payload,
+            evidence_root=root,
+            _pre_replace=retained.validate,
+        )
+    return {
+        "schema_version": "collector_current_race_index_lifecycle_bind_v1",
+        "status": "BOUND",
+        "run_id": publication["run_id"],
+        "report_path": report_path.absolute().relative_to(root).as_posix(),
+        "source_generated_at": source_generated_at.isoformat(),
+    }
+
+
 def _aware_datetime(value: object) -> datetime | None:
     try:
         parsed = datetime.fromisoformat(str(value))
@@ -1518,6 +1599,7 @@ def _validate_current_odds_evidence(
     report_time = _aware_datetime(report.get("generated_at"))
     source_time = _aware_datetime(packet.get("source_generated_at"))
     allowed = {
+        "CURRENT_INDEX_PUBLISHED_CAPTURE_IN_PROGRESS": {"READY"},
         "ODDS_CAPTURE_ONLY_READY": {"READY", "READY_WITH_BLOCKED_ATTEMPTS"},
         "ODDS_CAPTURE_ONLY_HANDLED_NO_WRITE": {"HANDLED_NO_WRITE"},
     }
@@ -1761,7 +1843,18 @@ def bounded_current_race_index(
             if (
                 not isinstance(report, Mapping)
                 or report.get("schema_version")
-                != "shadow_autopilot_odds_capture_only_daemon_report_v1"
+                not in {
+                    "collector_current_race_index_lifecycle_report_v1",
+                    "shadow_autopilot_odds_capture_only_daemon_report_v1",
+                }
+                or (
+                    report.get("final_status")
+                    == "CURRENT_INDEX_PUBLISHED_CAPTURE_IN_PROGRESS"
+                )
+                != (
+                    report.get("schema_version")
+                    == "collector_current_race_index_lifecycle_report_v1"
+                )
                 or report.get("run_id") != packet["run_id"]
                 or report.get("output_dir") != index_state.get("output_dir")
                 or report.get("current_race_index_publish") != expected_publish

@@ -68,12 +68,25 @@ def test_current_race_index_is_published_from_completed_refresh(
     state_path = evidence_root / "runtime/odds_capture_state.json"
     source_path = output_dir / "odds_capture_refresh_report.json"
     observed = {}
+    lifecycle = {}
 
     def fake_publish(**kwargs):
         observed.update(kwargs)
-        return {"status": "PUBLISHED", "race_count": 1}
+        return {
+            "status": "PUBLISHED",
+            "race_count": 1,
+            "run_id": "scheduled-run",
+            "source_generated_at": "2026-08-11T10:00:00+10:00",
+        }
+
+    def fake_bind(**kwargs):
+        lifecycle.update(kwargs)
+        return {"status": "BOUND"}
 
     monkeypatch.setattr(autopilot, "publish_current_race_index", fake_publish)
+    monkeypatch.setattr(
+        autopilot, "bind_current_race_index_publication_lifecycle", fake_bind
+    )
 
     result = autopilot.publish_current_race_index_after_refresh(
         state_path=state_path,
@@ -82,12 +95,28 @@ def test_current_race_index_is_published_from_completed_refresh(
         run_id="scheduled-run",
     )
 
-    assert result == {"status": "PUBLISHED", "race_count": 1}
+    assert result == {
+        "status": "PUBLISHED",
+        "race_count": 1,
+        "run_id": "scheduled-run",
+        "source_generated_at": "2026-08-11T10:00:00+10:00",
+    }
     assert observed == {
         "state_path": state_path,
         "evidence_root": evidence_root,
         "source_refresh_report_path": source_path,
         "run_id": "scheduled-run",
+    }
+    assert lifecycle == {
+        "state_path": state_path,
+        "evidence_root": evidence_root,
+        "output_dir": output_dir,
+        "publication": {
+            "status": "PUBLISHED",
+            "race_count": 1,
+            "run_id": "scheduled-run",
+            "source_generated_at": "2026-08-11T10:00:00+10:00",
+        },
     }
 
 
