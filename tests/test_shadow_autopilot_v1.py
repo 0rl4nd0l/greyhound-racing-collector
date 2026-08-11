@@ -187,6 +187,26 @@ def test_current_index_liveness_reports_source_age_and_failed_guarantee():
     assert rejected["freshness_guarantee_met"] is False
 
 
+def test_current_index_liveness_priority_requires_refresh_margin():
+    refreshed_at = datetime.fromisoformat("2026-08-11T22:00:00+10:00")
+    races = [
+        {
+            "race_id": "Race 9 - MAND - 2026-08-11",
+            "jump_datetime": "2026-08-11T22:01:00+10:00",
+        },
+        {
+            "race_id": "Race 10 - MAND - 2026-08-11",
+            "jump_datetime": "2026-08-11T22:10:00+10:00",
+        },
+    ]
+
+    assert autopilot.current_index_liveness_priority_race_id(
+        races=races,
+        iteration=1,
+        refreshed_at=refreshed_at,
+    ) == "Race 10 - MAND - 2026-08-11"
+
+
 def test_current_index_liveness_flag_is_opt_in():
     assert autopilot.parse_args([]).maintain_current_index_liveness is False
     assert (
