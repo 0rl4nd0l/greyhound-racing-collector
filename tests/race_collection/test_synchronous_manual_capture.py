@@ -33,7 +33,7 @@ from race_collection.synchronous_manual_capture import (
     publish_scheduled_capture_receipts,
     run_capture_one,
 )
-from src.predictor.on_demand import canonical_bytes, sha256_bytes
+from src.predictor.on_demand import canonical_bytes, runner_set_sha256, sha256_bytes
 
 
 def _runner_coverage(
@@ -419,6 +419,9 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
     )
 
     assert published["status"] == "PUBLISHED"
+    assert json.loads(original)["races"][0]["runner_set_sha256"] == (
+        runner_set_sha256(RUNNERS)
+    )
     assert json.loads(original)["source_refresh_report_sha256"] == sha256_bytes(
         source.read_bytes()
     )
@@ -1373,7 +1376,7 @@ def test_v2_runner_seal_requires_explicit_exact_active_state(
     assert rejected.value.code == "CURRENT_INDEX_SOURCE_INVALID"
 
 
-def test_v2_runner_hash_binds_source_generated_at(tmp_path: Path):
+def test_v2_runner_identity_is_stable_across_source_observations(tmp_path: Path):
     evidence_root = tmp_path / "evidence"
     race_url = "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
     observed = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
@@ -1395,7 +1398,7 @@ def test_v2_runner_hash_binds_source_generated_at(tmp_path: Path):
 
     assert first[1]["source_generated_at"] == observed.isoformat()
     assert second[1]["source_generated_at"] == changed_at.isoformat()
-    assert first[2] != second[2]
+    assert first[2] == second[2] == runner_set_sha256(RUNNERS)
 
 
 def test_v2_runner_seal_accepts_later_prejump_observation_and_normalized_venue(
