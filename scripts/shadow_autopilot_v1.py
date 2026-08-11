@@ -23,10 +23,11 @@ import socket
 import stat
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -57,6 +58,9 @@ DEFAULT_ODDS_CAPTURE_MIN_MINUTES = 0.0
 DEFAULT_ODDS_CAPTURE_MAX_MINUTES = 60.0
 DEFAULT_ODDS_CAPTURE_REFRESH_LIMIT = 16
 DEFAULT_AUTONOMOUS_ODDS_CAPTURE_LIMIT: int | None = None
+CURRENT_INDEX_LIVENESS_REFRESH_LIMIT = 2
+CURRENT_INDEX_LIVENESS_STEP_TIMEOUT_SECONDS = 120
+CURRENT_INDEX_LIVENESS_PAUSE_SECONDS = 5
 DEFAULT_HISTORICAL_UNIFIED_EVIDENCE_REPORT_LIMIT = 600
 DEFAULT_RESULT_BACKLOG_LIMIT = 128
 DEFAULT_RESULT_BACKLOG_SHADOW_RUN_LIMIT = 200
@@ -6662,6 +6666,33 @@ def publish_current_race_index_after_refresh(
     return publication
 
 
+def run_current_index_liveness(
+    *,
+    stop_event: threading.Event,
+    refresh_once: Callable[[int], Mapping[str, Any]],
+    pause_seconds: float,
+) -> list[dict[str, Any]]:
+    """Keep one bounded index fresh while the owning capture phase is active."""
+
+    records: list[dict[str, Any]] = []
+    iteration = 0
+    while not stop_event.is_set():
+        iteration += 1
+        try:
+            records.append(dict(refresh_once(iteration)))
+        except Exception as exc:
+            records.append(
+                {
+                    "iteration": iteration,
+                    "status": "REJECTED",
+                    "reason": type(exc).__name__,
+                }
+            )
+        if stop_event.wait(max(0.0, pause_seconds)):
+            break
+    return records
+
+
 def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
     generated_at = datetime.now().astimezone()
     run_id = args.run_id or now_id(generated_at)
@@ -6863,6 +6894,9 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         output_dir / "current_race_index_publish.json",
         current_race_index_publish,
     )
+    current_index_liveness_records: list[dict[str, Any]] = []
+    current_index_liveness_stop: threading.Event | None = None
+    current_index_liveness_thread: threading.Thread | None = None
     if args.enable_autonomous_odds_capture:
         capture_current_time = (
             str(manual_request.claim["claimed_at"])
@@ -6902,12 +6936,105 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             ),
             forward_corpus_root=args.forward_corpus_root,
         )
-        autonomous_odds_step = step_command(
-            name="autonomous_live_odds_capture",
-            command=autonomous_odds_command,
-            output_dir=output_dir,
-            timeout_seconds=args.step_timeout_seconds,
+        maintain_current_index_liveness = (
+            getattr(args, "maintain_current_index_liveness", False)
+            and getattr(args, "current_race_index_state_path", None) is not None
+            and current_race_index_publish.get("status") == "PUBLISHED"
         )
+        if maintain_current_index_liveness:
+            current_index_liveness_stop = threading.Event()
+
+            def refresh_current_index_once(iteration: int) -> Mapping[str, Any]:
+                refreshed_at = datetime.now().astimezone()
+                liveness_dir = output_dir / f"current_index_liveness_{iteration:03d}"
+                refresh_command = [
+                    *refresh_command_prefix(args.refresh_command_mode),
+                    str(ROOT / "scripts/refresh_prejump_upcoming.py"),
+                    "--upcoming-dir",
+                    str(liveness_dir / "upcoming"),
+                    "--days-ahead",
+                    str(args.days_ahead),
+                    "--min-minutes",
+                    str(args.odds_capture_min_minutes),
+                    "--max-minutes",
+                    str(args.odds_capture_max_minutes),
+                    "--limit",
+                    str(min(CURRENT_INDEX_LIVENESS_REFRESH_LIMIT, odds_capture_limit)),
+                    "--current-time",
+                    refreshed_at.isoformat(),
+                    "--output",
+                    str(liveness_dir / "odds_capture_refresh_report.json"),
+                ]
+                if args.require_safe_refresh_metadata:
+                    refresh_command.append("--require-safe-metadata")
+                refresh_step = step_command(
+                    name=f"current_index_liveness_{iteration:03d}",
+                    command=refresh_command,
+                    output_dir=liveness_dir,
+                    timeout_seconds=min(
+                        CURRENT_INDEX_LIVENESS_STEP_TIMEOUT_SECONDS,
+                        args.step_timeout_seconds,
+                    ),
+                )
+                publication = publish_current_race_index_after_refresh(
+                    state_path=args.current_race_index_state_path,
+                    evidence_root=evidence_root,
+                    output_dir=liveness_dir,
+                    run_id=f"{collector_run_id or run_id}_liveness_{iteration:03d}",
+                )
+                write_json(
+                    liveness_dir / "current_race_index_publish.json", publication
+                )
+                return {
+                    "iteration": iteration,
+                    "status": publication.get("status"),
+                    "reason": publication.get("reason"),
+                    "source_generated_at": publication.get("source_generated_at"),
+                    "race_count": publication.get("race_count"),
+                    "refresh_step": refresh_step,
+                }
+
+            def maintain_current_index() -> None:
+                current_index_liveness_records.extend(
+                    run_current_index_liveness(
+                        stop_event=current_index_liveness_stop,
+                        refresh_once=refresh_current_index_once,
+                        pause_seconds=CURRENT_INDEX_LIVENESS_PAUSE_SECONDS,
+                    )
+                )
+
+            current_index_liveness_thread = threading.Thread(
+                target=maintain_current_index,
+                name="current-index-liveness",
+                daemon=True,
+            )
+            current_index_liveness_thread.start()
+            try:
+                autonomous_odds_step = step_command(
+                    name="autonomous_live_odds_capture",
+                    command=autonomous_odds_command,
+                    output_dir=output_dir,
+                    timeout_seconds=args.step_timeout_seconds,
+                )
+            finally:
+                current_index_liveness_stop.set()
+                current_index_liveness_thread.join(
+                    timeout=CURRENT_INDEX_LIVENESS_STEP_TIMEOUT_SECONDS + 5
+                )
+                if current_index_liveness_thread.is_alive():
+                    current_index_liveness_records.append(
+                        {
+                            "status": "REJECTED",
+                            "reason": "liveness_thread_join_timeout",
+                        }
+                    )
+        else:
+            autonomous_odds_step = step_command(
+                name="autonomous_live_odds_capture",
+                command=autonomous_odds_command,
+                output_dir=output_dir,
+                timeout_seconds=args.step_timeout_seconds,
+            )
         steps.append(autonomous_odds_step)
         autonomous_odds_report_path = (
             autonomous_odds_capture_dir / "autonomous_live_odds_capture_report.json"
@@ -8076,6 +8203,12 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         "current_time": current_time,
         "steps": steps,
         "refresh_report": refresh_report,
+        "current_index_liveness": {
+            "enabled": bool(
+                getattr(args, "maintain_current_index_liveness", False)
+            ),
+            "refreshes": current_index_liveness_records,
+        },
         "sources": sources,
         "protected_hashes_before": protected_before,
         "protected_hashes_after": protected_after,
@@ -8371,6 +8504,12 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         ),
         "manual_prediction_collector_request": manual_request_status,
         "current_race_index_publish": current_race_index_publish,
+        "current_index_liveness": {
+            "enabled": bool(
+                getattr(args, "maintain_current_index_liveness", False)
+            ),
+            "refreshes": current_index_liveness_records,
+        },
         "prediction_sample_odds_coverage_status": daily_status.get(
             "prediction_sample_odds_coverage_status"
         ),
@@ -8579,6 +8718,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--refresh-limit", type=int, default=16)
     parser.add_argument("--refresh-dry-run", action="store_true")
     parser.add_argument("--require-safe-refresh-metadata", action="store_true")
+    parser.add_argument("--maintain-current-index-liveness", action="store_true")
     parser.add_argument("--refresh-command-mode", choices=("auto", "python", "uv"), default="auto")
     parser.add_argument("--score-command-mode", choices=("auto", "python", "uv"), default="auto")
     parser.add_argument("--target-joined-races", type=int, default=DEFAULT_TARGET_JOINED_RACES)

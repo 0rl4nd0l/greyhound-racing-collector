@@ -1722,6 +1722,7 @@ def test_odds_capture_only_autopilot_command_is_narrow_and_append_only():
     assert "--enable-autonomous-odds-capture" in command
     assert "--execute-autonomous-odds-capture" in command
     assert "--allow-auto-scrape-odds" in command
+    assert "--maintain-current-index-liveness" in command
     assert "--skip-primary-refresh" in command
     assert "--skip-shadow-run" in command
     assert "--skip-odds-snapshot" in command

@@ -1850,6 +1850,7 @@ def odds_capture_only_autopilot_command(
         "--skip-aggregate",
         "--skip-status",
         "--skip-unified-dataset",
+        "--maintain-current-index-liveness",
     ]
     if require_safe_refresh_metadata:
         command.append("--require-safe-refresh-metadata")
