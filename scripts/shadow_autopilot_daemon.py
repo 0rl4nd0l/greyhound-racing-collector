@@ -3936,8 +3936,10 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
                 "schema_version": "collector_current_race_index_state_v1",
                 "updated_at": state_payload["updated_at"],
                 "run_id": state_payload["run_id"],
-                "output_dir": state_payload["output_dir"],
-                "autopilot_output_dir": state_payload["autopilot_output_dir"],
+                "output_dir": str(output_dir.relative_to(args.evidence_root)),
+                "autopilot_output_dir": str(
+                    autopilot_output_dir.relative_to(args.evidence_root)
+                ),
                 "final_status": state_payload["final_status"],
                 "status": state_payload["status"],
             }
