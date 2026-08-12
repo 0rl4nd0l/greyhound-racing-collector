@@ -5,6 +5,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -780,7 +781,15 @@ def test_full_daemon_lock_retry_waits_for_odds_capture_owner(
         assert waiting_report["lock_retry"]["attempt_count"] == 1
         assert waiting_report["lock_retry"]["waited_seconds"] == 0.0
 
-    monkeypatch.setattr(daemon.time, "sleep", fake_sleep)
+    monkeypatch.setattr(
+        daemon,
+        "time",
+        SimpleNamespace(
+            sleep=fake_sleep,
+            monotonic=daemon.time.monotonic,
+            time=daemon.time.time,
+        ),
+    )
 
     payload = daemon.acquire_lock_with_odds_capture_retry(
         lock_path=lock_path,
@@ -852,7 +861,15 @@ def test_observer_lock_retry_exhaustion_preserves_odds_owner_and_cleans_marker(
         assert lock_path.read_bytes() == lock_bytes
 
     monkeypatch.setattr(daemon, "acquire_collector_lock_no_steal", busy_acquire)
-    monkeypatch.setattr(daemon.time, "sleep", fake_sleep)
+    monkeypatch.setattr(
+        daemon,
+        "time",
+        SimpleNamespace(
+            sleep=fake_sleep,
+            monotonic=daemon.time.monotonic,
+            time=daemon.time.time,
+        ),
+    )
 
     with pytest.raises(daemon.CollectorBusy) as exc_info:
         daemon.acquire_observer_lock_with_odds_capture_retry(
@@ -1102,7 +1119,15 @@ def test_run_once_observer_waits_for_natural_odds_release_then_continues(
         assert lock["phase"] == "forward_official_result_observer"
         return observed | {"run_id": run_id}
 
-    monkeypatch.setattr(daemon.time, "sleep", fake_sleep)
+    monkeypatch.setattr(
+        daemon,
+        "time",
+        SimpleNamespace(
+            sleep=fake_sleep,
+            monotonic=daemon.time.monotonic,
+            time=daemon.time.time,
+        ),
+    )
     monkeypatch.setattr(daemon, "run_forward_official_result_observer", observe)
     monkeypatch.setattr(
         daemon,
@@ -4318,7 +4343,15 @@ def test_run_odds_capture_once_retries_full_daemon_lock_when_t2_due(
         }
 
     monkeypatch.setattr(daemon, "acquire_lock", retry_then_acquire)
-    monkeypatch.setattr(daemon.time, "sleep", fake_sleep)
+    monkeypatch.setattr(
+        daemon,
+        "time",
+        SimpleNamespace(
+            sleep=fake_sleep,
+            monotonic=daemon.time.monotonic,
+            time=daemon.time.time,
+        ),
+    )
     monkeypatch.setattr(daemon, "run_command", fake_run_command)
 
     args = daemon.parse_args(

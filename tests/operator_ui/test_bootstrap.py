@@ -108,7 +108,9 @@ def test_r3_startup_is_default_off_and_has_no_service_callback_or_path_injection
         bind_configured_r3(app)
 
 
-def test_repository_profile_fails_closed_without_generated_binding(tmp_path):
+def test_repository_profile_fails_closed_without_generated_binding(tmp_path, monkeypatch):
+    repo, *_ = repository_binding_fixture(tmp_path, monkeypatch)
+    (repo / "var/operator_ui/generated/repository-v1.binding.json").unlink()
     app=installed_app(tmp_path); app.config[R3_PROFILE_KEY]="repository-v1"
     with pytest.raises(RuntimeError,match="generated repository-v1 binding unavailable"):
         bootstrap_module.configure_r3_startup(app)

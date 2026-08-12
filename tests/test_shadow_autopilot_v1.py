@@ -22,13 +22,13 @@ def test_autopilot_default_min_joined_races_matches_review_target():
     assert autopilot.DEFAULT_MIN_JOINED_RACES_FOR_STATUS == 100
     assert autopilot.DEFAULT_ODDS_CAPTURE_MIN_MINUTES == 0.0
     assert autopilot.DEFAULT_ODDS_CAPTURE_MAX_MINUTES == 60.0
-    assert autopilot.DEFAULT_ODDS_CAPTURE_REFRESH_LIMIT == 8
+    assert autopilot.DEFAULT_ODDS_CAPTURE_REFRESH_LIMIT == 16
     assert autopilot.DEFAULT_HISTORICAL_UNIFIED_EVIDENCE_REPORT_LIMIT == 600
     assert args.target_joined_races == 100
     assert args.min_joined_races == 100
     assert args.odds_capture_min_minutes == 0.0
     assert args.odds_capture_max_minutes == 60.0
-    assert args.odds_capture_refresh_limit == 8
+    assert args.odds_capture_refresh_limit == 16
     assert args.autonomous_odds_capture_limit is None
     assert args.enable_autonomous_odds_capture is False
     assert args.execute_autonomous_odds_capture is False
@@ -4804,7 +4804,7 @@ def test_autonomous_live_odds_capture_runs_before_daily_shadow_run(tmp_path, mon
     ] == "60.0"
     assert odds_refresh_command[
         odds_refresh_command.index("--limit") + 1
-    ] == "8"
+    ] == "16"
     autonomous_capture_command = commands_by_step["autonomous_live_odds_capture"]
     assert autonomous_capture_command[
         autonomous_capture_command.index("--limit") + 1
