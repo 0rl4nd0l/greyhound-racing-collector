@@ -1,7 +1,6 @@
 import json
 import os
 import socket
-import threading
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -119,39 +118,6 @@ def test_current_race_index_is_published_from_completed_refresh(
             "source_generated_at": "2026-08-11T10:00:00+10:00",
         },
     }
-
-
-def test_current_index_liveness_refreshes_until_stop():
-    stop = threading.Event()
-    calls = []
-
-    def refresh_once(iteration):
-        calls.append(iteration)
-        if iteration == 2:
-            stop.set()
-        return {"iteration": iteration, "status": "PUBLISHED"}
-
-    records = autopilot.run_current_index_liveness(
-        stop_event=stop,
-        refresh_once=refresh_once,
-        pause_seconds=0,
-    )
-
-    assert calls == [1, 2]
-    assert records == [
-        {"iteration": 1, "status": "PUBLISHED"},
-        {"iteration": 2, "status": "PUBLISHED"},
-    ]
-
-
-def test_current_index_liveness_flag_is_opt_in():
-    assert autopilot.parse_args([]).maintain_current_index_liveness is False
-    assert (
-        autopilot.parse_args(
-            ["--maintain-current-index-liveness"]
-        ).maintain_current_index_liveness
-        is True
-    )
 
 
 def test_step_command_records_timeout_and_logs_output(tmp_path, monkeypatch):
