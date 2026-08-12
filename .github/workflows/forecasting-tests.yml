@@ -3,8 +3,6 @@ name: Forecasting acceptance
 on:
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
-  schedule:
-    - cron: "17 4 * * 0"
   workflow_dispatch:
     inputs:
       reason:
@@ -21,6 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       tier: ${{ steps.classify.outputs.tier }}
+      classified_tier: ${{ steps.classify.outputs.classified_tier }}
       reason: ${{ steps.classify.outputs.reason }}
       ci_contract_changed: ${{ steps.classify.outputs.ci_contract_changed }}
 
@@ -49,6 +48,7 @@ jobs:
               --github-output "$GITHUB_OUTPUT"
           else
             python3 scripts/ci/classify_forecasting_changes.py \
+              --pr-fast \
               --base "$BASE_SHA" \
               --head "$HEAD_SHA" \
               --github-output "$GITHUB_OUTPUT"
@@ -64,9 +64,10 @@ jobs:
             echo "### Forecasting change classification"
             echo
             echo "- Tier: \`$FORECASTING_TIER\`"
+            echo "- Classifier tier: \`${{ steps.classify.outputs.classified_tier }}\`"
             echo "- Reason: \`$CLASSIFICATION_REASON\`"
             echo "- CI contract changed: \`$CI_CONTRACT_CHANGED\`"
-            echo "- Explicit PR override label: \`ci:full-forecasting\`"
+            echo "- Full-suite opt-in: PR label \`ci:full-forecasting\` or manual dispatch"
           } >> "$GITHUB_STEP_SUMMARY"
 
   forecasting-gate:
@@ -80,7 +81,7 @@ jobs:
       - name: Enforce trustworthy classification
         if: >-
           needs.classify.result != 'success' ||
-          !contains(fromJSON('["ci_contract","manual_prediction","official_results","forward_corpus","operator_ui","forecasting_core","full_forecasting","non_forecasting"]'),
+          !contains(fromJSON('["ci_contract","manual_prediction","official_results","forward_corpus","operator_ui","forecasting_core","full_forecasting","pr_fast","non_forecasting"]'),
           needs.classify.outputs.tier) ||
           !contains(fromJSON('["true","false"]'),
           needs.classify.outputs.ci_contract_changed) ||
@@ -235,6 +236,17 @@ jobs:
                 tests/race_collection/test_phase4_model_serving.py
               )
               ;;
+            pr_fast)
+              selected_command=(
+                uv run --no-project --with-requirements requirements/all.in
+                python -m pytest -q --noconftest
+                tests/test_predict_market_form_residual.py::test_scores_exact_packet_deterministically
+                tests/test_results_ingest_official_first.py::test_parse_sportsbet_result_text_extracts_top_four_boxes
+                tests/race_collection/test_scheduled_forward_corpus.py::test_fixture_scheduled_capture_admits_once_and_exact_replay_is_byte_stable
+                tests/operator_ui/test_foundation.py::test_valid_envelope_is_deterministic_finite_immutable_and_serializable
+                tests/race_collection/test_phase3_forecasting.py::test_prediction_rejected_before_close_and_binds_exact_seal_and_pin
+              )
+              ;;
             full_forecasting)
               selected_command=(
                 uv run --no-project --with-requirements requirements/all.in
@@ -260,6 +272,7 @@ jobs:
       - name: Bind validation evidence to exact commit and tree
         if: always() && needs.classify.outputs.tier != 'non_forecasting'
         env:
+          CLASSIFIED_TIER: ${{ needs.classify.outputs.classified_tier }}
           CI_CONTRACT_CHANGED: ${{ needs.classify.outputs.ci_contract_changed }}
           CLASSIFICATION_REASON: ${{ needs.classify.outputs.reason }}
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -282,9 +295,21 @@ jobs:
           combined_log = evidence_dir / "forecasting-suite.log"
           manifest = evidence_dir / "forecasting-command-manifest.tsv"
           tier = os.environ["FORECASTING_TIER"]
+          classified_tier = os.environ["CLASSIFIED_TIER"]
           ci_contract_changed_text = os.environ["CI_CONTRACT_CHANGED"]
           if ci_contract_changed_text not in {"true", "false"}:
               raise SystemExit("invalid ci_contract_changed classifier output")
+          if classified_tier not in {
+              "ci_contract",
+              "manual_prediction",
+              "official_results",
+              "forward_corpus",
+              "operator_ui",
+              "forecasting_core",
+              "full_forecasting",
+              "non_forecasting",
+          }:
+              raise SystemExit("invalid classified_tier classifier output")
           ci_contract_changed = ci_contract_changed_text == "true"
           commit = subprocess.check_output(
               ["git", "rev-parse", "HEAD"], text=True
@@ -335,6 +360,7 @@ jobs:
           evidence = {
               "schema_version": "forecasting-ci-attestation-v3",
               "tier": tier,
+              "classified_tier": classified_tier,
               "ci_contract_changed": ci_contract_changed,
               "classification_reason": os.environ["CLASSIFICATION_REASON"],
               "command": (evidence_dir / "forecasting-command.txt")

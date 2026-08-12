@@ -561,6 +561,7 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
             self.assertEqual(
                 output.read_text(encoding="utf-8"),
                 "tier=manual_prediction\n"
+                "classified_tier=manual_prediction\n"
                 "reason=single_product_tier_with_ci_contract\n"
                 "ci_contract_changed=true\n",
             )
@@ -578,20 +579,41 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
             self.assertEqual(
                 output.read_text(encoding="utf-8"),
                 "tier=full_forecasting\n"
+                "classified_tier=full_forecasting\n"
                 "reason=explicit_full_validation\n"
                 "ci_contract_changed=false\n",
             )
 
-    def test_workflow_preserves_stable_gate_and_full_escape_hatches(self):
+    def test_pr_fast_downgrades_only_full_classifier_results(self):
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            exit_code = CLASSIFIER.main(
+                ["--pr-fast", "--base", "HEAD", "--head", "HEAD"]
+            )
+        self.assertEqual(exit_code, 0)
+        result = json.loads(stdout.getvalue())
+        self.assertEqual(result["tier"], "pr_fast")
+        self.assertEqual(result["classified_tier"], "full_forecasting")
+        self.assertEqual(
+            result["reason"], "pr_fast_fallback:empty_change_set_defaults_to_full"
+        )
+
+    def test_pr_fast_cannot_be_combined_with_explicit_full(self):
+        with self.assertRaises(SystemExit):
+            CLASSIFIER.parse_args(["--force-full", "--pr-fast"])
+
+    def test_workflow_makes_full_suite_an_explicit_opt_in(self):
         workflow = (ROOT / ".github/workflows/forecasting-tests.yml").read_text(
             encoding="utf-8"
         )
         for expected in (
             "name: tests-race-collection",
-            "schedule:",
             "workflow_dispatch:",
             "ci:full-forecasting",
             "--force-full",
+            "--pr-fast",
+            "pr_fast)",
+            "classified_tier",
             "forecasting-ci-attestation-v3",
             '"tier": tier',
             "ci_contract_changed: ${{ steps.classify.outputs.ci_contract_changed }}",
@@ -615,6 +637,7 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
         for tier in CLASSIFIER.TIERS:
             self.assertIn(tier, workflow)
         self.assertEqual(workflow.count("scripts/ci/run_full_forecasting.py"), 1)
+        self.assertNotIn("  schedule:", workflow)
         self.assertLess(
             workflow.index('run_command ci_contract "${ci_contract_command[@]}"'),
             workflow.index(
@@ -670,6 +693,7 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
             env = {
                 **os.environ,
                 "CI_CONTRACT_CHANGED": "true",
+                "CLASSIFIED_TIER": "manual_prediction",
                 "CLASSIFICATION_REASON": "single_product_tier_with_ci_contract",
                 "EXPECTED_HEAD": head,
                 "FORECASTING_TIER": "manual_prediction",
@@ -686,6 +710,7 @@ class ForecastingChangeClassifierTests(unittest.TestCase):
                 )
             )
         self.assertEqual(attestation["schema_version"], "forecasting-ci-attestation-v3")
+        self.assertEqual(attestation["classified_tier"], "manual_prediction")
         self.assertIs(attestation["ci_contract_changed"], True)
         self.assertEqual(attestation["uv"], "uv-test 0.0")
         self.assertEqual(
