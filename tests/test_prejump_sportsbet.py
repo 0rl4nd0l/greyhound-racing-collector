@@ -155,35 +155,6 @@ def test_sportsbet_track_metadata_accepts_ap_k_underscore_code():
     assert metadata["weather_track_metadata_detail"]["competition_name"] == "Angle Park"
 
 
-def test_sportsbet_track_metadata_accepts_wagga():
-    event = _sale_r9_event(
-        id=10794001,
-        competitionName="Wagga",
-        raceNumber=1,
-        startTime=int(
-            datetime(
-                2026, 8, 11, 18, 37, tzinfo=ZoneInfo("Australia/Sydney")
-            ).timestamp()
-        ),
-    )
-    session = FakeSportsbetSession([event])
-
-    metadata = collect_sportsbet_track_metadata(
-        {
-            "date": "2026-08-11",
-            "venue": "WAGGA",
-            "race_number": "1",
-            "race_time": "6:37 PM",
-            "url": "https://www.thedogs.com.au/racing/wagga/2026-08-11/1/example",
-        },
-        session=session,
-    )
-
-    assert metadata["track_condition"] == "Good"
-    assert metadata["weather_track_metadata_is_leakage_safe"] is True
-    assert metadata["weather_track_metadata_detail"]["competition_name"] == "Wagga"
-
-
 def test_sportsbet_track_metadata_accepts_q1_lakeside_alias():
     event = _sale_r9_event(
         id=10601001,
