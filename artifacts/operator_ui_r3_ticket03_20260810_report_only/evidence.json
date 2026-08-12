@@ -1,0 +1,112 @@
+{
+  "schema_version": "operator_ui_r3_ticket03_activation_v1",
+  "terminal_status": "PASS",
+  "activation_started_at": "2026-08-10T22:05:12+10:00",
+  "final_observed_at": "2026-08-11T16:05:41+10:00",
+  "repository": {
+    "path": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector",
+    "branch": "feature/dog-odds-snapshot-readiness",
+    "head": "c4453467beabe8b5be81c77aa92886dabf7bb6bf",
+    "tree": "f27d11ac60c9fc43dfc736fc6d6045ec36dcebff",
+    "preexisting_dirty_state_preserved": true
+  },
+  "accepted_source": {
+    "path": "/home/l4nd0/operator-ui-r3-ticket01-authoritative-HCOLll/source",
+    "commit": "d343af94a57af80327dd41f18433f7466f86ca0d",
+    "tree": "a04197ba455de2549f9c76adcd474d1feb520bd1",
+    "clean_before_activation": true,
+    "clean_after_smoke": true
+  },
+  "preactivation": {
+    "status": "PASS",
+    "hash_command": "sha256sum <binding> <candidate>/operator-ui-r3.env <candidate>/greyhound-operator-ui-r3.service <candidate>/ROLLBACK.md",
+    "hash_command_exit": 0,
+    "hashes": {
+      "binding": "6e8d1966d1fe6a18faad40cf02babf4e0bdf0a81db915d776b50040dc99b8e46",
+      "environment": "37b8abe312b839d8ecb4b74b194fcb408d05583145c140a3512e2f274e5c8b86",
+      "unit": "14635fc14f244d93b3de1c956aef7c0c973d9fa4ea66fe1ee95edec48d34d655",
+      "rollback": "39e434f6a9665a446b3fb5160c02cc7b0ed1c737c9764de36f5de6715d96646d",
+      "live_authority": "98e34a81b4fd291787ccb58f037146aa920414d6d9fcd90477518ef6e7c371c2"
+    },
+    "candidate_evidence_byte_comparisons_exit": 0,
+    "pinned_python": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-python311-20260803-9d58f340/bin/python",
+    "python_version": "3.11.15",
+    "installed_target": "/home/l4nd0/.config/systemd/user/greyhound-operator-ui-r3.service",
+    "installed_target_owner": "l4nd0:l4nd0",
+    "installed_target_mode_before": "0644",
+    "rejected_unit_sha256_before": "423e854609badfca05bf1fc804a1eb9f891c970c8f7c03906995d221a757d002",
+    "r3_pid_before": 1692390
+  },
+  "activation": {
+    "commands": [
+      "install -m 0644 /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-ticket02-candidate-20260810-xoXmLv/greyhound-operator-ui-r3.service /home/l4nd0/.config/systemd/user/greyhound-operator-ui-r3.service",
+      "systemctl --user daemon-reload",
+      "systemctl --user restart greyhound-operator-ui-r3.service"
+    ],
+    "exits": [0, 0, 0],
+    "other_services_controlled": false
+  },
+  "installed_runtime": {
+    "active_state": "active",
+    "sub_state": "running",
+    "result": "success",
+    "pid": 2406787,
+    "listener": "127.0.0.1:5055",
+    "wildcard_listener": false,
+    "executable": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-python311-20260803-9d58f340/bin/python",
+    "working_directory": "/home/l4nd0/operator-ui-r3-ticket01-authoritative-HCOLll/source",
+    "deployed_commit": "d343af94a57af80327dd41f18433f7466f86ca0d",
+    "deployed_tree": "a04197ba455de2549f9c76adcd474d1feb520bd1",
+    "binding_sha256": "6e8d1966d1fe6a18faad40cf02babf4e0bdf0a81db915d776b50040dc99b8e46",
+    "installed_unit_sha256": "14635fc14f244d93b3de1c956aef7c0c973d9fa4ea66fe1ee95edec48d34d655"
+  },
+  "smoke": {
+    "command_kind": "local Python HTTP GET/POST smoke against http://127.0.0.1:5055; credentials read from owner-only local files and not printed; corrected client explicitly returned the Secure cookie issued by the same loopback service",
+    "exit": 0,
+    "unauthenticated_r3_capability_status": 401,
+    "initial_attempt": {
+      "exit": 22,
+      "login_get_status": 200,
+      "login_get_response_sha256": "b74e35fa38eea0dc7bcd9fdf3e126f3c3f636f7efda566039358e28ff1bac0d2",
+      "login_post_status": 400,
+      "login_post_classification": "NON_OPERATIONAL/CSRF_REJECTED",
+      "login_post_response_sha256": "9e2de79ec3821bff4dc6441018b58ccc9228415a70df7cea373ab921ce7dd5b0",
+      "cause": "Python cookie jar withheld the service Secure session cookie over plain HTTP",
+      "stopped_fail_closed": true
+    },
+    "continuation_observed_at": "2026-08-11T16:05:41+10:00",
+    "continuation_identity_reverification": "PASS",
+    "corrected_cookie_handling": "explicitly returned the Secure cookie obtained from the same 127.0.0.1 service",
+    "login_get_status": 200,
+    "login_get_response_sha256": "05e702b48b2b20a43ea17e3543f7bfd13dcebeff571987b71b7718862b978b43",
+    "login_get_classification": "NON_OPERATIONAL/AUTHENTICATION_REQUIRED",
+    "login_post_status": 200,
+    "login_post_classification": "NON_OPERATIONAL/AUTHENTICATED",
+    "login_post_response_sha256": "835abb13cbf75cc0fe6faa0feee7ab668a986bcff352bbc76b341fe87b8957aa",
+    "read_only_gets": {
+      "/operator-ui/connected/sentinel": {"status": 200, "response_sha256": "ac52f03b5b5102aa51b7526392b06961bef1b43d7539a0ab9c5a407a2f65b541"},
+      "/operator-ui/api/v1/r3-capability": {"status": 200, "response_sha256": "497d5447f3c9610d4ede54ad870ce4f4a336498211f48eed45b701ffdc07f306"},
+      "/operator-ui/api/v1/overview": {"status": 200, "response_sha256": "181350eaae3aef4fb7aa319e6aa0fa3a19ed0dda9f5f8b9a1a7da1c71e44ca07"},
+      "/operator-ui/api/v1/system": {"status": 200, "response_sha256": "d44cc3fa6592fcbbd869e059a0c0772a153d99cebb367b4fbc20b22102a4a2ae"}
+    },
+    "authenticated_health_and_reads": "PASS",
+    "prediction_submitted": false,
+    "capture_initiated": false
+  },
+  "final_services": {
+    "greyhound-operator-ui-r3.service": {"active_state": "active", "sub_state": "running", "pid": 2406787},
+    "shadow-autopilot.service": {"active_state": "failed", "sub_state": "failed", "main_pid": 1296824, "unit_sha256": "4f606f21c1215006d43acf3df8db9e1390f70226b03de118030efb63940d9630"},
+    "shadow-autopilot-odds-capture.service": {"active_state": "activating", "sub_state": "start", "main_pid": 1378085, "unit_sha256": "f85170b90735dfe98a7f6e13355be466c1811b7b9d7f393e25dda2a8e97682d7"}
+  },
+  "boundaries": {
+    "collector_control": false,
+    "external_fetch": false,
+    "prediction_submission": false,
+    "odds_capture": false,
+    "database_mutation": false,
+    "model_change": false,
+    "ev_or_betting": false,
+    "push_merge_publish": false,
+    "rollback_or_repair_after_failure": false
+  }
+}

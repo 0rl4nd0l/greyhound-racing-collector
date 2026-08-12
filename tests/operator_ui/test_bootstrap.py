@@ -108,7 +108,9 @@ def test_r3_startup_is_default_off_and_has_no_service_callback_or_path_injection
         bind_configured_r3(app)
 
 
-def test_repository_profile_fails_closed_without_generated_binding(tmp_path):
+def test_repository_profile_fails_closed_without_generated_binding(tmp_path, monkeypatch):
+    repo, *_ = repository_binding_fixture(tmp_path, monkeypatch)
+    (repo / "var/operator_ui/generated/repository-v1.binding.json").unlink()
     app=installed_app(tmp_path); app.config[R3_PROFILE_KEY]="repository-v1"
     with pytest.raises(RuntimeError,match="generated repository-v1 binding unavailable"):
         bootstrap_module.configure_r3_startup(app)
@@ -391,11 +393,14 @@ def test_finite_testing_fixture_profile_builds_real_repository_composition(tmp_p
     client=app.test_client()
     token=client.get("/operator-ui/login",base_url="https://localhost").get_json()["csrf_token"]
     token=client.post("/operator-ui/login",base_url="https://localhost",data={"username":"viewer","password":"correct horse","csrf_token":token}).get_json()["csrf_token"]
-    response=client.post("/operator-ui/api/v1/prediction-jobs",base_url="https://localhost",headers={"X-CSRF-Token":token},json={"race_id":"race-fixture","model_id":"latest-research","config_id":"manual-default","odds_source_id":"auto","idempotency_key":"12345678-1234-4123-8123-123456789abc"})
+    rejected=client.post("/operator-ui/api/v1/prediction-jobs",base_url="https://localhost",headers={"X-CSRF-Token":token},json={"race_id":"race-fixture","model_id":"latest-research","config_id":"manual-default","odds_source_id":"auto","idempotency_key":"aaaaaaaa-1234-4123-8123-123456789abc"})
+    assert rejected.status_code==409 and rejected.get_json()["classification"]=="SELECTION_NOT_ALLOWLISTED"
+    response=client.post("/operator-ui/api/v1/prediction-jobs",base_url="https://localhost",headers={"X-CSRF-Token":token},json={"race_id":"race-fixture","model_id":"latest-research","config_id":"manual-default","odds_source_id":"receipt","idempotency_key":"12345678-1234-4123-8123-123456789abc"})
     assert response.status_code==202 and response.get_json()["phase"]=="WAITING_FOR_CLAIM",response.get_json()
     job_id=response.get_json()["job_id"]
     assert runner_completed.wait(timeout=30), "terminal runner did not complete within 30 seconds"
     job=services.job_store.get(job_id)
+    assert job.input.odds_source=="receipt"
     assert job.attempt_claimed and job.phase is Phase.FAILED
     assert [event["phase"] for event in services.job_store.events(job_id)][-3:]==["CLAIMED","ATTEMPT_STARTED","FAILED"]
 

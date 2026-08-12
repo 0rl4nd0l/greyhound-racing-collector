@@ -1,0 +1,51 @@
+{
+  "schema_version": "operator_ui_live_authority_v1",
+  "observed_at": "2026-08-10T20:28:33+10:00",
+  "working_directory": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-final-deploy-20260804-93006017",
+  "sources": {
+    "full_state": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/shadow_autopilot_daemon_runtime/state.json",
+    "full_report": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/shadow_autopilot_daemonization_v1_20260810T093228+1000/daemon_run_report.json",
+    "odds_state": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/shadow_autopilot_daemon_runtime/odds_capture_state.json",
+    "odds_report": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/shadow_autopilot_daemonization_v1_20260810T200847+1000_odds_capture/odds_capture_only_daemon_report.json",
+    "odds_refresh": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/shadow_autopilot_v1_20260810T200847+1000_odds_capture_autopilot/odds_capture_refresh_report.json",
+    "corpus_report": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/artifacts/full_evidence_orchestration_20260525/race_evidence_inventory_20260810T180000+1000_report_only/race_evidence_inventory_report.json",
+    "corpus_manifest": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/artifacts/full_evidence_orchestration_20260525/race_evidence_inventory_20260810T180000+1000_report_only/output_manifest.json",
+    "deployment_manifest": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-ticket02-authority-20260810-CPDtYE/deployment_manifest.json",
+    "model_catalog": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-ticket02-authority-20260810-CPDtYE/model_catalog.json"
+  },
+  "raw_sources": {
+    "corpus_inventory_csv": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/artifacts/full_evidence_orchestration_20260525/race_evidence_inventory_20260810T180000+1000_report_only/race_evidence_inventory.csv",
+    "corpus_inventory_jsonl": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/artifacts/full_evidence_orchestration_20260525/race_evidence_inventory_20260810T180000+1000_report_only/race_evidence_inventory.jsonl",
+    "corpus_scorecard_csv": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/artifacts/full_evidence_orchestration_20260525/race_evidence_inventory_20260810T180000+1000_report_only/race_evidence_scorecard.csv",
+    "corpus_scorecard_jsonl": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/artifacts/full_evidence_orchestration_20260525/race_evidence_inventory_20260810T180000+1000_report_only/race_evidence_scorecard.jsonl",
+    "corpus_report_bytes": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/artifacts/full_evidence_orchestration_20260525/race_evidence_inventory_20260810T180000+1000_report_only/race_evidence_inventory_report.json",
+    "corpus_summary": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/artifacts/full_evidence_orchestration_20260525/race_evidence_inventory_20260810T180000+1000_report_only/SUMMARY.md",
+    "corpus_final_status": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/artifacts/full_evidence_orchestration_20260525/race_evidence_inventory_20260810T180000+1000_report_only/final_status.txt",
+    "model_latest_config": "/home/l4nd0/operator-ui-r3-ticket01-authoritative-HCOLll/source/configs/prediction/manual-default.json",
+    "model_latest_schema": "/home/l4nd0/operator-ui-r3-ticket01-authoritative-HCOLll/source/configs/prediction/schemas/market_form_residual_v1.schema.json",
+    "model_latest_artifact": "/home/l4nd0/operator-ui-r3-ticket01-authoritative-HCOLll/source/artifacts/frozen_models/market_form_residual_v1/model.json",
+    "model_latest_manifest": "/home/l4nd0/operator-ui-r3-ticket01-authoritative-HCOLll/source/artifacts/frozen_models/market_form_residual_v1/manifest.json",
+    "model_baseline_config": "/home/l4nd0/operator-ui-r3-ticket01-authoritative-HCOLll/source/configs/prediction/market-only.json",
+    "model_baseline_schema": "/home/l4nd0/operator-ui-r3-ticket01-authoritative-HCOLll/source/configs/prediction/schemas/market_only_v1.schema.json"
+  },
+  "units": {
+    "full_timer": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/.config/systemd/user/shadow-autopilot.timer",
+    "full_service": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/.config/systemd/user/shadow-autopilot.service",
+    "odds_timer": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/.config/systemd/user/shadow-autopilot-odds-capture.timer",
+    "odds_service": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/.config/systemd/user/shadow-autopilot-odds-capture.service"
+  },
+  "service_status": {
+    "full": {
+      "unit_name": "shadow-autopilot.service",
+      "active_state": "failed",
+      "sub_state": "failed",
+      "exec_main_pid": 2031584
+    },
+    "odds": {
+      "unit_name": "shadow-autopilot-odds-capture.service",
+      "active_state": "activating",
+      "sub_state": "start",
+      "exec_main_pid": 2050538
+    }
+  }
+}

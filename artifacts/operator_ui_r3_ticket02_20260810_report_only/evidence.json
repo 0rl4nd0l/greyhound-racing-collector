@@ -1,0 +1,82 @@
+{
+  "schema_version": "operator_ui_r3_ticket02_candidate_validation_v1",
+  "status": "PASS",
+  "observed_at": "2026-08-10T20:28:33+10:00",
+  "authoritative_source": {
+    "checkout": "/home/l4nd0/operator-ui-r3-ticket01-authoritative-HCOLll/source",
+    "commit": "d343af94a57af80327dd41f18433f7466f86ca0d",
+    "tree": "a04197ba455de2549f9c76adcd474d1feb520bd1",
+    "clean_before_generation": true,
+    "clean_after_generation": true
+  },
+  "runtime": {
+    "python": "3.11.15",
+    "numpy": "1.26.4",
+    "pinned_python": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-python311-20260803-9d58f340/bin/python"
+  },
+  "ticket01_seam_proof": {
+    "evidence": "artifacts/operator_ui_r3_ticket01_20260810_report_only/evidence.json",
+    "deployment_generator": "112 passed",
+    "r3_e2e_safety": "2 passed",
+    "frozen_model_fixture_and_portability": "114 passed",
+    "selector_resolution": "1 passed"
+  },
+  "live_authority": {
+    "path": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-ticket02-authority-20260810-CPDtYE/live_authority.json",
+    "sha256": "98e34a81b4fd291787ccb58f037146aa920414d6d9fcd90477518ef6e7c371c2",
+    "fresh_observation": true,
+    "external_fetch": false
+  },
+  "candidate": {
+    "package_root": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-ticket02-candidate-20260810-xoXmLv",
+    "binding_root": "/home/l4nd0/operator-ui-r3-ticket01-authoritative-HCOLll/source/var/operator_ui/generated",
+    "operations_root": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-ticket02-operations-20260810-IX5u7P",
+    "enabled": true,
+    "bind": "127.0.0.1:5055",
+    "outputs": {
+      "repository-v1.binding.json": {
+        "generated_path": "/home/l4nd0/operator-ui-r3-ticket01-authoritative-HCOLll/source/var/operator_ui/generated/repository-v1.binding.json",
+        "sha256": "6e8d1966d1fe6a18faad40cf02babf4e0bdf0a81db915d776b50040dc99b8e46"
+      },
+      "operator-ui-r3.env": {
+        "generated_path": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-ticket02-candidate-20260810-xoXmLv/operator-ui-r3.env",
+        "sha256": "37b8abe312b839d8ecb4b74b194fcb408d05583145c140a3512e2f274e5c8b86"
+      },
+      "greyhound-operator-ui-r3.service": {
+        "generated_path": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-ticket02-candidate-20260810-xoXmLv/greyhound-operator-ui-r3.service",
+        "sha256": "14635fc14f244d93b3de1c956aef7c0c973d9fa4ea66fe1ee95edec48d34d655"
+      },
+      "ROLLBACK.md": {
+        "generated_path": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-ticket02-candidate-20260810-xoXmLv/ROLLBACK.md",
+        "sha256": "39e434f6a9665a446b3fb5160c02cc7b0ed1c737c9764de36f5de6715d96646d"
+      }
+    }
+  },
+  "systemd_verify": {
+    "command": "systemd-analyze verify <candidate>/greyhound-operator-ui-r3.service",
+    "exit_code": 0,
+    "status": "PASS",
+    "host_warnings": [
+      "netplan-ovs-cleanup.service unreadable",
+      "snapd.service RestartMode unknown"
+    ],
+    "user_manager_attempt": "manager initialization unavailable in this session"
+  },
+  "installed_runtime_unchanged": {
+    "unit": "greyhound-operator-ui-r3.service",
+    "unit_sha256": "423e854609badfca05bf1fc804a1eb9f891c970c8f7c03906995d221a757d002",
+    "active_state": "active",
+    "sub_state": "running",
+    "exec_main_pid": 1692390
+  },
+  "mutations": {
+    "installed_unit": false,
+    "daemon_reload": false,
+    "service_restart": false,
+    "runtime_database": false,
+    "external_fetch": false,
+    "model_registry": false,
+    "prediction_submission": false,
+    "ev_or_betting": false
+  }
+}

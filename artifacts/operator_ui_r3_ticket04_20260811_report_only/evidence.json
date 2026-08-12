@@ -1,0 +1,70 @@
+{
+  "schema_version": "operator_ui_r3_ticket04_live_prediction_v1",
+  "terminal_status": "DATA_MISSING",
+  "observed_at": "2026-08-11T16:17:04+10:00",
+  "ticket03_commit": "4d95b88b",
+  "preflight": {
+    "attempts": 1,
+    "kind": "read_only_bounded_current_race_index",
+    "result": "CURRENT_INDEX_REPORT_INVALID",
+    "race_admitted": false,
+    "receipt_evaluated": false,
+    "job_submitted": false
+  },
+  "current_index": {
+    "path": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json",
+    "schema_version": "collector_current_race_index_v2",
+    "run_id": "20260811T160728+1000_odds_capture",
+    "source_generated_at": "2026-08-11T16:07:28.649391+10:00",
+    "race_count": 12,
+    "sha256": "b39add6e69ac45bf96bb4752297d2587e20a94b41b49efe753c2cdf28e07b73c"
+  },
+  "publication": {
+    "path": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.publication.json",
+    "sha256": "a9a5fb24790cd3e34d635b8d736c8dc335357d24b1158aaacd62d78c870f23ff"
+  },
+  "collector_state": {
+    "path": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/shadow_autopilot_daemon_runtime/odds_capture_state.json",
+    "sha256": "686a74a730dd5c981b62901470eb443e4b0effb1ed47ae6aa591082502c054ac"
+  },
+  "collector_report": {
+    "path": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/shadow_autopilot_daemonization_v1_20260811T160728+1000_odds_capture/odds_capture_only_daemon_report.json",
+    "sha256": "f190a40114c89b60224e81fd30142777f4bf68b1ff8c198e6214be7e286f3f5d"
+  },
+  "deployed_submission_contract": {
+    "accepted_selection": ["latest-research", "manual-default", "auto"],
+    "constructed_odds_source": "auto",
+    "ticket_required_odds_source": "receipt",
+    "compatible": false
+  },
+  "protected_stores": {
+    "canonical_db": {
+      "path": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/greyhound_racing_data.db",
+      "first_observed_size": 153616384,
+      "first_observed_mtime_epoch": 1786429001,
+      "later_observed_size": 153628672,
+      "later_observed_mtime_epoch": 1786429074,
+      "concurrent_external_change_observed": true,
+      "opened_or_mutated_by_ticket04": false
+    },
+    "audit_store_sha256": "99858a0e272b3bacb1c25badefa662c38490e8e93d0d6492cf8730fa6e73b11d",
+    "job_store_sha256": "8afd20ec4aaf52c1f8c4501a967705eb1b8500ebff2873971d26d6da14af693f"
+  },
+  "final_services": {
+    "greyhound-operator-ui-r3.service": {"active_state": "active", "sub_state": "running", "pid": 2406787},
+    "shadow-autopilot.service": {"active_state": "failed", "sub_state": "failed", "pid": 1398347},
+    "shadow-autopilot-odds-capture.service": {"active_state": "activating", "sub_state": "start", "pid": 1426259}
+  },
+  "boundaries": {
+    "retry": false,
+    "alternate_race": false,
+    "prediction_submission": false,
+    "capture": false,
+    "external_fetch": false,
+    "canonical_database_mutation_initiated": false,
+    "concurrent_canonical_database_change_observed": true,
+    "model_change": false,
+    "ev_or_betting": false,
+    "prediction_bundle_produced": false
+  }
+}
