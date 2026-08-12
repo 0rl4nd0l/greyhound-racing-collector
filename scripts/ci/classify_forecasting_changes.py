@@ -301,6 +301,10 @@ def git_changes(base: str, head: str) -> list[Change]:
 def write_github_output(path: Path, result: Mapping[str, Any]) -> None:
     with path.open("a", encoding="utf-8") as output:
         output.write(f"tier={result['tier']}\n")
+        output.write(
+            "classified_tier="
+            f"{result.get('classified_tier', result['tier'])}\n"
+        )
         output.write(f"reason={result['reason']}\n")
         output.write(
             "ci_contract_changed="
@@ -313,9 +317,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--base")
     parser.add_argument("--head")
     parser.add_argument("--force-full", action="store_true")
+    parser.add_argument(
+        "--pr-fast",
+        action="store_true",
+        help="Use the bounded PR fallback instead of the long suite for full-risk changes",
+    )
     parser.add_argument("--rules", type=Path, default=DEFAULT_RULES)
     parser.add_argument("--github-output", type=Path)
     args = parser.parse_args(argv)
+    if args.force_full and args.pr_fast:
+        parser.error("--force-full and --pr-fast are mutually exclusive")
     if not args.force_full and not (args.base and args.head):
         parser.error("--base and --head are required unless --force-full is used")
     return args
@@ -332,6 +343,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         except ClassificationError as exc:
             print(f"classifier warning: {exc}; defaulting to full", file=sys.stderr)
             result = _full_result("classifier_error_defaults_to_full")
+    classified_tier = result["tier"]
+    if args.pr_fast and result["tier"] == "full_forecasting":
+        result = {
+            **result,
+            "tier": "pr_fast",
+            "classified_tier": classified_tier,
+            "reason": f"pr_fast_fallback:{result['reason']}",
+        }
+    else:
+        result = {**result, "classified_tier": classified_tier}
     print(json.dumps(result, indent=2, sort_keys=True))
     if args.github_output:
         write_github_output(args.github_output, result)
