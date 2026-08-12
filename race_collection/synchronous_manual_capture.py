@@ -1065,16 +1065,21 @@ def _v2_runner_rows(
         "sidecar_path": sidecar_path.absolute().relative_to(root).as_posix(),
         "sidecar_sha256": sha256_bytes(sidecar_raw),
     }
-    runner_hash = runner_set_sha256(
-        [
-            {
-                "box_number": row["box"],
-                "dog_name": row["display_name"],
-                "identity": row["identity"],
-            }
-            for row in rows
-        ]
-    )
+    runner_hash = sha256_bytes(canonical_bytes({
+        "protocol": "collector_current_race_runner_set_sha256_v2",
+        "race": {
+            "race_url": race["race_url"], "date": race["date"],
+            "venue": race["venue"], "race_number": race["race_number"],
+            "jump_datetime": race["jump_datetime"],
+        },
+        "observed_at": provenance["observed_at"],
+        "source_generated_at": provenance["source_generated_at"],
+        "sources": [
+            {"locator": provenance["csv_path"], "sha256": provenance["csv_sha256"]},
+            {"locator": provenance["sidecar_path"], "sha256": provenance["sidecar_sha256"]},
+        ],
+        "active_runners": rows,
+    }))
     return rows, provenance, runner_hash
 
 
