@@ -50,10 +50,7 @@ from utils.csv_metadata import (
     normalize_weather_track_text,
 )
 from utils.expert_form_metadata import build_expert_form_metadata_payload
-from utils.prejump_sportsbet import (
-    collect_sportsbet_track_metadata,
-    fetch_sportsbet_next_events_snapshot,
-)
+from utils.prejump_sportsbet import collect_sportsbet_track_metadata
 from utils.prejump_weather import collect_open_meteo_weather_metadata
 
 # Prefer centralized venue normalization if available
@@ -84,7 +81,6 @@ class UpcomingRaceBrowser:
                 "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
             }
         )
-        self._sportsbet_next_events_snapshot = None
 
         # Venue mapping
         # NOTE: Keep this minimal and always fall back to config.venue_mapping.normalize_venue
@@ -1854,14 +1850,7 @@ class UpcomingRaceBrowser:
 
         if race_info.get("track_condition"):
             return {}
-        if self._sportsbet_next_events_snapshot is None:
-            self._sportsbet_next_events_snapshot = fetch_sportsbet_next_events_snapshot(
-                session=self.session
-            )
-        metadata = collect_sportsbet_track_metadata(
-            race_info,
-            snapshot=self._sportsbet_next_events_snapshot,
-        )
+        metadata = collect_sportsbet_track_metadata(race_info, session=self.session)
         if metadata.get("weather_track_metadata_is_leakage_safe") is True:
             return {
                 key: value
