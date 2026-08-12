@@ -314,16 +314,6 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
     state = evidence_root / "shadow_autopilot_daemon_runtime/odds_capture_state.json"
     source = evidence_root / "shadow_autopilot_v1_fixture/odds_capture_refresh_report.json"
     source.parent.mkdir(parents=True)
-    state.parent.mkdir(parents=True)
-    state.write_bytes(
-        canonical_bytes(
-            {
-                "schema_version": "shadow_autopilot_odds_capture_only_state_v1",
-                "run_id": "prior-run",
-                "status": "READY",
-            }
-        )
-    )
     index_now = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
     race_url = "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
     source.write_bytes(
@@ -364,23 +354,6 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
     )
     index_path = current_race_index_path(state)
     original = index_path.read_bytes()
-    lifecycle = capture.bind_current_race_index_publication_lifecycle(
-        state_path=state,
-        evidence_root=evidence_root,
-        output_dir=source.parent,
-        publication=published,
-    )
-    assert lifecycle["status"] == "BOUND"
-    early_state = json.loads(state.read_bytes())
-    assert early_state["run_id"] == "prior-run"
-    assert early_state["current_race_index_state"]["run_id"] == "fixture"
-    assert bounded_current_race_index(
-        current_time=index_now + timedelta(seconds=1),
-        timeout_seconds=1,
-        index_path=index_path,
-        evidence_root=evidence_root,
-        max_age_seconds=300,
-    )[0]["race_id"] == "Race 5 - GUNN - 2026-07-19"
     _write_publication_evidence(evidence_root, state, published)
     producer_root = evidence_root.parent
     monkeypatch.setattr(capture, "ROOT", producer_root)

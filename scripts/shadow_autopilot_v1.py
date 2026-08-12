@@ -42,7 +42,6 @@ from race_collection.manual_prediction_collector_request import (  # noqa: E402
     canonical_bytes,
 )
 from race_collection.synchronous_manual_capture import (  # noqa: E402
-    bind_current_race_index_publication_lifecycle,
     publish_current_race_index,
 )
 from scripts.shadow_feature_audit_packet import feature_activation_gate_input_paths  # noqa: E402
@@ -6644,7 +6643,7 @@ def publish_current_race_index_after_refresh(
             "status": "SKIPPED",
             "reason": "state_path_missing",
         }
-    publication = publish_current_race_index(
+    return publish_current_race_index(
         state_path=state_path,
         evidence_root=evidence_root,
         source_refresh_report_path=(
@@ -6652,14 +6651,6 @@ def publish_current_race_index_after_refresh(
         ),
         run_id=run_id,
     )
-    if publication.get("status") == "PUBLISHED":
-        bind_current_race_index_publication_lifecycle(
-            state_path=state_path,
-            evidence_root=evidence_root,
-            output_dir=output_dir,
-            publication=publication,
-        )
-    return publication
 
 
 def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
