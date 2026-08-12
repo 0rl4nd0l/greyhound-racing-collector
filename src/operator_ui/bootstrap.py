@@ -49,6 +49,7 @@ _FULL_SOURCE_KEYS={"full_state","full_report"}
 _DIGEST_ONLY_RAW_KEYS={"corpus_inventory_csv","corpus_inventory_jsonl"}
 _HEX40_RE=re.compile(r"^[0-9a-f]{40}$")
 _HEX64_RE=re.compile(r"^[0-9a-f]{64}$")
+_R3_ALLOWED_SELECTION = ("latest-research", "manual-default", "receipt")
 
 
 def _finite_text(value:Any)->bool:
@@ -335,7 +336,8 @@ def _build_r3_services(app: Flask, profile: str) -> R3Services:
 
     def clock() -> datetime:return datetime.now(timezone.utc)
     def resolve(selected: Mapping[str,str], now: datetime) -> ResolvedSubmission:
-        if (selected.get("model_id"),selected.get("config_id"),selected.get("odds_source_id")) != ("latest-research","manual-default","receipt"):raise R3Rejected("SELECTION_NOT_ALLOWLISTED")
+        model_id, config_id, odds_source = _R3_ALLOWED_SELECTION
+        if (selected.get("model_id"),selected.get("config_id"),selected.get("odds_source_id")) != _R3_ALLOWED_SELECTION:raise R3Rejected("SELECTION_NOT_ALLOWLISTED")
         try:view=bounded_current_race_index(current_time=now,timeout_seconds=1.0,index_path=paths["current_index.json"],evidence_root=dirs["current_evidence"],max_age_seconds=300,return_verified_view=True)
         except (CaptureOneRejected,PredictionBlocked) as exc:raise R3Rejected(getattr(exc,"code","RACE_EVIDENCE_INVALID")) from exc
         if not isinstance(view,VerifiedCurrentRaceIndex):raise R3Rejected("RACE_EVIDENCE_INVALID")
@@ -343,7 +345,7 @@ def _build_r3_services(app: Flask, profile: str) -> R3Services:
         if len(matches)!=1:raise R3Rejected("RACE_ID_MISSING_OR_AMBIGUOUS")
         race=matches[0]; runners=tuple(_runner(row) for row in race.get("runners",()))
         jump=race.get("jump_datetime",race.get("jump_timestamp"))
-        job_input=JobInput(str(race["race_id"]),str(jump),str(race["runner_set_sha256"]),"latest-research",resolved_model,model_sha,manifest_sha,schema_sha,"manual-default",choice.config_sha256,"receipt",runners)
+        job_input=JobInput(str(race["race_id"]),str(jump),str(race["runner_set_sha256"]),model_id,resolved_model,model_sha,manifest_sha,schema_sha,config_id,choice.config_sha256,odds_source,runners)
         job_input.fields()
         return ResolvedSubmission(job_input,runners)
     dispatcher=_FixedDispatcher(store,worker,clock)
