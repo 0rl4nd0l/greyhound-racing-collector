@@ -60,7 +60,7 @@ def test_prediction_controls_bind_only_the_validated_research_selection():
         "model.role==='LATEST_RESEARCH'",
         "model.model_id==='market_form_residual_v1'",
         "model.config_id==='market-form-residual-v1'",
-        "['latest-research',{configs:['manual-default'],odds:['auto']}]",
+        "['latest-research',{configs:['manual-default'],odds:['receipt']}]",
     ):
         assert value in source
     assert "model.config_ids" not in source
