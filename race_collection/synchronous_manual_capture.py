@@ -1432,14 +1432,6 @@ def publish_current_race_index(
                     max_races=max_races,
                 )
             )
-            if not sealed_races:
-                report.update(
-                    {
-                        "source_selected_race_count": source_selected_race_count,
-                        "excluded_race_count": len(excluded_races),
-                    }
-                )
-                raise CaptureOneRejected("CURRENT_INDEX_NO_ELIGIBLE_RACES")
             root = evidence_root.absolute()
             refresh_locator = source_refresh_report_path.absolute().relative_to(root).as_posix()
             packet = {
