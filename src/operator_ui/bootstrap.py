@@ -335,7 +335,7 @@ def _build_r3_services(app: Flask, profile: str) -> R3Services:
 
     def clock() -> datetime:return datetime.now(timezone.utc)
     def resolve(selected: Mapping[str,str], now: datetime) -> ResolvedSubmission:
-        if (selected.get("model_id"),selected.get("config_id"),selected.get("odds_source_id")) != ("latest-research","manual-default","receipt"):raise R3Rejected("SELECTION_NOT_ALLOWLISTED")
+        if (selected.get("model_id"),selected.get("config_id"),selected.get("odds_source_id")) != ("latest-research","manual-default","auto"):raise R3Rejected("SELECTION_NOT_ALLOWLISTED")
         try:view=bounded_current_race_index(current_time=now,timeout_seconds=1.0,index_path=paths["current_index.json"],evidence_root=dirs["current_evidence"],max_age_seconds=300,return_verified_view=True)
         except (CaptureOneRejected,PredictionBlocked) as exc:raise R3Rejected(getattr(exc,"code","RACE_EVIDENCE_INVALID")) from exc
         if not isinstance(view,VerifiedCurrentRaceIndex):raise R3Rejected("RACE_EVIDENCE_INVALID")
@@ -343,7 +343,7 @@ def _build_r3_services(app: Flask, profile: str) -> R3Services:
         if len(matches)!=1:raise R3Rejected("RACE_ID_MISSING_OR_AMBIGUOUS")
         race=matches[0]; runners=tuple(_runner(row) for row in race.get("runners",()))
         jump=race.get("jump_datetime",race.get("jump_timestamp"))
-        job_input=JobInput(str(race["race_id"]),str(jump),str(race["runner_set_sha256"]),"latest-research",resolved_model,model_sha,manifest_sha,schema_sha,"manual-default",choice.config_sha256,"receipt",runners)
+        job_input=JobInput(str(race["race_id"]),str(jump),str(race["runner_set_sha256"]),"latest-research",resolved_model,model_sha,manifest_sha,schema_sha,"manual-default",choice.config_sha256,"auto",runners)
         job_input.fields()
         return ResolvedSubmission(job_input,runners)
     dispatcher=_FixedDispatcher(store,worker,clock)

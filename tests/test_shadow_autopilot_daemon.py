@@ -2920,15 +2920,6 @@ def test_run_odds_capture_once_uses_lock_and_writes_compact_report(tmp_path, mon
     assert state["inserted_live_odds_rows"] == 0
     assert state["ready_count"] == 0
     assert state["status_counts"] == {}
-    assert state["current_race_index_state"] == {
-        "schema_version": "collector_current_race_index_state_v1",
-        "updated_at": state["updated_at"],
-        "run_id": "odds_only",
-        "output_dir": state["output_dir"],
-        "autopilot_output_dir": state["autopilot_output_dir"],
-        "final_status": "ODDS_CAPTURE_ONLY_READY",
-        "status": "READY",
-    }
     assert state["autonomous_live_odds_capture_final_status"] == "NO_ELIGIBLE_WINDOWS"
     assert state["autonomous_live_odds_capture_operator_status"] == "READY"
     assert state["next_window_opens_at"] == "2026-06-12T09:48:00+10:00"

@@ -3931,20 +3931,6 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
                 **odds_capture_next_race_report_fields(fixed_window_schedule),
                 "window_state_source_updated_at": generated_at.isoformat(),
             }
-        if current_race_index_publish.get("status") == "PUBLISHED":
-            state_payload["current_race_index_state"] = {
-                "schema_version": "collector_current_race_index_state_v1",
-                "updated_at": state_payload["updated_at"],
-                "run_id": state_payload["run_id"],
-                "output_dir": state_payload["output_dir"],
-                "autopilot_output_dir": state_payload["autopilot_output_dir"],
-                "final_status": state_payload["final_status"],
-                "status": state_payload["status"],
-            }
-        elif isinstance(previous_state.get("current_race_index_state"), Mapping):
-            state_payload["current_race_index_state"] = dict(
-                previous_state["current_race_index_state"]
-            )
         write_json(
             args.state_path,
             state_payload,

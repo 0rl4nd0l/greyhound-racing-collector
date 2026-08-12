@@ -393,14 +393,11 @@ def test_finite_testing_fixture_profile_builds_real_repository_composition(tmp_p
     client=app.test_client()
     token=client.get("/operator-ui/login",base_url="https://localhost").get_json()["csrf_token"]
     token=client.post("/operator-ui/login",base_url="https://localhost",data={"username":"viewer","password":"correct horse","csrf_token":token}).get_json()["csrf_token"]
-    rejected=client.post("/operator-ui/api/v1/prediction-jobs",base_url="https://localhost",headers={"X-CSRF-Token":token},json={"race_id":"race-fixture","model_id":"latest-research","config_id":"manual-default","odds_source_id":"auto","idempotency_key":"aaaaaaaa-1234-4123-8123-123456789abc"})
-    assert rejected.status_code==409 and rejected.get_json()["classification"]=="SELECTION_NOT_ALLOWLISTED"
-    response=client.post("/operator-ui/api/v1/prediction-jobs",base_url="https://localhost",headers={"X-CSRF-Token":token},json={"race_id":"race-fixture","model_id":"latest-research","config_id":"manual-default","odds_source_id":"receipt","idempotency_key":"12345678-1234-4123-8123-123456789abc"})
+    response=client.post("/operator-ui/api/v1/prediction-jobs",base_url="https://localhost",headers={"X-CSRF-Token":token},json={"race_id":"race-fixture","model_id":"latest-research","config_id":"manual-default","odds_source_id":"auto","idempotency_key":"12345678-1234-4123-8123-123456789abc"})
     assert response.status_code==202 and response.get_json()["phase"]=="WAITING_FOR_CLAIM",response.get_json()
     job_id=response.get_json()["job_id"]
     assert runner_completed.wait(timeout=30), "terminal runner did not complete within 30 seconds"
     job=services.job_store.get(job_id)
-    assert job.input.odds_source=="receipt"
     assert job.attempt_claimed and job.phase is Phase.FAILED
     assert [event["phase"] for event in services.job_store.events(job_id)][-3:]==["CLAIMED","ATTEMPT_STARTED","FAILED"]
 
