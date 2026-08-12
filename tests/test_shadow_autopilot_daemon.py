@@ -2924,8 +2924,8 @@ def test_run_odds_capture_once_uses_lock_and_writes_compact_report(tmp_path, mon
         "schema_version": "collector_current_race_index_state_v1",
         "updated_at": state["updated_at"],
         "run_id": "odds_only",
-        "output_dir": str(output_dir.relative_to(evidence_root)),
-        "autopilot_output_dir": str(autopilot_dir.relative_to(evidence_root)),
+        "output_dir": state["output_dir"],
+        "autopilot_output_dir": state["autopilot_output_dir"],
         "final_status": "ODDS_CAPTURE_ONLY_READY",
         "status": "READY",
     }
