@@ -6754,26 +6754,6 @@ def current_index_liveness_freshness(
     }
 
 
-def current_index_liveness_priority_race_id(
-    *, races: Sequence[Mapping[str, Any]], iteration: int, refreshed_at: datetime
-) -> str | None:
-    """Rotate through races that remain pre-jump for one full refresh budget."""
-
-    eligible: list[str] = []
-    minimum_jump = refreshed_at + timedelta(
-        seconds=CURRENT_INDEX_LIVENESS_STEP_TIMEOUT_SECONDS
-    )
-    for race in races:
-        try:
-            jump = datetime.fromisoformat(str(race["jump_datetime"]))
-            race_id = str(race["race_id"])
-        except (KeyError, TypeError, ValueError):
-            continue
-        if jump.tzinfo is not None and jump > minimum_jump and race_id:
-            eligible.append(race_id)
-    return eligible[(iteration - 1) % len(eligible)] if eligible else None
-
-
 def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
     generated_at = datetime.now().astimezone()
     run_id = args.run_id or now_id(generated_at)
@@ -6978,19 +6958,15 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
     current_index_liveness_records: list[dict[str, Any]] = []
     current_index_liveness_stop: threading.Event | None = None
     current_index_liveness_thread: threading.Thread | None = None
-    current_index_liveness_races: list[dict[str, Any]] = []
+    current_index_liveness_race_ids: list[str] = []
     if current_race_index_publish.get("status") == "PUBLISHED":
         current_index_packet = load_json(
             current_race_index_path(args.current_race_index_state_path)
         )
-        current_index_liveness_races = [
-            dict(row)
+        current_index_liveness_race_ids = [
+            str(row["race_id"])
             for row in (current_index_packet or {}).get("races") or []
-            if (
-                isinstance(row, Mapping)
-                and row.get("race_id")
-                and row.get("jump_datetime")
-            )
+            if isinstance(row, Mapping) and row.get("race_id")
         ]
     if args.enable_autonomous_odds_capture:
         capture_current_time = (
@@ -7042,22 +7018,13 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             def refresh_current_index_once(iteration: int) -> Mapping[str, Any]:
                 refreshed_at = datetime.now().astimezone()
                 liveness_dir = output_dir / f"current_index_liveness_{iteration:03d}"
-                priority_race_id = current_index_liveness_priority_race_id(
-                    races=current_index_liveness_races,
-                    iteration=iteration,
-                    refreshed_at=refreshed_at,
+                priority_race_id = (
+                    current_index_liveness_race_ids[
+                        (iteration - 1) % len(current_index_liveness_race_ids)
+                    ]
+                    if current_index_liveness_race_ids
+                    else None
                 )
-                if priority_race_id is None:
-                    return {
-                        "iteration": iteration,
-                        "priority_race_id": None,
-                        "status": "REJECTED",
-                        "reason": "CURRENT_INDEX_LIVENESS_NO_SAFE_MARGIN",
-                        **current_index_liveness_freshness(
-                            publication={"status": "REJECTED"},
-                            observed_at=refreshed_at,
-                        ),
-                    }
                 refresh_command = current_index_liveness_refresh_command(
                     args=args,
                     liveness_dir=liveness_dir,
