@@ -64,14 +64,15 @@ DEFAULT_REJOIN_PENDING_LIMIT = 8
 DEFAULT_REJOIN_LOOKBACK_DAYS = 7
 DEFAULT_TIMER_FREQUENCY = "15min"
 DEFAULT_TIMER_ON_UNIT_INACTIVE_SEC = "15min"
+DEFAULT_FULL_TIMER_ON_CALENDAR = "*:00,15,30,45"
 DEFAULT_TIMER_ACCURACY = "30s"
 DEFAULT_ODDS_CAPTURE_ONLY_TIMER_FREQUENCY = "1min_except_full_daemon"
 DEFAULT_ODDS_CAPTURE_ONLY_TIMER_ON_CALENDAR = (
-    "*:00,01,03,04,05,06,07,08,09,10,11,12,13,14,15,16,18,19,20,21,22,23,24,25,26,27,28,29,30,31,33,34,35,36,37,38,39,40,41,42,43,44,45,46,48,49,50,51,52,53,54,55,56,57,58,59"
+    "*:01,04,07,10,16,19,22,25,31,34,37,40,46,49,52,55"
 )
 DEFAULT_ODDS_CAPTURE_ONLY_TIMER_ACCURACY = "15s"
 DEFAULT_ODDS_CAPTURE_ONLY_TIMEOUT_SECONDS = 600
-DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT = 16
+DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT = 4
 # Keep the minutely odds-only lane broad: it protects fixed pre-jump windows.
 # The full daemon does the expensive refresh, scoring, result, and artifact work.
 DEFAULT_FULL_DAEMON_REFRESH_LIMIT = 6
@@ -1317,8 +1318,7 @@ def timer_file_text() -> str:
             "Description=Run greyhound shadow autopilot every 15 minutes",
             "",
             "[Timer]",
-            f"OnActiveSec={DEFAULT_TIMER_FREQUENCY}",
-            f"OnUnitInactiveSec={DEFAULT_TIMER_ON_UNIT_INACTIVE_SEC}",
+            f"OnCalendar={DEFAULT_FULL_TIMER_ON_CALENDAR}",
             f"AccuracySec={DEFAULT_TIMER_ACCURACY}",
             "Persistent=true",
             "Unit=shadow-autopilot.service",

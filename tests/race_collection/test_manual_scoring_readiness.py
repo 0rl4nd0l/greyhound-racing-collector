@@ -206,8 +206,16 @@ def test_mixed_metadata_packet_publishes_only_race_with_capture_prerequisites(tm
         source_refresh_report_path=source,
         run_id="legacy-incomplete",
     )
-    assert legacy["status"] == "REJECTED"
-    assert legacy["reason"] == "CURRENT_INDEX_SOURCE_INVALID"
+    assert legacy["status"] == "PUBLISHED"
+    assert legacy["race_count"] == 1
+    legacy_packet = json.loads(
+        (
+            root
+            / "shadow_autopilot_daemon_runtime"
+            / "manual_prediction_current_race_index.json"
+        ).read_bytes()
+    )
+    assert [row["race_id"] for row in legacy_packet["races"]] == [first["race_id"]]
 
 
 @pytest.mark.parametrize(

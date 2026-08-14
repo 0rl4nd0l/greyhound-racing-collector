@@ -4867,9 +4867,9 @@ def test_service_and_timer_define_15_minute_oneshot_cycle():
     assert "TimeoutStartSec=3360" in service
     assert "GREYHOUND_ALLOW_TGR=0" in service
     assert "/home/l4nd0/.local/bin" in service
-    assert "OnActiveSec=15min" in timer
-    assert "OnUnitInactiveSec=15min" in timer
-    assert "OnCalendar" not in timer
+    assert "OnCalendar=*:00,15,30,45" in timer
+    assert "OnActiveSec" not in timer
+    assert "OnUnitInactiveSec" not in timer
     assert "AccuracySec=30s" in timer
     assert "Persistent=true" in timer
     assert f"ConditionPathExists=!{daemon.DEFAULT_HEAVY_SCHEDULING_PAUSE_PATH}" in service
@@ -4959,25 +4959,21 @@ def test_write_odds_capture_service_files_preserves_db_and_lock(tmp_path):
     assert "OnUnitActiveSec" not in timer
 
 
-def test_odds_capture_timer_reserves_full_daemon_minutes_and_covers_t2_windows():
+def test_odds_capture_timer_reserves_each_full_daemon_runtime_window():
     odds_minutes = {
         int(value)
         for value in daemon.DEFAULT_ODDS_CAPTURE_ONLY_TIMER_ON_CALENDAR.removeprefix("*:").split(",")
     }
-    full_minutes = {2, 17, 32, 47}
+    full_minutes = {0, 15, 30, 45}
 
     assert full_minutes.isdisjoint(odds_minutes)
-    assert {0, 1, 3, 16, 31, 46, 48, 58, 59}.issubset(odds_minutes)
-    assert {2, 17, 32, 47}.isdisjoint(odds_minutes)
-    for target_minute in range(60):
-        jump_minute = (target_minute + 2) % 60
-        covered_before_jump = any(
-            (target_minute + delta) % 60 in odds_minutes for delta in range(2)
-        )
-        assert covered_before_jump, (
-            f"T-2 target minute {target_minute:02d} before jump minute "
-            f"{jump_minute:02d} has no odds-only timer tick before jump"
-        )
+    assert odds_minutes == {1, 4, 7, 10, 16, 19, 22, 25, 31, 34, 37, 40, 46, 49, 52, 55}
+    for full_minute in full_minutes:
+        assert all((full_minute - offset) % 60 not in odds_minutes for offset in range(1, 5))
+
+
+def test_odds_capture_default_batch_is_bounded_to_finish_between_timer_ticks():
+    assert daemon.DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT == 4
 
 
 def test_best_unified_evidence_aggregate_status_path_prefers_larger_ready_backlog(

@@ -808,6 +808,10 @@ def _v2_runner_rows(
     record = matches[0]
     csv_path = Path(str(record.get("csv_path") or ""))
     sidecar_path = Path(str(record.get("sidecar_path") or ""))
+    if not csv_path.name or not sidecar_path.name:
+        raise CaptureOneRejected(
+            "CURRENT_INDEX_SOURCE_MISSING", reason="runner_source_missing"
+        )
     if sidecar_path != csv_path.with_name(csv_path.name + ".metadata.json"):
         raise CaptureOneRejected("CURRENT_INDEX_PATH_UNSAFE", reason="sidecar_not_adjacent")
     if snapshot is None:
@@ -1216,7 +1220,10 @@ def publish_current_race_index(
             source = json.loads(source_raw)
             if not isinstance(source, Mapping):
                 raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
-            if source.get("status") != "SUCCESS" or source.get("dry_run") is True:
+            if source.get("status") not in {
+                "SUCCESS",
+                "METADATA_COVERAGE_INCOMPLETE",
+            } or source.get("dry_run") is True:
                 raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="refresh_not_accepted_success")
             source_generated_at = datetime.fromisoformat(str(source["generated_at"]))
             if (
@@ -1227,9 +1234,19 @@ def publish_current_race_index(
             races = _normalize_current_index_rows(source, max_races=max_races)
             sealed_races = []
             for race in races:
-                runners, runner_source, runner_hash = _v2_runner_rows(
-                    race, source, evidence_root=evidence_root, snapshot=retained
-                )
+                try:
+                    runners, runner_source, runner_hash = _v2_runner_rows(
+                        race, source, evidence_root=evidence_root, snapshot=retained
+                    )
+                except CaptureOneRejected as exc:
+                    if source.get("status") != "METADATA_COVERAGE_INCOMPLETE":
+                        raise
+                    if exc.code not in {
+                        "CURRENT_INDEX_SOURCE_INVALID",
+                        "CURRENT_INDEX_SOURCE_MISSING",
+                    }:
+                        raise
+                    continue
                 sealed_races.append(
                     {
                         **race,
@@ -1237,6 +1254,11 @@ def publish_current_race_index(
                         "runner_set_sha256": runner_hash,
                         "runner_source": runner_source,
                     }
+                )
+            if not sealed_races:
+                raise CaptureOneRejected(
+                    "CURRENT_INDEX_SOURCE_INVALID",
+                    reason="no_races_with_complete_prediction_prerequisites",
                 )
             root = evidence_root.absolute()
             refresh_locator = source_refresh_report_path.absolute().relative_to(root).as_posix()
@@ -1246,7 +1268,7 @@ def publish_current_race_index(
                 "source_generated_at": source_generated_at.isoformat(),
                 "source_refresh_report_path": refresh_locator,
                 "source_refresh_report_sha256": sha256_bytes(source_raw),
-                "race_count": len(races),
+                "race_count": len(sealed_races),
                 "max_races": max_races,
                 "races": sealed_races,
             }
