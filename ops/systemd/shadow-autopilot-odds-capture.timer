@@ -2,7 +2,7 @@
 Description=Run greyhound autonomous live odds capture except full-daemon minutes
 
 [Timer]
-OnCalendar=*:01,04,07,10,16,19,22,25,31,34,37,40,46,49,52,55
+OnCalendar=*:01,16,31,46
 AccuracySec=15s
 Persistent=true
 Unit=shadow-autopilot-odds-capture.service

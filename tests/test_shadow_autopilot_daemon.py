@@ -4967,9 +4967,9 @@ def test_odds_capture_timer_reserves_each_full_daemon_runtime_window():
     full_minutes = {0, 15, 30, 45}
 
     assert full_minutes.isdisjoint(odds_minutes)
-    assert odds_minutes == {1, 4, 7, 10, 16, 19, 22, 25, 31, 34, 37, 40, 46, 49, 52, 55}
+    assert odds_minutes == {1, 16, 31, 46}
     for full_minute in full_minutes:
-        assert all((full_minute - offset) % 60 not in odds_minutes for offset in range(1, 5))
+        assert all((full_minute - offset) % 60 not in odds_minutes for offset in range(1, 14))
 
 
 def test_odds_capture_default_batch_is_bounded_to_finish_between_timer_ticks():
