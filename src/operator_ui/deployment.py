@@ -582,6 +582,7 @@ def generate_package(*, source_root: Path, pinned_python: Path, evidence_root: P
         binding["live_evidence"] = live
     environment = "\n".join((
         f"OPERATOR_UI_CONNECTED_MODE={int(active)}",
+        "OPERATOR_UI_TRUST_LOOPBACK=1",
         f"OPERATOR_UI_LEVEL={2 if active else 1}",
         f"OPERATOR_UI_R3_PROFILE={'repository-v1' if active else 'disabled'}",
         f"OPERATOR_UI_DEPLOYED_COMMIT={source_commit}", f"OPERATOR_UI_DEPLOYED_TREE={source_tree}",

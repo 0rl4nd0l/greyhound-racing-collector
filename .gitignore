@@ -262,6 +262,8 @@ dist/
 build/
 .build/
 *.egg-info/
+operator_ui_r3_post_merge_candidate_*/
+operator_ui_r3_post_merge_package_*/
 
 # IDE and editor files
 .vscode/

@@ -29,7 +29,7 @@ from src.operator_ui.foundation import EvidenceStatus
 NOW = datetime(2026, 7, 31, 1, 0, tzinfo=timezone.utc)
 HASH = hashlib.sha256(b"safe metadata only").hexdigest()
 
-def configured_app(tmp_path, *, level=1, clock=None):
+def configured_app(tmp_path, *, level=1, clock=None, trust_loopback=False):
     app = Flask(__name__)
     app.config.update(
         TESTING=True,
@@ -38,6 +38,7 @@ def configured_app(tmp_path, *, level=1, clock=None):
         OPERATOR_UI_USERNAME="viewer",
         OPERATOR_UI_PASSWORD_HASH=generate_password_hash("correct horse"),
         OPERATOR_UI_LEVEL=level,
+        OPERATOR_UI_TRUST_LOOPBACK=trust_loopback,
         OPERATOR_UI_AUDIT_DB_PATH=str(tmp_path / "ui-audit.sqlite3"),
         OPERATOR_UI_JOB_DB_PATH=str(tmp_path / "jobs.sqlite3"),
         DATABASE_PATH=str(tmp_path / "canonical.sqlite3"),
@@ -50,6 +51,23 @@ def configured_app(tmp_path, *, level=1, clock=None):
     )
     install_connected_mode(app)
     return app
+
+
+def test_trusted_loopback_needs_no_login_and_remote_requests_fail_closed(tmp_path):
+    app = configured_app(tmp_path, level=2, trust_loopback=True)
+    local = app.test_client()
+
+    allowed = local.get("/operator-ui/connected/sentinel")
+    assert allowed.status_code == 200
+    assert allowed.get_json()["sentinel"] == "connected-mode-boundary"
+    assert "Secure" not in allowed.headers["Set-Cookie"]
+
+    remote = app.test_client()
+    denied = remote.get(
+        "/operator-ui/connected/sentinel",
+        environ_overrides={"REMOTE_ADDR": "192.0.2.10"},
+    )
+    assert denied.status_code == 401
 
 
 def login(client, password="correct horse"):

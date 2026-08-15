@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 import re
@@ -735,6 +736,7 @@ def load_connected_environment(app: Flask) -> None:
         "OPERATOR_UI_DEPLOYED_PROFILE",
         "OPERATOR_UI_INACTIVITY_SECONDS",
         "OPERATOR_UI_ABSOLUTE_SECONDS",
+        "OPERATOR_UI_TRUST_LOOPBACK",
     )
     app.config["OPERATOR_UI_CONNECTED_MODE"] = _enabled(
         os.environ.get("OPERATOR_UI_CONNECTED_MODE", "0")
@@ -808,7 +810,9 @@ def install_connected_mode(app: Flask) -> AuditStore | None:
     app.secret_key = app.config["OPERATOR_UI_SECRET_KEY"]
     app.config.update(
         SESSION_COOKIE_HTTPONLY=True,
-        SESSION_COOKIE_SECURE=True,
+        SESSION_COOKIE_SECURE=not _enabled(
+            app.config.get("OPERATOR_UI_TRUST_LOOPBACK", False)
+        ),
         SESSION_COOKIE_SAMESITE="Strict",
     )
     inactivity = int(app.config.get("OPERATOR_UI_INACTIVITY_SECONDS", 900))
@@ -845,6 +849,39 @@ def install_connected_mode(app: Flask) -> AuditStore | None:
         )
 
     def actor() -> tuple[str, int] | None:
+        trusted_loopback = _enabled(
+            app.config.get("OPERATOR_UI_TRUST_LOOPBACK", False)
+        )
+        try:
+            is_loopback = ipaddress.ip_address(request.remote_addr or "").is_loopback
+        except ValueError:
+            is_loopback = False
+        if trusted_loopback and is_loopback:
+            identity = str(app.config["OPERATOR_UI_USERNAME"])
+            level = int(app.config.get("OPERATOR_UI_LEVEL", 1))
+            current = now_epoch()
+            session_identifier = session.get("operator_session_id")
+            if not isinstance(session_identifier, str):
+                session_identifier = str(uuid.uuid4())
+                active_sessions.register(
+                    session_identifier,
+                    identity,
+                    level,
+                    current,
+                    inactivity=inactivity,
+                    absolute=absolute,
+                )
+                session.update(
+                    operator_actor=identity,
+                    operator_level=level,
+                    operator_session_id=session_identifier,
+                    operator_issued_at=current,
+                    operator_last_active=current,
+                    _operator_csrf=secrets.token_urlsafe(32),
+                )
+            else:
+                session["operator_last_active"] = current
+            return identity, level
         session_identifier = session.get("operator_session_id")
         identity = session.get("operator_actor")
         level = session.get("operator_level")
