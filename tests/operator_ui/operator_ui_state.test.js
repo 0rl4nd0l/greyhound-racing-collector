@@ -3,7 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createOperatorState, readAuthorityResponse, resourceEnvelope, csrfEnvelope,
-  capabilityEnvelope, errorEnvelope, jobEnvelope } = require("../../static/js/operator-ui-state.js");
+  capabilityEnvelope, errorEnvelope, resourceErrorEnvelope, jobEnvelope } = require("../../static/js/operator-ui-state.js");
 
 function storage(initial = {}) {
   const values = new Map(Object.entries(initial));
@@ -175,6 +175,9 @@ test("pure endpoint validators accept only exact authority envelopes", () => {
   assert.equal(capabilityEnvelope({schema:"operator_ui_r3_capability_v1",authorized:true,runtime_configured:true,level:2}),true);
   assert.equal(capabilityEnvelope({schema:"operator_ui_r3_capability_v1",authorized:true,runtime_configured:true,level:1}),false);
   assert.equal(errorEnvelope({schema:"operator_ui_prediction_error_v1",classification:"SELECTION_NOT_ALLOWLISTED"}),true);
+  assert.equal(resourceErrorEnvelope({classification:"NON_OPERATIONAL/AUTHENTICATION_REQUIRED"}),true);
+  assert.equal(resourceErrorEnvelope({classification:"NON_OPERATIONAL/PROVIDER_ERROR",error:"operational provider unavailable"}),true);
+  assert.equal(resourceErrorEnvelope({classification:"NON_OPERATIONAL/PROVIDER_ERROR"}),false);
 });
 
 test("job validator rejects every malformed disclosure-bearing class", () => {

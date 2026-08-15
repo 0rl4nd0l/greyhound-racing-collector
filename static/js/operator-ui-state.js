@@ -17,6 +17,7 @@
   const phases=new Set(["SUBMITTED","VALIDATED","WAITING_FOR_CLAIM","CLAIMED","ATTEMPT_STARTED","RESPONSE_RECORDED","RECEIPT_VERIFIED","CONSUMED","SCORING","PRODUCER_COMPLETED","REAP_UNCONFIRMED","PREDICTION_READY","FAILED","REJECTED","EXPIRED","TIMED_OUT","CANCELLED"]);
   const terminalPhases=new Set(["PREDICTION_READY","FAILED","REJECTED","EXPIRED","TIMED_OUT","CANCELLED"]);
   function resourceEnvelope(value,expected,detail=false){if(!plain(value)||value.schema!=="operator_ui_level_1_api_v1"||value.api_version!=="v1"||value.resource!==expected||!classifications.has(value.classification)||typeof value.stale!=="boolean"||!text(value.server_observed_at)||!plain(value.evidence))return false;const tail=Object.hasOwn(value,"data")?"data":Object.hasOwn(value,"reason")?"reason":null;if(!tail||!exact(value,["api_version","classification","evidence","resource","schema","server_observed_at","stale",tail]))return false;if(detail&&value.classification==="AVAILABLE/FRESH"&&!Object.hasOwn(value,"data"))return false;return tail!=="reason"||text(value.reason);}
+  function resourceErrorEnvelope(value){return exact(value,["classification"])&&value.classification==="NON_OPERATIONAL/AUTHENTICATION_REQUIRED"||exact(value,["classification","error"])&&value.classification==="NON_OPERATIONAL/PROVIDER_ERROR"&&text(value.error);}
   function csrfEnvelope(value){return exact(value,["classification","csrf_token"])&&text(value.classification)&&text(value.csrf_token);}
   function capabilityEnvelope(value){return exact(value,["schema","authorized","runtime_configured","level"])&&value.schema==="operator_ui_r3_capability_v1"&&typeof value.authorized==="boolean"&&typeof value.runtime_configured==="boolean"&&value.level===2;}
   function errorEnvelope(value){return exact(value,["schema","classification"])&&value.schema==="operator_ui_prediction_error_v1"&&text(value.classification);}
@@ -136,6 +137,6 @@
       reconnect, stopReconnect, transportAttempts: () => attempts };
   }
   return { createOperatorState, readAuthorityResponse, resourceEnvelope, csrfEnvelope,
-    capabilityEnvelope, errorEnvelope, timelineEvent, verifiedResult, jobEnvelope,
+    capabilityEnvelope, errorEnvelope, resourceErrorEnvelope, timelineEvent, verifiedResult, jobEnvelope,
     INTENT_KEY, JOB_KEY };
 });
