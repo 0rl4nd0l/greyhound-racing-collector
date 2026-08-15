@@ -697,7 +697,7 @@ def test_lock_held_daemon_run_report_surfaces_active_owner(tmp_path):
     assert report["lock_owner_run_id"] == "20260613T150400+1000_odds_capture"
     assert report["lock_owner_pid"] == 443246
     assert report["lock_reason"] == "active_lock_present"
-    assert report["odds_capture_state_path"] == str(odds_state_path)
+    assert report["odds_capture_state_path"] == str(odds_state_path.relative_to(Path.cwd()))
     assert report["last_odds_capture_run_id"] == "20260613T145856+1000_odds_capture"
     assert report["last_odds_capture_final_status"] == "ODDS_CAPTURE_ONLY_READY"
     assert report["last_odds_capture_status"] == (
