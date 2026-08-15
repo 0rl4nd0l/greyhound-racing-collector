@@ -1474,7 +1474,8 @@ class LiveEvidenceAdapters:
         deployed = self.system(now)
         statuses = {full_env.status, odds_env.status, deployed.evidence.status}
         worst = next((value for value in ("INVALID/INTEGRITY_FAILED", "DIVERGENT", "UNAVAILABLE/DATA_MISSING", "STALE") if value in statuses), "AVAILABLE/FRESH")
-        return APIObservation(_status(full_env, worst, policy="P-COLLECTOR-AGGREGATE"), {"lanes": [full, odds]})
+        data = {} if worst == "INVALID/INTEGRITY_FAILED" else {"lanes": [full, odds]}
+        return APIObservation(_status(full_env, worst, policy="P-COLLECTOR-AGGREGATE"), data)
 
     def system(self, now: datetime) -> APIObservation:
         envelope, payload = self._read("deployment_manifest", now)
@@ -1883,4 +1884,7 @@ class LiveEvidenceAdapters:
         except (KeyError, TypeError, ValueError, OverflowError, UnicodeDecodeError):
             return APIObservation(_invalid(envelope), {})
         status = "STALE" if age > 60 else "AVAILABLE/FRESH"
-        return APIObservation(_status(envelope, status), {"models": models})
+        return APIObservation(
+            _status(envelope, status),
+            {"models": models} if status == "AVAILABLE/FRESH" else {},
+        )

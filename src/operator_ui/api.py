@@ -1188,6 +1188,8 @@ def install_level_1_api(app: Flask) -> bool:
                 response["data"] = {}
             elif raw.data:
                 raise ValueError("non-available evidence must disclose no data")
+            if "data" not in response:
+                response["reason"] = classification.value
             body = _canonical(response)
             response_hash = hashlib.sha256(body).hexdigest()
             return PreparedDisclosure(
