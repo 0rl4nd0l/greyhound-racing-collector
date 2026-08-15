@@ -313,8 +313,8 @@ def run_once(store:JobStore,job_id:str,config:WorkerConfig,*,now:Callable[[],dat
     try:
         _validate_runtime(config); _validate_choice(job,config)
         runtime_fds=_open_runtime_descriptors(config)
-        retained=(f"/proc/self/fd/{runtime_fds[0]}",f"/proc/self/fd/{runtime_fds[1]}",*argv[2:])
-        try: process=popen(retained,executable=retained[0],pass_fds=runtime_fds,shell=False,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=False)
+        retained=(str(config.pinned_python),f"/proc/self/fd/{runtime_fds[1]}",*argv[2:])
+        try: process=popen(retained,executable=f"/proc/self/fd/{runtime_fds[0]}",pass_fds=runtime_fds,shell=False,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=False)
         finally:
             for fd in runtime_fds:
                 try: os.close(fd)

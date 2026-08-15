@@ -62,9 +62,10 @@ def test_launch_uses_only_retained_runtime_descriptors(tmp_path):
     cfg,store,job=setup(tmp_path); calls=[]
     def popen(argv,**kwargs):
         calls.append((argv,kwargs))
-        assert argv[0].startswith("/proc/self/fd/") and argv[1].startswith("/proc/self/fd/")
-        assert kwargs["executable"]==argv[0]
-        assert tuple(sorted(kwargs["pass_fds"]))==tuple(sorted((int(argv[0].rsplit("/",1)[1]),int(argv[1].rsplit("/",1)[1]))))
+        assert argv[0] == str(cfg.pinned_python)
+        assert argv[1].startswith("/proc/self/fd/")
+        assert kwargs["executable"].startswith("/proc/self/fd/")
+        assert tuple(sorted(kwargs["pass_fds"]))==tuple(sorted((int(kwargs["executable"].rsplit("/",1)[1]),int(argv[1].rsplit("/",1)[1]))))
         return Process(ready(job))
     assert run_once(store,job.job_id,cfg,now=lambda:NOW,confirm_audit=CONFIRM,popen=popen,reader=lambda **_:view()).phase is Phase.PRODUCER_COMPLETED
     assert len(calls)==1
