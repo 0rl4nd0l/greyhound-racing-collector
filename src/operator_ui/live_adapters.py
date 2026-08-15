@@ -8,6 +8,7 @@ deadline.  This module performs no discovery and never invokes a command.
 from __future__ import annotations
 
 import hashlib
+import logging
 import math
 import re
 import base64
@@ -16,6 +17,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from race_collection.synchronous_manual_capture import (
     CURRENT_RACE_INDEX_SCHEMA,
@@ -1111,6 +1114,7 @@ class LiveEvidenceAdapters:
         except PermissionError:
             return self._verified_envelope(now=now, policy="P-UPCOMING-300-PREJUMP", identity=CURRENT_RACE_INDEX_SCHEMA, locator="operator_ui.current_race_index", status="UNAVAILABLE/DATA_MISSING", availability="unreadable"), []
         except (ValueError, TypeError, KeyError, OSError):
+            logger.exception("current race index adaptation failed")
             return self._verified_envelope(now=now, policy="P-UPCOMING-300-PREJUMP", identity=CURRENT_RACE_INDEX_SCHEMA, locator="operator_ui.current_race_index", status="INVALID/INTEGRITY_FAILED"), []
 
     def upcoming(self, now: datetime) -> APIObservation:
