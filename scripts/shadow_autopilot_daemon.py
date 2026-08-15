@@ -3847,15 +3847,65 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
     }
     if args.state_path is not None and autopilot_output_dir is not None:
         from race_collection.synchronous_manual_capture import (
+            CURRENT_RACE_INDEX_FILENAME,
             publish_current_race_index,
         )
 
+        source_refresh_report = autopilot_output_dir / "odds_capture_refresh_report.json"
+        current_index = load_json(args.state_path.parent / CURRENT_RACE_INDEX_FILENAME)
+        current_races = (
+            current_index.get("races")
+            if isinstance(current_index, Mapping)
+            and current_index.get("run_id") == run_id
+            else None
+        )
+        priority_race_id = (
+            current_races[0].get("race_id")
+            if isinstance(current_races, list)
+            and current_races
+            and isinstance(current_races[0], Mapping)
+            else None
+        )
+        if isinstance(priority_race_id, str) and priority_race_id:
+            terminal_refresh_report = output_dir / "current_race_index_refresh_report.json"
+            terminal_refresh_command = [
+                sys.executable,
+                str(ROOT / "scripts/refresh_prejump_upcoming.py"),
+                "--upcoming-dir",
+                str(output_dir / "current_race_index_refreshed_upcoming"),
+                "--days-ahead",
+                str(args.days_ahead),
+                "--min-minutes",
+                "0.0",
+                "--max-minutes",
+                str(args.odds_capture_max_minutes),
+                "--limit",
+                str(args.refresh_limit),
+                "--current-time",
+                datetime.now().astimezone().isoformat(),
+                "--output",
+                str(terminal_refresh_report),
+                "--priority-race-id",
+                priority_race_id,
+            ]
+            if args.require_safe_refresh_metadata:
+                terminal_refresh_command.append("--require-safe-metadata")
+            terminal_refresh_step = run_command(
+                name="current_race_index_terminal_refresh",
+                command=terminal_refresh_command,
+                output_dir=output_dir,
+                timeout_seconds=args.timeout_seconds,
+            )
+            steps.append(terminal_refresh_step)
+            terminal_refresh = load_json(terminal_refresh_report)
+            if terminal_current_index_refresh_publishable(
+                terminal_refresh_step, terminal_refresh
+            ):
+                source_refresh_report = terminal_refresh_report
         current_race_index_publish = publish_current_race_index(
             state_path=args.state_path,
             evidence_root=evidence_root,
-            source_refresh_report_path=(
-                autopilot_output_dir / "odds_capture_refresh_report.json"
-            ),
+            source_refresh_report_path=source_refresh_report,
             run_id=run_id,
         )
 

@@ -1,4 +1,5 @@
 import os
+import inspect
 import json
 import sqlite3
 import subprocess
@@ -1761,6 +1762,10 @@ def test_terminal_current_index_refresh_accepts_only_safe_partial_exit_two():
         {"returncode": 2},
         {"status": "METADATA_COVERAGE_INCOMPLETE", "dry_run": True},
     )
+
+    odds_source = inspect.getsource(daemon.run_odds_capture_once)
+    assert 'name="current_race_index_terminal_refresh"' in odds_source
+    assert '"--priority-race-id"' in odds_source
 
     permissive_command = daemon.odds_capture_only_autopilot_command(
         run_id="odds_only_autopilot",
