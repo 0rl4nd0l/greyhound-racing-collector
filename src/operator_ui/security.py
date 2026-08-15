@@ -1046,6 +1046,7 @@ def install_connected_mode(app: Flask) -> AuditStore | None:
                     prepared = provider(*args, **kwargs)
                     _validate_prepared_disclosure(prepared)
                 except Exception:
+                    app.logger.exception("operator UI provider preparation failed")
                     try:
                         store.append_and_confirm(
                             audit_event("NON_OPERATIONAL/PROVIDER_ERROR")
