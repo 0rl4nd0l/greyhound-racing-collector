@@ -418,6 +418,24 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
     assert verified_view.races[0]["race_id"] == "Race 5 - GUNN - 2026-07-19"
     assert verified_view.races[0]["runners"][0]["source_native_runner_id"] is None
 
+    threaded: list[object] = []
+    thread = threading.Thread(
+        target=lambda: threaded.append(
+            bounded_current_race_index(
+                current_time=index_now,
+                timeout_seconds=1,
+                index_path=index_path,
+                evidence_root=evidence_root,
+                max_age_seconds=900,
+                return_verified_view=True,
+            )
+        )
+    )
+    thread.start()
+    thread.join(timeout=2)
+    assert not thread.is_alive()
+    assert isinstance(threaded[0], capture.VerifiedCurrentRaceIndex)
+
     boundary = index_now + timedelta(seconds=1200)
     assert bounded_current_race_index(
         current_time=boundary, timeout_seconds=1, index_path=index_path,

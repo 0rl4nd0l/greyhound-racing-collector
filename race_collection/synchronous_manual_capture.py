@@ -13,6 +13,8 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -1413,7 +1415,9 @@ def bounded_current_race_index(
     ):
         raise CaptureOneRejected("DISCOVERY_BUDGET_INVALID")
 
-    previous_handler = signal.getsignal(signal.SIGALRM)
+    signal_timeout = threading.current_thread() is threading.main_thread()
+    previous_handler = signal.getsignal(signal.SIGALRM) if signal_timeout else None
+    deadline = time.monotonic() + timeout_seconds
 
     def timed_out(signum: int, frame: object) -> None:
         del signum, frame
@@ -1421,8 +1425,9 @@ def bounded_current_race_index(
 
     snapshot: _RetainedSafeFiles | None = None
     try:
-        signal.signal(signal.SIGALRM, timed_out)
-        signal.setitimer(signal.ITIMER_REAL, timeout_seconds)
+        if signal_timeout:
+            signal.signal(signal.SIGALRM, timed_out)
+            signal.setitimer(signal.ITIMER_REAL, timeout_seconds)
         snapshot = _RetainedSafeFiles(evidence_root)
         packet_raw = snapshot.read(index_path, missing_code="CURRENT_INDEX_UNAVAILABLE")
         packet = json.loads(packet_raw)
@@ -1587,6 +1592,8 @@ def bounded_current_race_index(
                 enforce_max_age=not return_verified_view,
             )
         snapshot.validate()
+        if time.monotonic() > deadline:
+            raise _DiscoveryTimedOut
         if return_verified_view:
             if packet["schema_version"] != CURRENT_RACE_INDEX_SCHEMA:
                 raise CaptureOneRejected("CURRENT_INDEX_CATALOG_INELIGIBLE")
@@ -1614,8 +1621,9 @@ def bounded_current_race_index(
     finally:
         if snapshot is not None:
             snapshot.__exit__()
-        signal.setitimer(signal.ITIMER_REAL, 0)
-        signal.signal(signal.SIGALRM, previous_handler)
+        if signal_timeout:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            signal.signal(signal.SIGALRM, previous_handler)
 
 
 def release_owned_collector_lock(lock: Any) -> None:
