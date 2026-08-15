@@ -1472,7 +1472,9 @@ def bounded_current_race_index(
         if not isinstance(source, Mapping):
             raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
         if packet.get("schema_version") == CURRENT_RACE_INDEX_SCHEMA and (
-            source.get("status") != "SUCCESS" or source.get("dry_run") is True
+            source.get("status")
+            not in {"SUCCESS", "METADATA_COVERAGE_INCOMPLETE"}
+            or source.get("dry_run") is True
         ):
             raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
         races = _normalize_current_index_rows(source, max_races=max_races)
@@ -1480,10 +1482,20 @@ def bounded_current_race_index(
         if packet.get("schema_version") == CURRENT_RACE_INDEX_SCHEMA:
             sealed = []
             for race in races:
-                runners, runner_source, runner_hash = _v2_runner_rows(
-                    race, source, evidence_root=evidence_root,
-                    snapshot=snapshot,
-                )
+                try:
+                    runners, runner_source, runner_hash = _v2_runner_rows(
+                        race, source, evidence_root=evidence_root,
+                        snapshot=snapshot,
+                    )
+                except CaptureOneRejected as exc:
+                    if source.get("status") != "METADATA_COVERAGE_INCOMPLETE":
+                        raise
+                    if exc.code not in {
+                        "CURRENT_INDEX_SOURCE_INVALID",
+                        "CURRENT_INDEX_SOURCE_MISSING",
+                    }:
+                        raise
+                    continue
                 sealed.append({**race, "runners": runners, "runner_set_sha256": runner_hash, "runner_source": runner_source})
             expected_races = sealed
         if packet.get("race_count") != len(expected_races) or packet.get("races") != expected_races:

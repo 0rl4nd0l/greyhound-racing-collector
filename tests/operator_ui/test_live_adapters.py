@@ -1585,8 +1585,8 @@ def test_upcoming_verified_view_exact_boundaries_and_identity(
         "jump_datetime": (NOW + timedelta(seconds=jump_offset)).isoformat(),
         "runner_set_sha256": "a" * 64,
         "runners": [
-            {"box_number": 1, "dog_name": "ONE", "identity": "ONE", "source_native_runner_id": None, "scratch_state": "ACTIVE"},
-            {"box_number": 2, "dog_name": "TWO", "identity": "TWO", "source_native_runner_id": "22", "scratch_state": "ACTIVE"},
+            {"box": 1, "display_name": "ONE", "identity": "ONE", "source_native_runner_id": None, "scratch_state": "ACTIVE"},
+            {"box": 2, "display_name": "TWO", "identity": "TWO", "source_native_runner_id": "22", "scratch_state": "ACTIVE"},
         ],
     }
     view = VerifiedCurrentRaceIndex(
@@ -1620,7 +1620,7 @@ def test_fresh_source_with_only_post_jump_rows_is_verified_empty(tmp_path, monke
         "race_url": "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5",
         "date": "2026-07-19", "venue": "GUNN", "race_number": 5,
         "jump_datetime": NOW.isoformat(), "runner_set_sha256": "a" * 64,
-        "runners": ({"box_number": 1, "dog_name": "ONE", "identity": "ONE", "source_native_runner_id": None, "scratch_state": "ACTIVE"},),
+        "runners": ({"box": 1, "display_name": "ONE", "identity": "ONE", "source_native_runner_id": None, "scratch_state": "ACTIVE"},),
     }
     view = VerifiedCurrentRaceIndex(
         "collector_current_race_index_v2", "run-1", NOW.isoformat(), "1" * 64,

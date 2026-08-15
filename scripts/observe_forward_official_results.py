@@ -28,6 +28,7 @@ from race_collection.forward_sealed_corpus import (  # noqa: E402
     STATUS_SCHEMA,
     ForwardCorpusRejected,
     ForwardSealedCorpus,
+    OfficialResultIncomplete,
     canonical_json,
 )
 from scripts.ingest_results_for_date import (  # noqa: E402
@@ -333,6 +334,9 @@ def observe_once(
                                 "manifest_checksum": str(package.manifest_checksum),
                             }
                         )
+                except OfficialResultIncomplete:
+                    race_report["decision"] = "RESULT_PENDING"
+                    race_report["after_state"] = _race_state(corpus.status(), race_id)
                 except Exception as error:  # isolate malformed races
                     race_report["decision"] = "ERROR"
                     race_report["error"] = f"{type(error).__name__}: {error}"

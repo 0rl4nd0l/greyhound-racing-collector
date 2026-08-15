@@ -497,10 +497,14 @@ def test_run_once_releases_after_primary_when_odds_refresh_due(tmp_path, monkeyp
     def fake_run_command(*, name, command, output_dir, timeout_seconds, cwd=daemon.ROOT):
         if name != "autopilot_cycle":
             raise AssertionError(f"post-primary release should not run {name}")
-        assert command[command.index("--autonomous-odds-capture-limit") + 1] == "16"
         assert command[command.index("--result-backlog-limit") + 1] == "8"
         assert command[command.index("--result-backlog-shadow-run-limit") + 1] == "16"
         assert command[command.index("--result-backlog-lookback-days") + 1] == "2"
+        assert command[command.index("--current-race-index-state-path") + 1] == str(
+            odds_state_path
+        )
+        assert command[command.index("--autonomous-odds-capture-limit") + 1] == "1"
+        assert command[command.index("--odds-capture-min-minutes") + 1] == "20.0"
         daemon.write_json(
             output_dir / "logs" / "autopilot_cycle.stdout.txt",
             {"output_dir": str(autopilot_dir.relative_to(tmp_path))},
@@ -1736,10 +1740,27 @@ def test_odds_capture_only_autopilot_command_is_narrow_and_append_only():
     assert command[command.index("--current-race-index-state-path") + 1] == (
         "/runtime/odds_capture_state.json"
     )
+    assert command[command.index("--autonomous-odds-capture-limit") + 1] == "1"
+    assert command[command.index("--odds-capture-min-minutes") + 1] == "20.0"
     assert command[command.index("--forward-corpus-root") + 1] == (
         "/evidence/forward-corpus"
     )
     assert "--enable-autonomous-result-capture" not in command
+
+
+def test_terminal_current_index_refresh_accepts_only_safe_partial_exit_two():
+    assert daemon.terminal_current_index_refresh_publishable(
+        {"returncode": 2},
+        {"status": "METADATA_COVERAGE_INCOMPLETE", "dry_run": False},
+    )
+    assert not daemon.terminal_current_index_refresh_publishable(
+        {"returncode": 2},
+        {"status": "FAILED", "dry_run": False},
+    )
+    assert not daemon.terminal_current_index_refresh_publishable(
+        {"returncode": 2},
+        {"status": "METADATA_COVERAGE_INCOMPLETE", "dry_run": True},
+    )
 
     permissive_command = daemon.odds_capture_only_autopilot_command(
         run_id="odds_only_autopilot",
@@ -2915,10 +2936,10 @@ def test_run_odds_capture_once_uses_lock_and_writes_compact_report(tmp_path, mon
     ] == 48
     assert state["odds_capture_fixed_window_schedule"][
         "next_meaningful_action_timer_covered"
-    ] is True
+    ] is False
     assert state["odds_capture_fixed_window_schedule"][
         "next_meaningful_action_timer_coverage_reason"
-    ] == "minute_covered_by_odds_capture_timer_on_calendar"
+    ] == "minute_not_covered_by_odds_capture_timer_on_calendar"
     assert state["next_meaningful_action"] == "WAIT_UNTIL_NEXT_FIXED_WINDOW"
     assert state["next_meaningful_action_at"] == "2026-06-12T09:48:00+10:00"
 
@@ -3360,7 +3381,7 @@ def test_run_odds_capture_once_waits_from_recent_future_window_state(
             "--output-dir",
             str(output_dir),
             "--current-time",
-            "2026-06-12T01:10:00+10:00",
+            "2026-06-12T01:05:00+10:00",
             "--db",
             str(db_path),
             "--lock-path",
@@ -3389,7 +3410,7 @@ def test_run_odds_capture_once_waits_from_recent_future_window_state(
     ] == 48
     assert report["odds_capture_fixed_window_schedule"][
         "next_meaningful_action_timer_covered"
-    ] is True
+    ] is False
     assert report["next_meaningful_action"] == "WAIT_UNTIL_NEXT_FIXED_WINDOW"
     assert report["next_meaningful_action_at"] == "2026-06-12T09:48:00+10:00"
     assert report["next_race_id"] == "Race 1 - HEA - 2026-06-12"
@@ -3400,9 +3421,9 @@ def test_run_odds_capture_once_waits_from_recent_future_window_state(
     assert report["next_race_jump_datetime"] == "2026-06-12T10:48:00+10:00"
     assert report["next_meaningful_action_offset_minutes"] == 60
     assert report["next_meaningful_action_timer_minute"] == 48
-    assert report["next_meaningful_action_timer_covered"] is True
+    assert report["next_meaningful_action_timer_covered"] is False
     assert report["next_meaningful_action_timer_coverage_reason"] == (
-        "minute_covered_by_odds_capture_timer_on_calendar"
+        "minute_not_covered_by_odds_capture_timer_on_calendar"
     )
     written = json.loads((output_dir / "odds_capture_only_daemon_report.json").read_text())
     manifest = json.loads((output_dir / "output_manifest.json").read_text())
@@ -3414,7 +3435,7 @@ def test_run_odds_capture_once_waits_from_recent_future_window_state(
     assert written["next_meaningful_action"] == "WAIT_UNTIL_NEXT_FIXED_WINDOW"
     assert written["next_race_id"] == report["next_race_id"]
     assert written["next_meaningful_action_offset_minutes"] == 60
-    assert written["next_meaningful_action_timer_covered"] is True
+    assert written["next_meaningful_action_timer_covered"] is False
     assert manifest["schema_version"] == "shadow_autopilot_daemon_output_manifest_v1"
     assert any(
         path.endswith("odds_capture_only_daemon_report.json")
@@ -3429,12 +3450,12 @@ def test_run_odds_capture_once_waits_from_recent_future_window_state(
     assert state["odds_capture_fixed_window_schedule"]["status_counts"] == {"PENDING": 4}
     assert state["odds_capture_fixed_window_schedule"][
         "next_meaningful_action_timer_covered"
-    ] is True
+    ] is False
     assert state["next_race_id"] == "Race 1 - HEA - 2026-06-12"
     assert state["next_race_venue"] == "HEA"
     assert state["next_meaningful_action_offset_minutes"] == 60
     assert state["next_meaningful_action_timer_minute"] == 48
-    assert state["next_meaningful_action_timer_covered"] is True
+    assert state["next_meaningful_action_timer_covered"] is False
     assert not lock_path.exists()
 
 
@@ -3470,7 +3491,7 @@ def test_full_daemon_publishes_fresh_odds_capture_preflight_state(tmp_path):
     daemon.write_json(
         autopilot_dir / "odds_capture_refresh_report.json",
         {
-            "status": "SUCCESS",
+            "status": "METADATA_COVERAGE_INCOMPLETE",
             "next_preferred_window": {
                 "status": "WAITING_FOR_FUTURE_WINDOW",
                 "next_window_opens_at": "2026-06-12T09:48:00+10:00",
@@ -3486,9 +3507,19 @@ def test_full_daemon_publishes_fresh_odds_capture_preflight_state(tmp_path):
             },
         },
     )
+    current_index_publish = {
+        "schema_version": "collector_current_race_index_publish_v2",
+        "status": "PUBLISHED",
+        "run_id": "20260612T033137+1000",
+    }
+    daemon.write_json(
+        autopilot_dir / "current_race_index_publish.json",
+        current_index_publish,
+    )
 
     report = daemon.publish_full_daemon_odds_capture_state(
         state_path=state_path,
+        evidence_root=tmp_path,
         generated_at=daemon.datetime.fromisoformat("2026-06-12T03:31:37+10:00"),
         run_id="20260612T033137+1000",
         output_dir=output_dir,
@@ -3519,7 +3550,21 @@ def test_full_daemon_publishes_fresh_odds_capture_preflight_state(tmp_path):
     )
 
     state = json.loads(state_path.read_text(encoding="utf-8"))
+    compatibility_report = json.loads(
+        (output_dir / "odds_capture_only_daemon_report.json").read_text(
+            encoding="utf-8"
+        )
+    )
     assert report["status"] == "PUBLISHED"
+    assert compatibility_report["schema_version"] == (
+        "shadow_autopilot_odds_capture_only_daemon_report_v1"
+    )
+    assert compatibility_report["current_race_index_publish"] == (
+        current_index_publish
+    )
+    assert compatibility_report["run_id"] == "20260612T033137+1000"
+    assert compatibility_report["generated_at"] == state["updated_at"]
+    assert compatibility_report["status"] == state["status"]
     assert report["inserted_live_odds_rows"] == 0
     assert report["ready_count"] == 6
     assert report["status_counts"] == {"SKIPPED_ALREADY_CAPTURED": 6}
@@ -3582,7 +3627,7 @@ def test_full_daemon_publishes_fresh_odds_capture_preflight_state(tmp_path):
     ] == 48
     assert state["odds_capture_fixed_window_schedule"][
         "next_meaningful_action_timer_covered"
-    ] is True
+    ] is False
 
     wait = daemon.odds_capture_preflight_wait(
         state_path=state_path,
@@ -3590,13 +3635,20 @@ def test_full_daemon_publishes_fresh_odds_capture_preflight_state(tmp_path):
     )
     assert wait is not None
     assert wait["window_state_source_updated_at"] == "2026-06-12T03:31:37+10:00"
+    assert (
+        daemon.odds_capture_preflight_wait(
+            state_path=state_path,
+            now=daemon.datetime.fromisoformat("2026-06-12T03:36:38+10:00"),
+        )
+        is None
+    )
     assert wait["window_state_source"] == "full_daemon"
     assert wait["recommended_rerun_after_local"] == "2026-06-12T09:43:00+10:00"
     assert wait["source_recommended_rerun_after_local"] == "2026-06-12T09:48:00+10:00"
     assert wait["odds_capture_fixed_window_schedule"]["status_counts"] == {"PENDING": 4}
     assert wait["odds_capture_fixed_window_schedule"][
         "next_meaningful_action_timer_covered"
-    ] is True
+    ] is False
 
 
 def test_odds_capture_fixed_window_schedule_marks_current_due_window():
@@ -3623,9 +3675,9 @@ def test_odds_capture_fixed_window_schedule_marks_current_due_window():
     assert schedule["next_meaningful_action_at"] == "2026-06-12T10:20:00+10:00"
     assert schedule["next_meaningful_action_offset_minutes"] == 30
     assert schedule["next_meaningful_action_timer_minute"] == 20
-    assert schedule["next_meaningful_action_timer_covered"] is True
+    assert schedule["next_meaningful_action_timer_covered"] is False
     assert schedule["next_meaningful_action_timer_coverage_reason"] == (
-        "minute_covered_by_odds_capture_timer_on_calendar"
+        "minute_not_covered_by_odds_capture_timer_on_calendar"
     )
 
 
@@ -3689,7 +3741,7 @@ def test_odds_capture_fixed_window_schedule_uses_captured_window_coverage():
     assert schedule["next_meaningful_action_at"] == "2026-06-13T11:03:00+10:00"
     assert schedule["next_meaningful_action_offset_minutes"] == 2
     assert schedule["next_meaningful_action_timer_minute"] == 3
-    assert schedule["next_meaningful_action_timer_covered"] is True
+    assert schedule["next_meaningful_action_timer_covered"] is False
 
 
 def test_odds_capture_fixed_window_schedule_surfaces_unmatched_coverage_report():
@@ -4070,7 +4122,7 @@ def test_run_odds_capture_once_preserves_window_state_on_lock_busy(
     assert report["next_race_jump_datetime"] == "2026-06-12T01:37:00+10:00"
     assert report["next_meaningful_action_offset_minutes"] == 10
     assert report["next_meaningful_action_timer_minute"] == 33
-    assert report["next_meaningful_action_timer_covered"] is True
+    assert report["next_meaningful_action_timer_covered"] is False
     assert report["odds_capture_fixed_window_schedule"]["status_counts"] == {
         "DUE": 1,
         "PASSED": 2,

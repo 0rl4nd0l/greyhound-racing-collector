@@ -81,7 +81,7 @@ DEFAULT_FULL_DAEMON_RESULT_BACKLOG_LIMIT = 8
 DEFAULT_FULL_DAEMON_RESULT_BACKLOG_SHADOW_RUN_LIMIT = 16
 DEFAULT_FULL_DAEMON_RESULT_BACKLOG_LOOKBACK_DAYS = 2
 DEFAULT_HEAVY_SCHEDULING_PAUSE_PATH = DEFAULT_RUNTIME_DIR / "pause-heavy-scheduling"
-DEFAULT_ODDS_CAPTURE_ONLY_PREFLIGHT_MAX_AGE_SECONDS = 30 * 60
+DEFAULT_ODDS_CAPTURE_ONLY_PREFLIGHT_MAX_AGE_SECONDS = 5 * 60
 DEFAULT_ODDS_CAPTURE_ONLY_PREFLIGHT_RESUME_BUFFER_SECONDS = 5 * 60
 DEFAULT_FULL_DAEMON_ODDS_DEFER_HORIZON_SECONDS = 8 * 60
 DEFAULT_FULL_DAEMON_ODDS_LOCK_RETRY_SECONDS = DEFAULT_ODDS_CAPTURE_ONLY_TIMEOUT_SECONDS + 60
@@ -164,6 +164,25 @@ def relpath(path: Path | None) -> str | None:
         return logical.absolute().relative_to(ROOT.absolute()).as_posix()
     except ValueError:
         return str(path)
+
+
+def evidence_relpath(path: Path | None, *, evidence_root: Path) -> str | None:
+    if path is None:
+        return None
+    return path.absolute().relative_to(evidence_root.absolute()).as_posix()
+
+
+def terminal_current_index_refresh_publishable(
+    step: Mapping[str, Any], report: Mapping[str, Any] | None
+) -> bool:
+    if not isinstance(report, Mapping) or report.get("dry_run") is True:
+        return False
+    return (
+        step.get("returncode") == 0 and report.get("status") == "SUCCESS"
+    ) or (
+        step.get("returncode") == 2
+        and report.get("status") == "METADATA_COVERAGE_INCOMPLETE"
+    )
 
 
 def initial_daemon_run_report(
@@ -1833,11 +1852,13 @@ def odds_capture_only_autopilot_command(
         "--refresh-command-mode",
         refresh_command_mode,
         "--odds-capture-min-minutes",
-        str(odds_capture_min_minutes),
+        str(max(20.0, odds_capture_min_minutes)),
         "--odds-capture-max-minutes",
         str(odds_capture_max_minutes),
         "--odds-capture-refresh-limit",
         str(odds_capture_refresh_limit),
+        "--autonomous-odds-capture-limit",
+        "1",
         "--step-timeout-seconds",
         str(timeout_seconds),
         "--enable-autonomous-odds-capture",
@@ -3347,7 +3368,10 @@ def odds_capture_preflight_wait(
         "ODDS_CAPTURE_ONLY_WAITING_FOR_WINDOW",
     }:
         return None
-    if state.get("odds_capture_refresh_status") != "SUCCESS":
+    if state.get("odds_capture_refresh_status") not in {
+        "SUCCESS",
+        "METADATA_COVERAGE_INCOMPLETE",
+    }:
         return None
     if state.get("odds_capture_status") != "AUTONOMOUS_LIVE_ODDS_CAPTURE_NO_ELIGIBLE_WINDOWS":
         return None
@@ -3400,19 +3424,23 @@ def odds_capture_preflight_wait(
 def publish_full_daemon_odds_capture_state(
     *,
     state_path: Path | None,
+    evidence_root: Path,
     generated_at: datetime,
     run_id: str,
     output_dir: Path,
     autopilot_output_dir: Path | None,
     odds_status: Mapping[str, Any],
+    current_race_index_publish: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     report: dict[str, Any] = {
         "schema_version": "shadow_autopilot_full_daemon_odds_capture_state_publish_v1",
         "status": "SKIPPED",
         "state_path": relpath(state_path),
         "run_id": run_id,
-        "output_dir": relpath(output_dir),
-        "autopilot_output_dir": relpath(autopilot_output_dir),
+        "output_dir": evidence_relpath(output_dir, evidence_root=evidence_root),
+        "autopilot_output_dir": evidence_relpath(
+            autopilot_output_dir, evidence_root=evidence_root
+        ),
         "reason": None,
     }
     if state_path is None:
@@ -3423,7 +3451,11 @@ def publish_full_daemon_odds_capture_state(
         return report
     refresh_report_path = autopilot_output_dir / "odds_capture_refresh_report.json"
     refresh_report = load_json(refresh_report_path)
-    if not isinstance(refresh_report, Mapping) or refresh_report.get("status") != "SUCCESS":
+    if (
+        not isinstance(refresh_report, Mapping)
+        or refresh_report.get("status")
+        not in {"SUCCESS", "METADATA_COVERAGE_INCOMPLETE"}
+    ):
         report["reason"] = "odds_capture_refresh_report_not_success"
         report["source_report_path"] = relpath(refresh_report_path)
         return report
@@ -3465,8 +3497,10 @@ def publish_full_daemon_odds_capture_state(
             "ODDS_CAPTURE_ONLY_READY",
             odds_status,
         ),
-        "output_dir": relpath(output_dir),
-        "autopilot_output_dir": relpath(autopilot_output_dir),
+        "output_dir": evidence_relpath(output_dir, evidence_root=evidence_root),
+        "autopilot_output_dir": evidence_relpath(
+            autopilot_output_dir, evidence_root=evidence_root
+        ),
         "odds_capture_status": odds_status.get("status"),
         "inserted_live_odds_rows": int_or_zero(odds_status.get("inserted_live_odds_rows")),
         "ready_count": int_or_zero(odds_status.get("ready_count")),
@@ -3499,6 +3533,28 @@ def publish_full_daemon_odds_capture_state(
         "source_report_path": relpath(refresh_report_path),
     }
     write_json(state_path, state_payload)
+    if current_race_index_publish is None:
+        current_race_index_publish = load_json(
+            autopilot_output_dir / "current_race_index_publish.json"
+        )
+    if (
+        isinstance(current_race_index_publish, Mapping)
+        and current_race_index_publish.get("status") == "PUBLISHED"
+        and current_race_index_publish.get("run_id") == run_id
+    ):
+        write_json(
+            output_dir / "odds_capture_only_daemon_report.json",
+            {
+                "schema_version": "shadow_autopilot_odds_capture_only_daemon_report_v1",
+                "generated_at": generated_at.isoformat(),
+                "run_id": run_id,
+                "final_status": state_payload["final_status"],
+                "status": state_payload["status"],
+                "output_dir": state_payload["output_dir"],
+                "autopilot_output_dir": state_payload["autopilot_output_dir"],
+                "current_race_index_publish": dict(current_race_index_publish),
+            },
+        )
     report.update(
         {
             "status": "PUBLISHED",
@@ -3809,8 +3865,10 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
         "run_id": run_id,
         "final_status": final_status,
         **odds_capture_only_operator_fields_for_report(final_status, odds_status),
-        "output_dir": relpath(output_dir),
-        "autopilot_output_dir": relpath(autopilot_output_dir),
+        "output_dir": evidence_relpath(output_dir, evidence_root=evidence_root),
+        "autopilot_output_dir": evidence_relpath(
+            autopilot_output_dir, evidence_root=evidence_root
+        ),
         "lock_path": relpath(lock_path),
         "lock": lock_payload,
         **lock_owner_report_fields(lock_payload),
@@ -3872,7 +3930,9 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
             state_payload["last_lock_skip"] = {
                 "updated_at": generated_at.isoformat(),
                 "run_id": run_id,
-                "output_dir": relpath(output_dir),
+                "output_dir": evidence_relpath(
+                    output_dir, evidence_root=evidence_root
+                ),
                 "lock": lock_payload,
                 **lock_owner_report_fields(lock_payload),
                 **t2_lock_skip_fields,
@@ -3886,8 +3946,12 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
                 "status": report.get("status"),
                 "runtime_action": report.get("runtime_action"),
                 "readiness_decision": report.get("readiness_decision"),
-                "output_dir": relpath(output_dir),
-                "autopilot_output_dir": relpath(autopilot_output_dir),
+                "output_dir": evidence_relpath(
+                    output_dir, evidence_root=evidence_root
+                ),
+                "autopilot_output_dir": evidence_relpath(
+                    autopilot_output_dir, evidence_root=evidence_root
+                ),
                 "odds_capture_status": odds_status.get("status"),
                 "inserted_live_odds_rows": odds_status.get("inserted_live_odds_rows"),
                 "ready_count": odds_status.get("ready_count"),
@@ -9536,9 +9600,11 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             "--refresh-limit",
             str(args.refresh_limit),
             "--autonomous-odds-capture-limit",
-            str(args.autonomous_odds_capture_limit),
+            "1",
             "--odds-capture-refresh-limit",
             str(args.autonomous_odds_capture_limit),
+            "--odds-capture-min-minutes",
+            "20.0",
             "--result-backlog-limit",
             str(args.result_backlog_limit),
             "--result-backlog-shadow-run-limit",
@@ -9556,6 +9622,10 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             "--step-timeout-seconds",
             str(args.timeout_seconds),
         ]
+        if args.odds_capture_state_path is not None:
+            autopilot_command.extend(
+                ["--current-race-index-state-path", str(args.odds_capture_state_path)]
+            )
         autopilot_command.extend(shadow_model_cli_args(args.shadow_model))
         if args.refresh_dry_run:
             autopilot_command.append("--refresh-dry-run")
@@ -9603,13 +9673,83 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
         post_primary_autonomous_live_odds_capture_status = (
             autonomous_live_odds_capture_status_from_autopilot(autopilot_output_dir)
         )
+        terminal_current_race_index_publish = None
+        if args.odds_capture_state_path is not None:
+            from race_collection.synchronous_manual_capture import (
+                CURRENT_RACE_INDEX_FILENAME,
+                publish_current_race_index,
+            )
+
+            current_index = load_json(
+                args.odds_capture_state_path.parent / CURRENT_RACE_INDEX_FILENAME
+            )
+            current_races = (
+                current_index.get("races")
+                if isinstance(current_index, Mapping)
+                and current_index.get("run_id") == run_id
+                else None
+            )
+            priority_race_id = (
+                current_races[0].get("race_id")
+                if isinstance(current_races, list)
+                and current_races
+                and isinstance(current_races[0], Mapping)
+                else None
+            )
+            if isinstance(priority_race_id, str) and priority_race_id:
+                terminal_refresh_report = output_dir / "current_race_index_refresh_report.json"
+                terminal_refresh_command = [
+                    sys.executable,
+                    str(ROOT / "scripts/refresh_prejump_upcoming.py"),
+                    "--upcoming-dir",
+                    str(output_dir / "current_race_index_refreshed_upcoming"),
+                    "--days-ahead",
+                    str(args.days_ahead),
+                    "--min-minutes",
+                    "0.0",
+                    "--max-minutes",
+                    str(args.max_minutes),
+                    "--limit",
+                    str(args.refresh_limit),
+                    "--current-time",
+                    datetime.now().astimezone().isoformat(),
+                    "--output",
+                    str(terminal_refresh_report),
+                    "--priority-race-id",
+                    priority_race_id,
+                ]
+                if args.require_safe_refresh_metadata:
+                    terminal_refresh_command.append("--require-safe-metadata")
+                terminal_refresh_step = run_command(
+                    name="current_race_index_terminal_refresh",
+                    command=terminal_refresh_command,
+                    output_dir=output_dir,
+                    timeout_seconds=args.timeout_seconds,
+                )
+                steps.append(terminal_refresh_step)
+                terminal_refresh = load_json(terminal_refresh_report)
+                if terminal_current_index_refresh_publishable(
+                    terminal_refresh_step, terminal_refresh
+                ):
+                    terminal_current_race_index_publish = publish_current_race_index(
+                        state_path=args.odds_capture_state_path,
+                        evidence_root=evidence_root,
+                        source_refresh_report_path=terminal_refresh_report,
+                        run_id=run_id,
+                    )
+                    write_json(
+                        output_dir / "current_race_index_publish.json",
+                        terminal_current_race_index_publish,
+                    )
         odds_capture_state_publish = publish_full_daemon_odds_capture_state(
             state_path=args.odds_capture_state_path,
+            evidence_root=evidence_root,
             generated_at=current_dt,
             run_id=run_id,
             output_dir=output_dir,
             autopilot_output_dir=autopilot_output_dir,
             odds_status=post_primary_autonomous_live_odds_capture_status,
+            current_race_index_publish=terminal_current_race_index_publish,
         )
         write_json(
             output_dir / "odds_capture_state_publish_status.json",
@@ -10665,11 +10805,13 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
     if odds_capture_state_publish.get("status") != "PUBLISHED":
         odds_capture_state_publish = publish_full_daemon_odds_capture_state(
             state_path=args.odds_capture_state_path,
+            evidence_root=evidence_root,
             generated_at=generated_at,
             run_id=run_id,
             output_dir=output_dir,
             autopilot_output_dir=autopilot_output_dir,
             odds_status=autonomous_live_odds_capture_status,
+            current_race_index_publish=terminal_current_race_index_publish,
         )
     next_prejump_refresh_window = next_prejump_refresh_window_from_autopilot(autopilot_output_dir)
     prejump_metadata_status = prejump_metadata_status_from_daily_run(daily_shadow_run_dir)

@@ -319,12 +319,12 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
     source.write_bytes(
         canonical_bytes(
             {
-                "status": "SUCCESS",
+                "status": "METADATA_COVERAGE_INCOMPLETE",
                 "generated_at": index_now.isoformat(),
                 "sidecar_metadata_coverage": _runner_coverage(
                     evidence_root, race_url, index_now
                 ),
-                "selected_count": 1,
+                "selected_count": 2,
                 "selected_races": [
                     {
                         "date": "2026-07-19",
@@ -340,7 +340,23 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
                             race_url
                         ),
                         "venue": "GUNN",
-                    }
+                    },
+                    {
+                        "date": "2026-07-19",
+                        "jump_datetime": "2026-07-19T13:20:00+10:00",
+                        "race_id": "Race 6 - GUNN - 2026-07-19",
+                        "race_id_aliases": [
+                            "Race 6 - GUNN - 2026-07-19",
+                            "Race 6 - GUNNEDAH - 2026-07-19",
+                        ],
+                        "race_number": 6,
+                        "race_time": "13:20",
+                        "race_url": (
+                            "https://www.thedogs.com.au/racing/gunnedah/"
+                            "2026-07-19/6"
+                        ),
+                        "venue": "GUNN",
+                    },
                 ],
             }
         )

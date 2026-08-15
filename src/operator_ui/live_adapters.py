@@ -1079,7 +1079,8 @@ class LiveEvidenceAdapters:
                     "runners": [{
                         "runner_id": runner["identity"],
                         "source_runner_id": runner["source_native_runner_id"],
-                        "box": runner["box_number"], "name": runner["dog_name"],
+                        "box": runner.get("box", runner.get("box_number")),
+                        "name": runner.get("display_name", runner.get("dog_name")),
                         "scratch_state": runner["scratch_state"],
                     } for runner in row["runners"]],
                     "runner_set_sha256": row["runner_set_sha256"],

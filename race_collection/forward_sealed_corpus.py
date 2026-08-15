@@ -38,9 +38,13 @@ RESPONSE_STAGE_SCHEMA = "official-result-response-stage-v1"
 OBSERVATION_SCHEMA_V1 = "official-result-observation-v1"
 OBSERVATION_SCHEMA_V2 = "official-result-observation-v2"
 PARENT_NORMALIZATION_VERSION = "official-result-normalization-exact-v1"
-CURRENT_NORMALIZATION_VERSION = "official-result-normalization-terminal-nbt-v2"
+PREVIOUS_NORMALIZATION_VERSION = "official-result-normalization-terminal-nbt-v2"
+CURRENT_NORMALIZATION_VERSION = "official-result-normalization-incomplete-pending-v3"
 PARENT_IMPLEMENTATION_HASH = (
     "sha256:9f05e9b29d90ec274d7d1c8c5c992dcbf41f38d61258f9f836ec935062829819"
+)
+PREVIOUS_IMPLEMENTATION_HASH = (
+    "sha256:777770c4552d52f15b2705f707ebb18ae28062b4a11e94a9b29467e8b970173a"
 )
 
 _OBSERVATION_FIELDS_V1 = {
@@ -81,6 +85,10 @@ _RESULT_DERIVED_KEYS = {
 
 class ForwardCorpusRejected(ValueError):
     """Prospective evidence cannot be truthfully captured or closed."""
+
+
+class OfficialResultIncomplete(ForwardCorpusRejected):
+    """The official page does not yet disclose a terminal result for every runner."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -260,6 +268,8 @@ def _normalization_identity(
     schema_hash = str(_checksum(RESULT_SCHEMA.encode()))
     if normalization_version == PARENT_NORMALIZATION_VERSION:
         return parser_hash, schema_hash, PARENT_IMPLEMENTATION_HASH
+    if normalization_version == PREVIOUS_NORMALIZATION_VERSION:
+        return parser_hash, schema_hash, PREVIOUS_IMPLEMENTATION_HASH
     if normalization_version != CURRENT_NORMALIZATION_VERSION:
         raise ForwardCorpusRejected("official result normalization version is unsupported")
     implementation = (
@@ -279,14 +289,17 @@ def _normalization_version_from_observation(observation: Mapping[str, Any]) -> s
         implementation_hash = observation.get("implementation_hash")
         if implementation_hash == PARENT_IMPLEMENTATION_HASH:
             return PARENT_NORMALIZATION_VERSION
+        if implementation_hash == PREVIOUS_IMPLEMENTATION_HASH:
+            return PREVIOUS_NORMALIZATION_VERSION
         if implementation_hash == _normalization_identity()[2]:
             return CURRENT_NORMALIZATION_VERSION
     elif (
         schema_version == OBSERVATION_SCHEMA_V2
         and set(observation) == _OBSERVATION_FIELDS_V2
-        and observation.get("normalization_version") == CURRENT_NORMALIZATION_VERSION
+        and observation.get("normalization_version")
+        in {PREVIOUS_NORMALIZATION_VERSION, CURRENT_NORMALIZATION_VERSION}
     ):
-        return CURRENT_NORMALIZATION_VERSION
+        return str(observation["normalization_version"])
     raise ForwardCorpusRejected("official observation envelope or normalization is invalid")
 
 
@@ -366,6 +379,7 @@ def _normalize_official_result_for_version(
     )
     if normalization_version not in {
         PARENT_NORMALIZATION_VERSION,
+        PREVIOUS_NORMALIZATION_VERSION,
         CURRENT_NORMALIZATION_VERSION,
     }:
         raise ForwardCorpusRejected("official result normalization version is unsupported")
@@ -410,7 +424,11 @@ def _normalize_official_result(
             raise ForwardCorpusRejected("official result runner name identity mismatch")
         position = parsed_row.get("finish_position")
         status = parsed_row.get("status")
-        if (position is None) == (status is None):
+        if position is None and status is None:
+            raise OfficialResultIncomplete(
+                "official result has runners without a finish or terminal status"
+            )
+        if position is not None and status is not None:
             raise ForwardCorpusRejected("official finish/status combination is inconsistent")
         if position is not None:
             if type(position) is not int or not 1 <= position <= len(frozen_runners):

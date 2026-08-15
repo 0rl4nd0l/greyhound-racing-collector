@@ -188,6 +188,30 @@ def test_pre_boundary_skip_malformed_retention_and_terminal_skip(tmp_path):
     assert len(list((tmp_path / "races").glob("*/official-requests/*/response-stage.json"))) == 1
 
 
+def test_incomplete_published_result_remains_pending_without_failing_cycle(tmp_path):
+    _seed(tmp_path)
+    url = (
+        "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-name?trial=false"
+    )
+    incomplete = T1._html().replace(b"2nd", b"-")
+
+    report, _ = _run(
+        tmp_path,
+        "incomplete-result",
+        [_dt("10:06")] * 4,
+        [Response(incomplete, url)],
+    )
+
+    assert report["status"] == "COMPLETED"
+    assert report["races"][0]["decision"] == "RESULT_PENDING"
+    assert report["races"][0]["after_state"] == "RESULT_PENDING"
+    assert report["races"][0]["error"] is None
+    assert report["races"][0]["raw_response_hash"]
+    assert len(
+        list((tmp_path / "races").glob("*/official-requests/*/response-stage.json"))
+    ) == 1
+
+
 @pytest.mark.parametrize(
     "url",
     [

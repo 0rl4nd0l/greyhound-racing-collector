@@ -405,6 +405,26 @@ def test_parent_observation_verifies_closes_and_is_admissible_after_upgrade(tmp_
     ) == _html()
 
 
+def test_previous_v2_observation_verifies_after_normalizer_upgrade(tmp_path):
+    corpus = ForwardSealedCorpus(
+        tmp_path,
+        clock=Clock(_dt("09:45"), _dt("10:06"), _dt("10:06"), _dt("10:06")),
+    )
+    corpus.capture_prejump(**fixture())
+    _capture(corpus, "request-1", Transport(_html()))
+    observation_path = corpus._request_directory(
+        tmp_path, "race-1", "request-1"
+    ) / "observation.json"
+    previous = json.loads(observation_path.read_bytes())
+    previous["normalization_version"] = corpus_module.PREVIOUS_NORMALIZATION_VERSION
+    previous["implementation_hash"] = corpus_module.PREVIOUS_IMPLEMENTATION_HASH
+    previous_bytes = canonical_json(previous)
+    observation_path.write_bytes(previous_bytes)
+    corpus.artifacts.put(previous_bytes, media_type="application/json")
+
+    assert corpus.status()["races"][0]["state"] == "RESULT_FIRST_OBSERVED"
+
+
 def test_result_history_uses_exact_race_id_request_root(tmp_path):
     race_id = "Race 1 - SAN - 2026-07-29"
     value = fixture()
