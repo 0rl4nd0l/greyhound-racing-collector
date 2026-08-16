@@ -589,6 +589,53 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
     assert index_path.read_bytes() == original
 
 
+def test_current_race_index_publication_matches_safe_query_variant_to_runner_evidence(
+    tmp_path: Path,
+):
+    evidence_root = tmp_path / "evidence"
+    state = evidence_root / "runtime/odds_capture_state.json"
+    source = evidence_root / "refresh/odds_capture_refresh_report.json"
+    source.parent.mkdir(parents=True)
+    generated = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
+    evidence_url = (
+        "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5/fixture"
+    )
+    selected_url = evidence_url + "?trial=false"
+    source.write_bytes(canonical_bytes({
+        "status": "SUCCESS",
+        "generated_at": generated.isoformat(),
+        "sidecar_metadata_coverage": _runner_coverage(
+            evidence_root, evidence_url, generated
+        ),
+        "selected_count": 1,
+        "selected_races": [{
+            "date": "2026-07-19",
+            "jump_datetime": "2026-07-19T13:00:00+10:00",
+            "race_id": "Race 5 - GUNN - 2026-07-19",
+            "race_id_aliases": [
+                "Race 5 - GUNN - 2026-07-19",
+                "Race 5 - GUNNEDAH - 2026-07-19",
+            ],
+            "race_number": 5,
+            "race_time": "13:00",
+            "race_url": selected_url,
+            "venue": "GUNN",
+        }],
+    }))
+
+    published = publish_current_race_index(
+        state_path=state,
+        evidence_root=evidence_root,
+        source_refresh_report_path=source,
+        run_id="safe-query-variant",
+    )
+
+    assert published["status"] == "PUBLISHED"
+    packet = json.loads(current_race_index_path(state).read_bytes())
+    assert packet["races"][0]["race_url"] == selected_url
+    assert packet["races"][0]["runner_source"]["source_url"] == evidence_url
+
+
 def test_current_race_index_rejects_stale_or_changed_source(tmp_path: Path):
     evidence_root = tmp_path / "evidence"
     state = evidence_root / "shadow_autopilot_daemon_runtime/odds_capture_state.json"

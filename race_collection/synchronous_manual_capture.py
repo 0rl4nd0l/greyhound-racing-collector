@@ -37,6 +37,7 @@ from src.predictor.on_demand import (
     receipt_from_handoff,
     sha256_bytes,
 )
+from utils.csv_metadata import canonical_thedogs_race_identity
 from utils.runner_completeness import normalise_runner_name
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -801,9 +802,12 @@ def _v2_runner_rows(
     coverage = source.get("sidecar_metadata_coverage")
     if not isinstance(coverage, Mapping) or coverage.get("schema_version") != "prejump_sidecar_metadata_coverage_v1":
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_coverage_missing")
+    race_identity = canonical_thedogs_race_identity(race["race_url"])
     matches = [
         item for item in coverage.get("races", [])
-        if isinstance(item, Mapping) and item.get("race_url") == race["race_url"]
+        if isinstance(item, Mapping)
+        and race_identity is not None
+        and canonical_thedogs_race_identity(item.get("race_url")) == race_identity
     ]
     if len(matches) != 1:
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_source_misaligned")
@@ -837,7 +841,7 @@ def _v2_runner_rows(
     if not isinstance(alignment, Mapping) or alignment.get("status") != "aligned" or alignment.get("canonical_runner_set_status") != "available":
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_source_not_aligned")
     if (
-        shadow.get("source_url") != race["race_url"]
+        canonical_thedogs_race_identity(shadow.get("source_url")) != race_identity
         or shadow.get("race_date") != race["date"]
         or not isinstance(shadow.get("venue"), str)
         or normalize_venue(shadow["venue"]) != normalize_venue(race["venue"])
