@@ -234,6 +234,24 @@ def test_default_off_package_binds_identity_hashes_private_service_and_external_
     assert result["enabled"] is False
 
 
+def test_generated_service_can_publish_prediction_bundles_without_writing_evidence_or_database(
+    tmp_path, monkeypatch
+):
+    values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
+
+    generate_package(**values)
+
+    service = (values["output_dir"] / "greyhound-operator-ui-r3.service").read_text()
+    read_only = (
+        f"ReadOnlyPaths={values['source_root']} {values['evidence_root']} "
+        f"{values['producer_root']} {values['canonical_db']}"
+    )
+    bundle_root = values["producer_root"] / "artifacts/on_demand_prediction_runs"
+    assert read_only in service
+    assert f"ReadWritePaths={values['operations_root']} {bundle_root}" in service
+
+
 @pytest.mark.parametrize("relative", AUTHORITY_RELATIVES)
 @pytest.mark.parametrize("component", [False, True], ids=["leaf", "component"])
 def test_generator_rejects_authority_replacement_during_retained_read_without_output(
