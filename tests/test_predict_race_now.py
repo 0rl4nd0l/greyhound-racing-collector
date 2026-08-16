@@ -357,6 +357,7 @@ def args(tmp_path: Path, **overrides: Any) -> argparse.Namespace:
         "current_time": NOW.isoformat(),
         "fetch_timeout_seconds": 1.0,
         "capture_evidence_root": [tmp_path / "evidence"],
+        "current_index_path": tmp_path / "evidence" / "runtime" / "current.json",
         "collector_request_root": tmp_path / "collector-requests",
     }
     values.update(overrides)
@@ -1125,7 +1126,13 @@ def test_unexpected_dependency_error_still_prints_one_canonical_blocker(
     assert stdout == canonical_bytes(result)
     assert result["status"] == "PREDICTION_INTERNAL_ERROR"
     assert result["blockers"] == [
-        {"code": "PREDICTION_INTERNAL_ERROR", "error": "OSError"}
+        {
+            "code": "PREDICTION_INTERNAL_ERROR",
+            "errno": None,
+            "error": "OSError",
+            "operation": "read_collector_index",
+            "path_role": "collector_current_index",
+        }
     ]
 
 
@@ -1221,21 +1228,25 @@ def test_parser_rejects_caller_controlled_current_race_index():
     assert captured.value.code == 2
 
 
-def test_prediction_discovery_uses_only_fixed_current_index_locator(tmp_path: Path):
+def test_prediction_discovery_uses_only_explicit_current_index_locator(tmp_path: Path):
     observed: list[Path] = []
     deps = dependencies()
+    current_index = tmp_path / "collector" / "runtime" / "current-index.json"
 
     def schedule(*values: Any) -> list[dict[str, Any]]:
         observed.append(values[2])
         return [race()]
 
     deps.schedule = schedule
-    run_prediction(args(tmp_path, capture_evidence_root=[tmp_path / "caller-root"]), deps)
-    assert observed == [
-        predict_now.DEFAULT_CAPTURE_EVIDENCE_ROOTS[0]
-        / "shadow_autopilot_daemon_runtime"
-        / "manual_prediction_current_race_index.json"
-    ]
+    run_prediction(
+        args(
+            tmp_path,
+            capture_evidence_root=[tmp_path / "caller-root"],
+            current_index_path=current_index,
+        ),
+        deps,
+    )
+    assert observed == [current_index]
 
 
 def test_request_race_failure_preserves_original_pre_bundle_blocker(

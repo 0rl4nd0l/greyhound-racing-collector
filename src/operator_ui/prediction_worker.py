@@ -98,6 +98,7 @@ def fixed_argv(job:Job,config:WorkerConfig)->tuple[str,...]:
     _validate_runtime(config)
     argv=[str(config.pinned_python),str(config.script),"--race-id",job.input.race_id,"--model",job.input.model_selector,"--job-id",job.job_id,"--config",str(choice.config_path),"--odds-source",job.input.odds_source,"--db",str(config.canonical_db),"--output-root",str(config.output_root)]
     for root in config.capture_evidence_roots: argv.extend(("--capture-evidence-root",str(root)))
+    argv.extend(("--current-index-path",str(config.current_index_path)))
     argv.extend(("--collector-request-root",str(config.collector_request_root),"--fetch-timeout-seconds",str(config.fetch_timeout_seconds)))
     return tuple(argv)
 

@@ -56,6 +56,7 @@ class Process:
 def test_exact_argv_and_forbidden_surface(tmp_path):
     cfg,_,job=setup(tmp_path); argv=fixed_argv(job,cfg)
     assert argv[0:6]==(str(cfg.pinned_python),str(cfg.script),"--race-id",RACE_ID,"--model","latest-research")
+    assert argv[argv.index("--current-index-path")+1] == str(cfg.current_index_path)
     assert {"--race","--race-url","--replay-bundle","--list-configs","--current-time","--lock-path"}.isdisjoint(argv)
 
 def test_launch_uses_only_retained_runtime_descriptors(tmp_path):

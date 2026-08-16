@@ -928,11 +928,11 @@ def _run_prediction(
         )
     )
     primary_evidence_root = evidence_roots[0]
-    current_index_path = (
-        DEFAULT_CAPTURE_EVIDENCE_ROOTS[0]
-        / "shadow_autopilot_daemon_runtime"
-        / "manual_prediction_current_race_index.json"
-    )
+    current_index_path = Path(args.current_index_path)
+    state["_diagnostic"] = {
+        "operation": "read_collector_index",
+        "path_role": "collector_current_index",
+    }
     discovery_started = dependencies.monotonic()
     try:
         races = dependencies.schedule(
@@ -982,6 +982,10 @@ def _run_prediction(
 
     # A v2 bundle is a promise that exact race and runner identity exists.
     # Do not expose bundle state until every schema-required identity is known.
+    state["_diagnostic"] = {
+        "operation": "create_bundle_directory",
+        "path_role": "prediction_bundle_root",
+    }
     bundle = create_bundle(Path(args.output_root), current_time)
     state.update(
         bundle=bundle,
@@ -1013,6 +1017,10 @@ def _run_prediction(
         "runners": state["runners"],
         "runner_set_sha256": state["runner_set_sha256"],
     }
+    state["_diagnostic"] = {
+        "operation": "write_bundle_member",
+        "path_role": "prediction_bundle",
+    }
     _write_canonical(bundle / "request.json", request)
     write_exact_bytes(bundle / "config.json", config_raw)
     _copy_exact(model.schema_path, bundle / "model" / "config.schema.json")
@@ -1020,6 +1028,10 @@ def _run_prediction(
         _copy_exact(model.model_path, bundle / "model" / "model.json")
         _copy_exact(model.manifest_path, bundle / "model" / "manifest.json")
 
+    state["_diagnostic"] = {
+        "operation": "read_collector_receipt",
+        "path_role": "collector_request_root",
+    }
     protocol=ManualPredictionCollectorProtocol(
             Path(getattr(args,"collector_request_root",DEFAULT_COLLECTOR_REQUEST_ROOT))
         )
@@ -1089,6 +1101,10 @@ def _run_prediction(
     sealed_db = bundle / "features" / "sealed_history.db"
     history_path = bundle / "features" / "history_seal.json"
     if not sealed_db.exists():
+        state["_diagnostic"] = {
+            "operation": "create_sealed_history_database",
+            "path_role": "prediction_bundle",
+        }
         history = seal_history_database(
             source=Path(args.db),
             target=sealed_db,
@@ -1260,8 +1276,13 @@ def run_prediction(
                 exc.details["bundle_persistence_error"] = type(persist_exc).__name__
         raise
     except Exception as exc:
+        diagnostic = state.get("_diagnostic", {})
         blocked = PredictionBlocked(
-            "PREDICTION_INTERNAL_ERROR", error=type(exc).__name__
+            "PREDICTION_INTERNAL_ERROR",
+            error=type(exc).__name__,
+            errno=exc.errno if isinstance(exc, OSError) else None,
+            operation=diagnostic.get("operation", "prediction_internal"),
+            path_role=diagnostic.get("path_role", "none"),
         )
         bundle = state.get("bundle")
         if bundle is not None and not state.get("terminal_sealed"):
@@ -1428,6 +1449,15 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         type=Path,
         default=None,
+    )
+    parser.add_argument(
+        "--current-index-path",
+        type=Path,
+        default=(
+            DEFAULT_EVIDENCE_ROOT
+            / "shadow_autopilot_daemon_runtime"
+            / "manual_prediction_current_race_index.json"
+        ),
     )
     parser.add_argument("--lock-path", type=Path, default=DEFAULT_LOCK)
     parser.add_argument(
