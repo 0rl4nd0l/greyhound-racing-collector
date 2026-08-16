@@ -234,7 +234,7 @@ def test_default_off_package_binds_identity_hashes_private_service_and_external_
     assert result["enabled"] is False
 
 
-def test_generated_service_can_publish_prediction_bundles_without_writing_evidence_or_database(
+def test_generated_service_can_publish_prediction_bundles_and_collector_requests_without_writing_other_evidence_or_database(
     tmp_path, monkeypatch
 ):
     values = deployment_inputs(tmp_path)
@@ -248,8 +248,14 @@ def test_generated_service_can_publish_prediction_bundles_without_writing_eviden
         f"{values['producer_root']} {values['canonical_db']}"
     )
     bundle_root = values["producer_root"] / "artifacts/on_demand_prediction_runs"
+    collector_request_root = (
+        values["evidence_root"] / "manual_prediction_collector_requests_v1"
+    )
     assert read_only in service
-    assert f"ReadWritePaths={values['operations_root']} {bundle_root}" in service
+    assert (
+        f"ReadWritePaths={values['operations_root']} {bundle_root} "
+        f"{collector_request_root}"
+    ) in service
 
 
 @pytest.mark.parametrize("relative", AUTHORITY_RELATIVES)

@@ -594,7 +594,7 @@ def generate_package(*, source_root: Path, pinned_python: Path, evidence_root: P
         f"ExecStart={python} -m src.operator_ui.deployment serve --source-root {source} --host {address} --port {port}",
         "Restart=no", "UMask=0077", "NoNewPrivileges=true", "PrivateTmp=true", "ProtectSystem=strict",
         f"ReadOnlyPaths={source} {evidence} {producer} {database}",
-        f"ReadWritePaths={operations} {bundles}", "",
+        f"ReadWritePaths={operations} {bundles} {protocol}", "",
         "[Install]", "WantedBy=default.target", ""))
     rollback = f"""# Operator UI R3 rollback
 
