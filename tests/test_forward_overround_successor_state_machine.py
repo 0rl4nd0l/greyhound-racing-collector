@@ -356,6 +356,17 @@ def test_candidate_rejection_is_nonmember_and_does_not_poison_path() -> None:
     assert state["state"] == "READY_TO_FINALIZE"
 
 
+def test_out_of_order_sealed_membership_is_fatal() -> None:
+    protocol = protocol_with_target(2)
+    state = replay(protocol, [authorize(protocol), prediction(1)])
+
+    state = apply_event(state, prediction(0), protocol)
+
+    assert state["state"] == "FINALIZED_ABORTED_NO_METRICS"
+    assert state["fatal_reason"] == "membership_order_violation:member-0"
+    assert state["metrics_receipt_sha256"] is None
+
+
 def test_result_identity_conflict_is_fatal_and_never_scores() -> None:
     protocol = protocol_with_target(1)
     state = replay(protocol, [authorize(protocol), prediction(0)])
