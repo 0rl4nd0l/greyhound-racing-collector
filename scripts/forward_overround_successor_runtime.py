@@ -27,6 +27,7 @@ try:
         load_frozen_assets,
         runner_set_sha256,
         score_race,
+        validate_finish_positions,
     )
     from scripts.forward_overround_successor_state_machine import (
         ProtocolViolation,
@@ -45,6 +46,7 @@ except ModuleNotFoundError:  # Direct ``python scripts/...`` execution.
         load_frozen_assets,
         runner_set_sha256,
         score_race,
+        validate_finish_positions,
     )
     from forward_overround_successor_state_machine import (  # type: ignore[no-redef]
         ProtocolViolation,
@@ -213,6 +215,15 @@ class CohortStore:
         return state, rows
 
     def verify_receipts(self, state: Mapping[str, Any]) -> None:
+        activation_path = self.root / "ACTIVATION.json"
+        expected_activation_sha256 = state.get("activation_receipt_sha256")
+        if state.get("activation_at") is not None:
+            if (
+                not activation_path.is_file()
+                or not isinstance(expected_activation_sha256, str)
+                or sha256_file(activation_path) != expected_activation_sha256
+            ):
+                raise RuntimeEvidenceError("activation_receipt_hash_drift")
         for member_id, item in state["predictions"].items():
             path = self.root / "predictions" / f"{member_id}.json"
             if not path.is_file() or sha256_file(path) != item["prediction_receipt_sha256"]:
@@ -698,6 +709,7 @@ def _result_receipt(result: Mapping[str, Any], prediction: Mapping[str, Any]) ->
     runners = result.get("runners")
     if not isinstance(runners, list) or runner_set_sha256(runners) != prediction["runner_set_sha256"]:
         raise RuntimeEvidenceError("result_runner_set_conflict")
+    validate_finish_positions(runners)
     winners = [runner for runner in runners if runner.get("finish_position") == 1]
     if len(winners) != 1 or result.get("winner_box") != winners[0].get("box_number"):
         raise RuntimeEvidenceError("result_winner_conflict")
@@ -770,28 +782,75 @@ def _finalize_if_ready(
     protocol_path: Path,
     asset_dir: Path,
 ) -> dict[str, Any]:
-    if state["state"] != "READY_TO_FINALIZE":
+    if state["state"] not in {"READY_TO_FINALIZE", "FINALIZATION_LOCKED", "FINALIZED_SCORED"}:
         return state
-    state = store.append(
-        state,
-        rows,
-        {"event_id": "fixed-n-finalize-requested", "type": "FINALIZE_REQUESTED"},
-    )
-    try:
-        report = finalize(state, store.root, protocol_path, asset_dir)
-    except FinalizationError as exc:
-        return _abort(store, state, rows, f"finalizer_evidence_failure:{exc}")
-    metrics_sha = _write_once(store.root / "METRICS.json", report)
-    state = store.append(
-        state,
-        rows,
-        {
-            "event_id": f"paired-score-{metrics_sha}",
-            "type": "PAIRED_SCORE_COMMITTED",
-            "member_manifest_sha256": state["finalization_member_manifest_sha256"],
-            "metrics_receipt_sha256": metrics_sha,
-        },
-    )
+    final_paths = [
+        store.root / "METRICS.json",
+        store.root / "FINAL_REPORT.json",
+        store.root / "CONSUMED.json",
+    ]
+    if state["state"] == "READY_TO_FINALIZE":
+        if any(path.exists() for path in final_paths):
+            return _abort(store, state, rows, "finalization_artifact_preexists_request")
+        state = store.append(
+            state,
+            rows,
+            {"event_id": "fixed-n-finalize-requested", "type": "FINALIZE_REQUESTED"},
+        )
+
+    metrics_path = store.root / "METRICS.json"
+    if metrics_path.is_file():
+        try:
+            report = _load_json(metrics_path)
+        except RuntimeEvidenceError as exc:
+            if state["state"] == "FINALIZATION_LOCKED":
+                return _abort(store, state, rows, f"finalizer_evidence_failure:{exc}")
+            raise
+        metrics_sha = sha256_file(metrics_path)
+        confirmation = store.protocol["evaluation"]["confirmation_rule"]
+        valid_verdicts = {
+            confirmation["valid_evidence_gate_pass_verdict"],
+            confirmation["valid_evidence_gate_failure_verdict"],
+        }
+        if (
+            report.get("schema_version") != "forward_overround_successor_final_report_v1"
+            or report.get("verdict") not in valid_verdicts
+            or report.get("protocol_sha256") != EXPECTED_PROTOCOL_SHA256
+            or report.get("member_manifest_sha256")
+            != state["finalization_member_manifest_sha256"]
+            or report.get("race_count") != store.protocol["cohort"]["target_races"]
+            or report.get("identical_races_compared") is not True
+            or report.get("score_invocation_count") != 1
+            or not isinstance(report.get("metrics"), Mapping)
+            or report.get("profitability")
+            != {"roi_computed": False, "betting_analysis_performed": False}
+        ):
+            if state["state"] == "FINALIZATION_LOCKED":
+                return _abort(store, state, rows, "finalizer_evidence_failure:metrics_receipt_invalid")
+            raise RuntimeEvidenceError("metrics_receipt_invalid_after_score_commit")
+    elif state["state"] == "FINALIZATION_LOCKED":
+        try:
+            report = finalize(state, store.root, protocol_path, asset_dir)
+        except FinalizationError as exc:
+            return _abort(store, state, rows, f"finalizer_evidence_failure:{exc}")
+        metrics_sha = _write_once(metrics_path, report)
+    else:
+        raise RuntimeEvidenceError("metrics_receipt_missing_after_score_commit")
+
+    if state["state"] == "FINALIZATION_LOCKED":
+        state = store.append(
+            state,
+            rows,
+            {
+                "event_id": f"paired-score-{metrics_sha}",
+                "type": "PAIRED_SCORE_COMMITTED",
+                "member_manifest_sha256": state["finalization_member_manifest_sha256"],
+                "metrics_receipt_sha256": metrics_sha,
+            },
+        )
+    elif state.get("metrics_receipt_sha256") != metrics_sha:
+        raise RuntimeEvidenceError("metrics_receipt_hash_drift_after_score_commit")
+
     report_sha = _write_once(store.root / "FINAL_REPORT.json", report)
     _write_once(
         store.root / "CONSUMED.json",
@@ -847,6 +906,8 @@ def run_once(
         try:
             store.verify_receipts(state)
         except RuntimeEvidenceError as exc:
+            if state["state"] in TERMINAL_STATES:
+                raise
             try:
                 state = _abort(store, state, rows, f"sealed_receipt_validation_failed:{exc}")
             except (RuntimeEvidenceError, OSError) as append_exc:
@@ -879,7 +940,7 @@ def run_once(
             state = _seal_candidates(store, state, rows, model, preprocessing, observed_at)
         if state["state"] not in TERMINAL_STATES:
             state = _seal_results(store, state, rows)
-        if state["state"] == "READY_TO_FINALIZE":
+        if state["state"] in {"READY_TO_FINALIZE", "FINALIZATION_LOCKED", "FINALIZED_SCORED"}:
             state = _finalize_if_ready(store, state, rows, protocol_path, asset_dir)
         status = public_snapshot(state)
         status["target_races"] = protocol["cohort"]["target_races"]

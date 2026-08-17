@@ -96,6 +96,7 @@ def initial_snapshot(protocol: Mapping[str, Any]) -> dict[str, Any]:
         "protocol_sha256": protocol["_document_sha256"],
         "state": "PREPARED_NOT_AUTHORIZED",
         "activation_at": None,
+        "activation_receipt_sha256": None,
         "active_admission_id": None,
         "active_admission_sha256": None,
         "admissions": {},
@@ -219,8 +220,12 @@ def _authorize(
         raise ProtocolViolation("initial_admission_has_predecessor")
     if _time(payload["admitted_at"], "admitted_at") != activation:
         raise ProtocolViolation("initial_admission_activation_mismatch")
+    activation_receipt_sha256 = _hash(
+        event.get("activation_receipt_sha256"), "activation_receipt_sha256"
+    )
     _install_admission(state, event, protocol)
     state["activation_at"] = activation.isoformat()
+    state["activation_receipt_sha256"] = activation_receipt_sha256
 
 
 def _admission_failed(state: dict[str, Any], event: Mapping[str, Any]) -> None:

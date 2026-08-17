@@ -115,6 +115,14 @@ def runner_set_sha256(runners: Sequence[Mapping[str, Any]]) -> str:
     return sha256_bytes(canonical_bytes(runner_set_payload(runners)))
 
 
+def validate_finish_positions(runners: Sequence[Mapping[str, Any]]) -> None:
+    positions = [runner.get("finish_position") for runner in runners]
+    if any(not isinstance(position, int) or isinstance(position, bool) for position in positions):
+        raise FinalizationError("result_finish_positions_invalid")
+    if sorted(positions) != list(range(1, len(runners) + 1)):
+        raise FinalizationError("result_finish_positions_invalid")
+
+
 def score_race(
     runners: Sequence[Mapping[str, Any]],
     model: Mapping[str, Any],
@@ -379,6 +387,10 @@ def finalize(
             raise FinalizationError(f"sealed_prediction_runner_set_drift:{member_id}")
         if runner_set_sha256(result["runners"]) != prediction_event["runner_set_sha256"]:
             raise FinalizationError(f"sealed_result_runner_set_drift:{member_id}")
+        try:
+            validate_finish_positions(result["runners"])
+        except FinalizationError as exc:
+            raise FinalizationError(f"sealed_result_finish_positions_invalid:{member_id}") from exc
         scored = score_race(prediction["runners"], model, preprocessing)
         result_by_box = {row["box_number"]: row for row in result["runners"]}
         rows: list[dict[str, Any]] = []

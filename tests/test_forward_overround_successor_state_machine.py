@@ -60,6 +60,7 @@ def authorize(protocol: dict, admitted_at: str = "2026-09-01T00:00:00+10:00") ->
         "type": "AUTHORIZE",
         "authority": "separate_owner_authorization",
         "activation_at": admitted_at,
+        "activation_receipt_sha256": "9" * 64,
         "admission": admission(protocol, "admission-1", admitted_at),
     }
 

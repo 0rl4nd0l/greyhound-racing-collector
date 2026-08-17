@@ -1,6 +1,6 @@
 # Forward overround successor runtime
 
-Status: `READY_FOR_ACTIVATION_AUTHORIZATION`. The implementation is prepared,
+Status: `READY_FOR_ACTIVATION_REVIEW`. The implementation is prepared,
 but collection is not active. The cohort directory, `ACTIVATION.json`, and
 installed units are deliberately absent; the timer remains disabled and
 inactive. This package does not authorize their creation or activation.
@@ -44,6 +44,11 @@ Installation, daemon reload, timer enablement, or service start requires a new
 owner authorization and deployment task. A repository commit alone does not
 change the installed runtime.
 
+The first authorization event binds the exact activation-receipt SHA-256. Every
+later runtime invocation and status replay revalidates those bytes before
+accepting sealed evidence. Missing or changed activation evidence fails closed
+with no metrics.
+
 ## Evidence intake
 
 After separate activation, the service reads immutable JSON packets deposited
@@ -76,6 +81,11 @@ An official-result packet uses schema
 - an aware post-jump capture timestamp and source receipt SHA-256; and
 - the exact sealed runner set, one finish position per runner, and exactly one
   winner whose native box agrees with `winner_box`.
+
+Finish positions must be integers and form the complete unique sequence from
+one through the accepted runner count. Missing, duplicate, boolean, string,
+zero, negative, or out-of-range positions fail closed before result admission;
+the finalizer independently rechecks the sealed order before scoring.
 
 Result evidence may close only an existing immutable member. Conflicting race,
 runner, winner, timestamp, or receipt evidence terminates the cohort with no
@@ -124,6 +134,13 @@ The metrics receipt must bind the frozen member manifest. `FINAL_REPORT.json`
 and `CONSUMED.json` are write once. ROI, returns, staking, EV, and betting are
 not computed.
 
+Finalization resumes from `READY_TO_FINALIZE`, `FINALIZATION_LOCKED`, or
+`FINALIZED_SCORED`. A restart reuses a valid write-once metrics receipt instead
+of running the scorer again, commits each journal event once, and idempotently
+seals the deterministic final report and consumed receipt. Fault injection
+after every journal, metrics, report, consumed, and status write boundary must
+still converge to one score commit and unchanged terminal bytes.
+
 ## Prepared unit
 
 The repository contains `forward-overround-successor.service` and
@@ -131,4 +148,3 @@ The repository contains `forward-overround-successor.service` and
 network-denied and write-restricted to the future cohort root. The timer is
 non-persistent so it cannot backfill missed collection windows. Neither file is
 installed by this change, and neither unit is enabled or active.
-

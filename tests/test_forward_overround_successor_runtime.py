@@ -7,7 +7,9 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
+import scripts.forward_overround_successor_runtime as successor_runtime
 from scripts.finalize_forward_overround_successor import (
     ASSET_HASHES,
     EXPECTED_PROTOCOL_SHA256,
@@ -322,6 +324,171 @@ def test_tampered_sealed_receipt_appends_terminal_no_metrics(tmp_path: Path) -> 
     assert not (root / "METRICS.json").exists()
 
 
+def test_activation_receipt_byte_drift_after_initialization_fails_closed(tmp_path: Path) -> None:
+    root = tmp_path / "cohort"
+    _prepare_root(root)
+    assert _run(root)["state"] == "COLLECTING"
+
+    activation_path = root / "ACTIVATION.json"
+    activation = json.loads(activation_path.read_bytes())
+    activation["unexpected_byte_drift"] = True
+    _write_json(activation_path, activation)
+
+    terminal = _run(root)
+    report = json.loads((root / "FINAL_REPORT.json").read_bytes())
+
+    assert terminal["state"] == "FINALIZED_ABORTED_NO_METRICS"
+    assert terminal["score_invocation_count"] == 0
+    assert terminal["metrics_receipt_sha256"] is None
+    assert "activation_receipt_hash_drift" in report["blocking_reason"]
+
+
+def test_invalid_complete_finish_order_fails_closed(tmp_path: Path) -> None:
+    invalid_orders = {
+        "missing": [1, 2, None],
+        "duplicate": [1, 2, 2],
+        "non-integer": [1, 2, "3"],
+        "boolean": [1, 2, False],
+        "out-of-range": [1, 2, 0],
+    }
+    for case, finish_positions in invalid_orders.items():
+        root = tmp_path / case
+        _prepare_root(root)
+        candidate = _candidate(0)
+        candidate["active_runner_count"] = 3
+        candidate["runners"].append(
+            {
+                "box_number": 3,
+                "dog_name": "Synthetic Gamma 0000",
+                "decimal_win_odds": 5.5,
+                "source_row_sha256": hashlib.sha256(b"odds-0-3").hexdigest(),
+            }
+        )
+        _write_json(root / "candidate_inbox" / "candidate.json", candidate)
+        assert _run(root)["sealed_prediction_races"] == 1
+
+        result = _result(0, candidate)
+        for runner, finish_position in zip(result["runners"], finish_positions, strict=True):
+            runner["finish_position"] = finish_position
+        _write_json(root / "result_inbox" / "result.json", result)
+
+        terminal = _run(root)
+        report = json.loads((root / "FINAL_REPORT.json").read_bytes())
+
+        assert terminal["state"] == "FINALIZED_ABORTED_NO_METRICS"
+        assert terminal["approved_result_races"] == 0
+        assert terminal["score_invocation_count"] == 0
+        assert terminal["metrics_receipt_sha256"] is None
+        assert "result_finish_positions_invalid" in report["blocking_reason"]
+
+
+def test_restart_at_every_finalization_write_boundary_is_idempotent(tmp_path: Path) -> None:
+    boundaries = [
+        "finalize-requested",
+        "metrics",
+        "score-committed",
+        "final-report",
+        "consumed",
+        "status",
+    ]
+    for boundary in boundaries:
+        root = tmp_path / boundary
+        _prepare_root(root)
+        candidates = [_candidate(index) for index in range(1000)]
+        for index, candidate in enumerate(candidates):
+            _write_json(root / "candidate_inbox" / f"{index:04d}.json", candidate)
+            _write_json(root / "result_inbox" / f"{index:04d}.json", _result(index, candidate))
+
+        finalize_calls = 0
+        actual_finalize = successor_runtime.finalize
+        actual_append = CohortStore.append
+        actual_write_once = successor_runtime._write_once
+        actual_write_status = successor_runtime._write_status
+        injected = False
+
+        def counted_finalize(*args: object, **kwargs: object) -> dict:
+            nonlocal finalize_calls
+            finalize_calls += 1
+            return actual_finalize(*args, **kwargs)
+
+        if boundary in {"finalize-requested", "score-committed"}:
+            target_event = {
+                "finalize-requested": "FINALIZE_REQUESTED",
+                "score-committed": "PAIRED_SCORE_COMMITTED",
+            }[boundary]
+
+            def faulting_append(
+                self: CohortStore,
+                state: dict,
+                rows: list[dict],
+                event: dict,
+            ) -> dict:
+                nonlocal injected
+                updated = actual_append(self, state, rows, event)
+                if event.get("type") == target_event and not injected:
+                    injected = True
+                    raise SystemExit(f"fault_after_{boundary}")
+                return updated
+
+            boundary_patch = patch.object(CohortStore, "append", faulting_append)
+        elif boundary in {"metrics", "final-report", "consumed"}:
+            target_name = {
+                "metrics": "METRICS.json",
+                "final-report": "FINAL_REPORT.json",
+                "consumed": "CONSUMED.json",
+            }[boundary]
+
+            def faulting_write_once(path: Path, payload: dict) -> str:
+                nonlocal injected
+                digest = actual_write_once(path, payload)
+                if path.name == target_name and not injected:
+                    injected = True
+                    raise SystemExit(f"fault_after_{boundary}")
+                return digest
+
+            boundary_patch = patch.object(successor_runtime, "_write_once", faulting_write_once)
+        else:
+
+            def faulting_write_status(path: Path, payload: dict) -> None:
+                nonlocal injected
+                actual_write_status(path, payload)
+                if not injected:
+                    injected = True
+                    raise SystemExit("fault_after_status")
+
+            boundary_patch = patch.object(successor_runtime, "_write_status", faulting_write_status)
+
+        with patch.object(successor_runtime, "finalize", counted_finalize):
+            with boundary_patch:
+                with unittest.TestCase().assertRaisesRegex(
+                    SystemExit, f"fault_after_{boundary}"
+                ):
+                    _run(root)
+            assert injected is True
+
+            restarted = _run(root)
+            events = [
+                json.loads(line)["event"]
+                for line in (root / "EVENTS.jsonl").read_text().splitlines()
+            ]
+            report_sha = sha256_file(root / "FINAL_REPORT.json")
+            consumed_sha = sha256_file(root / "CONSUMED.json")
+
+            assert restarted["state"] == "FINALIZED_SCORED"
+            assert restarted["score_invocation_count"] == 1
+            assert finalize_calls == 1
+            assert (root / "FINAL_REPORT.json").is_file()
+            assert (root / "CONSUMED.json").is_file()
+            assert sum(event["type"] == "FINALIZE_REQUESTED" for event in events) == 1
+            assert sum(event["type"] == "PAIRED_SCORE_COMMITTED" for event in events) == 1
+
+            replayed = _run(root)
+            assert replayed == restarted
+            assert finalize_calls == 1
+            assert sha256_file(root / "FINAL_REPORT.json") == report_sha
+            assert sha256_file(root / "CONSUMED.json") == consumed_sha
+
+
 def test_synthetic_empty_to_exact_1000_one_shot_paired_finalization(tmp_path: Path) -> None:
     root = tmp_path / "cohort"
     _prepare_root(root)
@@ -397,6 +564,15 @@ class ForwardOverroundSuccessorRuntimeTests(unittest.TestCase):
 
     def test_tampered_sealed_receipt(self) -> None:
         self._run_with_temp(test_tampered_sealed_receipt_appends_terminal_no_metrics)
+
+    def test_activation_receipt_drift(self) -> None:
+        self._run_with_temp(test_activation_receipt_byte_drift_after_initialization_fails_closed)
+
+    def test_invalid_finish_orders(self) -> None:
+        self._run_with_temp(test_invalid_complete_finish_order_fails_closed)
+
+    def test_finalization_restart_boundaries(self) -> None:
+        self._run_with_temp(test_restart_at_every_finalization_write_boundary_is_idempotent)
 
     def test_synthetic_exact_1000(self) -> None:
         self._run_with_temp(test_synthetic_empty_to_exact_1000_one_shot_paired_finalization)
