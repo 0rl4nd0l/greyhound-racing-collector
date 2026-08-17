@@ -1,0 +1,42 @@
+{
+  "asset_identity": {
+    "final_model.json": "c81b4b3047b7840ba31269504e0c5ceb6c54d742a82a4e01cca52b11fdaa471e",
+    "preprocessing.json": "ad85722337d80360e1745f75fe57ff6b3fbd1e80deac57af318c898372b01998",
+    "protocol.json": "2b20704e41574d5557eb1d6381bc314212b382a195ca5bffea95b832d4a5fb4a",
+    "scorer_contract.json": "c119feea4f67baad73dc9e23ff7f98d755a34054c32a0a98dea4f44cdafa2576"
+  },
+  "asset_root": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-overround-structure-20260816/reports/agent_jobs/OVERROUND_STRUCTURE_TRANSFORM_V1_20260816",
+  "git_identity": {
+    "merge_base": "2f82901d7df6927de56958307324840021a4db6a",
+    "reviewed_blocked_commit": "86d5eff3b765176c2c36fca96cfeceee6c1127b5",
+    "reviewed_blocked_tree": "00107a307a7759ac0cf070a323fa99d498cdc5de",
+    "semantic_freeze_commit": "56f8619cc29cf60a5e675603ddf47d4ceeaf3168",
+    "semantic_freeze_tree": "d35466a81091ac71188ea0285e14659be042ce28"
+  },
+  "invariants": {
+    "activation_before_local": "2026-09-01T00:00:00+10:00 forbidden",
+    "baseline_changed": false,
+    "hypothesis_changed": false,
+    "interim_aggregate_loss_peeking": false,
+    "model_changed": false,
+    "predictive_protocol_changed": false,
+    "target_races": 1000
+  },
+  "protocol_sha256": "4978163d1dd9c0e4ced5eb1d4cb9425d3994379d8c617fb3306a489b838073be",
+  "schema_version": "forward_overround_successor_runtime_manifest_v3",
+  "semantic_file_identity": {
+    "configs/prediction/forward_overround_successor_v1_protocol.json": "4978163d1dd9c0e4ced5eb1d4cb9425d3994379d8c617fb3306a489b838073be",
+    "docs/forward_overround_successor_protocol.md": "afd7c2ce31d46960f9c620f79928334aaf0ddd0d6d560f563e169088efe39a48",
+    "docs/forward_overround_successor_runtime.md": "59d9b9b4cae331431dc8963b53fbfafc5645df9e00b24266f3c8a44e4187bd2f",
+    "ops/systemd/forward-overround-successor.service": "4e7b2a60bca018392ecd11f808f726c5223b758be72bae73471aa909f663c819",
+    "ops/systemd/forward-overround-successor.timer": "8c2e5ab929548e0628f2efc6d8ff2194ac5c57b76b6cc87dcce1b7d7c3d2f0c2",
+    "scripts/finalize_forward_overround_successor.py": "2773b740c14b4c7b8bec36ca3c817d23596a1b83f4b968b648156111123b4011",
+    "scripts/forward_overround_successor_runtime.py": "b211602b4f1ccd23843f62912f65791088d1735fb31ee763501c86e876258c58",
+    "scripts/forward_overround_successor_state_machine.py": "f7b703820b080b5cf26a45e49d1f95c6d35bb0c37ec39a7c433a1f2e4d5c4ea6",
+    "tests/test_forward_overround_successor_runtime.py": "173f732c7097ff45394df363105f7c13903008a58eeb0300b5c25cfb18bcb165",
+    "tests/test_forward_overround_successor_state_machine.py": "06c189fff6404e02d2c6a34cf84f24df8327e58850deb2454cb58eae0be85e90"
+  },
+  "semantic_freeze_binding": "All listed semantic bytes are exactly those committed at git_identity.semantic_freeze_commit; later evidence-only publication must not modify them.",
+  "terminal_readiness": "READY_FOR_INDEPENDENT_REVIEW",
+  "validated_at": "2026-08-17T05:46:30Z"
+}

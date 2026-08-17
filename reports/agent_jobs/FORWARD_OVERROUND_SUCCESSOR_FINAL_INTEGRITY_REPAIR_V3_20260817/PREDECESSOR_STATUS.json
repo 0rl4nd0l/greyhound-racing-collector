@@ -1,0 +1,17 @@
+{
+  "current_authoritative_freeze": "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_FINAL_INTEGRITY_REPAIR_V3_20260817",
+  "predecessors": [
+    {
+      "historical_status": "SUPERSEDED_BY_BLOCKED_REVIEW_HEAD_86D5EFF3_AND_V3_REPAIR",
+      "path": "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817",
+      "rewritten": false
+    },
+    {
+      "historical_status": "SUPERSEDED_BY_LATER_INTEGRITY_REVIEWS",
+      "path": "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_RUNTIME_V1_20260817",
+      "rewritten": false
+    }
+  ],
+  "schema_version": "forward_overround_successor_predecessor_status_v1",
+  "statement": "Predecessor readiness claims remain immutable historical evidence and are not current authority."
+}

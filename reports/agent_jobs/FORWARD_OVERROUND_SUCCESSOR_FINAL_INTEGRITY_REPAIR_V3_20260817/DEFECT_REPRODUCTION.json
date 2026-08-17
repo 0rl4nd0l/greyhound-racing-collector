@@ -1,0 +1,67 @@
+{
+  "post_fix": {
+    "command": "exact runtime interpreter using focused probes, 27-test stdlib runtime suite, and 20-test no-install state-machine harness",
+    "results": [
+      {
+        "defect": "result_admitted_during_collecting",
+        "result": "PASS: result presence terminalized before any candidate seal; direct state-machine result event also terminalized"
+      },
+      {
+        "defect": "rejected_race_resurrection",
+        "result": "PASS: new filename/content for tombstoned race produced rejected_race_resurrection with zero predictions"
+      },
+      {
+        "defect": "state_machine_not_identity_bound",
+        "result": "PASS: activation/admission includes state_machine_code_sha256 and byte drift terminalized"
+      },
+      {
+        "defect": "metrics_survive_precommit_crash_then_fatal_conflict",
+        "result": "PASS: fatal restart removed METRICS.json, sealed metrics:null, retained one invocation and zero score commits"
+      }
+    ],
+    "status": "PASS"
+  },
+  "pre_fix": {
+    "head": "86d5eff3b765176c2c36fca96cfeceee6c1127b5",
+    "tree": "00107a307a7759ac0cf070a323fa99d498cdc5de",
+    "results": [
+      {
+        "defect": "result_admitted_during_collecting",
+        "observed": {
+          "approved_results": 1,
+          "sealed_predictions": 1,
+          "state": "COLLECTING"
+        },
+        "reproduced": true
+      },
+      {
+        "defect": "rejected_race_resurrection",
+        "observed": {
+          "fatal_reason": null,
+          "sealed_predictions": 1
+        },
+        "reproduced": true
+      },
+      {
+        "defect": "state_machine_not_identity_bound",
+        "observed_identity_keys": [
+          "capture_code_sha256",
+          "capture_unit_sha256",
+          "finalizer_code_sha256"
+        ],
+        "reproduced": true
+      },
+      {
+        "defect": "metrics_survive_precommit_crash_then_fatal_conflict",
+        "observed": {
+          "metrics_bytes": 3287,
+          "metrics_exists": true,
+          "report_metrics": null,
+          "state": "FINALIZED_ABORTED_NO_METRICS"
+        },
+        "reproduced": true
+      }
+    ]
+  },
+  "schema_version": "forward_overround_successor_defect_reproduction_v2"
+}
