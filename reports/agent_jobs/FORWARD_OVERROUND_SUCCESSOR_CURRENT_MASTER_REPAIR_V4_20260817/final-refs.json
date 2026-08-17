@@ -1,0 +1,11 @@
+{
+  "base_commit": "6c57a9ef0c02cd03053911d1529de60ef3688fff",
+  "branch": "codex-x/forward-overround-successor-runtime-20260817",
+  "evidence_commit_rule": "The final PR head is the descendant evidence-only commit and is recorded in the PR body after push; semantic bytes remain bound to semantic_freeze_commit and semantic_freeze_tree.",
+  "pr": 136,
+  "reviewed_blocked_commit": "4481d2cb5c07da0b6091c94085b78c1599acfef4",
+  "reviewed_blocked_tree": "5864593050935e6f549d578695ea290564f5c802",
+  "schema_version": "forward_overround_successor_final_refs_v4",
+  "semantic_freeze_commit": "4df808ca983714d45b11892608b387cd905ba0c4",
+  "semantic_freeze_tree": "ea8cb7faf68d1166fc2b2ac14cf84c61371a6804"
+}

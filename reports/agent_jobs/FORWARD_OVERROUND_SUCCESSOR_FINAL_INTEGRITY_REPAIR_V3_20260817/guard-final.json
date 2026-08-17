@@ -1,0 +1,25 @@
+{
+  "checked_at": "2026-08-17T05:46:30Z",
+  "checks": {
+    "code_review": "PASS_NO_OPEN_FINDINGS",
+    "contract_validate": "PASS",
+    "defect_reproduction": "PASS_FOUR_RED_THEN_GREEN",
+    "frozen_assets": "PASS_EXACT_HASHES",
+    "inactive_boundary": "PASS_ABSENT_NOT_FOUND_INACTIVE",
+    "json_and_checksum": "PASS",
+    "predecessor_status": "PASS_APPEND_ONLY_SUPERSEDED_MARKER",
+    "protocol_unchanged": "PASS_4978163d1dd9c0e4ced5eb1d4cb9425d3994379d8c617fb3306a489b838073be",
+    "py_compile": "PASS_EXACT_RUNTIME_INTERPRETER",
+    "runtime_tests": "PASS_27_IN_207_836_SECONDS",
+    "state_machine_tests": "PASS_20",
+    "synthetic_exact_n": "PASS_TWO_PHASE_1000_1000_ONE_SCORE",
+    "systemd_static": "PASS_WITH_UNRELATED_HOST_WARNINGS",
+    "v2_historical_state": "PASS_9_PREDICTIONS_6_RESULTS_NO_METRICS"
+  },
+  "release_candidate": true,
+  "schema_version": "tenn_git_guard_final_receipt_v3",
+  "scope_fingerprint": "8344d29555216a8542b2e6a7dac3edebcc586b38da4285990b760ca45203ee6a",
+  "semantic_freeze_commit": "56f8619cc29cf60a5e675603ddf47d4ceeaf3168",
+  "semantic_freeze_tree": "d35466a81091ac71188ea0285e14659be042ce28",
+  "task_card": "docs/agent_tasks/forward_overround_successor_final_integrity_repair_v3_20260817.md"
+}

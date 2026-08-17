@@ -1,0 +1,37 @@
+{
+  "asset_identity": {
+    "SHA256SUMS": "311bbc3bf98a7a660350a6d983fb81d162dd2cf359b49041c84302e8c65517ad",
+    "final_model.json": "c81b4b3047b7840ba31269504e0c5ceb6c54d742a82a4e01cca52b11fdaa471e",
+    "preprocessing.json": "ad85722337d80360e1745f75fe57ff6b3fbd1e80deac57af318c898372b01998",
+    "protocol.json": "2b20704e41574d5557eb1d6381bc314212b382a195ca5bffea95b832d4a5fb4a",
+    "scorer_contract.json": "c119feea4f67baad73dc9e23ff7f98d755a34054c32a0a98dea4f44cdafa2576"
+  },
+  "asset_root": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-overround-structure-20260816/reports/agent_jobs/OVERROUND_STRUCTURE_TRANSFORM_V1_20260816",
+  "base_commit": "24521a25687887d77bacd6202d471e864e8f986a",
+  "base_tree": "92f7d1d9ffc2adf5969e2203da7cc6e7228ea938",
+  "branch": "codex-x/forward-overround-successor-runtime-20260817",
+  "frozen_runtime_identity": {
+    "capture_code_sha256": "e2d3fe1843994c1668369673352d6a0c70e3ff283c363321d42d72d583198dc1",
+    "finalizer_code_sha256": "6d84dfe9d8b0ab03ef8e208ad1c3a2cd4e78b925c5adc506b7a5bf86c5711ba7",
+    "service_unit_sha256": "4e7b2a60bca018392ecd11f808f726c5223b758be72bae73471aa909f663c819",
+    "state_machine_sha256": "f66f72f59ebd22aad89aac68fa1c2f5111be6c5b1673da8d239c95ba527532cc",
+    "timer_unit_sha256": "8c2e5ab929548e0628f2efc6d8ff2194ac5c57b76b6cc87dcce1b7d7c3d2f0c2"
+  },
+  "head_commit": "24521a25687887d77bacd6202d471e864e8f986a",
+  "head_tree": "92f7d1d9ffc2adf5969e2203da7cc6e7228ea938",
+  "protocol_sha256": "4978163d1dd9c0e4ced5eb1d4cb9425d3994379d8c617fb3306a489b838073be",
+  "repository_state": "uncommitted_review_worktree_with_hash_frozen_manifest",
+  "schema_version": "forward_overround_successor_runtime_manifest_v1",
+  "terminal_readiness": "READY_FOR_ACTIVATION_AUTHORIZATION",
+  "validated_at": "2026-08-17T00:56:59Z",
+  "v2_terminal_identity": {
+    "approved_result_races": 6,
+    "blocked_sha256": "2a26391aeba078e543ce3275015925d4036502a3e22758bb34fa10244a92b1a5",
+    "consumed_sha256": "d15d6325880418779a61a72f53812bfaea2ba3702158056c13f58b6b9f948777",
+    "final_report_sha256": "9fba4ca6c463909f1839c056006c4acc88ed4b582b3d4cfaa9120065ce4774fd",
+    "metrics": null,
+    "sealed_prediction_races": 9,
+    "status": "BLOCKED_FORWARD_EVIDENCE"
+  }
+}
+

@@ -1,0 +1,47 @@
+{
+  "blocks": [
+    "Merge without a fresh independent exact-head review",
+    "Successor cohort creation, activation receipt creation, installation, enablement, start, deployment, or live collection without separate owner authority",
+    "Using synthetic output or known V2 outcomes as prospective evidence or to change the frozen model, hypothesis, baseline, N, activation boundary, or scorer"
+  ],
+  "claim_id": "FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817",
+  "dataset_version": "forward_overround_successor_integrity_repair_v2_20260817",
+  "decision": "PASS",
+  "decision_delta": {
+    "after": "The inactive PR 136 successor binds runtime observation evidence, rejects future/result-before-prediction contamination, makes all candidate rejection replay immutable and idempotent, seals every event-induced fatal terminal state, and has a fresh containing-commit semantic freeze.",
+    "before": "PR 136 head 2944d655 admitted post-jump predictions and future-staged results, replayed rejections as conflicts, skipped malformed candidates, could strand fatal terminal state without final/consumed receipts, and lacked a fresh semantic freeze."
+  },
+  "decision_id": "forward-overround-successor-integrity-repair-v2-20260817-pass",
+  "does_not_block": [
+    "Read-only independent review of the exact published PR head",
+    "Unrelated existing collector and report-only work outside the absent successor cohort"
+  ],
+  "evidence_hash": "sha256:4978163d1dd9c0e4ced5eb1d4cb9425d3994379d8c617fb3306a489b838073be",
+  "evidence_refs": [
+    "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/DEFECT_REPRODUCTION.json",
+    "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/RUNTIME_MANIFEST.json",
+    "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/DEPLOYMENT_READINESS.json",
+    "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/SYNTHETIC_E2E.json",
+    "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/VALIDATION.md"
+  ],
+  "hypothesis_id": "frozen_overround_allocation_generalizes_prospectively_v1",
+  "invalidation_conditions": [
+    "Any semantic file or frozen asset differs from RUNTIME_MANIFEST.json or SHA256SUMS.",
+    "A successor cohort, activation receipt, installed/enabled/active unit, live successor evidence, deployment, merge, or model/protocol mutation occurred during this repair.",
+    "Exact-head CI or independent review finds a remaining blocking or important semantic issue."
+  ],
+  "outcome_status": "ADVANCED",
+  "phase_after": "PR 136 is READY_FOR_INDEPENDENT_REVIEW and remains draft, inactive, undeployed, and unmerged.",
+  "phase_before": "PR 136 was BLOCKED_DO_NOT_MERGE by reproduced evidence-integrity defects.",
+  "program_track": "prospective_readiness",
+  "project_id": "greyhound_racing_collector",
+  "reopen_conditions": [
+    "A fresh independent reviewer reports a concrete evidence-integrity defect on the exact published head."
+  ],
+  "run_id": "l4nd0-System-Product-Name:3462845:FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817",
+  "scope_fingerprint": "ca13868709caed777aa2557d074cd517c3f44b95079fa4f882946c16775695ce",
+  "source_class": "frozen_protocol_integrity_repair_and_synthetic_revalidation",
+  "target_transition": "One clean descendant commit on the existing draft PR branch contains only the timing, rejection, terminalization, regression, documentation, and fresh freeze evidence required by this goal; all checks pass; and the unchanged inactive successor is READY_FOR_INDEPENDENT_REVIEW, not activated or merged.",
+  "task_id": "FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817",
+  "validated_at": "2026-08-17T04:29:52Z"
+}

@@ -1,0 +1,17 @@
+{
+  "checked_head": "56f8619cc29cf60a5e675603ddf47d4ceeaf3168",
+  "control_contract_status": "V2",
+  "decision_ledger_status": "PASS",
+  "duplicate_work_status": "DATA_MISSING_FALLBACK_CHECKED",
+  "guard_support_status": "PASS",
+  "registry_status": "PASS",
+  "report_write_permitted": true,
+  "schema_version": "tenn_git_guard_preflight_v2",
+  "semantic_control_status": "ALLOW_NEW_SCOPE",
+  "substantive_work_permitted": true,
+  "task_card_status": "PASS",
+  "warnings": [
+    "Comparison-base and task-ledger sources were unavailable; documented fallback discovery ran and found no duplicate scope.",
+    "Three unrelated stale active-job records were reported by the shared registry."
+  ]
+}

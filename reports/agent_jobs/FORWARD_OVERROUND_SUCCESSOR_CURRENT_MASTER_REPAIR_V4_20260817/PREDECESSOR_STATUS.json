@@ -1,0 +1,22 @@
+{
+  "current_authoritative_freeze": "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_CURRENT_MASTER_REPAIR_V4_20260817",
+  "predecessors": [
+    {
+      "historical_status": "SUPERSEDED_AFTER_CURRENT_MASTER_RECONCILIATION_AND_REVIEW_BLOCKERS",
+      "path": "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_FINAL_INTEGRITY_REPAIR_V3_20260817",
+      "rewritten": false
+    },
+    {
+      "historical_status": "SUPERSEDED_BY_LATER_INTEGRITY_REVIEWS",
+      "path": "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817",
+      "rewritten": false
+    },
+    {
+      "historical_status": "SUPERSEDED_BY_LATER_INTEGRITY_REVIEWS",
+      "path": "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_RUNTIME_V1_20260817",
+      "rewritten": false
+    }
+  ],
+  "schema_version": "forward_overround_successor_predecessor_status_v2",
+  "statement": "Predecessor evidence remains immutable historical material; its old-base readiness and checksums are not current authority."
+}

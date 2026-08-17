@@ -1,0 +1,22 @@
+{
+  "checked_at": "2026-08-17T04:29:52Z",
+  "checks": {
+    "code_review": "PASS_NO_OPEN_FINDINGS",
+    "contract_validate": "PASS",
+    "defect_reproduction": "PASS_RED_THEN_GREEN",
+    "frozen_assets": "PASS_EXACT_HASHES",
+    "inactive_boundary": "PASS_ABSENT_NOT_FOUND_INACTIVE",
+    "json_and_checksum": "PASS",
+    "protocol_unchanged": "PASS_4978163d1dd9c0e4ced5eb1d4cb9425d3994379d8c617fb3306a489b838073be",
+    "py_compile": "PASS_EXACT_RUNTIME_INTERPRETER",
+    "runtime_tests": "PASS_22_IN_137_830_SECONDS",
+    "state_machine_tests": "PASS_17",
+    "synthetic_exact_n": "PASS_TWO_PHASE_1000_1000_ONE_SCORE",
+    "systemd_static": "PASS_WITH_UNRELATED_HOST_WARNINGS"
+  },
+  "commit_binding": "git_commit_containing_this_artifact",
+  "release_candidate": true,
+  "schema_version": "tenn_git_guard_final_receipt_v2",
+  "scope_fingerprint": "ca13868709caed777aa2557d074cd517c3f44b95079fa4f882946c16775695ce",
+  "task_card": "docs/agent_tasks/forward_overround_successor_integrity_repair_v2_20260817.md"
+}

@@ -1,0 +1,130 @@
+---
+job_id: FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817
+title: Repair PR 136 prospective timing and rejection replay integrity
+lane: Evaluation
+supporting_lanes:
+  - Provenance
+  - Runtime Safety
+  - Testing
+  - Reporting
+owner: Codex
+approval_required: true
+approval_source: >-
+  The owner's active /goal on 2026-08-17 explicitly authorizes repair of the
+  independently reproduced PR 136 evidence-integrity blockers, test-first
+  validation, exact-head semantic re-freezing, and one normal update to the
+  existing draft PR branch. It forbids merge, deployment, activation, cohort
+  creation, live collection, V2 mutation, canonical database writes, model or
+  hypothesis changes, ROI or betting work, and unrelated refactoring.
+allow_unapproved_safe_extension: false
+timeout_seconds: 14400
+mutation_mode: safe_extension
+base: 2944d6557e69151e0ec9362a6cf7c61f17816c37
+production_data_access: false
+production_data_boundary: >-
+  Read only frozen protocol/model identities, inactive successor state, PR
+  metadata, review evidence, and installed unit state. All prediction, result,
+  rejection, crash, restart, and finalization writes use disposable temporary
+  directories. Do not create a live successor cohort, activation receipt,
+  installed unit, request, prediction, result, or database row.
+live_service_mutation_allowed: false
+github_mutation_allowed: true
+git_history_mutation_allowed: true
+closeout_scope: repo_and_publish
+output_dir: reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817
+control_contract_version: 2
+project_id: greyhound_racing_collector
+claim_id: FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817
+proof_question: >-
+  Can PR 136 bind runtime observation time so predictions are sealed pre-jump
+  and results are not admitted from the future, make every rejected or
+  malformed inbox item durable and replay-idempotent, and deterministically
+  seal every fatal terminal state without duplicate scoring, while every
+  frozen protocol/model identity and the inactive boundary remain unchanged?
+hypothesis_id: frozen_overround_allocation_generalizes_prospectively_v1
+program_track: prospective_readiness
+entry_state: >-
+  Draft PR 136 exact head 2944d6557e69151e0ec9362a6cf7c61f17816c37,
+  tree e3910ea9115991a275c7f836927252889eaba3d1, is inactive and preserves
+  protocol SHA-256 4978163d1dd9c0e4ced5eb1d4cb9425d3994379d8c617fb3306a489b838073be,
+  but independent review reproduced retrospective prediction/result admission,
+  rejection replay conflict, silently skipped malformed candidates, missing
+  terminal final/consumed receipts, and missing fresh exact-head semantic
+  freeze evidence.
+target_transition: >-
+  One clean descendant commit on the existing draft PR branch contains only
+  the timing, rejection, terminalization, regression, documentation, and fresh
+  freeze evidence required by this goal; all checks pass; and the unchanged
+  inactive successor is READY_FOR_INDEPENDENT_REVIEW, not activated or merged.
+exit_predicate: >-
+  Targeted pre-fix tests reproduce both temporal admissions, rejection replay,
+  malformed exclusion, and terminal receipt gaps; repaired tests prove runtime
+  observed_at is immutable evidence with captured_at <= observed_at < jump for
+  predictions and jump < captured_at <= observed_at for results; every inbox
+  file is admitted or durably rejected by stable file/content identity; exact
+  replay is a no-op while changed identity fails closed; every fatal terminal
+  path reaches deterministic FINAL_REPORT.json and CONSUMED.json; out-of-order
+  or duplicate membership cannot score; crash/restart reaches one terminal
+  receipt set; a prospective two-phase synthetic N=1000 run produces exactly
+  one paired-score commit and no duplicate; protocol/model/preprocessing/scorer
+  hashes are unchanged; focused and adjacent tests, fault injection,
+  py_compile, JSON/checksum, systemd static checks, semantic controls, code
+  review, and git diff checks pass or exact unavailable checks are recorded;
+  no successor cohort/activation or installed/enabled/active unit exists; and
+  the existing draft PR branch is normal-pushed without merge or activation.
+source_class: frozen_protocol_integrity_repair_and_synthetic_revalidation
+dataset_version: forward_overround_successor_integrity_repair_v2_20260817
+evidence_hash: sha256:4978163d1dd9c0e4ced5eb1d4cb9425d3994379d8c617fb3306a489b838073be
+capabilities:
+  - READ
+  - REPORT_WRITE
+  - CODE_EDIT
+  - PUBLISH
+resume_only_if: >-
+  Resume only while PR base/head, protocol and frozen model, preprocessing,
+  scorer, and V2 terminal hashes remain exact; no successor cohort, activation
+  receipt, installed/enabled/active unit, live request, prediction, result, or
+  canonical database write exists; and every mutation remains in allowed_files.
+  Stop for any required hypothesis, model, feature, baseline, N, activation
+  boundary, or protocol semantics change.
+docs_impact: DOCS_REQUIRED
+docs_checked:
+  - AGENTS.md
+  - CONTEXT.md
+  - ARCHITECTURE.md
+  - docs/forward_overround_successor_protocol.md
+  - docs/forward_overround_successor_runtime.md
+  - docs/semantic_anti_loop_control_v2.md
+allowed_files:
+  - docs/agent_tasks/forward_overround_successor_integrity_repair_v2_20260817.md
+  - docs/forward_overround_successor_runtime.md
+  - scripts/forward_overround_successor_runtime.py
+  - scripts/forward_overround_successor_state_machine.py
+  - tests/test_forward_overround_successor_runtime.py
+  - tests/test_forward_overround_successor_state_machine.py
+  - reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/README.md
+  - reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/STATE.md
+  - reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/VALIDATION.md
+  - reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/REVIEW.md
+  - reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/CODE_REVIEW.json
+  - reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/DEFECT_REPRODUCTION.json
+  - reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/RUNTIME_MANIFEST.json
+  - reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/DEPLOYMENT_READINESS.json
+  - reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/SYNTHETIC_E2E.json
+  - reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/SHA256SUMS
+  - reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/RUN_OUTCOME.json
+  - reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/DECISION_ENTRY.json
+  - reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/status.json
+  - reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/guard-preflight.json
+  - reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/guard-final.json
+  - reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/diff-check.json
+  - reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/final-refs.json
+  - reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/release-receipt.json
+---
+
+# Forward overround successor integrity repair
+
+Repair only the independently reproduced prospective-timing, rejection-replay,
+malformed-audit, and fatal-terminalization defects. Preserve the exact frozen
+experiment and leave the successor inactive. Publication is limited to the
+existing draft PR branch and still requires a fresh independent review.

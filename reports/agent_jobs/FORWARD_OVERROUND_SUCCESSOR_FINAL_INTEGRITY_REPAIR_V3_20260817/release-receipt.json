@@ -1,0 +1,10 @@
+{
+  "authoritative_registry_receipt": "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_FINAL_INTEGRITY_REPAIR_V3_20260817/status.json",
+  "closeout_validated": true,
+  "decision_appended": true,
+  "decision_id": "forward-overround-successor-final-integrity-repair-v3-20260817-pass",
+  "job_id": "FORWARD_OVERROUND_SUCCESSOR_FINAL_INTEGRITY_REPAIR_V3_20260817",
+  "registry_scope": "shared",
+  "schema_version": "semantic_release_receipt_v1",
+  "status": "released"
+}

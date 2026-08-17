@@ -1,0 +1,11 @@
+{
+  "base_commit": "2f82901d7df6927de56958307324840021a4db6a",
+  "branch": "codex-x/forward-overround-successor-runtime-20260817",
+  "evidence_commit_rule": "The PR head is the descendant evidence-only commit; GitHub PR metadata and body record its exact commit and tree after push.",
+  "pr": 136,
+  "reviewed_blocked_commit": "86d5eff3b765176c2c36fca96cfeceee6c1127b5",
+  "reviewed_blocked_tree": "00107a307a7759ac0cf070a323fa99d498cdc5de",
+  "schema_version": "forward_overround_successor_final_refs_v2",
+  "semantic_freeze_commit": "56f8619cc29cf60a5e675603ddf47d4ceeaf3168",
+  "semantic_freeze_tree": "d35466a81091ac71188ea0285e14659be042ce28"
+}
