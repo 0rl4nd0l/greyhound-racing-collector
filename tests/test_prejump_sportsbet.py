@@ -1,6 +1,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from upcoming_race_browser import UpcomingRaceBrowser
 from utils.prejump_sportsbet import collect_sportsbet_track_metadata
 
 
@@ -28,6 +29,13 @@ class FakeSportsbetSession:
     def get(self, url, **kwargs):
         self.calls.append((url, kwargs))
         return FakeSportsbetResponse(self.payload)
+
+
+class OneFetchSportsbetSession(FakeSportsbetSession):
+    def get(self, url, **kwargs):
+        if self.calls:
+            raise AssertionError("Sportsbet NextEvents fetched more than once")
+        return super().get(url, **kwargs)
 
 
 def _sale_r9_event(**overrides):
@@ -69,6 +77,140 @@ def test_sportsbet_track_metadata_accepts_matched_pre_race_event():
     assert metadata["weather_track_metadata_is_leakage_safe"] is True
     assert metadata["weather_track_metadata_detail"]["event_id"] == 10597250
     assert session.calls
+
+
+def test_browser_reuses_one_complete_sportsbet_snapshot_across_refresh():
+    events = [
+        _sale_r9_event(),
+        _sale_r9_event(
+            id=10597251,
+            raceNumber=10,
+            startTime=int(
+                datetime(
+                    2026, 6, 17, 14, 17,
+                    tzinfo=ZoneInfo("Australia/Melbourne"),
+                ).timestamp()
+            ),
+        ),
+    ]
+    browser = object.__new__(UpcomingRaceBrowser)
+    browser.session = OneFetchSportsbetSession(events)
+    browser._sportsbet_next_events_snapshot = None
+
+    race_9 = browser._collect_safe_track_metadata_from_sportsbet(
+        {
+            "date": "2026-06-17",
+            "venue": "SAL",
+            "race_number": "9",
+            "race_time": "1:57 PM",
+            "url": "https://www.thedogs.com.au/racing/sale/2026-06-17/9/example",
+        }
+    )
+    race_10 = browser._collect_safe_track_metadata_from_sportsbet(
+        {
+            "date": "2026-06-17",
+            "venue": "SAL",
+            "race_number": "10",
+            "race_time": "2:17 PM",
+            "url": "https://www.thedogs.com.au/racing/sale/2026-06-17/10/example",
+        }
+    )
+
+    assert race_9["track_condition"] == "Good"
+    assert race_10["track_condition"] == "Good"
+    detail = race_9["weather_track_metadata_detail"]
+    assert detail["raw_event"] == events[0]
+    assert detail["snapshot_event_count"] == 2
+    assert len(detail["snapshot_payload_sha256"]) == 64
+    assert datetime.fromisoformat(detail["snapshot_observed_at"]).tzinfo is not None
+    assert len(browser.session.calls) == 1
+
+
+def test_sportsbet_track_metadata_rejects_explicitly_missing_track_status():
+    event = _sale_r9_event()
+    event.pop("trackStatus")
+
+    metadata = collect_sportsbet_track_metadata(
+        {
+            "date": "2026-06-17",
+            "venue": "SAL",
+            "race_number": "9",
+            "race_time": "1:57 PM",
+            "url": "https://www.thedogs.com.au/racing/sale/2026-06-17/9/example",
+        },
+        session=FakeSportsbetSession([event]),
+    )
+
+    assert "track_condition" not in metadata
+    assert metadata["rejected_weather_track_metadata_sources"] == [
+        "sportsbet_track_status_missing_or_placeholder"
+    ]
+
+
+def test_sportsbet_track_metadata_rejects_ambiguous_equal_matches():
+    session = FakeSportsbetSession(
+        [_sale_r9_event(id=10597250), _sale_r9_event(id=10597251)]
+    )
+
+    metadata = collect_sportsbet_track_metadata(
+        {
+            "date": "2026-06-17",
+            "venue": "SAL",
+            "race_number": "9",
+            "race_time": "1:57 PM",
+            "url": "https://www.thedogs.com.au/racing/sale/2026-06-17/9/example",
+        },
+        session=session,
+    )
+
+    assert "track_condition" not in metadata
+    assert metadata["rejected_weather_track_metadata_sources"] == [
+        "sportsbet_matching_pre_race_event_ambiguous"
+    ]
+
+
+def test_browser_keeps_mixed_snapshot_track_coverage_fail_closed():
+    missing = _sale_r9_event(
+        id=10597251,
+        raceNumber=10,
+        startTime=int(
+            datetime(
+                2026, 6, 17, 14, 17,
+                tzinfo=ZoneInfo("Australia/Melbourne"),
+            ).timestamp()
+        ),
+    )
+    missing.pop("trackStatus")
+    browser = object.__new__(UpcomingRaceBrowser)
+    browser.session = OneFetchSportsbetSession([_sale_r9_event(), missing])
+    browser._sportsbet_next_events_snapshot = None
+
+    safe = browser._collect_safe_track_metadata_from_sportsbet(
+        {
+            "date": "2026-06-17",
+            "venue": "SAL",
+            "race_number": "9",
+            "race_time": "1:57 PM",
+            "url": "https://www.thedogs.com.au/racing/sale/2026-06-17/9/example",
+        }
+    )
+    unsafe = browser._collect_safe_track_metadata_from_sportsbet(
+        {
+            "date": "2026-06-17",
+            "venue": "SAL",
+            "race_number": "10",
+            "race_time": "2:17 PM",
+            "url": "https://www.thedogs.com.au/racing/sale/2026-06-17/10/example",
+        }
+    )
+
+    assert safe["track_condition"] == "Good"
+    assert unsafe == {
+        "rejected_weather_track_metadata_sources": [
+            "sportsbet_track_status_missing_or_placeholder"
+        ]
+    }
+    assert len(browser.session.calls) == 1
 
 
 def test_sportsbet_track_metadata_accepts_sandown_park_alias():
