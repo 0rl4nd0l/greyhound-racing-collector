@@ -1,0 +1,41 @@
+{
+  "blocked_by": [],
+  "changed_claims": [
+    "PR136_SUCCESSOR_EVIDENCE_INTEGRITY_READY_FOR_INDEPENDENT_REVIEW"
+  ],
+  "decision_delta": {
+    "after": "The inactive PR 136 successor binds runtime observation evidence, rejects future/result-before-prediction contamination, makes all candidate rejection replay immutable and idempotent, seals every event-induced fatal terminal state, and has a fresh containing-commit semantic freeze.",
+    "before": "PR 136 head 2944d655 admitted post-jump predictions and future-staged results, replayed rejections as conflicts, skipped malformed candidates, could strand fatal terminal state without final/consumed receipts, and lacked a fresh semantic freeze."
+  },
+  "new_evidence": [
+    "Five exact-parent defects reproduced before repair and pass after repair.",
+    "Twenty-two runtime tests and seventeen state-machine tests pass.",
+    "The two-phase synthetic N=1000 path records one score commit and is explicitly not prospective evidence.",
+    "Protocol, model, preprocessing, development protocol, scorer, finalizer, and systemd unit hashes are unchanged.",
+    "Successor cohort, activation receipt, installed units, live evidence, deployment, and merge remain absent."
+  ],
+  "new_goal_permitted": false,
+  "produced_artifacts": [
+    "scripts/forward_overround_successor_runtime.py",
+    "scripts/forward_overround_successor_state_machine.py",
+    "tests/test_forward_overround_successor_runtime.py",
+    "tests/test_forward_overround_successor_state_machine.py",
+    "docs/forward_overround_successor_runtime.md",
+    "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/RUNTIME_MANIFEST.json",
+    "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/DEPLOYMENT_READINESS.json",
+    "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/SYNTHETIC_E2E.json",
+    "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_INTEGRITY_REPAIR_V2_20260817/SHA256SUMS"
+  ],
+  "resume_only_if": "Independent review must target the exact published containing commit and preserve every frozen hash and inactive boundary; any activation or deployment is a separate owner-authorized transition.",
+  "reused_claims": [],
+  "scope_fingerprint": "ca13868709caed777aa2557d074cd517c3f44b95079fa4f882946c16775695ce",
+  "state_after": "PR 136 is READY_FOR_INDEPENDENT_REVIEW and remains draft, inactive, undeployed, and unmerged.",
+  "state_before": "PR 136 was BLOCKED_DO_NOT_MERGE by reproduced evidence-integrity defects.",
+  "status": "ADVANCED",
+  "used_capabilities": [
+    "READ",
+    "REPORT_WRITE",
+    "CODE_EDIT",
+    "PUBLISH"
+  ]
+}

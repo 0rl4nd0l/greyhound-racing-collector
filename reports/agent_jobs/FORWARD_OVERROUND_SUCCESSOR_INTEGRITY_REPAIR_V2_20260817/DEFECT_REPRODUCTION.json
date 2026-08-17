@@ -1,0 +1,33 @@
+{
+  "post_fix": {
+    "command": "exact runtime interpreter, targeted seven-test unittest slice plus full 22-test suite",
+    "result": "PASS"
+  },
+  "pre_fix": {
+    "head": "2944d6557e69151e0ec9362a6cf7c61f17816c37",
+    "harness": "new regression functions executed against unchanged exact-head runtime source before implementation",
+    "results": [
+      {
+        "defect": "post_jump_retrospective_prediction",
+        "result": "FAILED_EXPECTED_ASSERTION because one prediction was admitted"
+      },
+      {
+        "defect": "pre_staged_future_result",
+        "result": "FAILED_EXPECTED_ASSERTION because the future result was admitted"
+      },
+      {
+        "defect": "same_rejected_packet_replay",
+        "result": "FAILED_EXPECTED_ASSERTION because changing observed_at caused a conflicting event id"
+      },
+      {
+        "defect": "malformed_candidate_audit",
+        "result": "RuntimeEvidenceError invalid_json escaped instead of producing an immutable rejection"
+      },
+      {
+        "defect": "out_of_order_terminal_receipts",
+        "result": "FAILED_EXPECTED_ASSERTION because terminal journal state lacked FINAL_REPORT.json and CONSUMED.json"
+      }
+    ]
+  },
+  "schema_version": "forward_overround_successor_defect_reproduction_v1"
+}

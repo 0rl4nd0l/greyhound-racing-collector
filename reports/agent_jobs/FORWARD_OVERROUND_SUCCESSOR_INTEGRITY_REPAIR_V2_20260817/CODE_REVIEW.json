@@ -1,0 +1,24 @@
+{
+  "findings": [],
+  "fixed_during_review": [
+    {
+      "finding": "accepted candidate filename/content identity was not journal-bound",
+      "resolution": "prediction receipts/events now bind candidate_file and candidate_content_sha256; changed or renamed packet identity fails closed",
+      "severity": "BLOCKING"
+    }
+  ],
+  "review_axes": [
+    "temporal ordering",
+    "replay idempotence",
+    "immutable membership",
+    "result contamination",
+    "fatal terminal reachability",
+    "duplicate scoring",
+    "test false positives",
+    "scope and activation separation"
+  ],
+  "reviewed_parent": "2944d6557e69151e0ec9362a6cf7c61f17816c37",
+  "schema_version": "forward_overround_successor_code_review_v2",
+  "status": "PASS_NO_OPEN_FINDINGS",
+  "validated_at": "2026-08-17T04:29:52Z"
+}

@@ -75,13 +75,17 @@ def prediction(
     jump = jump_at or datetime(2026, 9, 1, 1, 0, tzinfo=timezone(timedelta(hours=10))) + timedelta(
         minutes=index
     )
+    captured = jump - timedelta(minutes=20)
     return {
         "event_id": f"prediction-{index}",
         "type": "PREDICTION_SEALED",
         "member_id": f"member-{index}",
         "race_id": f"race-{index}",
+        "candidate_file": f"candidate-{index}.json",
+        "candidate_content_sha256": f"{(index + 3) % 16:x}" * 64,
         "admission_id": admission_id,
-        "captured_at": (jump - timedelta(minutes=20)).isoformat(),
+        "captured_at": captured.isoformat(),
+        "observed_at": (captured + timedelta(minutes=1)).isoformat(),
         "jump_at": jump.isoformat(),
         "runner_set_sha256": runner_hash,
         "odds_receipt_sha256": f"{index % 16:x}" * 64,
@@ -106,6 +110,7 @@ def result(
         "runner_set_sha256": runner_hash,
         "result_receipt_sha256": f"{(index + 2) % 16:x}" * 64,
         "captured_at": captured.isoformat(),
+        "observed_at": (captured + timedelta(minutes=1)).isoformat(),
         "winner_box": index % 8 + 1,
     }
 
@@ -342,11 +347,14 @@ def test_candidate_rejection_is_nonmember_and_does_not_poison_path() -> None:
     rejected = {
         "event_id": "reject-1",
         "type": "CANDIDATE_REJECTED",
-        "candidate_id": "candidate-1",
+        "candidate_id": "6" * 64,
+        "candidate_file": "candidate-1.json",
+        "candidate_content_sha256": "5" * 64,
         "race_id": "rejected-race-1",
         "observed_at": "2026-09-01T00:30:00+10:00",
         "reason": "candidate_identity_ambiguous",
         "source_receipt_sha256": "7" * 64,
+        "detail": "duplicate_exact_dog_name",
     }
     state = replay(protocol, [authorize(protocol), rejected])
 
@@ -366,6 +374,23 @@ def test_out_of_order_sealed_membership_is_fatal() -> None:
     assert state["state"] == "FINALIZED_ABORTED_NO_METRICS"
     assert state["fatal_reason"] == "membership_order_violation:member-0"
     assert state["metrics_receipt_sha256"] is None
+
+
+def test_prediction_observation_must_be_prejump_and_not_before_capture() -> None:
+    protocol = protocol_with_target(1)
+    retrospective = prediction(0)
+    retrospective["observed_at"] = retrospective["jump_at"]
+    state = replay(protocol, [authorize(protocol), retrospective])
+    assert state["state"] == "FINALIZED_ABORTED_NO_METRICS"
+    assert state["fatal_reason"] == "sealed_member_observation_not_prejump:member-0"
+
+    before_capture = prediction(0)
+    before_capture["observed_at"] = (
+        datetime.fromisoformat(before_capture["captured_at"]) - timedelta(seconds=1)
+    ).isoformat()
+    state = replay(protocol, [authorize(protocol), before_capture])
+    assert state["state"] == "FINALIZED_ABORTED_NO_METRICS"
+    assert state["fatal_reason"] == "sealed_member_observation_not_prejump:member-0"
 
 
 def test_result_identity_conflict_is_fatal_and_never_scores() -> None:
@@ -389,6 +414,21 @@ def test_result_observed_before_jump_is_fatal_and_never_scores() -> None:
     )
 
     state = apply_event(state, too_early, protocol)
+
+    assert state["state"] == "FINALIZED_ABORTED_NO_METRICS"
+    assert state["fatal_reason"] == "result_identity_conflict:member-0"
+    assert state["score_invocation_count"] == 0
+
+
+def test_result_source_capture_cannot_be_after_runtime_observation() -> None:
+    protocol = protocol_with_target(1)
+    state = replay(protocol, [authorize(protocol), prediction(0)])
+    future_result = result(0)
+    future_result["observed_at"] = (
+        datetime.fromisoformat(future_result["captured_at"]) - timedelta(seconds=1)
+    ).isoformat()
+
+    state = apply_event(state, future_result, protocol)
 
     assert state["state"] == "FINALIZED_ABORTED_NO_METRICS"
     assert state["fatal_reason"] == "result_identity_conflict:member-0"

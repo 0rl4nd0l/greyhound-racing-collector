@@ -8,6 +8,7 @@ existing cohort directory contains a separately supplied ACTIVATION.json.
 from __future__ import annotations
 
 import argparse
+import copy
 import fcntl
 import hashlib
 import json
@@ -512,6 +513,8 @@ def _check_runtime_admission(
 
 def _prediction_receipt(
     candidate: Mapping[str, Any],
+    candidate_file: str,
+    candidate_content_sha256: str,
     state: Mapping[str, Any],
     protocol: Mapping[str, Any],
     model: Mapping[str, Any],
@@ -536,6 +539,7 @@ def _prediction_receipt(
         or not activation_at <= captured_at < jump_at
         or not jump_at - timedelta(minutes=33) <= captured_at < jump_at - timedelta(minutes=10)
         or captured_at > observed_at
+        or observed_at >= jump_at
         or active_admission_at > captured_at
     ):
         raise RuntimeEvidenceError("candidate_timing_outside_window")
@@ -568,7 +572,10 @@ def _prediction_receipt(
         "schema_version": "forward_overround_successor_prediction_receipt_v1",
         "member_id": member_id,
         "race_id": race_id,
+        "candidate_file": candidate_file,
+        "candidate_content_sha256": candidate_content_sha256,
         "captured_at": captured_at_source,
+        "observed_at": observed_at.isoformat(),
         "jump_at": jump_at_source,
         "source": "sportsbet",
         "market_type": "win",
@@ -586,8 +593,11 @@ def _prediction_receipt(
         "type": "PREDICTION_SEALED",
         "member_id": member_id,
         "race_id": race_id,
+        "candidate_file": candidate_file,
+        "candidate_content_sha256": candidate_content_sha256,
         "admission_id": state["active_admission_id"],
         "captured_at": captured_at.astimezone(timezone.utc).isoformat(),
+        "observed_at": observed_at.isoformat(),
         "jump_at": jump_at.astimezone(timezone.utc).isoformat(),
         "runner_set_sha256": runner_hash,
         "odds_receipt_sha256": source_receipt_sha,
@@ -629,6 +639,70 @@ def _sealed_receipt_matches(
     )
 
 
+def _optional_candidate_text(value: Any) -> str | None:
+    return value if isinstance(value, str) and value and value == value.strip() else None
+
+
+def _optional_candidate_sha(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+        return None
+    return value
+
+
+def _candidate_file_identity(path: Path, raw: bytes) -> tuple[str, str]:
+    content_sha256 = sha256_bytes(raw)
+    candidate_id = sha256_bytes(
+        canonical_bytes(
+            {
+                "candidate_file": path.name,
+                "candidate_content_sha256": content_sha256,
+            }
+        )
+    )
+    return candidate_id, content_sha256
+
+
+def _append_candidate_rejection(
+    store: CohortStore,
+    state: dict[str, Any],
+    rows: list[dict[str, Any]],
+    *,
+    path: Path,
+    candidate_id: str,
+    content_sha256: str,
+    candidate: Mapping[str, Any] | None,
+    observed_at: datetime,
+    reason: str,
+    detail: str,
+) -> dict[str, Any]:
+    return store.append(
+        state,
+        rows,
+        {
+            "event_id": f"rejection-{candidate_id}",
+            "type": "CANDIDATE_REJECTED",
+            "candidate_id": candidate_id,
+            "candidate_file": path.name,
+            "candidate_content_sha256": content_sha256,
+            "race_id": (
+                _optional_candidate_text(candidate.get("race_id"))
+                if candidate is not None
+                else None
+            ),
+            "observed_at": observed_at.isoformat(),
+            "reason": reason,
+            "source_receipt_sha256": (
+                _optional_candidate_sha(candidate.get("source_receipt_sha256"))
+                if candidate is not None
+                else None
+            ),
+            "detail": detail,
+        },
+    )
+
+
 def _seal_candidates(
     store: CohortStore,
     state: dict[str, Any],
@@ -640,43 +714,101 @@ def _seal_candidates(
     inbox = store.root / "candidate_inbox"
     if not inbox.is_dir() or state["state"] != "COLLECTING":
         return state
-    candidates = [_load_json(path) for path in inbox.glob("*.json")]
-    candidates.sort(key=lambda item: (str(item.get("jump_at")), str(item.get("captured_at")), str(item.get("race_id"))))
+    candidate_items: list[
+        tuple[Path, str, str, dict[str, Any] | None, RuntimeEvidenceError | None]
+    ] = []
+    for path in sorted(inbox.glob("*.json"), key=lambda item: item.name):
+        try:
+            raw = path.read_bytes()
+        except OSError as exc:
+            return _abort(store, state, rows, f"candidate_inbox_read_failed:{path.name}:{exc}")
+        candidate_id, content_sha256 = _candidate_file_identity(path, raw)
+        prior_accepted_content_sha256 = state["candidate_files"].get(path.name)
+        if prior_accepted_content_sha256 is not None:
+            if prior_accepted_content_sha256 != content_sha256:
+                return _abort(store, state, rows, f"candidate_file_identity_changed:{path.name}")
+        prior_candidate_id = state["rejection_files"].get(path.name)
+        if prior_candidate_id is not None:
+            if prior_candidate_id != candidate_id:
+                return _abort(store, state, rows, f"candidate_file_identity_changed:{path.name}")
+            continue
+        try:
+            decoded = json.loads(raw)
+            if not isinstance(decoded, dict):
+                raise RuntimeEvidenceError("candidate_json_object_required")
+        except (json.JSONDecodeError, RuntimeEvidenceError, UnicodeDecodeError) as exc:
+            error = RuntimeEvidenceError(f"candidate_json_invalid:{type(exc).__name__}")
+            candidate_items.append((path, candidate_id, content_sha256, None, error))
+        else:
+            candidate_items.append((path, candidate_id, content_sha256, decoded, None))
+    candidate_items.sort(
+        key=lambda item: (
+            str(item[3].get("jump_at")) if item[3] is not None else "",
+            str(item[3].get("captured_at")) if item[3] is not None else "",
+            str(item[3].get("race_id")) if item[3] is not None else "",
+            item[0].name,
+        )
+    )
     target = store.protocol["cohort"]["target_races"]
-    for candidate in candidates:
+    for path, candidate_id, content_sha256, candidate, parse_error in candidate_items:
         if len(state["predictions"]) >= target or state["state"] != "COLLECTING":
             break
-        try:
-            member_id, receipt, event = _prediction_receipt(
-                candidate, state, store.protocol, model, preprocessing, observed_at
+        if parse_error is not None or candidate is None:
+            state = _append_candidate_rejection(
+                store,
+                state,
+                rows,
+                path=path,
+                candidate_id=candidate_id,
+                content_sha256=content_sha256,
+                candidate=None,
+                observed_at=observed_at,
+                reason="candidate_incomplete_field",
+                detail=str(parse_error),
             )
-        except (RuntimeEvidenceError, FinalizationError) as exc:
-            source_sha = candidate.get("source_receipt_sha256")
-            race_id = candidate.get("race_id")
-            if (
-                isinstance(source_sha, str)
-                and len(source_sha) == 64
-                and all(character in "0123456789abcdef" for character in source_sha)
-                and isinstance(race_id, str)
-                and race_id
-                and state["state"] == "COLLECTING"
-            ):
-                state = store.append(
+            continue
+        receipt_observed_at = observed_at
+        existing_race_member = state["race_members"].get(candidate.get("race_id"))
+        if isinstance(existing_race_member, str):
+            existing_receipt_path = (
+                store.root / "predictions" / f"{existing_race_member}.json"
+            )
+            try:
+                existing_receipt = _load_json(existing_receipt_path)
+                receipt_observed_at = _aware_time(
+                    existing_receipt.get("observed_at"), "observed_at"
+                ).astimezone(timezone.utc)
+            except RuntimeEvidenceError as exc:
+                return _abort(
+                    store,
                     state,
                     rows,
-                    {
-                        "event_id": f"rejection-{sha256_bytes(canonical_bytes(candidate))}",
-                        "type": "CANDIDATE_REJECTED",
-                        "candidate_id": sha256_bytes(canonical_bytes(candidate)),
-                        "race_id": race_id,
-                        "observed_at": observed_at.isoformat(),
-                        "reason": _candidate_rejection_reason(exc),
-                        "source_receipt_sha256": source_sha,
-                        "detail": str(exc),
-                    },
+                    f"sealed_prediction_receipt_invalid:{existing_race_member}:{exc}",
                 )
-            else:
-                continue
+        try:
+            member_id, receipt, event = _prediction_receipt(
+                candidate,
+                path.name,
+                content_sha256,
+                state,
+                store.protocol,
+                model,
+                preprocessing,
+                receipt_observed_at,
+            )
+        except (RuntimeEvidenceError, FinalizationError) as exc:
+            state = _append_candidate_rejection(
+                store,
+                state,
+                rows,
+                path=path,
+                candidate_id=candidate_id,
+                content_sha256=content_sha256,
+                candidate=candidate,
+                observed_at=observed_at,
+                reason=_candidate_rejection_reason(exc),
+                detail=str(exc),
+            )
             continue
         if member_id in state["predictions"]:
             existing_path = store.root / "predictions" / f"{member_id}.json"
@@ -689,16 +821,27 @@ def _seal_candidates(
             continue
         if event["race_id"] in state["race_members"]:
             return _abort(store, state, rows, f"duplicate_race_membership:{event['race_id']}")
+        receipt_sha = sha256_bytes(canonical_bytes(receipt))
+        event["prediction_receipt_sha256"] = receipt_sha
+        preview = apply_event(copy.deepcopy(state), event, store.protocol)
+        if preview["state"] == "FINALIZED_ABORTED_NO_METRICS":
+            state = store.append(state, rows, event)
+            break
         try:
-            receipt_sha = _write_once(store.root / "predictions" / f"{member_id}.json", receipt)
+            written_sha = _write_once(store.root / "predictions" / f"{member_id}.json", receipt)
         except RuntimeEvidenceError as exc:
             return _abort(store, state, rows, f"prediction_receipt_write_conflict:{member_id}:{exc}")
-        event["prediction_receipt_sha256"] = receipt_sha
+        if written_sha != receipt_sha:
+            return _abort(store, state, rows, f"prediction_receipt_hash_mismatch:{member_id}")
         state = store.append(state, rows, event)
     return state
 
 
-def _result_receipt(result: Mapping[str, Any], prediction: Mapping[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+def _result_receipt(
+    result: Mapping[str, Any],
+    prediction: Mapping[str, Any],
+    observed_at: datetime,
+) -> tuple[dict[str, Any], dict[str, Any]]:
     if result.get("schema_version") != "forward_overround_successor_official_result_v1":
         raise RuntimeEvidenceError("result_schema_mismatch")
     if result.get("source") != "thedogs" or result.get("official") is not True:
@@ -717,11 +860,14 @@ def _result_receipt(result: Mapping[str, Any], prediction: Mapping[str, Any]) ->
     captured_at = _aware_time(captured_at_source, "captured_at")
     if captured_at <= _aware_time(prediction["jump_at"], "jump_at"):
         raise RuntimeEvidenceError("result_not_observed_after_jump")
+    if captured_at > observed_at:
+        raise RuntimeEvidenceError("result_observed_in_future")
     receipt = {
         "schema_version": "forward_overround_successor_result_receipt_v1",
         "member_id": member_id,
         "race_id": prediction["race_id"],
         "captured_at": captured_at_source,
+        "observed_at": observed_at.isoformat(),
         "source": "thedogs",
         "official": True,
         "source_receipt_sha256": _sha(result.get("source_receipt_sha256"), "source_receipt_sha256"),
@@ -736,25 +882,80 @@ def _result_receipt(result: Mapping[str, Any], prediction: Mapping[str, Any]) ->
         "race_id": prediction["race_id"],
         "runner_set_sha256": prediction["runner_set_sha256"],
         "captured_at": captured_at.astimezone(timezone.utc).isoformat(),
+        "observed_at": observed_at.isoformat(),
         "winner_box": result["winner_box"],
     }
     return receipt, event
 
 
-def _seal_results(store: CohortStore, state: dict[str, Any], rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _seal_results(
+    store: CohortStore,
+    state: dict[str, Any],
+    rows: list[dict[str, Any]],
+    observed_at: datetime,
+) -> dict[str, Any]:
     inbox = store.root / "result_inbox"
-    if not inbox.is_dir() or not state["predictions"]:
+    if not inbox.is_dir():
         return state
-    result_payloads = [_load_json(path) for path in inbox.glob("*.json")]
-    result_payloads.sort(key=lambda item: (str(item.get("captured_at")), str(item.get("race_id"))))
-    for result in result_payloads:
+    result_items: list[tuple[Path, str, dict[str, Any]]] = []
+    for path in sorted(inbox.glob("*.json"), key=lambda item: item.name):
+        try:
+            raw = path.read_bytes()
+        except OSError as exc:
+            return _abort(store, state, rows, f"result_inbox_read_failed:{path.name}:{exc}")
+        content_sha256 = sha256_bytes(raw)
+        try:
+            result = json.loads(raw)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return _abort(
+                store,
+                state,
+                rows,
+                f"result_inbox_invalid_json:{path.name}:{content_sha256}",
+            )
+        if not isinstance(result, dict):
+            return _abort(
+                store,
+                state,
+                rows,
+                f"result_inbox_object_required:{path.name}:{content_sha256}",
+            )
+        result_items.append((path, content_sha256, result))
+    result_items.sort(
+        key=lambda item: (
+            str(item[2].get("captured_at")),
+            str(item[2].get("race_id")),
+            item[0].name,
+        )
+    )
+    for path, content_sha256, result in result_items:
         member_id = result.get("member_id")
         if not isinstance(member_id, str) or member_id not in state["predictions"]:
-            continue
+            return _abort(
+                store,
+                state,
+                rows,
+                f"result_before_prediction_or_nonmember:{path.name}:{content_sha256}",
+            )
         prediction_path = store.root / "predictions" / f"{member_id}.json"
         prediction = _load_json(prediction_path)
+        receipt_observed_at = observed_at
+        if member_id in state["results"]:
+            existing_result_path = store.root / "results" / f"{member_id}.json"
+            try:
+                existing_result_receipt = _load_json(existing_result_path)
+                receipt_observed_at = _aware_time(
+                    existing_result_receipt.get("observed_at"), "observed_at"
+                ).astimezone(timezone.utc)
+            except RuntimeEvidenceError as exc:
+                return _abort(
+                    store,
+                    state,
+                    rows,
+                    f"sealed_result_receipt_invalid:{member_id}:{exc}",
+                )
         try:
-            receipt, event = _result_receipt(result, prediction)
+            receipt, event = _result_receipt(result, prediction, receipt_observed_at)
         except (RuntimeEvidenceError, FinalizationError) as exc:
             return _abort(store, state, rows, f"result_identity_or_winner_conflict:{member_id}:{exc}")
         if member_id in state["results"]:
@@ -766,11 +967,18 @@ def _seal_results(store: CohortStore, state: dict[str, Any], rows: list[dict[str
             ):
                 return _abort(store, state, rows, f"conflicting_result_receipt:{member_id}")
             continue
+        receipt_sha = sha256_bytes(canonical_bytes(receipt))
+        event["result_receipt_sha256"] = receipt_sha
+        preview = apply_event(copy.deepcopy(state), event, store.protocol)
+        if preview["state"] == "FINALIZED_ABORTED_NO_METRICS":
+            state = store.append(state, rows, event)
+            break
         try:
-            receipt_sha = _write_once(store.root / "results" / f"{member_id}.json", receipt)
+            written_sha = _write_once(store.root / "results" / f"{member_id}.json", receipt)
         except RuntimeEvidenceError as exc:
             return _abort(store, state, rows, f"result_receipt_write_conflict:{member_id}:{exc}")
-        event["result_receipt_sha256"] = receipt_sha
+        if written_sha != receipt_sha:
+            return _abort(store, state, rows, f"result_receipt_hash_mismatch:{member_id}")
         state = store.append(state, rows, event)
     return state
 
@@ -939,9 +1147,16 @@ def run_once(
         if state["state"] == "COLLECTING":
             state = _seal_candidates(store, state, rows, model, preprocessing, observed_at)
         if state["state"] not in TERMINAL_STATES:
-            state = _seal_results(store, state, rows)
+            state = _seal_results(store, state, rows, observed_at)
         if state["state"] in {"READY_TO_FINALIZE", "FINALIZATION_LOCKED", "FINALIZED_SCORED"}:
             state = _finalize_if_ready(store, state, rows, protocol_path, asset_dir)
+        if state["state"] == "FINALIZED_ABORTED_NO_METRICS":
+            state = _abort(
+                store,
+                state,
+                rows,
+                state.get("fatal_reason") or "terminal_state_without_fatal_reason",
+            )
         status = public_snapshot(state)
         status["target_races"] = protocol["cohort"]["target_races"]
         status["interim_aggregate_performance_emitted"] = False

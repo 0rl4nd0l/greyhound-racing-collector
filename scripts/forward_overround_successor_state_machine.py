@@ -104,9 +104,11 @@ def initial_snapshot(protocol: Mapping[str, Any]) -> dict[str, Any]:
         "admission_times": {},
         "predictions": {},
         "race_members": {},
+        "candidate_files": {},
         "last_member_order_key": None,
         "results": {},
         "rejections": {},
+        "rejection_files": {},
         "event_hashes": {},
         "paused_reason": None,
         "paused_at": None,
@@ -277,11 +279,20 @@ def _prediction_sealed(
         return
     member_id = _text(event.get("member_id"), "member_id")
     race_id = _text(event.get("race_id"), "race_id")
+    candidate_file = _text(event.get("candidate_file"), "candidate_file")
+    candidate_content_sha256 = _hash(
+        event.get("candidate_content_sha256"), "candidate_content_sha256"
+    )
+    prior_file_identity = state["candidate_files"].get(candidate_file)
+    if prior_file_identity is not None and prior_file_identity != candidate_content_sha256:
+        _fatal(state, f"candidate_file_identity_changed:{candidate_file}")
+        return
     admission_id = _text(event.get("admission_id"), "admission_id")
     if admission_id != state["active_admission_id"]:
         _fatal(state, f"seal_under_unadmitted_runtime:{member_id}")
         return
     captured_at = _time(event.get("captured_at"), "captured_at")
+    observed_at = _time(event.get("observed_at"), "observed_at")
     jump_at = _time(event.get("jump_at"), "jump_at")
     activation_at = _time(state["activation_at"], "activation_at")
     earliest_jump = _time(protocol["eligibility"]["earliest_jump_local"], "earliest_jump_local")
@@ -290,6 +301,9 @@ def _prediction_sealed(
         return
     if not activation_at <= captured_at < jump_at:
         _fatal(state, f"sealed_member_not_forward_prejump:{member_id}")
+        return
+    if captured_at > observed_at or observed_at >= jump_at:
+        _fatal(state, f"sealed_member_observation_not_prejump:{member_id}")
         return
     if not jump_at - timedelta(minutes=33) <= captured_at < jump_at - timedelta(minutes=10):
         _fatal(state, f"sealed_member_outside_frozen_window:{member_id}")
@@ -309,9 +323,12 @@ def _prediction_sealed(
     prediction = {
         "member_id": member_id,
         "race_id": race_id,
+        "candidate_file": candidate_file,
+        "candidate_content_sha256": candidate_content_sha256,
         "admission_id": admission_id,
         "admission_sha256": state["active_admission_sha256"],
         "captured_at": captured_at.isoformat(),
+        "observed_at": observed_at.isoformat(),
         "jump_at": jump_at.isoformat(),
         "runner_set_sha256": _hash(event.get("runner_set_sha256"), "runner_set_sha256"),
         "odds_receipt_sha256": _hash(event.get("odds_receipt_sha256"), "odds_receipt_sha256"),
@@ -330,6 +347,7 @@ def _prediction_sealed(
         return
     state["predictions"][member_id] = prediction
     state["race_members"][race_id] = member_id
+    state["candidate_files"][candidate_file] = candidate_content_sha256
     state["last_member_order_key"] = list(order_key)
 
 
@@ -355,19 +373,39 @@ def _candidate_rejected(state: dict[str, Any], event: Mapping[str, Any]) -> None
     observed_at = _time(event.get("observed_at"), "observed_at")
     if observed_at < _time(state["activation_at"], "activation_at"):
         raise ProtocolViolation("candidate_rejection_before_activation")
-    candidate_id = _text(event.get("candidate_id"), "candidate_id")
+    candidate_id = _hash(event.get("candidate_id"), "candidate_id")
+    candidate_file = _text(event.get("candidate_file"), "candidate_file")
+    candidate_content_sha256 = _hash(
+        event.get("candidate_content_sha256"), "candidate_content_sha256"
+    )
+    race_id = event.get("race_id")
+    if race_id is not None:
+        race_id = _text(race_id, "race_id")
+    source_receipt_sha256 = event.get("source_receipt_sha256")
+    if source_receipt_sha256 is not None:
+        source_receipt_sha256 = _hash(
+            source_receipt_sha256, "source_receipt_sha256"
+        )
     rejection = {
         "candidate_id": candidate_id,
-        "race_id": _text(event.get("race_id"), "race_id"),
+        "candidate_file": candidate_file,
+        "candidate_content_sha256": candidate_content_sha256,
+        "race_id": race_id,
         "observed_at": observed_at.isoformat(),
         "reason": reason,
-        "source_receipt_sha256": _hash(event.get("source_receipt_sha256"), "source_receipt_sha256"),
+        "source_receipt_sha256": source_receipt_sha256,
+        "detail": _text(event.get("detail"), "detail"),
     }
+    prior_file_candidate = state["rejection_files"].get(candidate_file)
+    if prior_file_candidate is not None and prior_file_candidate != candidate_id:
+        _fatal(state, f"candidate_file_identity_changed:{candidate_file}")
+        return
     existing = state["rejections"].get(candidate_id)
     if existing is not None and existing != rejection:
         _fatal(state, f"conflicting_candidate_rejection:{candidate_id}")
         return
     state["rejections"][candidate_id] = rejection
+    state["rejection_files"][candidate_file] = candidate_id
 
 
 def _result_appended(state: dict[str, Any], event: Mapping[str, Any]) -> None:
@@ -381,12 +419,15 @@ def _result_appended(state: dict[str, Any], event: Mapping[str, Any]) -> None:
         "runner_set_sha256": _hash(event.get("runner_set_sha256"), "runner_set_sha256"),
         "result_receipt_sha256": _hash(event.get("result_receipt_sha256"), "result_receipt_sha256"),
         "captured_at": _time(event.get("captured_at"), "captured_at").isoformat(),
+        "observed_at": _time(event.get("observed_at"), "observed_at").isoformat(),
         "winner_box": event.get("winner_box"),
     }
     if (
         result["race_id"] != prediction["race_id"]
         or result["runner_set_sha256"] != prediction["runner_set_sha256"]
         or _time(result["captured_at"], "captured_at") <= _time(prediction["jump_at"], "jump_at")
+        or _time(result["captured_at"], "captured_at")
+        > _time(result["observed_at"], "observed_at")
         or not isinstance(result["winner_box"], int)
         or isinstance(result["winner_box"], bool)
         or result["winner_box"] <= 0

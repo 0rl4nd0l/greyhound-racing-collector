@@ -1,0 +1,13 @@
+{
+  "checked_at": "2026-08-17T04:27:17Z",
+  "documented_host_path": "DATA_MISSING",
+  "explicit_pr_base_verified": "2f82901d7df6927de56958307324840021a4db6a",
+  "guard_runner_path": "/home/l4nd0/tenn-issue554-extraction-scorecard-38b-20260811/.agents/skills/tenn-git-guard/scripts/tenn_git_guard.py",
+  "head": "2944d6557e69151e0ec9362a6cf7c61f17816c37",
+  "registry_status": "PASS",
+  "schema_version": "tenn_git_guard_preflight_v2_summary",
+  "semantic_control_status": "ALLOW_NEW_SCOPE",
+  "substantive_work_permitted": true,
+  "task_card": "docs/agent_tasks/forward_overround_successor_integrity_repair_v2_20260817.md",
+  "warning": "generic guard canonical comparison ref unavailable; exact PR base and merge-base were independently verified"
+}

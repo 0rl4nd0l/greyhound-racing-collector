@@ -1,0 +1,9 @@
+{
+  "base_commit": "2f82901d7df6927de56958307324840021a4db6a",
+  "branch": "codex-x/forward-overround-successor-runtime-20260817",
+  "candidate_commit": "git_commit_containing_this_artifact",
+  "candidate_tree": "git_tree_containing_this_artifact",
+  "pr": 136,
+  "repair_parent_commit": "2944d6557e69151e0ec9362a6cf7c61f17816c37",
+  "schema_version": "forward_overround_successor_final_refs_v1"
+}

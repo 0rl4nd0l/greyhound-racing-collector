@@ -1,9 +1,10 @@
 # Forward overround successor runtime
 
-Status: `READY_FOR_ACTIVATION_REVIEW`. The implementation is prepared,
-but collection is not active. The cohort directory, `ACTIVATION.json`, and
-installed units are deliberately absent; the timer remains disabled and
-inactive. This package does not authorize their creation or activation.
+Status: `READY_FOR_INDEPENDENT_REVIEW`. The implementation is prepared, but
+collection is not active. The cohort directory, `ACTIVATION.json`, and installed
+units are deliberately absent; the timer remains disabled and inactive. This
+package does not authorize their creation or activation, and independent review
+is still required before any later activation review.
 
 ## Frozen boundary
 
@@ -70,8 +71,18 @@ A candidate packet uses schema
 Before any write, the sealer checks activation, the T-33 inclusive to T-10
 exclusive capture window, the 2026-09-01 boundary, exact runner identities,
 complete field size, corrected Sportsbet WIN provenance, and the active runtime
-admission. An invalid or ambiguous candidate is a nonmember rejection. It
-cannot be repaired retrospectively into the cohort.
+admission. The runtime clock observation is sealed into both the prediction
+receipt and journal event, and admission requires
+`captured_at <= observed_at < jump_at`; a packet cannot use a claimed source
+timestamp to create a prediction after jump. An invalid or ambiguous candidate
+is a nonmember rejection. It cannot be repaired retrospectively into the cohort.
+
+Each candidate inbox file is identified by its filename and exact content
+SHA-256. Malformed JSON, a non-object payload, or missing identity/provenance
+fields produces an immutable rejection containing that stable identity rather
+than being skipped. Replaying the unchanged file is an exact no-op even when
+the timer's current observation time advances. Changing the bytes under a
+previously rejected filename is a fatal evidence-identity conflict.
 
 An official-result packet uses schema
 `forward_overround_successor_official_result_v1` and contains:
@@ -81,6 +92,12 @@ An official-result packet uses schema
 - an aware post-jump capture timestamp and source receipt SHA-256; and
 - the exact sealed runner set, one finish position per runner, and exactly one
   winner whose native box agrees with `winner_box`.
+
+The runtime observation is also sealed into the result receipt and event. Result
+timing must satisfy `jump_at < captured_at <= observed_at`, so a pre-staged
+future result cannot be accepted. A result file observed before its immutable
+prediction member exists is a fatal contamination conflict rather than a
+deferred packet that can enter after membership is created.
 
 Finish positions must be integers and form the complete unique sequence from
 one through the accepted runner count. Missing, duplicate, boolean, string,
@@ -109,7 +126,9 @@ Protocol, model, preprocessing, scorer-contract, finalizer, sealed prediction,
 sealed result, member identity, timing, runner-set, or winner drift is fatal.
 Fatal evidence produces `BLOCKED_FORWARD_EVIDENCE`, `metrics: null`, and an
 immutable consumption receipt. A fatal sentinel cannot be removed or
-re-admitted.
+re-admitted. Event-induced terminal states use the same deterministic
+`FINAL_REPORT.json` and `CONSUMED.json` sealing path; a restart after either
+terminal write boundary completes the missing receipt without scoring.
 
 ## Deterministic finalization
 

@@ -37,7 +37,7 @@ ASSET_DIR = Path(
 )
 MELBOURNE = timezone(timedelta(hours=10))
 ACTIVATION = datetime(2026, 9, 1, 0, 0, tzinfo=MELBOURNE)
-OBSERVED = datetime(2026, 9, 10, 0, 0, tzinfo=timezone.utc)
+OBSERVED = datetime(2026, 9, 1, 23, 45, tzinfo=MELBOURNE)
 
 
 def _write_json(path: Path, payload: dict) -> None:
@@ -288,7 +288,7 @@ def test_changed_packet_for_immutable_member_is_fatal(tmp_path: Path) -> None:
     assert terminal["sealed_prediction_races"] == 1
     assert terminal["score_invocation_count"] == 0
     assert terminal["metrics_receipt_sha256"] is None
-    assert terminal["fatal_reason"].startswith("conflicting_prediction_receipt:")
+    assert terminal["fatal_reason"] == "candidate_file_identity_changed:candidate.json"
 
 
 def test_tampered_sealed_receipt_appends_terminal_no_metrics(tmp_path: Path) -> None:
@@ -365,14 +365,17 @@ def test_invalid_complete_finish_order_fails_closed(tmp_path: Path) -> None:
             }
         )
         _write_json(root / "candidate_inbox" / "candidate.json", candidate)
-        assert _run(root)["sealed_prediction_races"] == 1
+        jump_at = datetime.fromisoformat(candidate["jump_at"])
+        assert _run(root, observed=jump_at - timedelta(minutes=15))[
+            "sealed_prediction_races"
+        ] == 1
 
         result = _result(0, candidate)
         for runner, finish_position in zip(result["runners"], finish_positions, strict=True):
             runner["finish_position"] = finish_position
         _write_json(root / "result_inbox" / "result.json", result)
 
-        terminal = _run(root)
+        terminal = _run(root, observed=jump_at + timedelta(minutes=6))
         report = json.loads((root / "FINAL_REPORT.json").read_bytes())
 
         assert terminal["state"] == "FINALIZED_ABORTED_NO_METRICS"
@@ -380,6 +383,265 @@ def test_invalid_complete_finish_order_fails_closed(tmp_path: Path) -> None:
         assert terminal["score_invocation_count"] == 0
         assert terminal["metrics_receipt_sha256"] is None
         assert "result_finish_positions_invalid" in report["blocking_reason"]
+
+
+def test_post_jump_runtime_observation_rejects_retrospective_prediction(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "cohort"
+    _prepare_root(root)
+    candidate = _candidate(0)
+    _write_json(root / "candidate_inbox" / "candidate.json", candidate)
+    jump_at = datetime.fromisoformat(candidate["jump_at"])
+
+    status = _run(root, observed=jump_at + timedelta(seconds=1))
+
+    assert status["state"] == "COLLECTING"
+    assert status["sealed_prediction_races"] == 0
+    assert status["excluded_candidate_events"] == 1
+    assert status["exclusion_reason_counts"] == {"candidate_timing_outside_window": 1}
+    assert not (root / "predictions").exists()
+
+
+def test_pre_staged_future_result_is_fatal_and_never_sealed(tmp_path: Path) -> None:
+    root = tmp_path / "cohort"
+    _prepare_root(root)
+    candidate = _candidate(0)
+    jump_at = datetime.fromisoformat(candidate["jump_at"])
+    _write_json(root / "candidate_inbox" / "candidate.json", candidate)
+    _write_json(root / "result_inbox" / "result.json", _result(0, candidate))
+
+    status = _run(root, observed=jump_at - timedelta(minutes=15))
+
+    assert status["state"] == "FINALIZED_ABORTED_NO_METRICS"
+    assert status["sealed_prediction_races"] == 1
+    assert status["approved_result_races"] == 0
+    assert status["score_invocation_count"] == 0
+    assert "result_observed_in_future" in status["fatal_reason"]
+    assert not (root / "results").exists()
+    assert (root / "FINAL_REPORT.json").is_file()
+    assert (root / "CONSUMED.json").is_file()
+
+
+def test_replaying_same_rejected_packet_is_exact_noop(tmp_path: Path) -> None:
+    root = tmp_path / "cohort"
+    _prepare_root(root)
+    candidate = _candidate(0)
+    jump_at = datetime.fromisoformat(candidate["jump_at"])
+    candidate["captured_at"] = (jump_at - timedelta(minutes=9)).isoformat()
+    _write_json(root / "candidate_inbox" / "candidate.json", candidate)
+
+    first = _run(root, observed=jump_at - timedelta(minutes=8))
+    journal_before = (root / "EVENTS.jsonl").read_bytes()
+    second = _run(root, observed=jump_at - timedelta(minutes=7))
+
+    assert second == first
+    assert second["state"] == "COLLECTING"
+    assert second["excluded_candidate_events"] == 1
+    assert (root / "EVENTS.jsonl").read_bytes() == journal_before
+    assert not (root / "FINAL_REPORT.json").exists()
+    assert not (root / "CONSUMED.json").exists()
+
+
+def test_malformed_candidate_is_durably_audited_and_replay_safe(tmp_path: Path) -> None:
+    root = tmp_path / "cohort"
+    _prepare_root(root)
+    malformed_path = root / "candidate_inbox" / "malformed.json"
+    malformed_path.parent.mkdir(parents=True)
+    malformed_bytes = b'{"race_id":"broken"'
+    malformed_path.write_bytes(malformed_bytes)
+    observed = datetime(2026, 9, 1, 1, 0, tzinfo=timezone.utc)
+
+    first = _run(root, observed=observed)
+    journal_before = (root / "EVENTS.jsonl").read_bytes()
+    events = [json.loads(line)["event"] for line in journal_before.splitlines()]
+    rejection = events[-1]
+
+    assert first["state"] == "COLLECTING"
+    assert first["sealed_prediction_races"] == 0
+    assert first["excluded_candidate_events"] == 1
+    assert rejection["type"] == "CANDIDATE_REJECTED"
+    assert rejection["candidate_file"] == "malformed.json"
+    assert rejection["candidate_content_sha256"] == hashlib.sha256(malformed_bytes).hexdigest()
+    assert rejection["race_id"] is None
+    assert rejection["source_receipt_sha256"] is None
+
+    second = _run(root, observed=observed + timedelta(minutes=1))
+    assert second == first
+    assert (root / "EVENTS.jsonl").read_bytes() == journal_before
+
+
+def test_out_of_order_membership_seals_terminal_receipts_without_scoring(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "cohort"
+    _prepare_root(root)
+    jump_at = datetime(2026, 9, 2, 0, 0, tzinfo=MELBOURNE)
+    later_member = _candidate(1, jump_at=jump_at)
+    earlier_member = _candidate(0, jump_at=jump_at)
+    _write_json(root / "candidate_inbox" / "later.json", later_member)
+    first = _run(root, observed=jump_at - timedelta(minutes=15))
+    assert first["sealed_prediction_races"] == 1
+
+    _write_json(root / "candidate_inbox" / "earlier.json", earlier_member)
+    terminal = _run(root, observed=jump_at - timedelta(minutes=14))
+
+    assert terminal["state"] == "FINALIZED_ABORTED_NO_METRICS"
+    assert terminal["sealed_prediction_races"] == 1
+    assert terminal["approved_result_races"] == 0
+    assert terminal["score_invocation_count"] == 0
+    assert terminal["fatal_reason"].startswith("membership_order_violation:")
+    assert not (root / "METRICS.json").exists()
+    assert (root / "FINAL_REPORT.json").is_file()
+    assert (root / "CONSUMED.json").is_file()
+
+
+def test_sealed_prediction_and_result_bind_first_runtime_observation(tmp_path: Path) -> None:
+    root = tmp_path / "cohort"
+    _prepare_root(root)
+    candidate = _candidate(0)
+    jump_at = datetime.fromisoformat(candidate["jump_at"])
+    prediction_observed = jump_at - timedelta(minutes=15)
+    result_observed = jump_at + timedelta(minutes=6)
+    member_id = _member_id(candidate)
+    _write_json(root / "candidate_inbox" / "candidate.json", candidate)
+
+    prediction_status = _run(root, observed=prediction_observed)
+    prediction_receipt = json.loads(
+        (root / "predictions" / f"{member_id}.json").read_bytes()
+    )
+    assert prediction_status["sealed_prediction_races"] == 1
+    assert prediction_receipt["observed_at"] == prediction_observed.astimezone(
+        timezone.utc
+    ).isoformat()
+
+    _write_json(root / "result_inbox" / "result.json", _result(0, candidate))
+    result_status = _run(root, observed=result_observed)
+    result_receipt = json.loads((root / "results" / f"{member_id}.json").read_bytes())
+    assert result_status["approved_result_races"] == 1
+    assert result_receipt["observed_at"] == result_observed.astimezone(
+        timezone.utc
+    ).isoformat()
+
+    journal_before = (root / "EVENTS.jsonl").read_bytes()
+    replayed = _run(root, observed=result_observed + timedelta(hours=1))
+    assert replayed == result_status
+    assert (root / "EVENTS.jsonl").read_bytes() == journal_before
+
+
+def test_changed_file_after_rejection_is_terminal_evidence_conflict(tmp_path: Path) -> None:
+    root = tmp_path / "cohort"
+    _prepare_root(root)
+    candidate = _candidate(0)
+    jump_at = datetime.fromisoformat(candidate["jump_at"])
+    candidate["captured_at"] = (jump_at - timedelta(minutes=9)).isoformat()
+    packet_path = root / "candidate_inbox" / "candidate.json"
+    _write_json(packet_path, candidate)
+    first = _run(root, observed=jump_at - timedelta(minutes=8))
+    assert first["excluded_candidate_events"] == 1
+
+    candidate["captured_at"] = (jump_at - timedelta(minutes=20)).isoformat()
+    _write_json(packet_path, candidate)
+    terminal = _run(root, observed=jump_at - timedelta(minutes=7))
+
+    assert terminal["state"] == "FINALIZED_ABORTED_NO_METRICS"
+    assert terminal["sealed_prediction_races"] == 0
+    assert terminal["score_invocation_count"] == 0
+    assert terminal["fatal_reason"] == "candidate_file_identity_changed:candidate.json"
+    assert (root / "FINAL_REPORT.json").is_file()
+    assert (root / "CONSUMED.json").is_file()
+
+
+def test_duplicate_race_membership_is_terminal_without_orphan_receipt(tmp_path: Path) -> None:
+    root = tmp_path / "cohort"
+    _prepare_root(root)
+    jump_at = datetime(2026, 9, 2, 0, 0, tzinfo=MELBOURNE)
+    first = _candidate(0, jump_at=jump_at)
+    duplicate = json.loads(json.dumps(first))
+    duplicate["runners"][0]["dog_name"] = "Different Active Runner"
+    duplicate["runners"][0]["source_row_sha256"] = hashlib.sha256(
+        b"different-runner"
+    ).hexdigest()
+    duplicate["source_receipt_sha256"] = hashlib.sha256(
+        b"different-source"
+    ).hexdigest()
+    _write_json(root / "candidate_inbox" / "a.json", first)
+    _write_json(root / "candidate_inbox" / "b.json", duplicate)
+
+    terminal = _run(root, observed=jump_at - timedelta(minutes=15))
+
+    assert terminal["state"] == "FINALIZED_ABORTED_NO_METRICS"
+    assert terminal["sealed_prediction_races"] == 1
+    assert terminal["score_invocation_count"] == 0
+    assert terminal["fatal_reason"] == f"duplicate_race_membership:{first['race_id']}"
+    assert len(list((root / "predictions").glob("*.json"))) == 1
+    assert (root / "FINAL_REPORT.json").is_file()
+    assert (root / "CONSUMED.json").is_file()
+
+
+def test_result_observed_before_any_prediction_is_terminal_contamination(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "cohort"
+    _prepare_root(root)
+    candidate = _candidate(0)
+    jump_at = datetime.fromisoformat(candidate["jump_at"])
+    _write_json(root / "result_inbox" / "result.json", _result(0, candidate))
+
+    terminal = _run(root, observed=jump_at - timedelta(minutes=15))
+
+    assert terminal["state"] == "FINALIZED_ABORTED_NO_METRICS"
+    assert terminal["sealed_prediction_races"] == 0
+    assert terminal["approved_result_races"] == 0
+    assert terminal["score_invocation_count"] == 0
+    assert terminal["fatal_reason"].startswith("result_before_prediction_or_nonmember:")
+    assert (root / "FINAL_REPORT.json").is_file()
+    assert (root / "CONSUMED.json").is_file()
+
+
+def test_crash_after_fatal_report_restarts_to_complete_terminal_receipts(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "cohort"
+    _prepare_root(root)
+    jump_at = datetime(2026, 9, 2, 0, 0, tzinfo=MELBOURNE)
+    later_member = _candidate(1, jump_at=jump_at)
+    earlier_member = _candidate(0, jump_at=jump_at)
+    _write_json(root / "candidate_inbox" / "later.json", later_member)
+    assert _run(root, observed=jump_at - timedelta(minutes=15))[
+        "sealed_prediction_races"
+    ] == 1
+    _write_json(root / "candidate_inbox" / "earlier.json", earlier_member)
+    actual_write_once = successor_runtime._write_once
+    injected = False
+
+    def fault_after_final_report(path: Path, payload: dict) -> str:
+        nonlocal injected
+        digest = actual_write_once(path, payload)
+        if path.name == "FINAL_REPORT.json" and not injected:
+            injected = True
+            raise SystemExit("fault_after_fatal_final_report")
+        return digest
+
+    with patch.object(successor_runtime, "_write_once", fault_after_final_report):
+        with unittest.TestCase().assertRaisesRegex(
+            SystemExit, "fault_after_fatal_final_report"
+        ):
+            _run(root, observed=jump_at - timedelta(minutes=14))
+    assert injected is True
+    assert (root / "FINAL_REPORT.json").is_file()
+    assert not (root / "CONSUMED.json").exists()
+
+    restarted = _run(root, observed=jump_at - timedelta(minutes=13))
+    report_sha = sha256_file(root / "FINAL_REPORT.json")
+    consumed_sha = sha256_file(root / "CONSUMED.json")
+    assert restarted["state"] == "FINALIZED_ABORTED_NO_METRICS"
+    assert restarted["score_invocation_count"] == 0
+
+    replayed = _run(root, observed=jump_at + timedelta(hours=1))
+    assert replayed == restarted
+    assert sha256_file(root / "FINAL_REPORT.json") == report_sha
+    assert sha256_file(root / "CONSUMED.json") == consumed_sha
 
 
 def test_restart_at_every_finalization_write_boundary_is_idempotent(tmp_path: Path) -> None:
@@ -394,9 +656,17 @@ def test_restart_at_every_finalization_write_boundary_is_idempotent(tmp_path: Pa
     for boundary in boundaries:
         root = tmp_path / boundary
         _prepare_root(root)
-        candidates = [_candidate(index) for index in range(1000)]
+        shared_jump = datetime(2026, 9, 2, 0, 0, tzinfo=MELBOURNE)
+        prediction_observed = shared_jump - timedelta(minutes=15)
+        result_observed = shared_jump + timedelta(minutes=6)
+        candidates = [_candidate(index, jump_at=shared_jump) for index in range(1000)]
         for index, candidate in enumerate(candidates):
             _write_json(root / "candidate_inbox" / f"{index:04d}.json", candidate)
+        prediction_status = _run(root, observed=prediction_observed)
+        assert prediction_status["state"] == "RESULT_CLOSURE"
+        assert prediction_status["sealed_prediction_races"] == 1000
+        assert prediction_status["approved_result_races"] == 0
+        for index, candidate in enumerate(candidates):
             _write_json(root / "result_inbox" / f"{index:04d}.json", _result(index, candidate))
 
         finalize_calls = 0
@@ -463,10 +733,10 @@ def test_restart_at_every_finalization_write_boundary_is_idempotent(tmp_path: Pa
                 with unittest.TestCase().assertRaisesRegex(
                     SystemExit, f"fault_after_{boundary}"
                 ):
-                    _run(root)
+                    _run(root, observed=result_observed)
             assert injected is True
 
-            restarted = _run(root)
+            restarted = _run(root, observed=result_observed)
             events = [
                 json.loads(line)["event"]
                 for line in (root / "EVENTS.jsonl").read_text().splitlines()
@@ -482,7 +752,7 @@ def test_restart_at_every_finalization_write_boundary_is_idempotent(tmp_path: Pa
             assert sum(event["type"] == "FINALIZE_REQUESTED" for event in events) == 1
             assert sum(event["type"] == "PAIRED_SCORE_COMMITTED" for event in events) == 1
 
-            replayed = _run(root)
+            replayed = _run(root, observed=result_observed + timedelta(minutes=1))
             assert replayed == restarted
             assert finalize_calls == 1
             assert sha256_file(root / "FINAL_REPORT.json") == report_sha
@@ -492,12 +762,21 @@ def test_restart_at_every_finalization_write_boundary_is_idempotent(tmp_path: Pa
 def test_synthetic_empty_to_exact_1000_one_shot_paired_finalization(tmp_path: Path) -> None:
     root = tmp_path / "cohort"
     _prepare_root(root)
-    candidates = [_candidate(index) for index in range(1000)]
+    shared_jump = datetime(2026, 9, 2, 0, 0, tzinfo=MELBOURNE)
+    candidates = [_candidate(index, jump_at=shared_jump) for index in range(1000)]
     for index, candidate in enumerate(candidates):
         _write_json(root / "candidate_inbox" / f"{index:04d}.json", candidate)
+
+    prediction_status = _run(root, observed=shared_jump - timedelta(minutes=15))
+    assert prediction_status["state"] == "RESULT_CLOSURE"
+    assert prediction_status["sealed_prediction_races"] == 1000
+    assert prediction_status["approved_result_races"] == 0
+    assert prediction_status["score_invocation_count"] == 0
+    assert not (root / "METRICS.json").exists()
+    for index, candidate in enumerate(candidates):
         _write_json(root / "result_inbox" / f"{index:04d}.json", _result(index, candidate))
 
-    status = _run(root)
+    status = _run(root, observed=shared_jump + timedelta(minutes=6))
     report_path = root / "FINAL_REPORT.json"
     consumed_path = root / "CONSUMED.json"
     report_sha = sha256_file(report_path)
@@ -525,7 +804,7 @@ def test_synthetic_empty_to_exact_1000_one_shot_paired_finalization(tmp_path: Pa
     }
     assert consumed["final_report_sha256"] == report_sha
 
-    replayed = _run(root)
+    replayed = _run(root, observed=shared_jump + timedelta(minutes=7))
     assert replayed == status
     assert sha256_file(report_path) == report_sha
     assert sha256_file(consumed_path) == consumed_sha
@@ -537,6 +816,10 @@ def test_synthetic_empty_to_exact_1000_one_shot_paired_finalization(tmp_path: Pa
 
 
 class ForwardOverroundSuccessorRuntimeTests(unittest.TestCase):
+    # Pytest collects the top-level functions; this wrapper is for stdlib-only
+    # runtime environments and must not make the N=1000 fault suite run twice.
+    __test__ = False
+
     def _run_with_temp(self, function: object) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             function(Path(temporary))  # type: ignore[operator]
@@ -570,6 +853,42 @@ class ForwardOverroundSuccessorRuntimeTests(unittest.TestCase):
 
     def test_invalid_finish_orders(self) -> None:
         self._run_with_temp(test_invalid_complete_finish_order_fails_closed)
+
+    def test_post_jump_prediction(self) -> None:
+        self._run_with_temp(
+            test_post_jump_runtime_observation_rejects_retrospective_prediction
+        )
+
+    def test_future_staged_result(self) -> None:
+        self._run_with_temp(test_pre_staged_future_result_is_fatal_and_never_sealed)
+
+    def test_rejection_replay(self) -> None:
+        self._run_with_temp(test_replaying_same_rejected_packet_is_exact_noop)
+
+    def test_malformed_candidate(self) -> None:
+        self._run_with_temp(test_malformed_candidate_is_durably_audited_and_replay_safe)
+
+    def test_out_of_order_terminalization(self) -> None:
+        self._run_with_temp(
+            test_out_of_order_membership_seals_terminal_receipts_without_scoring
+        )
+
+    def test_observation_binding(self) -> None:
+        self._run_with_temp(test_sealed_prediction_and_result_bind_first_runtime_observation)
+
+    def test_changed_rejected_file(self) -> None:
+        self._run_with_temp(test_changed_file_after_rejection_is_terminal_evidence_conflict)
+
+    def test_duplicate_membership(self) -> None:
+        self._run_with_temp(test_duplicate_race_membership_is_terminal_without_orphan_receipt)
+
+    def test_result_before_prediction(self) -> None:
+        self._run_with_temp(test_result_observed_before_any_prediction_is_terminal_contamination)
+
+    def test_fatal_terminal_restart(self) -> None:
+        self._run_with_temp(
+            test_crash_after_fatal_report_restarts_to_complete_terminal_receipts
+        )
 
     def test_finalization_restart_boundaries(self) -> None:
         self._run_with_temp(test_restart_at_every_finalization_write_boundary_is_idempotent)
