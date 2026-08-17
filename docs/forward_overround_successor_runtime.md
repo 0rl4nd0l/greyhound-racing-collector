@@ -35,7 +35,8 @@ A future activation review must bind all of these exact identities:
 
 - successor protocol and semantic scorer contract;
 - frozen model, preprocessing, development protocol, and scorer assets;
-- collector/sealer code, finalizer code, and installed service-unit bytes;
+- collector/sealer code, state-machine code, finalizer code, and installed
+  service-unit bytes;
 - an activation time no earlier than `2026-09-01T00:00:00+10:00`;
 - explicit `collection_authorized` and `scheduler_authorized` decisions; and
 - an initial reviewed admission with no predecessor.
@@ -75,14 +76,17 @@ admission. The runtime clock observation is sealed into both the prediction
 receipt and journal event, and admission requires
 `captured_at <= observed_at < jump_at`; a packet cannot use a claimed source
 timestamp to create a prediction after jump. An invalid or ambiguous candidate
-is a nonmember rejection. It cannot be repaired retrospectively into the cohort.
+is a nonmember rejection. Its race ID is durably tombstoned: it cannot be
+repaired retrospectively or enter through a different filename or packet.
 
 Each candidate inbox file is identified by its filename and exact content
 SHA-256. Malformed JSON, a non-object payload, or missing identity/provenance
 fields produces an immutable rejection containing that stable identity rather
 than being skipped. Replaying the unchanged file is an exact no-op even when
 the timer's current observation time advances. Changing the bytes under a
-previously rejected filename is a fatal evidence-identity conflict.
+previously rejected filename is a fatal evidence-identity conflict. Changing
+the candidate identity for an already rejected race ID is also fatal; the first
+rejection remains the permanent exclusion record.
 
 An official-result packet uses schema
 `forward_overround_successor_official_result_v1` and contains:
@@ -93,11 +97,14 @@ An official-result packet uses schema
 - the exact sealed runner set, one finish position per runner, and exactly one
   winner whose native box agrees with `winner_box`.
 
-The runtime observation is also sealed into the result receipt and event. Result
-timing must satisfy `jump_at < captured_at <= observed_at`, so a pre-staged
-future result cannot be accepted. A result file observed before its immutable
-prediction member exists is a fatal contamination conflict rather than a
-deferred packet that can enter after membership is created.
+The runtime is strictly two phase. Until exactly 1,000 prediction receipts have
+sealed and membership has moved to `RESULT_CLOSURE`, any result-inbox presence
+is fatal contamination and candidate sealing does not proceed. The state
+machine independently rejects result events or pending-result events before
+the same fixed-N boundary. Only after that boundary does the runtime read and
+admit result content. Its observation is sealed into the result receipt and
+event, and timing must satisfy `jump_at < captured_at <= observed_at`, so a
+pre-staged future result cannot be accepted.
 
 Finish positions must be integers and form the complete unique sequence from
 one through the accepted runner count. Missing, duplicate, boolean, string,
@@ -119,8 +126,11 @@ baseline loss, paired deltas, calibration, ranks, or an interim verdict.
 Unadmitted collector-code or service-unit drift before a prediction seal moves
 the runtime to `ADMISSION_PAUSED` without membership. Resume requires a later,
 reviewed, hash-chained admission that binds the observed code and unit, retains
-the exact finalizer and semantic contract, and names the active admission hash
-as predecessor. The runtime cannot self-approve that receipt.
+the exact state machine, finalizer, and semantic contract, and names the active
+admission hash as predecessor. The runtime cannot self-approve that receipt.
+State-machine or finalizer drift is always fatal. Collector or unit drift after
+membership freezes is also fatal because re-admission cannot alter result or
+finalization semantics.
 
 Protocol, model, preprocessing, scorer-contract, finalizer, sealed prediction,
 sealed result, member identity, timing, runner-set, or winner drift is fatal.
@@ -159,6 +169,13 @@ of running the scorer again, commits each journal event once, and idempotently
 seals the deterministic final report and consumed receipt. Fault injection
 after every journal, metrics, report, consumed, and status write boundary must
 still converge to one score commit and unchanged terminal bytes.
+
+`CONSUMED.json` is the publication commit marker. If a crash leaves
+`METRICS.json` or `FINAL_REPORT.json` before that marker and a later evidence or
+hash conflict makes the run fatal, those uncommitted score artifacts are
+removed before the deterministic no-metrics terminal is sealed. A committed
+score event is never replayed, and the terminal receipt retains the single
+scorer-invocation count without exposing metrics.
 
 ## Prepared unit
 

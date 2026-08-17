@@ -45,6 +45,7 @@ def admission(
         "capture_code_sha256": code_hash,
         "capture_unit_sha256": "c" * 64,
         "finalizer_code_sha256": "d" * 64,
+        "state_machine_code_sha256": "e" * 64,
         "semantic_contract_sha256": protocol["runtime_admission"]["semantic_contract_sha256"],
         "protocol_sha256": protocol["_document_sha256"],
         "reviewed": True,
@@ -165,7 +166,7 @@ def test_exact_1000_member_path_reaches_one_paired_scoring_action() -> None:
 
 def test_reviewed_code_drift_admission_resumes_without_poisoning_finalization() -> None:
     protocol = protocol_with_target(3)
-    state = replay(protocol, [authorize(protocol), prediction(0), result(0)])
+    state = replay(protocol, [authorize(protocol), prediction(0)])
     state = apply_event(
         state,
         {
@@ -218,6 +219,10 @@ def test_reviewed_code_drift_admission_resumes_without_poisoning_finalization() 
         state,
         protocol,
         [
+            result(
+                0,
+                captured_at=datetime(2026, 9, 1, 1, 5, tzinfo=timezone(timedelta(hours=10))),
+            ),
             result(
                 1,
                 captured_at=datetime(2026, 9, 1, 2, 5, tzinfo=timezone(timedelta(hours=10))),
@@ -365,6 +370,68 @@ def test_candidate_rejection_is_nonmember_and_does_not_poison_path() -> None:
     assert state["state"] == "READY_TO_FINALIZE"
 
 
+def test_rejected_race_id_is_permanently_tombstoned() -> None:
+    protocol = protocol_with_target(1)
+    rejected = {
+        "event_id": "reject-1",
+        "type": "CANDIDATE_REJECTED",
+        "candidate_id": "6" * 64,
+        "candidate_file": "candidate-1.json",
+        "candidate_content_sha256": "5" * 64,
+        "race_id": "race-0",
+        "observed_at": "2026-09-01T00:30:00+10:00",
+        "reason": "candidate_identity_ambiguous",
+        "source_receipt_sha256": "7" * 64,
+        "detail": "duplicate_exact_dog_name",
+    }
+    state = replay(protocol, [authorize(protocol), rejected])
+
+    state = apply_event(state, prediction(0), protocol)
+
+    assert state["state"] == "FINALIZED_ABORTED_NO_METRICS"
+    assert state["fatal_reason"] == "rejected_race_resurrection:race-0"
+    assert state["predictions"] == {}
+
+
+def test_changed_candidate_identity_for_rejected_race_is_fatal() -> None:
+    protocol = protocol_with_target(1)
+    rejected = {
+        "event_id": "reject-1",
+        "type": "CANDIDATE_REJECTED",
+        "candidate_id": "6" * 64,
+        "candidate_file": "candidate-1.json",
+        "candidate_content_sha256": "5" * 64,
+        "race_id": "race-0",
+        "observed_at": "2026-09-01T00:30:00+10:00",
+        "reason": "candidate_identity_ambiguous",
+        "source_receipt_sha256": "7" * 64,
+        "detail": "duplicate_exact_dog_name",
+    }
+    conflicting = {
+        **rejected,
+        "event_id": "reject-2",
+        "candidate_id": "8" * 64,
+        "candidate_file": "candidate-2.json",
+        "candidate_content_sha256": "9" * 64,
+    }
+    state = replay(protocol, [authorize(protocol), rejected, conflicting])
+
+    assert state["state"] == "FINALIZED_ABORTED_NO_METRICS"
+    assert state["fatal_reason"] == "conflicting_rejected_race_identity:race-0"
+
+
+def test_result_before_fixed_n_membership_freeze_is_fatal() -> None:
+    protocol = protocol_with_target(2)
+    state = replay(protocol, [authorize(protocol), prediction(0)])
+
+    state = apply_event(state, result(0), protocol)
+
+    assert state["state"] == "FINALIZED_ABORTED_NO_METRICS"
+    assert state["fatal_reason"] == "result_before_fixed_n_membership_freeze"
+    assert state["results"] == {}
+    assert state["score_invocation_count"] == 0
+
+
 def test_out_of_order_sealed_membership_is_fatal() -> None:
     protocol = protocol_with_target(2)
     state = replay(protocol, [authorize(protocol), prediction(1)])
@@ -473,7 +540,7 @@ def test_restart_replay_is_idempotent_but_conflicting_event_id_is_fatal() -> Non
 
 def test_finalization_before_fixed_n_or_result_closure_is_rejected() -> None:
     protocol = protocol_with_target(2)
-    state = replay(protocol, [authorize(protocol), prediction(0), result(0)])
+    state = replay(protocol, [authorize(protocol), prediction(0)])
 
     with pytest.raises(ProtocolViolation, match="fixed_n_not_ready"):
         apply_event(
@@ -487,7 +554,7 @@ def test_finalization_before_fixed_n_or_result_closure_is_rejected() -> None:
 
 def test_public_status_never_contains_predictions_results_or_candidate_loss() -> None:
     protocol = protocol_with_target(2)
-    state = replay(protocol, [authorize(protocol), prediction(0), result(0)])
+    state = replay(protocol, [authorize(protocol), prediction(0)])
     public = public_snapshot(state)
 
     assert "predictions" not in public

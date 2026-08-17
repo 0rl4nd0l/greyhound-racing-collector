@@ -109,6 +109,7 @@ def initial_snapshot(protocol: Mapping[str, Any]) -> dict[str, Any]:
         "results": {},
         "rejections": {},
         "rejection_files": {},
+        "rejected_race_ids": {},
         "event_hashes": {},
         "paused_reason": None,
         "paused_at": None,
@@ -155,6 +156,9 @@ def _admission_payload(event: Mapping[str, Any], protocol: Mapping[str, Any]) ->
         "capture_unit_sha256": _hash(admission.get("capture_unit_sha256"), "capture_unit_sha256"),
         "finalizer_code_sha256": _hash(
             admission.get("finalizer_code_sha256"), "finalizer_code_sha256"
+        ),
+        "state_machine_code_sha256": _hash(
+            admission.get("state_machine_code_sha256"), "state_machine_code_sha256"
         ),
         "semantic_contract_sha256": _hash(
             admission.get("semantic_contract_sha256"), "semantic_contract_sha256"
@@ -264,6 +268,8 @@ def _accept_admission(
     active = state["admission_payloads"][state["active_admission_id"]]
     if parsed["finalizer_code_sha256"] != active["finalizer_code_sha256"]:
         raise ProtocolViolation("finalizer_code_hash_drift")
+    if parsed["state_machine_code_sha256"] != active["state_machine_code_sha256"]:
+        raise ProtocolViolation("state_machine_code_hash_drift")
     _install_admission(state, event, protocol)
 
 
@@ -279,6 +285,9 @@ def _prediction_sealed(
         return
     member_id = _text(event.get("member_id"), "member_id")
     race_id = _text(event.get("race_id"), "race_id")
+    if race_id in state["rejected_race_ids"]:
+        _fatal(state, f"rejected_race_resurrection:{race_id}")
+        return
     candidate_file = _text(event.get("candidate_file"), "candidate_file")
     candidate_content_sha256 = _hash(
         event.get("candidate_content_sha256"), "candidate_content_sha256"
@@ -351,7 +360,13 @@ def _prediction_sealed(
     state["last_member_order_key"] = list(order_key)
 
 
-def _result_pending(state: dict[str, Any], event: Mapping[str, Any]) -> None:
+def _result_pending(
+    state: dict[str, Any], event: Mapping[str, Any], protocol: Mapping[str, Any]
+) -> None:
+    target = protocol["cohort"]["target_races"]
+    if state["state"] != "RESULT_CLOSURE" or len(state["predictions"]) != target:
+        _fatal(state, "result_pending_before_fixed_n_membership_freeze")
+        return
     member_id = _text(event.get("member_id"), "member_id")
     prediction = state["predictions"].get(member_id)
     if prediction is None:
@@ -400,15 +415,31 @@ def _candidate_rejected(state: dict[str, Any], event: Mapping[str, Any]) -> None
     if prior_file_candidate is not None and prior_file_candidate != candidate_id:
         _fatal(state, f"candidate_file_identity_changed:{candidate_file}")
         return
+    if race_id is not None:
+        if race_id in state["race_members"]:
+            _fatal(state, f"rejection_conflicts_with_sealed_race:{race_id}")
+            return
+        prior_race_candidate = state["rejected_race_ids"].get(race_id)
+        if prior_race_candidate is not None and prior_race_candidate != candidate_id:
+            _fatal(state, f"conflicting_rejected_race_identity:{race_id}")
+            return
     existing = state["rejections"].get(candidate_id)
     if existing is not None and existing != rejection:
         _fatal(state, f"conflicting_candidate_rejection:{candidate_id}")
         return
     state["rejections"][candidate_id] = rejection
     state["rejection_files"][candidate_file] = candidate_id
+    if race_id is not None:
+        state["rejected_race_ids"][race_id] = candidate_id
 
 
-def _result_appended(state: dict[str, Any], event: Mapping[str, Any]) -> None:
+def _result_appended(
+    state: dict[str, Any], event: Mapping[str, Any], protocol: Mapping[str, Any]
+) -> None:
+    target = protocol["cohort"]["target_races"]
+    if state["state"] != "RESULT_CLOSURE" or len(state["predictions"]) != target:
+        _fatal(state, "result_before_fixed_n_membership_freeze")
+        return
     member_id = _text(event.get("member_id"), "member_id")
     prediction = state["predictions"].get(member_id)
     if prediction is None:
@@ -519,11 +550,11 @@ def apply_event(
                 _fatal(state, str(exc))
         elif event_type == "RESULT_APPENDED":
             try:
-                _result_appended(state, event)
+                _result_appended(state, event, protocol)
             except ProtocolViolation as exc:
                 _fatal(state, str(exc))
         elif event_type == "RESULT_PENDING":
-            _result_pending(state, event)
+            _result_pending(state, event, protocol)
         elif event_type == "SEALED_EVIDENCE_INVALID":
             _fatal(state, _text(event.get("reason"), "reason"))
         elif event_type == "OPERATOR_ABORT":

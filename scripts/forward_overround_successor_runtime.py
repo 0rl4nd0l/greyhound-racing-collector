@@ -59,6 +59,7 @@ except ModuleNotFoundError:  # Direct ``python scripts/...`` execution.
     )
 
 TERMINAL_STATES = frozenset({"FINALIZED_SCORED", "FINALIZED_ABORTED_NO_METRICS"})
+STATE_MACHINE_PATH = Path(__file__).with_name("forward_overround_successor_state_machine.py")
 ObservationClock = Callable[[], datetime]
 
 
@@ -256,11 +257,16 @@ class CohortStore:
         return state
 
 
-def runtime_identity(finalizer_path: Path, service_unit_path: Path) -> dict[str, str]:
+def runtime_identity(
+    finalizer_path: Path,
+    service_unit_path: Path,
+    state_machine_path: Path = STATE_MACHINE_PATH,
+) -> dict[str, str]:
     paths = {
         "capture_code_sha256": Path(__file__).resolve(),
         "finalizer_code_sha256": finalizer_path.resolve(),
         "capture_unit_sha256": service_unit_path.resolve(),
+        "state_machine_code_sha256": state_machine_path.resolve(),
     }
     for path in paths.values():
         if not path.is_file():
@@ -275,6 +281,9 @@ def _admission_payload(receipt: Mapping[str, Any]) -> dict[str, Any]:
         "capture_code_sha256": _sha(receipt.get("capture_code_sha256"), "capture_code_sha256"),
         "capture_unit_sha256": _sha(receipt.get("capture_unit_sha256"), "capture_unit_sha256"),
         "finalizer_code_sha256": _sha(receipt.get("finalizer_code_sha256"), "finalizer_code_sha256"),
+        "state_machine_code_sha256": _sha(
+            receipt.get("state_machine_code_sha256"), "state_machine_code_sha256"
+        ),
         "semantic_contract_sha256": _sha(receipt.get("semantic_contract_sha256"), "semantic_contract_sha256"),
         "protocol_sha256": _sha(receipt.get("protocol_sha256"), "protocol_sha256"),
         "reviewed": receipt.get("reviewed"),
@@ -334,6 +343,7 @@ def _abort(
     rows: list[dict[str, Any]],
     reason: str,
 ) -> dict[str, Any]:
+    _discard_unconsumed_score_artifacts(store.root)
     if state["state"] not in TERMINAL_STATES:
         event = {
             "event_id": f"fatal-{len(rows) + 1}-{sha256_bytes(reason.encode())}",
@@ -363,9 +373,22 @@ def _abort(
     return state
 
 
+def _discard_unconsumed_score_artifacts(cohort_root: Path) -> None:
+    """Remove score publications that never reached the CONSUMED commit marker."""
+    if (cohort_root / "CONSUMED.json").exists():
+        return
+    for name in ("METRICS.json", "FINAL_REPORT.json"):
+        try:
+            (cohort_root / name).unlink()
+        except FileNotFoundError:
+            pass
+
+
 def _independent_terminal(
     cohort_root: Path,
     reason: str,
+    *,
+    score_invocation_count: int = 0,
 ) -> dict[str, Any]:
     """Seal an untrusted-store failure without reading or changing its journal."""
     sentinel = {
@@ -375,7 +398,7 @@ def _independent_terminal(
         "protocol_sha256": EXPECTED_PROTOCOL_SHA256,
         "journal_mutated": False,
         "metrics": None,
-        "score_invocation_count": 0,
+        "score_invocation_count": score_invocation_count,
     }
     sentinel_sha = _write_once(cohort_root / "TERMINAL_SENTINEL.json", sentinel)
     report = {
@@ -387,7 +410,7 @@ def _independent_terminal(
         "metrics": None,
         "sealed_prediction_races": None,
         "approved_result_races": None,
-        "score_invocation_count": 0,
+        "score_invocation_count": score_invocation_count,
         "terminal_sentinel_sha256": sentinel_sha,
     }
     report_sha = _write_once(cohort_root / "FINAL_REPORT.json", report)
@@ -412,7 +435,7 @@ def _independent_terminal(
         "paused_reason": None,
         "paused_at": None,
         "fatal_reason": reason,
-        "score_invocation_count": 0,
+        "score_invocation_count": score_invocation_count,
         "finalization_member_manifest_sha256": None,
         "metrics_receipt_sha256": None,
         "actions": ["SEAL_TERMINAL_NO_METRICS"],
@@ -435,11 +458,17 @@ def _resume_independent_terminal(cohort_root: Path) -> dict[str, Any] | None:
         != "forward_overround_successor_independent_terminal_v1"
         or sentinel.get("state") != "FINALIZED_ABORTED_NO_METRICS"
         or sentinel.get("metrics") is not None
-        or sentinel.get("score_invocation_count") != 0
+        or not isinstance(sentinel.get("score_invocation_count"), int)
+        or isinstance(sentinel.get("score_invocation_count"), bool)
+        or sentinel.get("score_invocation_count") < 0
         or not isinstance(sentinel.get("blocking_reason"), str)
     ):
         raise RuntimeEvidenceError("independent_terminal_sentinel_invalid")
-    return _independent_terminal(cohort_root, sentinel["blocking_reason"])
+    return _independent_terminal(
+        cohort_root,
+        sentinel["blocking_reason"],
+        score_invocation_count=sentinel["score_invocation_count"],
+    )
 
 
 def _accept_reviewed_admission(
@@ -491,21 +520,31 @@ def _check_runtime_admission(
         return _abort(store, state, rows, "semantic_contract_hash_drift")
     if active["finalizer_code_sha256"] != identity["finalizer_code_sha256"]:
         return _abort(store, state, rows, "finalizer_code_hash_drift")
+    if active["state_machine_code_sha256"] != identity["state_machine_code_sha256"]:
+        return _abort(store, state, rows, "state_machine_code_hash_drift")
     capture_drift = any(
         active[field] != identity[field]
         for field in ("capture_code_sha256", "capture_unit_sha256")
     )
-    if capture_drift and state["state"] == "COLLECTING":
-        state = store.append(
-            state,
-            rows,
-            {
-                "event_id": f"admission-pause-{len(rows) + 1}",
-                "type": "ADMISSION_CHECK_FAILED",
-                "reason": "capture_code_or_unit_hash_unadmitted_before_seal",
-                "observed_at": observed_at.isoformat(),
-            },
-        )
+    if capture_drift:
+        if state["state"] == "COLLECTING":
+            state = store.append(
+                state,
+                rows,
+                {
+                    "event_id": f"admission-pause-{len(rows) + 1}",
+                    "type": "ADMISSION_CHECK_FAILED",
+                    "reason": "capture_code_or_unit_hash_unadmitted_before_seal",
+                    "observed_at": observed_at.isoformat(),
+                },
+            )
+        elif state["state"] != "ADMISSION_PAUSED":
+            return _abort(
+                store,
+                state,
+                rows,
+                "capture_code_or_unit_hash_drift_after_membership_freeze",
+            )
     if state["state"] == "ADMISSION_PAUSED":
         state = _accept_reviewed_admission(store, state, rows, identity, observed_at)
     return state
@@ -983,6 +1022,38 @@ def _seal_results(
     return state
 
 
+def _abort_if_result_present_before_fixed_n(
+    store: CohortStore,
+    state: dict[str, Any],
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    target = store.protocol["cohort"]["target_races"]
+    if len(state["predictions"]) >= target:
+        return state
+    inbox = store.root / "result_inbox"
+    if not inbox.is_dir():
+        return state
+    paths = sorted(inbox.glob("*.json"), key=lambda item: item.name)
+    if not paths:
+        return state
+    path = paths[0]
+    try:
+        content_sha256 = sha256_file(path)
+    except OSError as exc:
+        return _abort(
+            store,
+            state,
+            rows,
+            f"result_present_before_fixed_n_membership_freeze:{path.name}:read_failed:{exc}",
+        )
+    return _abort(
+        store,
+        state,
+        rows,
+        f"result_present_before_fixed_n_membership_freeze:{path.name}:{content_sha256}",
+    )
+
+
 def _finalize_if_ready(
     store: CohortStore,
     state: dict[str, Any],
@@ -1080,6 +1151,7 @@ def run_once(
     finalizer_path: Path,
     service_unit_path: Path,
     *,
+    state_machine_path: Path = STATE_MACHINE_PATH,
     observation_clock: ObservationClock = _system_clock,
 ) -> dict[str, Any]:
     terminal = _resume_independent_terminal(cohort_root)
@@ -1115,6 +1187,15 @@ def run_once(
             store.verify_receipts(state)
         except RuntimeEvidenceError as exc:
             if state["state"] in TERMINAL_STATES:
+                if state["state"] == "FINALIZED_SCORED" and not (
+                    cohort_root / "CONSUMED.json"
+                ).exists():
+                    _discard_unconsumed_score_artifacts(cohort_root)
+                    return _independent_terminal(
+                        cohort_root,
+                        f"sealed_receipt_validation_failed_after_score_commit:{exc}",
+                        score_invocation_count=state["score_invocation_count"],
+                    )
                 raise
             try:
                 state = _abort(store, state, rows, f"sealed_receipt_validation_failed:{exc}")
@@ -1139,17 +1220,31 @@ def run_once(
                 _write_status(cohort_root / "STATUS.json", status)
                 return status
             raise
-        identity = runtime_identity(finalizer_path, service_unit_path)
+        identity = runtime_identity(finalizer_path, service_unit_path, state_machine_path)
         if not rows:
             state = _authorize(store, state, rows, identity, observed_at)
         if state["state"] not in TERMINAL_STATES:
             state = _check_runtime_admission(store, state, rows, identity, observed_at)
+        if state["state"] not in TERMINAL_STATES:
+            state = _abort_if_result_present_before_fixed_n(store, state, rows)
         if state["state"] == "COLLECTING":
             state = _seal_candidates(store, state, rows, model, preprocessing, observed_at)
-        if state["state"] not in TERMINAL_STATES:
+        if state["state"] == "RESULT_CLOSURE":
             state = _seal_results(store, state, rows, observed_at)
         if state["state"] in {"READY_TO_FINALIZE", "FINALIZATION_LOCKED", "FINALIZED_SCORED"}:
-            state = _finalize_if_ready(store, state, rows, protocol_path, asset_dir)
+            try:
+                state = _finalize_if_ready(store, state, rows, protocol_path, asset_dir)
+            except RuntimeEvidenceError as exc:
+                if state["state"] == "FINALIZED_SCORED" and not (
+                    cohort_root / "CONSUMED.json"
+                ).exists():
+                    _discard_unconsumed_score_artifacts(cohort_root)
+                    return _independent_terminal(
+                        cohort_root,
+                        f"score_artifact_validation_failed_after_score_commit:{exc}",
+                        score_invocation_count=state["score_invocation_count"],
+                    )
+                raise
         if state["state"] == "FINALIZED_ABORTED_NO_METRICS":
             state = _abort(
                 store,
