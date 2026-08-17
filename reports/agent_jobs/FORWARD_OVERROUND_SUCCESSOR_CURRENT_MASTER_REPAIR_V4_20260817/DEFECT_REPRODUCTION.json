@@ -1,0 +1,59 @@
+{
+  "post_fix": {
+    "results": [
+      {
+        "defect": "stale_pre_scan_observed_at",
+        "result": "PASS: immutable candidate bytes are read first, then a fresh runtime clock is sampled immediately before admission; a candidate present only after the initial observation was rejected when the per-candidate observation was post-jump"
+      },
+      {
+        "defect": "partial_final_path_publication",
+        "result": "PASS: an injected partial temporary write left no final CONSUMED.json and no temporary residue"
+      },
+      {
+        "defect": "corrupt_terminal_counts_as_commitment",
+        "result": "PASS: incomplete, corrupt, cross-hash-inconsistent, state-inconsistent, and verdict-inconsistent terminal artifacts are rejected; uncommitted metrics are removed before deterministic no-metrics sealing"
+      },
+      {
+        "defect": "cross_cohort_overlap_with_pr137",
+        "result": "PASS: activation and race jumps must be on or after 2026-10-01 Australia/Melbourne, strictly after PR 137's inclusive 2026-09-30 boundary"
+      },
+      {
+        "defect": "scorer_repeats_after_compute_crash",
+        "result": "PASS: FINALIZE_REQUESTED is durably appended before scorer entry; a restart with no durable metrics seals deterministic no-metrics evidence without invoking the scorer again, while durable valid metrics are committed without recomputation"
+      }
+    ],
+    "status": "PASS"
+  },
+  "pre_fix": {
+    "head": "4481d2cb5c07da0b6091c94085b78c1599acfef4",
+    "tree": "5864593050935e6f549d578695ea290564f5c802",
+    "results": [
+      {
+        "defect": "stale_pre_scan_observed_at",
+        "observed": "post-jump candidate sealed using the single stale pre-jump clock sample",
+        "reproduced": true
+      },
+      {
+        "defect": "partial_final_path_publication",
+        "observed": "injected write failure exposed an 11-byte final CONSUMED.json",
+        "reproduced": true
+      },
+      {
+        "defect": "corrupt_terminal_counts_as_commitment",
+        "observed": "a corrupt CONSUMED.json left CONSUMED.json, FINAL_REPORT.json, and METRICS.json present",
+        "reproduced": true
+      },
+      {
+        "defect": "cross_cohort_overlap_with_pr137",
+        "observed": "a race jumping 2026-09-02 was admitted although PR 137 reserves 2026-08-18 through 2026-09-30 inclusive",
+        "reproduced": true
+      },
+      {
+        "defect": "scorer_repeats_after_compute_crash",
+        "observed": "a crash after scorer computation but before METRICS.json caused two scorer calls on restart before one score was finalized",
+        "reproduced": true
+      }
+    ]
+  },
+  "schema_version": "forward_overround_successor_defect_reproduction_v4"
+}

@@ -1,0 +1,11 @@
+{
+  "active_task_card_created": false,
+  "claim_created": false,
+  "decision_candidate_created": false,
+  "ledger_mutated": false,
+  "release_receipt_created": false,
+  "schema_version": "forward_overround_successor_semantic_controls_v1",
+  "status": "V2_NOT_ACTIVATED_OR_MUTATED",
+  "tenn_state_mutated": false,
+  "validation": "The repair delta from the replayed PR head contains only the nine reviewed semantic files and this evidence-only V4 directory; no V2 control-plane path was added or modified."
+}

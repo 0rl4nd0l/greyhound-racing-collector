@@ -1,0 +1,51 @@
+{
+  "asset_identity": {
+    "final_model.json": "c81b4b3047b7840ba31269504e0c5ceb6c54d742a82a4e01cca52b11fdaa471e",
+    "preprocessing.json": "ad85722337d80360e1745f75fe57ff6b3fbd1e80deac57af318c898372b01998",
+    "protocol.json": "2b20704e41574d5557eb1d6381bc314212b382a195ca5bffea95b832d4a5fb4a",
+    "scorer_contract.json": "c119feea4f67baad73dc9e23ff7f98d755a34054c32a0a98dea4f44cdafa2576"
+  },
+  "asset_root": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-overround-structure-20260816/reports/agent_jobs/OVERROUND_STRUCTURE_TRANSFORM_V1_20260816",
+  "git_identity": {
+    "base_commit": "6c57a9ef0c02cd03053911d1529de60ef3688fff",
+    "base_tree": "f59c547db87973daf4e855c7d17bc1e9bb1c9810",
+    "reviewed_blocked_commit": "4481d2cb5c07da0b6091c94085b78c1599acfef4",
+    "reviewed_blocked_tree": "5864593050935e6f549d578695ea290564f5c802",
+    "semantic_freeze_commit": "4df808ca983714d45b11892608b387cd905ba0c4",
+    "semantic_freeze_tree": "ea8cb7faf68d1166fc2b2ac14cf84c61371a6804"
+  },
+  "invariants": {
+    "baseline_changed": false,
+    "earliest_activation_and_jump_local": "2026-10-01T00:00:00+10:00",
+    "hypothesis_changed": false,
+    "interim_aggregate_loss_peeking": false,
+    "model_changed": false,
+    "preprocessing_changed": false,
+    "scorer_computation_changed": false,
+    "target_races": 1000
+  },
+  "pr137_boundary": {
+    "end_date_inclusive": "2026-09-30",
+    "future_eligibility_protocol_sha256": "729cfe4e487b80bc1cb888d8f65222d2ac75520d1d5d8a1af8d834922181f3f2",
+    "outcomes_inspected": false,
+    "protocol_sha256": "2147a3181336326cb6df3222e9d39aba162db45be1cc614a7c59c0518432d2c8",
+    "start_date_inclusive": "2026-08-18"
+  },
+  "protocol_sha256": "55f553232c1b63e979f09ee8c605116b18c44e140cb0eb2e1bd5ddb06667837c",
+  "schema_version": "forward_overround_successor_runtime_manifest_v4",
+  "semantic_file_identity": {
+    "configs/prediction/forward_overround_successor_v1_protocol.json": "55f553232c1b63e979f09ee8c605116b18c44e140cb0eb2e1bd5ddb06667837c",
+    "docs/forward_overround_successor_protocol.md": "4c0c17a0bfb5c1e97561919187952c3110e7a2b475fe4da3e5ec328a000e6949",
+    "docs/forward_overround_successor_runtime.md": "10ec1eec3b6aa9983aa317650f89c3f18479dee0d4655b1593a412c31ce1c74b",
+    "ops/systemd/forward-overround-successor.service": "f4634ed2180c075395bd1ab2c481183017c36c8ac129a5989829e212ffec1a55",
+    "ops/systemd/forward-overround-successor.timer": "8c2e5ab929548e0628f2efc6d8ff2194ac5c57b76b6cc87dcce1b7d7c3d2f0c2",
+    "scripts/finalize_forward_overround_successor.py": "80d0a8a9132bd031000be7ed5f5b526db16435f5420d06da9573c9210de921c3",
+    "scripts/forward_overround_successor_runtime.py": "1b34f1ff8c2a7eec19c3b55dfcb25032e942d419b7323051f31f80b930a1d9c0",
+    "scripts/forward_overround_successor_state_machine.py": "84692281a2ff317f97e26a2f6f0a1d19223d98cedfd64998557e0fc98c7b5582",
+    "tests/test_forward_overround_successor_runtime.py": "bf660be394774bed93f4b0b9e1bf561630688663c82bf1b958c4d28714a9024f",
+    "tests/test_forward_overround_successor_state_machine.py": "868f3c0f8efbe3dd54d6216c2496ba218b160ce21086ec470b9a55c5da05eb3d"
+  },
+  "semantic_freeze_binding": "All listed semantic bytes are committed at git_identity.semantic_freeze_commit. This evidence-only descendant does not alter them.",
+  "terminal_readiness": "READY_FOR_INDEPENDENT_REVIEW",
+  "validated_at": "2026-08-17T07:17:25Z"
+}

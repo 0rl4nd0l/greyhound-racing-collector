@@ -1,0 +1,20 @@
+{
+  "base": "6c57a9ef0c02cd03053911d1529de60ef3688fff",
+  "disallowed_repair_files": [],
+  "evidence_directory": "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_CURRENT_MASTER_REPAIR_V4_20260817",
+  "issues": [],
+  "ok": true,
+  "repair_semantic_files": [
+    "configs/prediction/forward_overround_successor_v1_protocol.json",
+    "docs/forward_overround_successor_protocol.md",
+    "docs/forward_overround_successor_runtime.md",
+    "ops/systemd/forward-overround-successor.service",
+    "scripts/finalize_forward_overround_successor.py",
+    "scripts/forward_overround_successor_runtime.py",
+    "scripts/forward_overround_successor_state_machine.py",
+    "tests/test_forward_overround_successor_runtime.py",
+    "tests/test_forward_overround_successor_state_machine.py"
+  ],
+  "schema_version": "forward_overround_successor_diff_check_v4",
+  "scope": "current-master reconciliation, five reproduced integrity blockers, direct tests, docs, and append-only evidence only"
+}
