@@ -1,0 +1,32 @@
+{
+  "eligibility": {
+    "betfair_predictor_field": "BEST_AVAIL_BACK_AT_SCHEDULED_OFF",
+    "identity": "date_plus_venue_alias_plus_race_number_plus_exact_scheduled_clock_plus_complete_box_TAB_agreement",
+    "no_name_only_join": true,
+    "reject_missing_or_nonfinite_prices": true,
+    "reject_partial_or_duplicate_runner_sets": true,
+    "reject_reserve_box_or_TAB_mismatch": true,
+    "sportsbet_predictor": "corrected_normalized_WIN_probability",
+    "winner_label": "exactly_one_WINNER_per_complete_race"
+  },
+  "frozen_rule_sha256": "3a12760aba2d84bbe6530337ea0d66ef0ce8ae79f402c66207a727efb155b739",
+  "outcome_rows_inspected": 0,
+  "population_rows_materialized": 0,
+  "protocol_sha256": "2147a3181336326cb6df3222e9d39aba162db45be1cc614a7c59c0518432d2c8",
+  "reopen_rule": "input/hash/timing/leakage ambiguity stops; no post-hoc exclusions or BSP substitution",
+  "schema_version": "sportsbet_betfair_future_eligibility_protocol_v1",
+  "scored_races": 0,
+  "scorer_sha256": "929a9d5ebb073d199e30f20b4a724eee1eb2d42699ab0db6333d34d1e22ff5a6",
+  "terminal_state": "READY_TO_FREEZE",
+  "window": {
+    "analysis_timing": "one analysis only after 2026-09-30 and after fixed-window source completeness is declared without using results",
+    "confirmation_rule": "paired validation-style future delta_log_loss<0 and meeting-date-cluster bootstrap upper_95<0",
+    "end_date_inclusive": "2026-09-30",
+    "fixed_calendar_no_results_driven_stopping": true,
+    "future_rows_loaded_or_scored_during_freeze": false,
+    "interim_peeking": "forbidden",
+    "labels_and_results_during_preparation": "forbidden",
+    "primary_metric": "paired_mean_multiclass_race_log_loss_consensus_minus_sportsbet",
+    "start_date_inclusive": "2026-08-18"
+  }
+}
