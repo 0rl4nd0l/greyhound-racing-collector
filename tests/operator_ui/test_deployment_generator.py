@@ -230,6 +230,7 @@ def test_default_off_package_binds_identity_hashes_private_service_and_external_
     assert "OPERATOR_UI_R3_PROFILE=disabled" in environment
     assert "127.0.0.1" in service and "--port 5055" in service
     assert f"EnvironmentFile={values['secrets_file']}" in service
+    assert "PrivateUsers=true" in service.splitlines()
     assert "actual-secret" not in service + environment
     assert result["enabled"] is False
 
