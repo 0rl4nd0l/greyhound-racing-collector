@@ -32,8 +32,16 @@ no evidence: it performs bounded no-follow retained reads and seals each fixed
 path and byte identity in the repository binding. `observed_at` must be the
 actual time those installed-unit and service-state observations were captured;
 the generator does not invent it. Regenerate after any authoritative producer
-or installed-unit observation changes. Browser requests and environment values
-cannot select paths or commands.
+or installed-unit observation changes.
+
+The sealed model-catalog observation in that deployment binding authenticates
+the normalized catalog and its fixed inputs; it is not a periodic publisher.
+Each models request re-reads those sealed bytes and publishes a current
+P-CATALOG-60 observation only after every catalog/config/schema/model/manifest
+identity and semantic check succeeds. A missing, changed or invalid input fails
+closed before current publication.
+
+Browser requests and environment values cannot select paths or commands.
 
 The default package is disabled. Omitting `--enable` writes
 `OPERATOR_UI_CONNECTED_MODE=0`, `OPERATOR_UI_LEVEL=1`, and
