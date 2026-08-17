@@ -26,8 +26,11 @@ confirmation threshold.
 - Target: exactly 1,000 eligible races. There is no analysis-driven stopping
   rule and no administrative collection deadline.
 - Start boundary: a race jump must be at or after
-  `2026-09-01T00:00:00+10:00` and strictly after a future immutable activation
-  receipt. Capture must also be at or after activation. August 2026 is excluded.
+  `2026-10-01T00:00:00+10:00` and strictly after a future immutable activation
+  receipt, and activation itself cannot precede that boundary. This excludes
+  the current-master Sportsbet/Betfair confirmatory window of 2026-08-18
+  through 2026-09-30 inclusive, so its races cannot enter this successor.
+  Capture must also be at or after activation. August 2026 is excluded.
 - Selection: the first 1,000 eligible races ordered by jump time, capture time,
   then exact race ID. Membership becomes irrevocable when the write-once
   prediction receipt is sealed. A member cannot be removed, replaced, or
@@ -124,10 +127,15 @@ explicit operator abort with no metrics.
 
 After exactly 1,000 predictions and 1,000 matching approved results, the state
 becomes `READY_TO_FINALIZE`. The one-shot finalization request freezes a
-deterministic manifest of the exact prediction/result receipt pairs and emits
-one paired-scorer action. The metrics receipt must bind that manifest. Restart
-replays event IDs and hashes idempotently; a conflicting duplicate event ID is
-fatal. Consumption occurs only after the final report is sealed.
+deterministic manifest of the exact prediction/result receipt pairs and is the
+durable scorer-start precommit. The scorer runs only in the process that
+created that precommit. A restart with a precommit but no complete metrics
+receipt seals deterministic no-metrics terminal evidence instead of repeating
+the scorer. A complete metrics receipt can resume publication without another
+scorer execution. The metrics receipt must bind that manifest. Restart replays
+event IDs and hashes idempotently; a conflicting duplicate event ID is fatal.
+Consumption occurs only after the final report is sealed and the complete
+cross-hash commit validates.
 
 ## State machine
 

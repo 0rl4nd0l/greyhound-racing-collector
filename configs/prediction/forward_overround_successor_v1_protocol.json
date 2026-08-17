@@ -32,8 +32,14 @@
       "upper_bound": "jump_minus_10_minutes_exclusive"
     },
     "complete_active_runner_set": true,
-    "earliest_jump_local": "2026-09-01T00:00:00+10:00",
+    "earliest_jump_local": "2026-10-01T00:00:00+10:00",
     "exact_identity": "race_id_plus_box_number_plus_exact_dog_name_never_name_only",
+    "excluded_confirmatory_window": {
+      "cohort": "sportsbet_betfair_forward_consensus_v1",
+      "end_date_inclusive": "2026-09-30",
+      "rule": "activation_and_race_jump_strictly_after_end_date",
+      "start_date_inclusive": "2026-08-18"
+    },
     "market_type": "win",
     "race_jump_after_activation": true,
     "raw_paired_column_win_proof": true,

@@ -55,7 +55,7 @@ def admission(
     }
 
 
-def authorize(protocol: dict, admitted_at: str = "2026-09-01T00:00:00+10:00") -> dict:
+def authorize(protocol: dict, admitted_at: str = "2026-10-01T00:00:00+10:00") -> dict:
     return {
         "event_id": "authorize",
         "type": "AUTHORIZE",
@@ -73,7 +73,7 @@ def prediction(
     jump_at: datetime | None = None,
     runner_hash: str = H,
 ) -> dict:
-    jump = jump_at or datetime(2026, 9, 1, 1, 0, tzinfo=timezone(timedelta(hours=10))) + timedelta(
+    jump = jump_at or datetime(2026, 10, 1, 1, 0, tzinfo=timezone(timedelta(hours=10))) + timedelta(
         minutes=index
     )
     captured = jump - timedelta(minutes=20)
@@ -101,7 +101,7 @@ def result(
     captured_at: datetime | None = None,
 ) -> dict:
     captured = captured_at or datetime(
-        2026, 9, 1, 1, 5, tzinfo=timezone(timedelta(hours=10))
+        2026, 10, 1, 1, 5, tzinfo=timezone(timedelta(hours=10))
     ) + timedelta(minutes=index)
     return {
         "event_id": f"result-{index}",
@@ -124,17 +124,35 @@ def test_protocol_is_prepared_fixed_n_and_preserves_frozen_model() -> None:
     assert protocol["authorization"]["scheduler_install_authorized"] is False
     assert protocol["cohort"]["target_races"] == 1000
     assert protocol["cohort"]["administrative_deadline"] is None
-    assert protocol["eligibility"]["earliest_jump_local"] == "2026-09-01T00:00:00+10:00"
+    assert protocol["eligibility"]["earliest_jump_local"] == "2026-10-01T00:00:00+10:00"
+    assert protocol["eligibility"]["excluded_confirmatory_window"] == {
+        "cohort": "sportsbet_betfair_forward_consensus_v1",
+        "end_date_inclusive": "2026-09-30",
+        "rule": "activation_and_race_jump_strictly_after_end_date",
+        "start_date_inclusive": "2026-08-18",
+    }
     assert protocol["model"]["hashes"]["final_model.json"] == (
         "c81b4b3047b7840ba31269504e0c5ceb6c54d742a82a4e01cca52b11fdaa471e"
     )
     assert public_snapshot(initial_snapshot(protocol))["state"] == ("PREPARED_NOT_AUTHORIZED")
 
 
+def test_activation_and_membership_cannot_overlap_consensus_confirmatory_window() -> None:
+    protocol = protocol_with_target(1)
+    with pytest.raises(ProtocolViolation, match="activation_before_forward_population_boundary"):
+        replay(protocol, [authorize(protocol, "2026-09-30T23:59:59+10:00")])
+
+    overlapping_jump = datetime(2026, 9, 30, 23, 59, tzinfo=timezone(timedelta(hours=10)))
+    state = replay(protocol, [authorize(protocol), prediction(0, jump_at=overlapping_jump)])
+    assert state["state"] == "FINALIZED_ABORTED_NO_METRICS"
+    assert state["fatal_reason"] == "sealed_member_not_forward_eligible:member-0"
+    assert state["predictions"] == {}
+
+
 def test_exact_1000_member_path_reaches_one_paired_scoring_action() -> None:
     protocol = load_protocol(PROTOCOL_PATH)
     activation = authorize(protocol)
-    first_jump = datetime(2026, 9, 1, 1, 0, tzinfo=timezone(timedelta(hours=10)))
+    first_jump = datetime(2026, 10, 1, 1, 0, tzinfo=timezone(timedelta(hours=10)))
     events = [activation]
     events.extend(prediction(i, jump_at=first_jump + timedelta(minutes=i)) for i in range(1000))
     events.extend(result(i, captured_at=first_jump + timedelta(minutes=i + 5)) for i in range(1000))
@@ -173,7 +191,7 @@ def test_reviewed_code_drift_admission_resumes_without_poisoning_finalization() 
             "event_id": "pause-1",
             "type": "ADMISSION_CHECK_FAILED",
             "reason": "capture_code_or_unit_hash_unadmitted_before_seal",
-            "observed_at": "2026-09-01T01:20:00+10:00",
+            "observed_at": "2026-10-01T01:20:00+10:00",
         },
         protocol,
     )
@@ -189,7 +207,7 @@ def test_reviewed_code_drift_admission_resumes_without_poisoning_finalization() 
             "admission": admission(
                 protocol,
                 "admission-2",
-                "2026-09-01T01:30:00+10:00",
+                "2026-10-01T01:30:00+10:00",
                 predecessor=prior_admission,
                 code_hash="f" * 64,
             ),
@@ -202,7 +220,7 @@ def test_reviewed_code_drift_admission_resumes_without_poisoning_finalization() 
         prediction(
             1,
             admission_id="admission-2",
-            jump_at=datetime(2026, 9, 1, 2, 0, tzinfo=timezone(timedelta(hours=10))),
+            jump_at=datetime(2026, 10, 1, 2, 0, tzinfo=timezone(timedelta(hours=10))),
         ),
         protocol,
     )
@@ -211,7 +229,7 @@ def test_reviewed_code_drift_admission_resumes_without_poisoning_finalization() 
         prediction(
             2,
             admission_id="admission-2",
-            jump_at=datetime(2026, 9, 1, 2, 30, tzinfo=timezone(timedelta(hours=10))),
+            jump_at=datetime(2026, 10, 1, 2, 30, tzinfo=timezone(timedelta(hours=10))),
         ),
         protocol,
     )
@@ -221,15 +239,15 @@ def test_reviewed_code_drift_admission_resumes_without_poisoning_finalization() 
         [
             result(
                 0,
-                captured_at=datetime(2026, 9, 1, 1, 5, tzinfo=timezone(timedelta(hours=10))),
+                captured_at=datetime(2026, 10, 1, 1, 5, tzinfo=timezone(timedelta(hours=10))),
             ),
             result(
                 1,
-                captured_at=datetime(2026, 9, 1, 2, 5, tzinfo=timezone(timedelta(hours=10))),
+                captured_at=datetime(2026, 10, 1, 2, 5, tzinfo=timezone(timedelta(hours=10))),
             ),
             result(
                 2,
-                captured_at=datetime(2026, 9, 1, 2, 35, tzinfo=timezone(timedelta(hours=10))),
+                captured_at=datetime(2026, 10, 1, 2, 35, tzinfo=timezone(timedelta(hours=10))),
             ),
         ],
     )
@@ -260,7 +278,7 @@ def test_seal_while_admission_paused_is_fatal_with_no_metrics() -> None:
                 "event_id": "pause-1",
                 "type": "ADMISSION_CHECK_FAILED",
                 "reason": "capture_code_or_unit_hash_unadmitted_before_seal",
-                "observed_at": "2026-09-01T01:20:00+10:00",
+                "observed_at": "2026-10-01T01:20:00+10:00",
             },
         ],
     )
@@ -283,14 +301,14 @@ def test_re_admission_cannot_change_frozen_semantic_contract() -> None:
                 "event_id": "pause-1",
                 "type": "ADMISSION_CHECK_FAILED",
                 "reason": "capture_code_or_unit_hash_unadmitted_before_seal",
-                "observed_at": "2026-09-01T01:20:00+10:00",
+                "observed_at": "2026-10-01T01:20:00+10:00",
             },
         ],
     )
     changed = admission(
         protocol,
         "admission-2",
-        "2026-09-01T01:30:00+10:00",
+        "2026-10-01T01:30:00+10:00",
         predecessor=state["active_admission_sha256"],
     )
     changed["semantic_contract_sha256"] = "0" * 64
@@ -320,14 +338,14 @@ def test_re_admission_cannot_change_frozen_finalizer_code() -> None:
                 "event_id": "pause-1",
                 "type": "ADMISSION_CHECK_FAILED",
                 "reason": "capture_code_or_unit_hash_unadmitted_before_seal",
-                "observed_at": "2026-09-01T01:20:00+10:00",
+                "observed_at": "2026-10-01T01:20:00+10:00",
             },
         ],
     )
     changed = admission(
         protocol,
         "admission-2",
-        "2026-09-01T01:30:00+10:00",
+        "2026-10-01T01:30:00+10:00",
         predecessor=state["active_admission_sha256"],
     )
     changed["finalizer_code_sha256"] = "1" * 64
@@ -356,7 +374,7 @@ def test_candidate_rejection_is_nonmember_and_does_not_poison_path() -> None:
         "candidate_file": "candidate-1.json",
         "candidate_content_sha256": "5" * 64,
         "race_id": "rejected-race-1",
-        "observed_at": "2026-09-01T00:30:00+10:00",
+        "observed_at": "2026-10-01T00:30:00+10:00",
         "reason": "candidate_identity_ambiguous",
         "source_receipt_sha256": "7" * 64,
         "detail": "duplicate_exact_dog_name",
@@ -379,7 +397,7 @@ def test_rejected_race_id_is_permanently_tombstoned() -> None:
         "candidate_file": "candidate-1.json",
         "candidate_content_sha256": "5" * 64,
         "race_id": "race-0",
-        "observed_at": "2026-09-01T00:30:00+10:00",
+        "observed_at": "2026-10-01T00:30:00+10:00",
         "reason": "candidate_identity_ambiguous",
         "source_receipt_sha256": "7" * 64,
         "detail": "duplicate_exact_dog_name",
@@ -402,7 +420,7 @@ def test_changed_candidate_identity_for_rejected_race_is_fatal() -> None:
         "candidate_file": "candidate-1.json",
         "candidate_content_sha256": "5" * 64,
         "race_id": "race-0",
-        "observed_at": "2026-09-01T00:30:00+10:00",
+        "observed_at": "2026-10-01T00:30:00+10:00",
         "reason": "candidate_identity_ambiguous",
         "source_receipt_sha256": "7" * 64,
         "detail": "duplicate_exact_dog_name",
@@ -477,7 +495,7 @@ def test_result_observed_before_jump_is_fatal_and_never_scores() -> None:
     state = replay(protocol, [authorize(protocol), prediction(0)])
     too_early = result(
         0,
-        captured_at=datetime(2026, 9, 1, 0, 59, tzinfo=timezone(timedelta(hours=10))),
+        captured_at=datetime(2026, 10, 1, 0, 59, tzinfo=timezone(timedelta(hours=10))),
     )
 
     state = apply_event(state, too_early, protocol)
@@ -513,7 +531,7 @@ def test_result_pending_is_temporary_until_the_same_member_closes() -> None:
             "type": "RESULT_PENDING",
             "member_id": "member-0",
             "reason": "approved_result_not_yet_available",
-            "observed_at": "2026-09-01T01:01:00+10:00",
+            "observed_at": "2026-10-01T01:01:00+10:00",
         },
         protocol,
     )

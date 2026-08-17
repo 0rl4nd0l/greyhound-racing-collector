@@ -12,7 +12,7 @@ import argparse
 import hashlib
 import json
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -86,6 +86,19 @@ def load_protocol(path: Path) -> dict[str, Any]:
         "requires_sealed_predictions": target,
     }:
         raise ProtocolViolation("finalization_target_mismatch")
+    excluded_window = protocol["eligibility"].get("excluded_confirmatory_window")
+    if excluded_window != {
+        "cohort": "sportsbet_betfair_forward_consensus_v1",
+        "end_date_inclusive": "2026-09-30",
+        "rule": "activation_and_race_jump_strictly_after_end_date",
+        "start_date_inclusive": "2026-08-18",
+    }:
+        raise ProtocolViolation("cross_cohort_exclusion_mismatch")
+    earliest_jump = _time(
+        protocol["eligibility"].get("earliest_jump_local"), "earliest_jump_local"
+    )
+    if earliest_jump.date() <= date.fromisoformat(excluded_window["end_date_inclusive"]):
+        raise ProtocolViolation("cross_cohort_eligibility_overlap")
     protocol["_document_sha256"] = sha256_bytes(raw)
     return protocol
 

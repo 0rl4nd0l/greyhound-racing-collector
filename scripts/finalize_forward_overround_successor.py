@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 
 import numpy as np
 
-EXPECTED_PROTOCOL_SHA256 = "4978163d1dd9c0e4ced5eb1d4cb9425d3994379d8c617fb3306a489b838073be"
+EXPECTED_PROTOCOL_SHA256 = "55f553232c1b63e979f09ee8c605116b18c44e140cb0eb2e1bd5ddb06667837c"
 ASSET_HASHES = {
     "final_model.json": "c81b4b3047b7840ba31269504e0c5ceb6c54d742a82a4e01cca52b11fdaa471e",
     "preprocessing.json": "ad85722337d80360e1745f75fe57ff6b3fbd1e80deac57af318c898372b01998",

@@ -1,15 +1,15 @@
 [Unit]
 Description=Frozen forward overround successor evidence sealer
-ConditionPathIsDirectory=/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/forward_overround_successor_v1_20260901
-ConditionPathExists=/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/forward_overround_successor_v1_20260901/ACTIVATION.json
+ConditionPathIsDirectory=/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/forward_overround_successor_v1_20261001
+ConditionPathExists=/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/forward_overround_successor_v1_20261001/ACTIVATION.json
 
 [Service]
 Type=oneshot
 WorkingDirectory=/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-runtime-master-live-20260621
 Environment=PYTHONUNBUFFERED=1
 Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-ExecStart=/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/.venv/bin/python /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-runtime-master-live-20260621/scripts/forward_overround_successor_runtime.py run-once --cohort-root /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/forward_overround_successor_v1_20260901 --protocol /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-runtime-master-live-20260621/configs/prediction/forward_overround_successor_v1_protocol.json --asset-dir /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-overround-structure-20260816/reports/agent_jobs/OVERROUND_STRUCTURE_TRANSFORM_V1_20260816 --finalizer /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-runtime-master-live-20260621/scripts/finalize_forward_overround_successor.py --service-unit /home/l4nd0/.config/systemd/user/forward-overround-successor.service
-ReadWritePaths=/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/forward_overround_successor_v1_20260901
+ExecStart=/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/.venv/bin/python /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-runtime-master-live-20260621/scripts/forward_overround_successor_runtime.py run-once --cohort-root /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/forward_overround_successor_v1_20261001 --protocol /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-runtime-master-live-20260621/configs/prediction/forward_overround_successor_v1_protocol.json --asset-dir /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-overround-structure-20260816/reports/agent_jobs/OVERROUND_STRUCTURE_TRANSFORM_V1_20260816 --finalizer /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-runtime-master-live-20260621/scripts/finalize_forward_overround_successor.py --service-unit /home/l4nd0/.config/systemd/user/forward-overround-successor.service
+ReadWritePaths=/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/forward_overround_successor_v1_20261001
 NoNewPrivileges=true
 PrivateDevices=true
 PrivateTmp=true
@@ -23,4 +23,3 @@ LockPersonality=true
 TimeoutStartSec=900
 Nice=10
 IOSchedulingClass=idle
-

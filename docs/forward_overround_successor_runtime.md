@@ -8,8 +8,8 @@ is still required before any later activation review.
 
 ## Frozen boundary
 
-The runtime accepts only the unchanged successor protocol at SHA-256
-`4978163d1dd9c0e4ced5eb1d4cb9425d3994379d8c617fb3306a489b838073be`.
+The runtime accepts only the current successor protocol at SHA-256
+`55f553232c1b63e979f09ee8c605116b18c44e140cb0eb2e1bd5ddb06667837c`.
 It verifies the protocol's frozen development assets on every invocation:
 
 - `final_model.json`:
@@ -37,7 +37,7 @@ A future activation review must bind all of these exact identities:
 - frozen model, preprocessing, development protocol, and scorer assets;
 - collector/sealer code, state-machine code, finalizer code, and installed
   service-unit bytes;
-- an activation time no earlier than `2026-09-01T00:00:00+10:00`;
+- an activation time no earlier than `2026-10-01T00:00:00+10:00`;
 - explicit `collection_authorized` and `scheduler_authorized` decisions; and
 - an initial reviewed admission with no predecessor.
 
@@ -45,6 +45,11 @@ The implementation does not contain a command that writes this receipt.
 Installation, daemon reload, timer enablement, or service start requires a new
 owner authorization and deployment task. A repository commit alone does not
 change the installed runtime.
+
+The October boundary is also a hard non-overlap control for the current-master
+Sportsbet/Betfair confirmatory cohort, whose frozen eligibility window is
+2026-08-18 through 2026-09-30 inclusive. Neither activation nor race admission
+can occur inside that earlier cohort's window.
 
 The first authorization event binds the exact activation-receipt SHA-256. Every
 later runtime invocation and status replay revalidates those bytes before
@@ -69,8 +74,10 @@ A candidate packet uses schema
 - one row per active runner with native box number, exact dog name, corrected
   decimal WIN odds, and raw source-row SHA-256.
 
-Before any write, the sealer checks activation, the T-33 inclusive to T-10
-exclusive capture window, the 2026-09-01 boundary, exact runner identities,
+For each candidate, the sealer first reads and hashes the immutable file bytes,
+then samples the runtime clock immediately before admission. Before any write,
+it checks activation, the T-33 inclusive to T-10
+exclusive capture window, the 2026-10-01 boundary, exact runner identities,
 complete field size, corrected Sportsbet WIN provenance, and the active runtime
 admission. The runtime clock observation is sealed into both the prediction
 receipt and journal event, and admission requires
@@ -135,7 +142,12 @@ finalization semantics.
 Protocol, model, preprocessing, scorer-contract, finalizer, sealed prediction,
 sealed result, member identity, timing, runner-set, or winner drift is fatal.
 Fatal evidence produces `BLOCKED_FORWARD_EVIDENCE`, `metrics: null`, and an
-immutable consumption receipt. A fatal sentinel cannot be removed or
+immutable consumption receipt. Write-once evidence is fully written and
+fsynced under a same-directory temporary name, atomically linked into the final
+create-if-absent path, and followed by a parent-directory fsync. A final path is
+never exposed while its bytes are incomplete. Existing final artifacts count
+only after JSON schema, content hash, referenced-artifact hashes, and journal
+state bindings all validate. A fatal sentinel cannot be removed or
 re-admitted. Event-induced terminal states use the same deterministic
 `FINAL_REPORT.json` and `CONSUMED.json` sealing path; a restart after either
 terminal write boundary completes the missing receipt without scoring.
@@ -163,16 +175,23 @@ The metrics receipt must bind the frozen member manifest. `FINAL_REPORT.json`
 and `CONSUMED.json` are write once. ROI, returns, staking, EV, and betting are
 not computed.
 
-Finalization resumes from `READY_TO_FINALIZE`, `FINALIZATION_LOCKED`, or
-`FINALIZED_SCORED`. A restart reuses a valid write-once metrics receipt instead
-of running the scorer again, commits each journal event once, and idempotently
-seals the deterministic final report and consumed receipt. Fault injection
-after every journal, metrics, report, consumed, and status write boundary must
-still converge to one score commit and unchanged terminal bytes.
+`FINALIZE_REQUESTED` is the durable scorer-start precommit. Only the process
+that appends it may begin scorer computation. A restart reuses a complete,
+valid write-once metrics receipt without running the scorer again. If the
+process exits after the start precommit but before complete metrics publication,
+restart seals deterministic no-metrics terminal evidence; it does not attempt
+the scorer a second time. This is an at-most-once execution guarantee, not a
+claim that a process crash can make computation exactly once. Successful
+finalization still produces exactly one committed score. Later crashes while a
+complete metrics receipt, report, consumed receipt, or status is being
+published resume idempotently to unchanged terminal bytes.
 
-`CONSUMED.json` is the publication commit marker. If a crash leaves
+`CONSUMED.json` is the publication commit marker only when its schema and all
+referenced final-report, metrics, member-manifest, and optional sentinel hashes
+validate. If a crash leaves
 `METRICS.json` or `FINAL_REPORT.json` before that marker and a later evidence or
-hash conflict makes the run fatal, those uncommitted score artifacts are
+hash conflict makes the run fatal, or if a partial/corrupt final artifact is
+found, those uncommitted score artifacts are
 removed before the deterministic no-metrics terminal is sealed. A committed
 score event is never replayed, and the terminal receipt retains the single
 scorer-invocation count without exposing metrics.

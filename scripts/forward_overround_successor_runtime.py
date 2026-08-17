@@ -12,6 +12,7 @@ import copy
 import fcntl
 import hashlib
 import json
+import math
 import os
 import tempfile
 from contextlib import contextmanager
@@ -98,6 +99,26 @@ def _sha(value: Any, field: str) -> str:
     return text
 
 
+def _exact_keys(payload: Mapping[str, Any], expected: set[str], field: str) -> None:
+    if set(payload) != expected:
+        raise RuntimeEvidenceError(f"invalid_keys:{field}")
+
+
+def _nonnegative_int(value: Any, field: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+        raise RuntimeEvidenceError(f"invalid_nonnegative_int:{field}")
+    return value
+
+
+def _finite_number(value: Any, field: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise RuntimeEvidenceError(f"invalid_number:{field}")
+    number = float(value)
+    if not math.isfinite(number):
+        raise RuntimeEvidenceError(f"non_finite_number:{field}")
+    return number
+
+
 def _aware_time(value: Any, field: str) -> datetime:
     text = _text(value, field)
     try:
@@ -126,19 +147,39 @@ def _observe_utc(clock: ObservationClock) -> datetime:
     return observed_at.astimezone(timezone.utc)
 
 
+def _fsync_directory(path: Path) -> None:
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    descriptor = os.open(path, flags)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
 def _write_once(path: Path, payload: Mapping[str, Any]) -> str:
     raw = canonical_bytes(payload)
     path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+    temporary = Path(temporary_name)
     try:
-        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o444)
-    except FileExistsError:
-        if path.read_bytes() != raw:
-            raise RuntimeEvidenceError(f"write_once_conflict:{path}") from None
-    else:
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(raw)
             handle.flush()
             os.fsync(handle.fileno())
+            os.fchmod(handle.fileno(), 0o444)
+        try:
+            os.link(temporary, path)
+        except FileExistsError:
+            try:
+                existing = path.read_bytes()
+            except OSError as exc:
+                raise RuntimeEvidenceError(f"write_once_existing_read_failed:{path}:{exc}") from exc
+            if existing != raw:
+                raise RuntimeEvidenceError(f"write_once_conflict:{path}") from None
+        else:
+            _fsync_directory(path.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
     return sha256_bytes(raw)
 
 
@@ -154,6 +195,7 @@ def _write_status(path: Path, payload: Mapping[str, Any]) -> None:
             os.fsync(handle.fileno())
         os.chmod(temporary, 0o444)
         os.replace(temporary, path)
+        _fsync_directory(path.parent)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -370,18 +412,467 @@ def _abort(
             "final_report_sha256": report_sha,
         },
     )
+    _require_terminal_commit(store.root)
     return state
 
 
-def _discard_unconsumed_score_artifacts(cohort_root: Path) -> None:
-    """Remove score publications that never reached the CONSUMED commit marker."""
-    if (cohort_root / "CONSUMED.json").exists():
+def _validate_metric_summary(summary: Any, field: str) -> None:
+    if not isinstance(summary, Mapping):
+        raise RuntimeEvidenceError(f"mapping_required:{field}")
+    _exact_keys(
+        summary,
+        {
+            "race_count",
+            "runner_count",
+            "mean_multiclass_race_log_loss",
+            "mean_multiclass_brier",
+            "runner_calibration",
+            "top_1_accuracy",
+            "mean_winner_rank",
+            "mean_reciprocal_winner_rank",
+        },
+        field,
+    )
+    if _nonnegative_int(summary["race_count"], f"{field}.race_count") != 1000:
+        raise RuntimeEvidenceError(f"invalid_race_count:{field}")
+    runner_count = _nonnegative_int(summary["runner_count"], f"{field}.runner_count")
+    if runner_count < 2000:
+        raise RuntimeEvidenceError(f"invalid_runner_count:{field}")
+    for name in (
+        "mean_multiclass_race_log_loss",
+        "mean_multiclass_brier",
+        "top_1_accuracy",
+        "mean_winner_rank",
+        "mean_reciprocal_winner_rank",
+    ):
+        _finite_number(summary[name], f"{field}.{name}")
+    calibration = summary["runner_calibration"]
+    if not isinstance(calibration, Mapping):
+        raise RuntimeEvidenceError(f"mapping_required:{field}.runner_calibration")
+    _exact_keys(calibration, {"bands", "ece"}, f"{field}.runner_calibration")
+    _finite_number(calibration["ece"], f"{field}.runner_calibration.ece")
+    bands = calibration["bands"]
+    if not isinstance(bands, list) or len(bands) != 5:
+        raise RuntimeEvidenceError(f"invalid_calibration_bands:{field}")
+    band_runner_count = 0
+    for index, band in enumerate(bands):
+        band_field = f"{field}.runner_calibration.bands[{index}]"
+        if not isinstance(band, Mapping):
+            raise RuntimeEvidenceError(f"mapping_required:{band_field}")
+        _exact_keys(
+            band,
+            {
+                "lower",
+                "upper",
+                "runner_count",
+                "mean_probability",
+                "observed_win_rate",
+                "observed_minus_probability",
+            },
+            band_field,
+        )
+        _finite_number(band["lower"], f"{band_field}.lower")
+        _finite_number(band["upper"], f"{band_field}.upper")
+        count = _nonnegative_int(band["runner_count"], f"{band_field}.runner_count")
+        band_runner_count += count
+        for name in ("mean_probability", "observed_win_rate", "observed_minus_probability"):
+            value = band[name]
+            if count == 0:
+                if value is not None:
+                    raise RuntimeEvidenceError(f"nonempty_zero_count_band:{band_field}.{name}")
+            else:
+                _finite_number(value, f"{band_field}.{name}")
+    if band_runner_count != runner_count:
+        raise RuntimeEvidenceError(f"calibration_runner_count_mismatch:{field}")
+
+
+def _validate_interval(
+    value: Any, field: str, *, seed: int, cluster_count_required: bool = False
+) -> None:
+    if not isinstance(value, Mapping):
+        raise RuntimeEvidenceError(f"mapping_required:{field}")
+    expected_keys = {"replicates", "seed", "lower", "upper"}
+    if cluster_count_required:
+        expected_keys.add("cluster_count")
+    _exact_keys(value, expected_keys, field)
+    if value["replicates"] != 20000 or value["seed"] != seed:
+        raise RuntimeEvidenceError(f"frozen_interval_contract_mismatch:{field}")
+    lower = _finite_number(value["lower"], f"{field}.lower")
+    upper = _finite_number(value["upper"], f"{field}.upper")
+    if lower > upper:
+        raise RuntimeEvidenceError(f"invalid_interval_order:{field}")
+    if cluster_count_required and _nonnegative_int(
+        value["cluster_count"], f"{field}.cluster_count"
+    ) == 0:
+        raise RuntimeEvidenceError(f"invalid_cluster_count:{field}")
+
+
+def _validate_scored_report(report: Mapping[str, Any]) -> None:
+    _exact_keys(
+        report,
+        {
+            "schema_version",
+            "verdict",
+            "protocol_sha256",
+            "member_manifest_sha256",
+            "race_count",
+            "identical_races_compared",
+            "score_invocation_count",
+            "metrics",
+            "profitability",
+        },
+        "scored_report",
+    )
+    if report.get("schema_version") != "forward_overround_successor_final_report_v1":
+        raise RuntimeEvidenceError("scored_report_schema_invalid")
+    if report.get("verdict") not in {
+        "FORWARD_OVERROUND_SIGNAL_CONFIRMED",
+        "FORWARD_OVERROUND_SIGNAL_NOT_CONFIRMED",
+    }:
+        raise RuntimeEvidenceError("scored_report_verdict_invalid")
+    if (
+        report.get("protocol_sha256") != EXPECTED_PROTOCOL_SHA256
+        or report.get("race_count") != 1000
+        or report.get("identical_races_compared") is not True
+        or report.get("score_invocation_count") != 1
+        or report.get("profitability")
+        != {"roi_computed": False, "betting_analysis_performed": False}
+    ):
+        raise RuntimeEvidenceError("scored_report_frozen_contract_invalid")
+    _sha(report.get("member_manifest_sha256"), "scored_report.member_manifest_sha256")
+    metrics = report.get("metrics")
+    if not isinstance(metrics, Mapping):
+        raise RuntimeEvidenceError("scored_report_metrics_invalid")
+    _exact_keys(
+        metrics,
+        {
+            "primary",
+            "baseline",
+            "candidate",
+            "race_bootstrap_95pct",
+            "race_date_cluster_bootstrap_95pct",
+            "chronological_blocks",
+            "negative_chronological_blocks",
+        },
+        "scored_report.metrics",
+    )
+    _validate_metric_summary(metrics["baseline"], "scored_report.metrics.baseline")
+    _validate_metric_summary(metrics["candidate"], "scored_report.metrics.candidate")
+    primary = metrics["primary"]
+    if not isinstance(primary, Mapping):
+        raise RuntimeEvidenceError("scored_report_primary_invalid")
+    _exact_keys(
+        primary,
+        {"name", "candidate_minus_baseline", "baseline", "candidate"},
+        "scored_report.metrics.primary",
+    )
+    if primary["name"] != "mean_multiclass_race_log_loss":
+        raise RuntimeEvidenceError("scored_report_primary_name_invalid")
+    baseline = _finite_number(primary["baseline"], "scored_report.metrics.primary.baseline")
+    candidate = _finite_number(primary["candidate"], "scored_report.metrics.primary.candidate")
+    delta = _finite_number(
+        primary["candidate_minus_baseline"],
+        "scored_report.metrics.primary.candidate_minus_baseline",
+    )
+    if not math.isclose(delta, candidate - baseline, rel_tol=0.0, abs_tol=1e-12):
+        raise RuntimeEvidenceError("scored_report_primary_delta_invalid")
+    if baseline != metrics["baseline"]["mean_multiclass_race_log_loss"]:
+        raise RuntimeEvidenceError("scored_report_baseline_primary_mismatch")
+    if candidate != metrics["candidate"]["mean_multiclass_race_log_loss"]:
+        raise RuntimeEvidenceError("scored_report_candidate_primary_mismatch")
+    _validate_interval(
+        metrics["race_bootstrap_95pct"],
+        "scored_report.metrics.race_bootstrap_95pct",
+        seed=20260817,
+    )
+    _validate_interval(
+        metrics["race_date_cluster_bootstrap_95pct"],
+        "scored_report.metrics.race_date_cluster_bootstrap_95pct",
+        seed=20260818,
+        cluster_count_required=True,
+    )
+    blocks = metrics["chronological_blocks"]
+    if not isinstance(blocks, list) or len(blocks) != 5:
+        raise RuntimeEvidenceError("scored_report_chronological_blocks_invalid")
+    negative_blocks = 0
+    for index, block in enumerate(blocks, start=1):
+        if not isinstance(block, Mapping):
+            raise RuntimeEvidenceError("scored_report_chronological_block_invalid")
+        _exact_keys(
+            block,
+            {"block", "race_count", "mean_log_loss_delta"},
+            f"scored_report.metrics.chronological_blocks[{index - 1}]",
+        )
+        delta_value = _finite_number(
+            block["mean_log_loss_delta"],
+            f"scored_report.metrics.chronological_blocks[{index - 1}].mean_log_loss_delta",
+        )
+        if block["block"] != index or block["race_count"] != 200:
+            raise RuntimeEvidenceError("scored_report_chronological_block_contract_invalid")
+        negative_blocks += int(delta_value < 0.0)
+    reported_negative_blocks = _nonnegative_int(
+        metrics["negative_chronological_blocks"],
+        "scored_report.metrics.negative_chronological_blocks",
+    )
+    if reported_negative_blocks != negative_blocks:
+        raise RuntimeEvidenceError("scored_report_negative_block_count_invalid")
+    confirmed = (
+        delta < 0.0
+        and metrics["race_bootstrap_95pct"]["upper"] < 0.0
+        and metrics["race_date_cluster_bootstrap_95pct"]["upper"] < 0.0
+        and negative_blocks >= 4
+    )
+    expected_verdict = (
+        "FORWARD_OVERROUND_SIGNAL_CONFIRMED"
+        if confirmed
+        else "FORWARD_OVERROUND_SIGNAL_NOT_CONFIRMED"
+    )
+    if report["verdict"] != expected_verdict:
+        raise RuntimeEvidenceError("scored_report_verdict_metrics_mismatch")
+
+
+def _validate_independent_sentinel(sentinel: Mapping[str, Any]) -> None:
+    _exact_keys(
+        sentinel,
+        {
+            "schema_version",
+            "state",
+            "blocking_reason",
+            "protocol_sha256",
+            "journal_mutated",
+            "metrics",
+            "score_invocation_count",
+        },
+        "independent_terminal_sentinel",
+    )
+    if (
+        sentinel.get("schema_version")
+        != "forward_overround_successor_independent_terminal_v1"
+        or sentinel.get("state") != "FINALIZED_ABORTED_NO_METRICS"
+        or sentinel.get("protocol_sha256") != EXPECTED_PROTOCOL_SHA256
+        or sentinel.get("journal_mutated") is not False
+        or sentinel.get("metrics") is not None
+    ):
+        raise RuntimeEvidenceError("independent_terminal_sentinel_invalid")
+    _text(sentinel.get("blocking_reason"), "sentinel.blocking_reason")
+    _nonnegative_int(sentinel.get("score_invocation_count"), "sentinel.score_invocation_count")
+
+
+def _validate_no_metrics_report(
+    report: Mapping[str, Any],
+    consumed: Mapping[str, Any],
+    sentinel: Mapping[str, Any] | None,
+) -> None:
+    common = {
+        "schema_version",
+        "verdict",
+        "blocking_reason",
+        "protocol_sha256",
+        "metrics",
+        "sealed_prediction_races",
+        "approved_result_races",
+        "score_invocation_count",
+    }
+    expected_report_keys = common | (
+        {"evidence_counts_trusted", "terminal_sentinel_sha256"}
+        if sentinel is not None
+        else set()
+    )
+    _exact_keys(report, expected_report_keys, "no_metrics_report")
+    if (
+        report.get("schema_version") != "forward_overround_successor_final_report_v1"
+        or report.get("verdict") != "BLOCKED_FORWARD_EVIDENCE"
+        or report.get("protocol_sha256") != EXPECTED_PROTOCOL_SHA256
+        or report.get("metrics") is not None
+    ):
+        raise RuntimeEvidenceError("no_metrics_report_schema_invalid")
+    _text(report.get("blocking_reason"), "no_metrics_report.blocking_reason")
+    score_count = _nonnegative_int(
+        report.get("score_invocation_count"), "no_metrics_report.score_invocation_count"
+    )
+    if sentinel is None:
+        _nonnegative_int(
+            report.get("sealed_prediction_races"), "no_metrics_report.sealed_prediction_races"
+        )
+        _nonnegative_int(
+            report.get("approved_result_races"), "no_metrics_report.approved_result_races"
+        )
+        _exact_keys(
+            consumed,
+            {"schema_version", "verdict", "final_report_sha256"},
+            "no_metrics_consumed",
+        )
         return
-    for name in ("METRICS.json", "FINAL_REPORT.json"):
+    _validate_independent_sentinel(sentinel)
+    if (
+        report.get("evidence_counts_trusted") is not False
+        or report.get("sealed_prediction_races") is not None
+        or report.get("approved_result_races") is not None
+        or report.get("blocking_reason") != sentinel.get("blocking_reason")
+        or score_count != sentinel.get("score_invocation_count")
+        or report.get("terminal_sentinel_sha256")
+        != consumed.get("terminal_sentinel_sha256")
+    ):
+        raise RuntimeEvidenceError("independent_terminal_report_binding_invalid")
+    _exact_keys(
+        consumed,
+        {
+            "schema_version",
+            "verdict",
+            "final_report_sha256",
+            "terminal_sentinel_sha256",
+        },
+        "independent_terminal_consumed",
+    )
+
+
+def _validated_terminal_commit(cohort_root: Path) -> dict[str, Any] | None:
+    consumed_path = cohort_root / "CONSUMED.json"
+    if not consumed_path.exists():
+        return None
+    consumed = _load_json(consumed_path)
+    if consumed.get("schema_version") != "forward_overround_successor_consumed_v1":
+        raise RuntimeEvidenceError("consumed_schema_invalid")
+    verdict = _text(consumed.get("verdict"), "consumed.verdict")
+    final_report_sha256 = _sha(
+        consumed.get("final_report_sha256"), "consumed.final_report_sha256"
+    )
+    final_report_path = cohort_root / "FINAL_REPORT.json"
+    if (
+        not final_report_path.is_file()
+        or sha256_file(final_report_path) != final_report_sha256
+    ):
+        raise RuntimeEvidenceError("consumed_final_report_hash_invalid")
+    report = _load_json(final_report_path)
+    if report.get("verdict") != verdict:
+        raise RuntimeEvidenceError("consumed_final_report_verdict_invalid")
+
+    metrics_sha256 = consumed.get("metrics_receipt_sha256")
+    metrics_path = cohort_root / "METRICS.json"
+    if metrics_sha256 is None:
+        if report.get("metrics") is not None or metrics_path.exists():
+            raise RuntimeEvidenceError("no_metrics_commit_contains_metrics")
+        terminal_sentinel_sha256 = consumed.get("terminal_sentinel_sha256")
+        sentinel: dict[str, Any] | None = None
+        if terminal_sentinel_sha256 is not None:
+            terminal_sentinel_sha256 = _sha(
+                terminal_sentinel_sha256, "consumed.terminal_sentinel_sha256"
+            )
+            sentinel_path = cohort_root / "TERMINAL_SENTINEL.json"
+            if (
+                not sentinel_path.is_file()
+                or sha256_file(sentinel_path) != terminal_sentinel_sha256
+            ):
+                raise RuntimeEvidenceError("consumed_terminal_sentinel_hash_invalid")
+            sentinel = _load_json(sentinel_path)
+        _validate_no_metrics_report(report, consumed, sentinel)
+    else:
+        _exact_keys(
+            consumed,
+            {
+                "schema_version",
+                "verdict",
+                "final_report_sha256",
+                "metrics_receipt_sha256",
+                "member_manifest_sha256",
+            },
+            "scored_consumed",
+        )
+        metrics_sha256 = _sha(metrics_sha256, "consumed.metrics_receipt_sha256")
+        member_manifest_sha256 = _sha(
+            consumed.get("member_manifest_sha256"),
+            "consumed.member_manifest_sha256",
+        )
+        if not metrics_path.is_file() or sha256_file(metrics_path) != metrics_sha256:
+            raise RuntimeEvidenceError("consumed_metrics_hash_invalid")
+        metrics_report = _load_json(metrics_path)
+        if metrics_report != report or report.get("member_manifest_sha256") != member_manifest_sha256:
+            raise RuntimeEvidenceError("consumed_metrics_schema_invalid")
+        _validate_scored_report(report)
+    return consumed
+
+
+def _require_terminal_commit(cohort_root: Path) -> dict[str, Any]:
+    consumed = _validated_terminal_commit(cohort_root)
+    if consumed is None:
+        raise RuntimeEvidenceError("terminal_commit_marker_absent_after_publication")
+    return consumed
+
+
+def _discard_unconsumed_score_artifacts(cohort_root: Path) -> None:
+    """Remove score publications unless a complete cross-hash commit validates."""
+    invalid_consumed = False
+    try:
+        if _validated_terminal_commit(cohort_root) is not None:
+            return
+    except RuntimeEvidenceError:
+        invalid_consumed = True
+    names = ["METRICS.json", "FINAL_REPORT.json"]
+    if invalid_consumed:
+        names.append("CONSUMED.json")
+    removed = False
+    for name in names:
         try:
             (cohort_root / name).unlink()
         except FileNotFoundError:
-            pass
+            continue
+        else:
+            removed = True
+    if removed:
+        _fsync_directory(cohort_root)
+
+
+def _discard_terminal_publication(cohort_root: Path) -> None:
+    """Remove a terminal publication proven inconsistent with durable state."""
+    removed = False
+    for name in ("METRICS.json", "FINAL_REPORT.json", "CONSUMED.json"):
+        try:
+            (cohort_root / name).unlink()
+        except FileNotFoundError:
+            continue
+        else:
+            removed = True
+    if removed:
+        _fsync_directory(cohort_root)
+
+
+def _discard_invalid_independent_terminal(cohort_root: Path) -> None:
+    """Remove an invalid sentinel and every publication that depends on it."""
+    _discard_terminal_publication(cohort_root)
+    try:
+        (cohort_root / "TERMINAL_SENTINEL.json").unlink()
+    except FileNotFoundError:
+        return
+    _fsync_directory(cohort_root)
+
+
+def _preserve_commit_without_unreferenced_sentinel(cohort_root: Path) -> bool:
+    """Drop only a stray invalid sentinel beside an otherwise valid commit."""
+    try:
+        committed = _validated_terminal_commit(cohort_root)
+    except RuntimeEvidenceError:
+        return False
+    if committed is None or committed.get("terminal_sentinel_sha256") is not None:
+        return False
+    try:
+        (cohort_root / "TERMINAL_SENTINEL.json").unlink()
+    except FileNotFoundError:
+        return True
+    _fsync_directory(cohort_root)
+    return True
+
+
+def _resume_or_recover_independent_terminal(cohort_root: Path) -> dict[str, Any] | None:
+    """Run under the cohort lock and preserve any already valid commit."""
+    try:
+        return _resume_independent_terminal(cohort_root)
+    except (RuntimeEvidenceError, OSError):
+        if _preserve_commit_without_unreferenced_sentinel(cohort_root):
+            return None
+        _discard_invalid_independent_terminal(cohort_root)
+        return _independent_terminal(
+            cohort_root, "independent_terminal_sentinel_invalid"
+        )
 
 
 def _independent_terminal(
@@ -391,6 +882,7 @@ def _independent_terminal(
     score_invocation_count: int = 0,
 ) -> dict[str, Any]:
     """Seal an untrusted-store failure without reading or changing its journal."""
+    _discard_unconsumed_score_artifacts(cohort_root)
     sentinel = {
         "schema_version": "forward_overround_successor_independent_terminal_v1",
         "state": "FINALIZED_ABORTED_NO_METRICS",
@@ -423,6 +915,7 @@ def _independent_terminal(
             "terminal_sentinel_sha256": sentinel_sha,
         },
     )
+    _require_terminal_commit(cohort_root)
     status = {
         "schema_version": "forward_overround_successor_state_v1",
         "protocol_sha256": EXPECTED_PROTOCOL_SHA256,
@@ -453,17 +946,7 @@ def _resume_independent_terminal(cohort_root: Path) -> dict[str, Any] | None:
     if not sentinel_path.exists():
         return None
     sentinel = _load_json(sentinel_path)
-    if (
-        sentinel.get("schema_version")
-        != "forward_overround_successor_independent_terminal_v1"
-        or sentinel.get("state") != "FINALIZED_ABORTED_NO_METRICS"
-        or sentinel.get("metrics") is not None
-        or not isinstance(sentinel.get("score_invocation_count"), int)
-        or isinstance(sentinel.get("score_invocation_count"), bool)
-        or sentinel.get("score_invocation_count") < 0
-        or not isinstance(sentinel.get("blocking_reason"), str)
-    ):
-        raise RuntimeEvidenceError("independent_terminal_sentinel_invalid")
+    _validate_independent_sentinel(sentinel)
     return _independent_terminal(
         cohort_root,
         sentinel["blocking_reason"],
@@ -748,7 +1231,7 @@ def _seal_candidates(
     rows: list[dict[str, Any]],
     model: Mapping[str, Any],
     preprocessing: Mapping[str, Any],
-    observed_at: datetime,
+    observation_clock: ObservationClock,
 ) -> dict[str, Any]:
     inbox = store.root / "candidate_inbox"
     if not inbox.is_dir() or state["state"] != "COLLECTING":
@@ -793,6 +1276,7 @@ def _seal_candidates(
         if len(state["predictions"]) >= target or state["state"] != "COLLECTING":
             break
         if parse_error is not None or candidate is None:
+            observed_at = _observe_utc(observation_clock)
             state = _append_candidate_rejection(
                 store,
                 state,
@@ -806,7 +1290,7 @@ def _seal_candidates(
                 detail=str(parse_error),
             )
             continue
-        receipt_observed_at = observed_at
+        receipt_observed_at: datetime | None = None
         existing_race_member = state["race_members"].get(candidate.get("race_id"))
         if isinstance(existing_race_member, str):
             existing_receipt_path = (
@@ -824,6 +1308,9 @@ def _seal_candidates(
                     rows,
                     f"sealed_prediction_receipt_invalid:{existing_race_member}:{exc}",
                 )
+        observed_at = _observe_utc(observation_clock)
+        if receipt_observed_at is None:
+            receipt_observed_at = observed_at
         try:
             member_id, receipt, event = _prediction_receipt(
                 candidate,
@@ -1068,6 +1555,7 @@ def _finalize_if_ready(
         store.root / "FINAL_REPORT.json",
         store.root / "CONSUMED.json",
     ]
+    scorer_started_now = False
     if state["state"] == "READY_TO_FINALIZE":
         if any(path.exists() for path in final_paths):
             return _abort(store, state, rows, "finalization_artifact_preexists_request")
@@ -1076,6 +1564,7 @@ def _finalize_if_ready(
             rows,
             {"event_id": "fixed-n-finalize-requested", "type": "FINALIZE_REQUESTED"},
         )
+        scorer_started_now = True
 
     metrics_path = store.root / "METRICS.json"
     if metrics_path.is_file():
@@ -1085,32 +1574,38 @@ def _finalize_if_ready(
             if state["state"] == "FINALIZATION_LOCKED":
                 return _abort(store, state, rows, f"finalizer_evidence_failure:{exc}")
             raise
-        metrics_sha = sha256_file(metrics_path)
-        confirmation = store.protocol["evaluation"]["confirmation_rule"]
-        valid_verdicts = {
-            confirmation["valid_evidence_gate_pass_verdict"],
-            confirmation["valid_evidence_gate_failure_verdict"],
-        }
-        if (
-            report.get("schema_version") != "forward_overround_successor_final_report_v1"
-            or report.get("verdict") not in valid_verdicts
-            or report.get("protocol_sha256") != EXPECTED_PROTOCOL_SHA256
-            or report.get("member_manifest_sha256")
-            != state["finalization_member_manifest_sha256"]
-            or report.get("race_count") != store.protocol["cohort"]["target_races"]
-            or report.get("identical_races_compared") is not True
-            or report.get("score_invocation_count") != 1
-            or not isinstance(report.get("metrics"), Mapping)
-            or report.get("profitability")
-            != {"roi_computed": False, "betting_analysis_performed": False}
-        ):
+        try:
+            _validate_scored_report(report)
+            if (
+                report.get("member_manifest_sha256")
+                != state["finalization_member_manifest_sha256"]
+            ):
+                raise RuntimeEvidenceError("metrics_receipt_member_manifest_invalid")
+        except RuntimeEvidenceError as exc:
             if state["state"] == "FINALIZATION_LOCKED":
-                return _abort(store, state, rows, "finalizer_evidence_failure:metrics_receipt_invalid")
-            raise RuntimeEvidenceError("metrics_receipt_invalid_after_score_commit")
+                return _abort(store, state, rows, f"finalizer_evidence_failure:{exc}")
+            raise RuntimeEvidenceError(f"metrics_receipt_invalid_after_score_commit:{exc}") from exc
+        metrics_sha = sha256_file(metrics_path)
+    elif state["state"] == "FINALIZATION_LOCKED" and not scorer_started_now:
+        return _abort(
+            store,
+            state,
+            rows,
+            "scorer_start_precommit_without_durable_metrics",
+        )
     elif state["state"] == "FINALIZATION_LOCKED":
         try:
             report = finalize(state, store.root, protocol_path, asset_dir)
         except FinalizationError as exc:
+            return _abort(store, state, rows, f"finalizer_evidence_failure:{exc}")
+        try:
+            _validate_scored_report(report)
+            if (
+                report.get("member_manifest_sha256")
+                != state["finalization_member_manifest_sha256"]
+            ):
+                raise RuntimeEvidenceError("metrics_receipt_member_manifest_invalid")
+        except RuntimeEvidenceError as exc:
             return _abort(store, state, rows, f"finalizer_evidence_failure:{exc}")
         metrics_sha = _write_once(metrics_path, report)
     else:
@@ -1141,6 +1636,7 @@ def _finalize_if_ready(
             "member_manifest_sha256": state["finalization_member_manifest_sha256"],
         },
     )
+    _require_terminal_commit(store.root)
     return state
 
 
@@ -1154,9 +1650,19 @@ def run_once(
     state_machine_path: Path = STATE_MACHINE_PATH,
     observation_clock: ObservationClock = _system_clock,
 ) -> dict[str, Any]:
-    terminal = _resume_independent_terminal(cohort_root)
-    if terminal is not None:
-        return terminal
+    terminal_names = (
+        "TERMINAL_SENTINEL.json",
+        "CONSUMED.json",
+        "FINAL_REPORT.json",
+        "METRICS.json",
+    )
+    if cohort_root.is_dir() and any(
+        (cohort_root / name).exists() for name in terminal_names
+    ):
+        with _exclusive_lock(cohort_root / "runtime" / "successor.lock"):
+            terminal = _resume_or_recover_independent_terminal(cohort_root)
+            if terminal is not None:
+                return terminal
     journal_path = cohort_root / "EVENTS.jsonl"
     try:
         protocol = _load_json(protocol_path)
@@ -1178,11 +1684,49 @@ def run_once(
             return _independent_terminal(cohort_root, f"untrusted_cohort_store:{exc}")
         raise
     with _exclusive_lock(cohort_root / "runtime" / "successor.lock"):
+        terminal = _resume_or_recover_independent_terminal(cohort_root)
+        if terminal is not None:
+            return terminal
         observed_at = _observe_utc(observation_clock)
         try:
             state, rows = store.replay(verify_receipts=False)
         except (RuntimeEvidenceError, OSError, KeyError, TypeError, ValueError) as exc:
             return _independent_terminal(cohort_root, f"untrusted_journal_or_protocol:{exc}")
+        try:
+            committed = _validated_terminal_commit(cohort_root)
+            if committed is not None:
+                report = _load_json(cohort_root / "FINAL_REPORT.json")
+                if state["state"] == "FINALIZED_SCORED":
+                    if (
+                        committed.get("metrics_receipt_sha256")
+                        != state["metrics_receipt_sha256"]
+                        or committed.get("member_manifest_sha256")
+                        != state["finalization_member_manifest_sha256"]
+                    ):
+                        raise RuntimeEvidenceError("terminal_commit_state_binding_invalid")
+                elif state["state"] == "FINALIZED_ABORTED_NO_METRICS":
+                    if (
+                        committed.get("metrics_receipt_sha256") is not None
+                        or committed.get("terminal_sentinel_sha256") is not None
+                        or report.get("blocking_reason") != state["fatal_reason"]
+                        or report.get("sealed_prediction_races")
+                        != len(state["predictions"])
+                        or report.get("approved_result_races") != len(state["results"])
+                        or report.get("score_invocation_count")
+                        != state["score_invocation_count"]
+                    ):
+                        raise RuntimeEvidenceError(
+                            "terminal_commit_state_binding_invalid"
+                        )
+                else:
+                    raise RuntimeEvidenceError("terminal_commit_before_terminal_journal_state")
+        except RuntimeEvidenceError as exc:
+            _discard_terminal_publication(cohort_root)
+            return _independent_terminal(
+                cohort_root,
+                f"terminal_commit_validation_failed:{exc}",
+                score_invocation_count=state["score_invocation_count"],
+            )
         try:
             store.verify_receipts(state)
         except RuntimeEvidenceError as exc:
@@ -1228,7 +1772,14 @@ def run_once(
         if state["state"] not in TERMINAL_STATES:
             state = _abort_if_result_present_before_fixed_n(store, state, rows)
         if state["state"] == "COLLECTING":
-            state = _seal_candidates(store, state, rows, model, preprocessing, observed_at)
+            state = _seal_candidates(
+                store,
+                state,
+                rows,
+                model,
+                preprocessing,
+                observation_clock,
+            )
         if state["state"] == "RESULT_CLOSURE":
             state = _seal_results(store, state, rows, observed_at)
         if state["state"] in {"READY_TO_FINALIZE", "FINALIZATION_LOCKED", "FINALIZED_SCORED"}:

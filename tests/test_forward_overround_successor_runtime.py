@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import tempfile
 import unittest
@@ -37,8 +38,8 @@ ASSET_DIR = Path(
     "reports/agent_jobs/OVERROUND_STRUCTURE_TRANSFORM_V1_20260816"
 )
 MELBOURNE = timezone(timedelta(hours=10))
-ACTIVATION = datetime(2026, 9, 1, 0, 0, tzinfo=MELBOURNE)
-OBSERVED = datetime(2026, 9, 1, 23, 45, tzinfo=MELBOURNE)
+ACTIVATION = datetime(2026, 10, 1, 0, 0, tzinfo=MELBOURNE)
+OBSERVED = datetime(2026, 10, 1, 23, 45, tzinfo=MELBOURNE)
 
 
 def _write_json(path: Path, payload: dict) -> None:
@@ -91,7 +92,7 @@ def _prepare_root(
 
 
 def _candidate(index: int, *, jump_at: datetime | None = None) -> dict:
-    jump = jump_at or datetime(2026, 9, 2, 0, 0, tzinfo=MELBOURNE) + timedelta(minutes=5 * index)
+    jump = jump_at or datetime(2026, 10, 2, 0, 0, tzinfo=MELBOURNE) + timedelta(minutes=5 * index)
     race_id = f"synthetic-forward-race-{index:04d}"
     return {
         "schema_version": "forward_overround_successor_candidate_v1",
@@ -188,6 +189,13 @@ def test_frozen_inputs_are_exact_and_prepared_only() -> None:
         "status": "PREPARED_NOT_AUTHORIZED",
     }
     assert protocol["boundaries"]["interim_candidate_loss_peeking"] is False
+    assert protocol["eligibility"]["earliest_jump_local"] == "2026-10-01T00:00:00+10:00"
+    assert protocol["eligibility"]["excluded_confirmatory_window"] == {
+        "cohort": "sportsbet_betfair_forward_consensus_v1",
+        "end_date_inclusive": "2026-09-30",
+        "rule": "activation_and_race_jump_strictly_after_end_date",
+        "start_date_inclusive": "2026-08-18",
+    }
     for name, expected in ASSET_HASHES.items():
         assert sha256_file(ASSET_DIR / name) == expected
 
@@ -232,6 +240,250 @@ def test_out_of_window_candidate_is_nonmember_rejection(tmp_path: Path) -> None:
     assert not (root / "predictions").exists()
 
 
+def test_candidate_uses_fresh_clock_after_immutable_bytes_are_read(tmp_path: Path) -> None:
+    root = tmp_path / "cohort"
+    _prepare_root(root)
+    jump = datetime(2026, 10, 2, 0, 0, tzinfo=MELBOURNE)
+    candidate = _candidate(0, jump_at=jump)
+    clock_calls = 0
+
+    def advancing_clock() -> datetime:
+        nonlocal clock_calls
+        clock_calls += 1
+        if clock_calls == 1:
+            _write_json(root / "candidate_inbox" / "concurrent.json", candidate)
+            return jump.astimezone(timezone.utc) - timedelta(minutes=15)
+        return jump.astimezone(timezone.utc) + timedelta(seconds=1)
+
+    status = run_once(
+        root,
+        PROTOCOL_PATH,
+        ASSET_DIR,
+        FINALIZER_PATH,
+        SERVICE_PATH,
+        observation_clock=advancing_clock,
+    )
+
+    assert clock_calls == 2
+    assert status["state"] == "COLLECTING"
+    assert status["sealed_prediction_races"] == 0
+    assert status["exclusion_reason_counts"] == {"candidate_timing_outside_window": 1}
+    assert not (root / "predictions").exists()
+
+
+def test_write_once_never_exposes_partial_final_path(tmp_path: Path) -> None:
+    final_path = tmp_path / "CONSUMED.json"
+    real_fdopen = os.fdopen
+
+    class PartialTemporaryWriter:
+        def __init__(self, descriptor: int, mode: str):
+            self.handle = real_fdopen(descriptor, mode)
+
+        def __enter__(self) -> "PartialTemporaryWriter":
+            self.handle.__enter__()
+            return self
+
+        def __exit__(self, *args: object) -> bool | None:
+            return self.handle.__exit__(*args)
+
+        def write(self, raw: bytes) -> int:
+            self.handle.write(raw[:11])
+            self.handle.flush()
+            raise OSError("injected_partial_write")
+
+        def flush(self) -> None:
+            self.handle.flush()
+
+        def fileno(self) -> int:
+            return self.handle.fileno()
+
+    with patch.object(successor_runtime.os, "fdopen", PartialTemporaryWriter):
+        with unittest.TestCase().assertRaisesRegex(OSError, "injected_partial_write"):
+            successor_runtime._write_once(
+                final_path,
+                {
+                    "schema_version": "forward_overround_successor_consumed_v1",
+                    "verdict": "BLOCKED_FORWARD_EVIDENCE",
+                    "final_report_sha256": "a" * 64,
+                },
+            )
+
+    assert not final_path.exists()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_corrupt_uncommitted_terminal_artifacts_are_invalidated(tmp_path: Path) -> None:
+    (tmp_path / "METRICS.json").write_bytes(b"{}\n")
+    (tmp_path / "FINAL_REPORT.json").write_bytes(b"{")
+    (tmp_path / "CONSUMED.json").write_bytes(b"{")
+
+    successor_runtime._discard_unconsumed_score_artifacts(tmp_path)
+
+    assert not (tmp_path / "METRICS.json").exists()
+    assert not (tmp_path / "FINAL_REPORT.json").exists()
+    assert not (tmp_path / "CONSUMED.json").exists()
+
+
+def test_cross_hash_consistent_but_incomplete_terminal_schemas_are_rejected(
+    tmp_path: Path,
+) -> None:
+    blocked_root = tmp_path / "blocked"
+    blocked_root.mkdir()
+    incomplete_blocked = {
+        "schema_version": "forward_overround_successor_final_report_v1",
+        "verdict": "BLOCKED_FORWARD_EVIDENCE",
+        "protocol_sha256": EXPECTED_PROTOCOL_SHA256,
+        "metrics": None,
+        "sealed_prediction_races": 0,
+        "approved_result_races": 0,
+        "score_invocation_count": 0,
+    }
+    _write_json(blocked_root / "FINAL_REPORT.json", incomplete_blocked)
+    _write_json(
+        blocked_root / "CONSUMED.json",
+        {
+            "schema_version": "forward_overround_successor_consumed_v1",
+            "verdict": "BLOCKED_FORWARD_EVIDENCE",
+            "final_report_sha256": sha256_file(blocked_root / "FINAL_REPORT.json"),
+        },
+    )
+    with unittest.TestCase().assertRaisesRegex(RuntimeEvidenceError, "invalid_keys"):
+        successor_runtime._validated_terminal_commit(blocked_root)
+
+    verdict_root = tmp_path / "verdict"
+    verdict_root.mkdir()
+    wrong_verdict = {
+        **incomplete_blocked,
+        "verdict": "ARBITRARY_TERMINAL_VERDICT",
+        "blocking_reason": "synthetic_wrong_verdict",
+    }
+    _write_json(verdict_root / "FINAL_REPORT.json", wrong_verdict)
+    _write_json(
+        verdict_root / "CONSUMED.json",
+        {
+            "schema_version": "forward_overround_successor_consumed_v1",
+            "verdict": wrong_verdict["verdict"],
+            "final_report_sha256": sha256_file(verdict_root / "FINAL_REPORT.json"),
+        },
+    )
+    with unittest.TestCase().assertRaisesRegex(
+        RuntimeEvidenceError, "no_metrics_report_schema_invalid"
+    ):
+        successor_runtime._validated_terminal_commit(verdict_root)
+
+    scored_root = tmp_path / "scored"
+    scored_root.mkdir()
+    incomplete_scored = {
+        "schema_version": "forward_overround_successor_final_report_v1",
+        "verdict": "FORWARD_OVERROUND_SIGNAL_NOT_CONFIRMED",
+        "protocol_sha256": EXPECTED_PROTOCOL_SHA256,
+        "member_manifest_sha256": "a" * 64,
+        "race_count": 1000,
+        "identical_races_compared": True,
+        "score_invocation_count": 1,
+        "metrics": {},
+        "profitability": {"roi_computed": False, "betting_analysis_performed": False},
+    }
+    _write_json(scored_root / "METRICS.json", incomplete_scored)
+    _write_json(scored_root / "FINAL_REPORT.json", incomplete_scored)
+    _write_json(
+        scored_root / "CONSUMED.json",
+        {
+            "schema_version": "forward_overround_successor_consumed_v1",
+            "verdict": incomplete_scored["verdict"],
+            "final_report_sha256": sha256_file(scored_root / "FINAL_REPORT.json"),
+            "metrics_receipt_sha256": sha256_file(scored_root / "METRICS.json"),
+            "member_manifest_sha256": "a" * 64,
+        },
+    )
+    with unittest.TestCase().assertRaisesRegex(RuntimeEvidenceError, "invalid_keys"):
+        successor_runtime._validated_terminal_commit(scored_root)
+
+
+def test_mismatched_independent_terminal_bindings_are_rejected(tmp_path: Path) -> None:
+    successor_runtime._independent_terminal(tmp_path, "original_reason")
+    report_path = tmp_path / "FINAL_REPORT.json"
+    consumed_path = tmp_path / "CONSUMED.json"
+    report = json.loads(report_path.read_bytes())
+    report["blocking_reason"] = "changed_reason"
+    report_path.chmod(0o644)
+    _write_json(report_path, report)
+    consumed = json.loads(consumed_path.read_bytes())
+    consumed["final_report_sha256"] = sha256_file(report_path)
+    consumed_path.chmod(0o644)
+    _write_json(consumed_path, consumed)
+
+    with unittest.TestCase().assertRaisesRegex(
+        RuntimeEvidenceError, "independent_terminal_report_binding_invalid"
+    ):
+        successor_runtime._validated_terminal_commit(tmp_path)
+
+
+def test_corrupt_independent_sentinel_restarts_to_valid_no_metrics_terminal(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "cohort"
+    _prepare_root(root)
+    assert _run(root)["state"] == "COLLECTING"
+    (root / "TERMINAL_SENTINEL.json").write_bytes(b"{")
+    (root / "METRICS.json").write_bytes(b"{}\n")
+    (root / "FINAL_REPORT.json").write_bytes(b"{")
+    (root / "CONSUMED.json").write_bytes(b"{")
+
+    terminal = _run(root)
+    report = json.loads((root / "FINAL_REPORT.json").read_bytes())
+    sentinel = json.loads((root / "TERMINAL_SENTINEL.json").read_bytes())
+    report_sha = sha256_file(root / "FINAL_REPORT.json")
+    consumed_sha = sha256_file(root / "CONSUMED.json")
+
+    assert terminal["state"] == "FINALIZED_ABORTED_NO_METRICS"
+    assert terminal["fatal_reason"] == "independent_terminal_sentinel_invalid"
+    assert report["metrics"] is None
+    assert sentinel["blocking_reason"] == "independent_terminal_sentinel_invalid"
+    assert not (root / "METRICS.json").exists()
+    assert successor_runtime._validated_terminal_commit(root) is not None
+    assert _run(root) == terminal
+    assert sha256_file(root / "FINAL_REPORT.json") == report_sha
+    assert sha256_file(root / "CONSUMED.json") == consumed_sha
+
+
+def test_normal_abort_commit_is_bound_to_replayed_terminal_state(tmp_path: Path) -> None:
+    mutations = {
+        "blocking_reason": "synthetic_wrong_reason",
+        "sealed_prediction_races": 99,
+        "approved_result_races": 99,
+        "score_invocation_count": 99,
+    }
+    for field, value in mutations.items():
+        root = tmp_path / field
+        _prepare_root(root)
+        _write_json(root / "result_inbox" / "premature.json", {"synthetic": True})
+        original = _run(root)
+        assert original["state"] == "FINALIZED_ABORTED_NO_METRICS"
+
+        report_path = root / "FINAL_REPORT.json"
+        consumed_path = root / "CONSUMED.json"
+        report = json.loads(report_path.read_bytes())
+        report[field] = value
+        report_path.chmod(0o644)
+        _write_json(report_path, report)
+        consumed = json.loads(consumed_path.read_bytes())
+        consumed["final_report_sha256"] = sha256_file(report_path)
+        consumed_path.chmod(0o644)
+        _write_json(consumed_path, consumed)
+
+        terminal = _run(root)
+        recovered_report = json.loads(report_path.read_bytes())
+        assert terminal["state"] == "FINALIZED_ABORTED_NO_METRICS"
+        assert terminal["fatal_reason"] == (
+            "terminal_commit_validation_failed:"
+            "terminal_commit_state_binding_invalid"
+        )
+        assert recovered_report["metrics"] is None
+        assert (root / "TERMINAL_SENTINEL.json").is_file()
+        assert successor_runtime._validated_terminal_commit(root) is not None
+
+
 def test_unit_drift_pauses_and_reviewed_hash_chained_admission_resumes(tmp_path: Path) -> None:
     root = tmp_path / "cohort"
     unit_copy = tmp_path / "successor.service"
@@ -240,7 +492,7 @@ def test_unit_drift_pauses_and_reviewed_hash_chained_admission_resumes(tmp_path:
     assert _run(root, service_path=unit_copy)["state"] == "COLLECTING"
 
     unit_copy.write_bytes(unit_copy.read_bytes() + b"# reviewed transport-only change\n")
-    paused_at = datetime(2026, 9, 1, 1, 0, tzinfo=timezone.utc)
+    paused_at = datetime(2026, 10, 1, 1, 0, tzinfo=timezone.utc)
     paused = _run(root, service_path=unit_copy, observed=paused_at)
     assert paused["state"] == "ADMISSION_PAUSED"
     assert paused["sealed_prediction_races"] == 0
@@ -394,7 +646,7 @@ def test_invalid_complete_finish_order_fails_closed(tmp_path: Path) -> None:
     for case, finish_positions in invalid_orders.items():
         root = tmp_path / case
         _prepare_root(root)
-        jump_at = datetime(2026, 9, 2, 0, 0, tzinfo=MELBOURNE)
+        jump_at = datetime(2026, 10, 2, 0, 0, tzinfo=MELBOURNE)
         candidates = _write_exact_n_candidates(root, jump_at)
         candidate = candidates[0]
         candidate["active_runner_count"] = 3
@@ -491,7 +743,7 @@ def test_malformed_candidate_is_durably_audited_and_replay_safe(tmp_path: Path) 
     malformed_path.parent.mkdir(parents=True)
     malformed_bytes = b'{"race_id":"broken"'
     malformed_path.write_bytes(malformed_bytes)
-    observed = datetime(2026, 9, 1, 1, 0, tzinfo=timezone.utc)
+    observed = datetime(2026, 10, 1, 1, 0, tzinfo=timezone.utc)
 
     first = _run(root, observed=observed)
     journal_before = (root / "EVENTS.jsonl").read_bytes()
@@ -517,7 +769,7 @@ def test_out_of_order_membership_seals_terminal_receipts_without_scoring(
 ) -> None:
     root = tmp_path / "cohort"
     _prepare_root(root)
-    jump_at = datetime(2026, 9, 2, 0, 0, tzinfo=MELBOURNE)
+    jump_at = datetime(2026, 10, 2, 0, 0, tzinfo=MELBOURNE)
     later_member = _candidate(1, jump_at=jump_at)
     earlier_member = _candidate(0, jump_at=jump_at)
     _write_json(root / "candidate_inbox" / "later.json", later_member)
@@ -540,7 +792,7 @@ def test_out_of_order_membership_seals_terminal_receipts_without_scoring(
 def test_sealed_prediction_and_result_bind_first_runtime_observation(tmp_path: Path) -> None:
     root = tmp_path / "cohort"
     _prepare_root(root)
-    jump_at = datetime(2026, 9, 2, 0, 0, tzinfo=MELBOURNE)
+    jump_at = datetime(2026, 10, 2, 0, 0, tzinfo=MELBOURNE)
     candidates = _write_exact_n_candidates(root, jump_at)
     candidate = candidates[0]
     prediction_observed = jump_at - timedelta(minutes=15)
@@ -642,7 +894,7 @@ def test_changed_identity_for_rejected_race_fails_closed(tmp_path: Path) -> None
 def test_duplicate_race_membership_is_terminal_without_orphan_receipt(tmp_path: Path) -> None:
     root = tmp_path / "cohort"
     _prepare_root(root)
-    jump_at = datetime(2026, 9, 2, 0, 0, tzinfo=MELBOURNE)
+    jump_at = datetime(2026, 10, 2, 0, 0, tzinfo=MELBOURNE)
     first = _candidate(0, jump_at=jump_at)
     duplicate = json.loads(json.dumps(first))
     duplicate["runners"][0]["dog_name"] = "Different Active Runner"
@@ -693,7 +945,7 @@ def test_crash_after_fatal_report_restarts_to_complete_terminal_receipts(
 ) -> None:
     root = tmp_path / "cohort"
     _prepare_root(root)
-    jump_at = datetime(2026, 9, 2, 0, 0, tzinfo=MELBOURNE)
+    jump_at = datetime(2026, 10, 2, 0, 0, tzinfo=MELBOURNE)
     later_member = _candidate(1, jump_at=jump_at)
     earlier_member = _candidate(0, jump_at=jump_at)
     _write_json(root / "candidate_inbox" / "later.json", later_member)
@@ -738,7 +990,7 @@ def test_crash_after_metrics_then_evidence_conflict_removes_uncommitted_metrics(
 ) -> None:
     root = tmp_path / "cohort"
     _prepare_root(root)
-    jump_at = datetime(2026, 9, 2, 0, 0, tzinfo=MELBOURNE)
+    jump_at = datetime(2026, 10, 2, 0, 0, tzinfo=MELBOURNE)
     candidates = _write_exact_n_candidates(root, jump_at)
     assert _run(root, observed=jump_at - timedelta(minutes=15))["state"] == "RESULT_CLOSURE"
     for index, candidate in enumerate(candidates):
@@ -762,6 +1014,7 @@ def test_crash_after_metrics_then_evidence_conflict_removes_uncommitted_metrics(
             _run(root, observed=jump_at + timedelta(minutes=6))
     assert injected is True
     assert (root / "METRICS.json").is_file()
+    (root / "CONSUMED.json").write_bytes(b"{")
 
     prediction_path = next((root / "predictions").glob("*.json"))
     prediction_path.chmod(0o644)
@@ -782,6 +1035,9 @@ def test_crash_after_metrics_then_evidence_conflict_removes_uncommitted_metrics(
     assert terminal["metrics_receipt_sha256"] is None
     assert report["metrics"] is None
     assert not (root / "METRICS.json").exists()
+    consumed = json.loads((root / "CONSUMED.json").read_bytes())
+    assert consumed["verdict"] == "BLOCKED_FORWARD_EVIDENCE"
+    assert consumed.get("metrics_receipt_sha256") is None
     assert sum(event["type"] == "FINALIZE_REQUESTED" for event in events) == 1
     assert sum(event["type"] == "PAIRED_SCORE_COMMITTED" for event in events) == 0
 
@@ -789,7 +1045,7 @@ def test_crash_after_metrics_then_evidence_conflict_removes_uncommitted_metrics(
 def test_post_score_metrics_hash_drift_seals_no_metrics_terminal(tmp_path: Path) -> None:
     root = tmp_path / "cohort"
     _prepare_root(root)
-    jump_at = datetime(2026, 9, 2, 0, 0, tzinfo=MELBOURNE)
+    jump_at = datetime(2026, 10, 2, 0, 0, tzinfo=MELBOURNE)
     candidates = _write_exact_n_candidates(root, jump_at)
     assert _run(root, observed=jump_at - timedelta(minutes=15))["state"] == "RESULT_CLOSURE"
     for index, candidate in enumerate(candidates):
@@ -845,6 +1101,69 @@ def test_post_score_metrics_hash_drift_seals_no_metrics_terminal(tmp_path: Path)
     assert sha256_file(root / "CONSUMED.json") == consumed_sha
 
 
+def test_scorer_start_precommit_prevents_repeat_after_compute_crash(tmp_path: Path) -> None:
+    protocol = _protocol()
+    state = successor_runtime.initial_snapshot(protocol)
+    state["state"] = "READY_TO_FINALIZE"
+    jump_at = "2026-10-02T00:00:00+00:00"
+    captured_at = "2026-10-01T23:45:00+00:00"
+    for index in range(1000):
+        member_id = f"member-{index:04d}"
+        state["predictions"][member_id] = {
+            "member_id": member_id,
+            "race_id": f"race-{index:04d}",
+            "jump_at": jump_at,
+            "captured_at": captured_at,
+            "prediction_receipt_sha256": f"{index:064x}",
+        }
+        state["results"][member_id] = {
+            "member_id": member_id,
+            "result_receipt_sha256": f"{index + 1000:064x}",
+        }
+    rows: list[dict] = []
+
+    class InMemoryStore:
+        def __init__(self) -> None:
+            self.root = tmp_path
+            self.protocol = protocol
+
+        def append(self, current: dict, journal_rows: list[dict], event: dict) -> dict:
+            updated = successor_runtime.apply_event(current, event, protocol)
+            journal_rows.append(
+                {
+                    "event": dict(event),
+                    "event_sha256": sha256_bytes(canonical_bytes(event)),
+                }
+            )
+            return updated
+
+    scorer_calls = 0
+
+    def crash_after_compute(*args: object, **kwargs: object) -> dict:
+        nonlocal scorer_calls
+        scorer_calls += 1
+        raise SystemExit("crash_after_scorer_compute_before_metrics")
+
+    with patch.object(successor_runtime, "finalize", crash_after_compute):
+        with unittest.TestCase().assertRaisesRegex(
+            SystemExit, "crash_after_scorer_compute_before_metrics"
+        ):
+            successor_runtime._finalize_if_ready(
+                InMemoryStore(), state, rows, PROTOCOL_PATH, ASSET_DIR
+            )
+        restarted = successor_runtime._finalize_if_ready(
+            InMemoryStore(), state, rows, PROTOCOL_PATH, ASSET_DIR
+        )
+
+    report = json.loads((tmp_path / "FINAL_REPORT.json").read_bytes())
+    assert scorer_calls == 1
+    assert restarted["state"] == "FINALIZED_ABORTED_NO_METRICS"
+    assert restarted["score_invocation_count"] == 1
+    assert report["metrics"] is None
+    assert not (tmp_path / "METRICS.json").exists()
+    assert successor_runtime._validated_terminal_commit(tmp_path) is not None
+
+
 def test_restart_at_every_finalization_write_boundary_is_idempotent(tmp_path: Path) -> None:
     boundaries = [
         "finalize-requested",
@@ -857,7 +1176,7 @@ def test_restart_at_every_finalization_write_boundary_is_idempotent(tmp_path: Pa
     for boundary in boundaries:
         root = tmp_path / boundary
         _prepare_root(root)
-        shared_jump = datetime(2026, 9, 2, 0, 0, tzinfo=MELBOURNE)
+        shared_jump = datetime(2026, 10, 2, 0, 0, tzinfo=MELBOURNE)
         prediction_observed = shared_jump - timedelta(minutes=15)
         result_observed = shared_jump + timedelta(minutes=6)
         candidates = [_candidate(index, jump_at=shared_jump) for index in range(1000)]
@@ -945,17 +1264,25 @@ def test_restart_at_every_finalization_write_boundary_is_idempotent(tmp_path: Pa
             report_sha = sha256_file(root / "FINAL_REPORT.json")
             consumed_sha = sha256_file(root / "CONSUMED.json")
 
-            assert restarted["state"] == "FINALIZED_SCORED"
-            assert restarted["score_invocation_count"] == 1
-            assert finalize_calls == 1
+            assert restarted["score_invocation_count"] == 1, boundary
             assert (root / "FINAL_REPORT.json").is_file()
             assert (root / "CONSUMED.json").is_file()
             assert sum(event["type"] == "FINALIZE_REQUESTED" for event in events) == 1
-            assert sum(event["type"] == "PAIRED_SCORE_COMMITTED" for event in events) == 1
+            if boundary == "finalize-requested":
+                assert restarted["state"] == "FINALIZED_ABORTED_NO_METRICS"
+                assert finalize_calls == 0
+                assert not (root / "METRICS.json").exists()
+                assert sum(event["type"] == "PAIRED_SCORE_COMMITTED" for event in events) == 0
+                report = json.loads((root / "FINAL_REPORT.json").read_bytes())
+                assert report["metrics"] is None
+            else:
+                assert restarted["state"] == "FINALIZED_SCORED"
+                assert finalize_calls == 1
+                assert sum(event["type"] == "PAIRED_SCORE_COMMITTED" for event in events) == 1
 
             replayed = _run(root, observed=result_observed + timedelta(minutes=1))
             assert replayed == restarted
-            assert finalize_calls == 1
+            assert finalize_calls == (0 if boundary == "finalize-requested" else 1)
             assert sha256_file(root / "FINAL_REPORT.json") == report_sha
             assert sha256_file(root / "CONSUMED.json") == consumed_sha
 
@@ -963,7 +1290,7 @@ def test_restart_at_every_finalization_write_boundary_is_idempotent(tmp_path: Pa
 def test_synthetic_empty_to_exact_1000_one_shot_paired_finalization(tmp_path: Path) -> None:
     root = tmp_path / "cohort"
     _prepare_root(root)
-    shared_jump = datetime(2026, 9, 2, 0, 0, tzinfo=MELBOURNE)
+    shared_jump = datetime(2026, 10, 2, 0, 0, tzinfo=MELBOURNE)
     candidates = [_candidate(index, jump_at=shared_jump) for index in range(1000)]
     for index, candidate in enumerate(candidates):
         _write_json(root / "candidate_inbox" / f"{index:04d}.json", candidate)
@@ -1005,10 +1332,81 @@ def test_synthetic_empty_to_exact_1000_one_shot_paired_finalization(tmp_path: Pa
     }
     assert consumed["final_report_sha256"] == report_sha
 
+    for name, delta, interval_upper, block_delta, verdict in (
+        (
+            "false-confirmed",
+            0.1,
+            0.2,
+            0.1,
+            "FORWARD_OVERROUND_SIGNAL_CONFIRMED",
+        ),
+        (
+            "false-not-confirmed",
+            -0.1,
+            -0.01,
+            -0.1,
+            "FORWARD_OVERROUND_SIGNAL_NOT_CONFIRMED",
+        ),
+    ):
+        mismatch = json.loads(json.dumps(report))
+        mismatch["verdict"] = verdict
+        mismatch["metrics"]["baseline"]["mean_multiclass_race_log_loss"] = 1.0
+        mismatch["metrics"]["candidate"]["mean_multiclass_race_log_loss"] = (
+            1.0 + delta
+        )
+        mismatch["metrics"]["primary"].update(
+            {
+                "baseline": 1.0,
+                "candidate": 1.0 + delta,
+                "candidate_minus_baseline": delta,
+            }
+        )
+        mismatch["metrics"]["race_bootstrap_95pct"].update(
+            {"lower": min(-0.2, interval_upper), "upper": interval_upper}
+        )
+        mismatch["metrics"]["race_date_cluster_bootstrap_95pct"].update(
+            {"lower": min(-0.2, interval_upper), "upper": interval_upper}
+        )
+        for block in mismatch["metrics"]["chronological_blocks"]:
+            block["mean_log_loss_delta"] = block_delta
+        mismatch["metrics"]["negative_chronological_blocks"] = (
+            5 if block_delta < 0.0 else 0
+        )
+        mismatch_root = tmp_path / name
+        mismatch_root.mkdir()
+        _write_json(mismatch_root / "METRICS.json", mismatch)
+        _write_json(mismatch_root / "FINAL_REPORT.json", mismatch)
+        _write_json(
+            mismatch_root / "CONSUMED.json",
+            {
+                "schema_version": "forward_overround_successor_consumed_v1",
+                "verdict": verdict,
+                "final_report_sha256": sha256_file(
+                    mismatch_root / "FINAL_REPORT.json"
+                ),
+                "metrics_receipt_sha256": sha256_file(
+                    mismatch_root / "METRICS.json"
+                ),
+                "member_manifest_sha256": report["member_manifest_sha256"],
+            },
+        )
+        with unittest.TestCase().assertRaisesRegex(
+            RuntimeEvidenceError, "scored_report_verdict_metrics_mismatch"
+        ):
+            successor_runtime._validated_terminal_commit(mismatch_root)
+
     replayed = _run(root, observed=shared_jump + timedelta(minutes=7))
     assert replayed == status
     assert sha256_file(report_path) == report_sha
     assert sha256_file(consumed_path) == consumed_sha
+    (root / "TERMINAL_SENTINEL.json").write_bytes(b"{")
+    replayed_with_stray_sentinel = _run(
+        root, observed=shared_jump + timedelta(minutes=8)
+    )
+    assert replayed_with_stray_sentinel == status
+    assert sha256_file(report_path) == report_sha
+    assert sha256_file(consumed_path) == consumed_sha
+    assert not (root / "TERMINAL_SENTINEL.json").exists()
     journal_events = [json.loads(line)["event"] for line in (root / "EVENTS.jsonl").read_text().splitlines()]
     assert sum(event["type"] == "FINALIZE_REQUESTED" for event in journal_events) == 1
     assert sum(event["type"] == "PAIRED_SCORE_COMMITTED" for event in journal_events) == 1
@@ -1036,6 +1434,31 @@ class ForwardOverroundSuccessorRuntimeTests(unittest.TestCase):
 
     def test_out_of_window_rejection(self) -> None:
         self._run_with_temp(test_out_of_window_candidate_is_nonmember_rejection)
+
+    def test_fresh_candidate_observation(self) -> None:
+        self._run_with_temp(test_candidate_uses_fresh_clock_after_immutable_bytes_are_read)
+
+    def test_atomic_write_once(self) -> None:
+        self._run_with_temp(test_write_once_never_exposes_partial_final_path)
+
+    def test_corrupt_terminal_invalidation(self) -> None:
+        self._run_with_temp(test_corrupt_uncommitted_terminal_artifacts_are_invalidated)
+
+    def test_incomplete_terminal_schemas(self) -> None:
+        self._run_with_temp(
+            test_cross_hash_consistent_but_incomplete_terminal_schemas_are_rejected
+        )
+
+    def test_independent_terminal_binding(self) -> None:
+        self._run_with_temp(test_mismatched_independent_terminal_bindings_are_rejected)
+
+    def test_corrupt_independent_sentinel(self) -> None:
+        self._run_with_temp(
+            test_corrupt_independent_sentinel_restarts_to_valid_no_metrics_terminal
+        )
+
+    def test_normal_abort_state_binding(self) -> None:
+        self._run_with_temp(test_normal_abort_commit_is_bound_to_replayed_terminal_state)
 
     def test_unit_drift_pause_resume(self) -> None:
         self._run_with_temp(test_unit_drift_pauses_and_reviewed_hash_chained_admission_resumes)
@@ -1107,6 +1530,9 @@ class ForwardOverroundSuccessorRuntimeTests(unittest.TestCase):
 
     def test_post_score_metrics_hash_drift(self) -> None:
         self._run_with_temp(test_post_score_metrics_hash_drift_seals_no_metrics_terminal)
+
+    def test_scorer_start_precommit(self) -> None:
+        self._run_with_temp(test_scorer_start_precommit_prevents_repeat_after_compute_crash)
 
     def test_finalization_restart_boundaries(self) -> None:
         self._run_with_temp(test_restart_at_every_finalization_write_boundary_is_idempotent)
