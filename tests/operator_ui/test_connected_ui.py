@@ -42,6 +42,17 @@ def test_connected_client_has_explicit_isolated_truthful_accessible_states():
     assert 'content: "Status: "' in css
 
 
+def test_connected_client_loads_readiness_before_background_fanout():
+    source = SCRIPT.read_text(encoding="utf-8")
+    race = "await loadResource('upcoming-races',API['upcoming-races'])"
+    models = "await loadResource('models',API.models)"
+    background = "Promise.allSettled(background.map"
+    assert race in source
+    assert models in source
+    assert background in source
+    assert source.index(race) < source.index(models) < source.index(background)
+
+
 def test_prediction_intent_and_reconnect_are_durable_and_bounded():
     source = SCRIPT.read_text(encoding="utf-8")
     state = (ROOT / "static/js/operator-ui-state.js").read_text(encoding="utf-8")
