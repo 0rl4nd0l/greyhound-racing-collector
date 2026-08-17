@@ -1,0 +1,162 @@
+{
+  "authorization": {
+    "activation_receipt_required": true,
+    "collection_authorized": false,
+    "scheduler_install_authorized": false,
+    "status": "PREPARED_NOT_AUTHORIZED"
+  },
+  "boundaries": {
+    "august_2026_reuse": false,
+    "automated_betting": false,
+    "canonical_db_write": false,
+    "interim_candidate_loss_peeking": false,
+    "model_change": false,
+    "post_hoc_exclusion": false,
+    "promotion": false,
+    "roi_computed": false
+  },
+  "cohort": {
+    "administrative_deadline": null,
+    "membership": "irrevocable_at_immutable_prediction_receipt",
+    "operator_abort_effect": "FINALIZED_ABORTED_NO_METRICS",
+    "replacement_allowed": false,
+    "selection": "first_1000_eligible_forward_races_in_jump_capture_race_id_order",
+    "target_races": 1000
+  },
+  "eligibility": {
+    "approved_result": "append_only_thedogs_official_exact_race_runner_set_and_winner_agreement",
+    "capture_after_activation": true,
+    "capture_mode": "autonomous_prejump_t30m",
+    "capture_window": {
+      "lower_bound": "jump_minus_33_minutes_inclusive",
+      "upper_bound": "jump_minus_10_minutes_exclusive"
+    },
+    "complete_active_runner_set": true,
+    "earliest_jump_local": "2026-09-01T00:00:00+10:00",
+    "exact_identity": "race_id_plus_box_number_plus_exact_dog_name_never_name_only",
+    "market_type": "win",
+    "race_jump_after_activation": true,
+    "raw_paired_column_win_proof": true,
+    "sportsbet_source_explicit": true
+  },
+  "evaluation": {
+    "calibration_bands": [
+      [0.0, 0.05],
+      [0.05, 0.1],
+      [0.1, 0.2],
+      [0.2, 0.35],
+      [0.35, 1.0]
+    ],
+    "confirmation_rule": {
+      "all_required": [
+        "paired_log_loss_delta_transform_minus_baseline_below_zero",
+        "race_bootstrap_95pct_upper_below_zero",
+        "race_date_cluster_bootstrap_95pct_upper_below_zero",
+        "at_least_4_of_5_chronological_equal_count_blocks_have_negative_delta"
+      ],
+      "valid_evidence_gate_failure_verdict": "FORWARD_OVERROUND_SIGNAL_NOT_CONFIRMED",
+      "valid_evidence_gate_pass_verdict": "FORWARD_OVERROUND_SIGNAL_CONFIRMED"
+    },
+    "finalization": {
+      "identical_races_required": true,
+      "one_shot": true,
+      "requires_approved_results": 1000,
+      "requires_sealed_predictions": 1000
+    },
+    "primary": "mean_multiclass_race_log_loss",
+    "probabilities": {
+      "baseline": "reciprocal_raw_sportsbet_decimal_win_odds_normalized_within_race",
+      "candidate": "frozen_linear_overround_allocation_transform"
+    },
+    "secondary": [
+      "multiclass_brier",
+      "fixed_band_runner_calibration_and_ece",
+      "top_1_accuracy",
+      "mean_winner_rank",
+      "mean_reciprocal_winner_rank"
+    ],
+    "stability": {
+      "chronological_blocks": 5,
+      "minimum_negative_blocks": 4,
+      "partition": "jump_capture_race_id_order_equal_count"
+    },
+    "uncertainty": {
+      "race_bootstrap": {
+        "interval": 0.95,
+        "replicates": 20000,
+        "seed": 20260817,
+        "unit": "race"
+      },
+      "race_date_cluster_bootstrap": {
+        "interval": 0.95,
+        "replicates": 20000,
+        "seed": 20260818,
+        "unit": "australia_melbourne_race_date"
+      }
+    }
+  },
+  "lineage": {
+    "predecessor_cohort": "forward_overround_structure_v2_20260816",
+    "predecessor_disposition": "BLOCKED_FORWARD_EVIDENCE_NO_METRICS_NOT_MODEL_EVIDENCE",
+    "protocol_mechanics_only_from_predecessor_outcomes": true
+  },
+  "model": {
+    "artifact_id": "OVERROUND_STRUCTURE_TRANSFORM_V1_20260816",
+    "hashes": {
+      "SHA256SUMS": "311bbc3bf98a7a660350a6d983fb81d162dd2cf359b49041c84302e8c65517ad",
+      "final_model.json": "c81b4b3047b7840ba31269504e0c5ceb6c54d742a82a4e01cca52b11fdaa471e",
+      "preprocessing.json": "ad85722337d80360e1745f75fe57ff6b3fbd1e80deac57af318c898372b01998",
+      "protocol.json": "2b20704e41574d5557eb1d6381bc314212b382a195ca5bffea95b832d4a5fb4a",
+      "scorer_contract.json": "c119feea4f67baad73dc9e23ff7f98d755a34054c32a0a98dea4f44cdafa2576"
+    },
+    "name": "linear_overround_allocation",
+    "recalibration_allowed": false,
+    "refit_allowed": false
+  },
+  "results": {
+    "closure": "wait_until_all_1000_members_have_approved_results",
+    "conflict_effect": "FINALIZED_ABORTED_NO_METRICS",
+    "missing_result_deadline": null,
+    "result_append_changes_prediction_receipt": false
+  },
+  "runtime_admission": {
+    "active_admission_bound_to_every_prediction": true,
+    "admission_event_must_precede_capture": true,
+    "fatal_failures": [
+      "sealed_prediction_without_predeclared_admission",
+      "sealed_prediction_or_result_hash_conflict",
+      "sealed_member_identity_timing_or_win_provenance_invalid",
+      "finalizer_code_hash_drift",
+      "model_preprocessing_scorer_or_protocol_hash_drift",
+      "result_runner_set_or_winner_conflict"
+    ],
+    "resolved_drift_rule": "reviewed_timestamped_hash_chained_capture_runtime_admission_before_any_seal_under_new_runtime",
+    "semantic_contract_sha256": "c119feea4f67baad73dc9e23ff7f98d755a34054c32a0a98dea4f44cdafa2576",
+    "temporary_failures": [
+      "capture_code_or_unit_hash_unadmitted_before_seal",
+      "source_unavailable",
+      "candidate_incomplete_field",
+      "candidate_timing_outside_window",
+      "candidate_identity_ambiguous",
+      "candidate_win_provenance_ambiguous",
+      "approved_result_not_yet_available"
+    ],
+    "temporary_failure_effect": "pause_or_reject_without_membership_and_without_fatal_sentinel"
+  },
+  "schema_version": "forward_overround_successor_protocol_v1",
+  "state_machine": {
+    "event_journal": "append_only_hash_identified_events",
+    "restart": "replay_journal_idempotently_and_fail_on_conflicting_event_id",
+    "states": [
+      "PREPARED_NOT_AUTHORIZED",
+      "COLLECTING",
+      "ADMISSION_PAUSED",
+      "RESULT_CLOSURE",
+      "READY_TO_FINALIZE",
+      "FINALIZATION_LOCKED",
+      "FINALIZED_SCORED",
+      "FINALIZED_ABORTED_NO_METRICS"
+    ],
+    "timer_authority": "no_unit_install_enable_or_start_without_separate_owner_authorization"
+  }
+}
