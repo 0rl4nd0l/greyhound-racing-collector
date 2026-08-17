@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "analysis_as_of_date": {
+      "type": "string"
+    },
+    "claims": {
+      "type": "object"
+    },
+    "code_and_protocol": {
+      "type": "object"
+    },
+    "findings": {
+      "type": "object"
+    },
+    "fit_metrics": {
+      "type": "object"
+    },
+    "future_protocol": {
+      "type": "object"
+    },
+    "inputs": {
+      "type": "object"
+    },
+    "leakage_controls": {
+      "type": "object"
+    },
+    "population": {
+      "type": "object"
+    },
+    "prospective_test_readiness": {
+      "enum": [
+        "READY_TO_FREEZE",
+        "NOT_READY_TO_FREEZE"
+      ]
+    },
+    "provenance_checks": {
+      "type": "object"
+    },
+    "schema_version": {
+      "const": "sportsbet_betfair_consensus_freeze_v1"
+    },
+    "selection": {
+      "type": "object"
+    },
+    "terminal_state": {
+      "enum": [
+        "CONSENSUS_CANDIDATE_FROZEN",
+        "CONSENSUS_CANDIDATE_NOT_FROZEN"
+      ]
+    },
+    "validation": {
+      "type": "object"
+    }
+  },
+  "required": [
+    "schema_version",
+    "terminal_state",
+    "prospective_test_readiness",
+    "analysis_as_of_date",
+    "inputs",
+    "code_and_protocol",
+    "population",
+    "selection",
+    "fit_metrics",
+    "validation",
+    "provenance_checks",
+    "leakage_controls",
+    "future_protocol",
+    "findings",
+    "claims"
+  ],
+  "title": "Sportsbet Betfair consensus freeze report",
+  "type": "object"
+}

@@ -1,0 +1,115 @@
+{
+  "bootstrap": {
+    "cluster_key": [
+      "race_date",
+      "sportsbet_venue"
+    ],
+    "confidence_interval": "percentile_2.5_97.5",
+    "replicates": 10000,
+    "sampling": "sample_distinct_meeting_date_clusters_with_replacement_then_include_all_member_races",
+    "seed": 20260817
+  },
+  "candidate": {
+    "formula": "p_consensus=(1-betfair_weight)*p_sportsbet_normalized+betfair_weight*p_betfair_scheduled_off_normalized",
+    "normalization": "normalize_each_market_source_to_sum_one_within_race_before_combination",
+    "selection_pool_betfair_weights": [
+      0.05,
+      0.1,
+      0.15,
+      0.2,
+      0.25,
+      0.3,
+      0.35,
+      0.4,
+      0.45,
+      0.5,
+      0.55,
+      0.6,
+      0.65,
+      0.7,
+      0.75,
+      0.8,
+      0.85,
+      0.9,
+      0.95
+    ],
+    "selection_rule": "minimize_fit_mean_race_log_loss_only; compare tuple(round(log_loss,15),betfair_weight), so exact ties choose lower Betfair weight",
+    "weight_grid_all_diagnostics": [
+      0.0,
+      0.05,
+      0.1,
+      0.15,
+      0.2,
+      0.25,
+      0.3,
+      0.35,
+      0.4,
+      0.45,
+      0.5,
+      0.55,
+      0.6,
+      0.65,
+      0.7,
+      0.75,
+      0.8,
+      0.85,
+      0.9,
+      0.95,
+      1.0
+    ]
+  },
+  "development_population": {
+    "excluded_dates": [
+      "2026-08-01",
+      "2026-08-02"
+    ],
+    "fit_end_inclusive": "2026-06-30",
+    "fit_start_inclusive": "2026-06-10",
+    "source_surface_sha256": "86fabb05556160e555f076322eb8786b6166e369a6a8ec57d475c0e4a06e67f7",
+    "validation_end_inclusive": "2026-07-18",
+    "validation_start_inclusive": "2026-07-01"
+  },
+  "eligibility": {
+    "betfair_predictor_field": "BEST_AVAIL_BACK_AT_SCHEDULED_OFF",
+    "identity": "date_plus_venue_alias_plus_race_number_plus_exact_scheduled_clock_plus_complete_box_TAB_agreement",
+    "no_name_only_join": true,
+    "reject_missing_or_nonfinite_prices": true,
+    "reject_partial_or_duplicate_runner_sets": true,
+    "reject_reserve_box_or_TAB_mismatch": true,
+    "sportsbet_predictor": "corrected_normalized_WIN_probability",
+    "winner_label": "exactly_one_WINNER_per_complete_race"
+  },
+  "freeze_gate": {
+    "candidate_required": "selected weight is strictly between zero and one",
+    "fit_required": "selected consensus fit log loss is strictly lower than Sportsbet baseline fit log loss",
+    "validation_required": "selected consensus validation log loss is strictly lower than Sportsbet baseline validation log loss",
+    "uncertainty_is_not_a_selection_input": true
+  },
+  "future_evaluation": {
+    "analysis_timing": "one analysis only after 2026-09-30 and after fixed-window source completeness is declared without using results",
+    "confirmation_rule": "paired validation-style future delta_log_loss<0 and meeting-date-cluster bootstrap upper_95<0",
+    "end_date_inclusive": "2026-09-30",
+    "fixed_calendar_no_results_driven_stopping": true,
+    "future_rows_loaded_or_scored_during_freeze": false,
+    "interim_peeking": "forbidden",
+    "labels_and_results_during_preparation": "forbidden",
+    "primary_metric": "paired_mean_multiclass_race_log_loss_consensus_minus_sportsbet",
+    "start_date_inclusive": "2026-08-18"
+  },
+  "leakage_controls": {
+    "actual_off_as_feature": false,
+    "betfair_bsp_as_feature": false,
+    "future_outcome_inspection": false,
+    "post_hoc_exclusions": false,
+    "post_jump_predictors": false,
+    "validation_secondary_metric_tuning": false
+  },
+  "metrics": {
+    "brier": "mean_over_races_of_sum_over_runners((p-y)^2)",
+    "calibration": "fixed_10_bin_top_label_ECE_plus_mean_winner_probability_and_top_confidence_minus_accuracy",
+    "log_loss": "mean_over_races_of_negative_log_probability_assigned_to_winner",
+    "ranking": "top1_top2_top3_accuracy_and_mean_median_winner_rank; sort_probability_desc_then_box_asc"
+  },
+  "schema_version": "sportsbet_betfair_consensus_protocol_v1",
+  "selection_scope": "fit_labels_select_one_weight; validation_labels screen_that_single_weight_once; future labels remain untouched"
+}

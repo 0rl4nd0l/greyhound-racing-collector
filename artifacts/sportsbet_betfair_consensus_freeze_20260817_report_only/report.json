@@ -1,0 +1,829 @@
+{
+  "analysis_as_of_date": "2026-08-17",
+  "claims": {
+    "supported": [
+      "descriptive performance on the frozen June fit and July validation intersection",
+      "deterministic replay of the frozen convex scorer",
+      "untouched fixed-calendar prospective eligibility protocol"
+    ],
+    "unsupported": [
+      "prospective confirmation",
+      "profitability or betting value",
+      "promotion, deployment, live scoring, or market-wide generalization"
+    ]
+  },
+  "code_and_protocol": {
+    "protocol_sha256": "2147a3181336326cb6df3222e9d39aba162db45be1cc614a7c59c0518432d2c8",
+    "scorer_sha256": "929a9d5ebb073d199e30f20b4a724eee1eb2d42699ab0db6333d34d1e22ff5a6"
+  },
+  "findings": {
+    "BLOCKING": [],
+    "IMPORTANT": [
+      "validation evidence is development screening only, not prospective confirmation",
+      "Betfair scheduled-off quote is not proof of executable liquidity"
+    ],
+    "OPTIONAL": [
+      "seek Betfair clarification of scheduled-off quote sampling semantics"
+    ]
+  },
+  "fit_metrics": {
+    "betfair_only": {
+      "brier": 0.6855765176562636,
+      "log_loss": 1.4283156068263378,
+      "mean_top_confidence": 0.4315035820754237,
+      "mean_winner_probability": 0.307596407841684,
+      "mean_winner_rank": 2.2354948805460753,
+      "median_winner_rank": 2.0,
+      "races": 586,
+      "top1_accuracy": 0.44368600682593856,
+      "top2_accuracy": 0.6791808873720137,
+      "top3_accuracy": 0.8276450511945392,
+      "top_confidence_minus_accuracy": -0.012182424750514842,
+      "top_label_calibration_bins": [
+        {
+          "bin_lower_inclusive": 0.0,
+          "bin_upper_exclusive_except_last": 0.1,
+          "mean_top_confidence": null,
+          "races": 0,
+          "top1_accuracy": null
+        },
+        {
+          "bin_lower_inclusive": 0.1,
+          "bin_upper_exclusive_except_last": 0.2,
+          "mean_top_confidence": null,
+          "races": 0,
+          "top1_accuracy": null
+        },
+        {
+          "bin_lower_inclusive": 0.2,
+          "bin_upper_exclusive_except_last": 0.3,
+          "mean_top_confidence": 0.2637197352741095,
+          "races": 103,
+          "top1_accuracy": 0.24271844660194175
+        },
+        {
+          "bin_lower_inclusive": 0.3,
+          "bin_upper_exclusive_except_last": 0.4,
+          "mean_top_confidence": 0.349702401905499,
+          "races": 184,
+          "top1_accuracy": 0.33695652173913043
+        },
+        {
+          "bin_lower_inclusive": 0.4,
+          "bin_upper_exclusive_except_last": 0.5,
+          "mean_top_confidence": 0.44443721295337635,
+          "races": 141,
+          "top1_accuracy": 0.5106382978723404
+        },
+        {
+          "bin_lower_inclusive": 0.5,
+          "bin_upper_exclusive_except_last": 0.6,
+          "mean_top_confidence": 0.5522512369032736,
+          "races": 67,
+          "top1_accuracy": 0.6268656716417911
+        },
+        {
+          "bin_lower_inclusive": 0.6,
+          "bin_upper_exclusive_except_last": 0.7,
+          "mean_top_confidence": 0.6433363134660637,
+          "races": 62,
+          "top1_accuracy": 0.5645161290322581
+        },
+        {
+          "bin_lower_inclusive": 0.7,
+          "bin_upper_exclusive_except_last": 0.8,
+          "mean_top_confidence": 0.7389399620072307,
+          "races": 25,
+          "top1_accuracy": 0.84
+        },
+        {
+          "bin_lower_inclusive": 0.8,
+          "bin_upper_exclusive_except_last": 0.9,
+          "mean_top_confidence": 0.8314735070827803,
+          "races": 4,
+          "top1_accuracy": 0.75
+        },
+        {
+          "bin_lower_inclusive": 0.9,
+          "bin_upper_exclusive_except_last": 1.0,
+          "mean_top_confidence": null,
+          "races": 0,
+          "top1_accuracy": null
+        }
+      ],
+      "top_label_ece_10_bin": 0.04536030921151195
+    },
+    "consensus": {
+      "brier": 0.6857472141300647,
+      "log_loss": 1.4294443105777048,
+      "mean_top_confidence": 0.42905704243350523,
+      "mean_winner_probability": 0.30624026631649637,
+      "mean_winner_rank": 2.2354948805460753,
+      "median_winner_rank": 2.0,
+      "races": 586,
+      "top1_accuracy": 0.447098976109215,
+      "top2_accuracy": 0.6791808873720137,
+      "top3_accuracy": 0.8293515358361775,
+      "top_confidence_minus_accuracy": -0.018041933675709776,
+      "top_label_calibration_bins": [
+        {
+          "bin_lower_inclusive": 0.0,
+          "bin_upper_exclusive_except_last": 0.1,
+          "mean_top_confidence": null,
+          "races": 0,
+          "top1_accuracy": null
+        },
+        {
+          "bin_lower_inclusive": 0.1,
+          "bin_upper_exclusive_except_last": 0.2,
+          "mean_top_confidence": 0.19964862397699235,
+          "races": 1,
+          "top1_accuracy": 0.0
+        },
+        {
+          "bin_lower_inclusive": 0.2,
+          "bin_upper_exclusive_except_last": 0.3,
+          "mean_top_confidence": 0.26443492553921616,
+          "races": 105,
+          "top1_accuracy": 0.2571428571428571
+        },
+        {
+          "bin_lower_inclusive": 0.3,
+          "bin_upper_exclusive_except_last": 0.4,
+          "mean_top_confidence": 0.35026841097532574,
+          "races": 185,
+          "top1_accuracy": 0.34054054054054056
+        },
+        {
+          "bin_lower_inclusive": 0.4,
+          "bin_upper_exclusive_except_last": 0.5,
+          "mean_top_confidence": 0.44475982132562586,
+          "races": 140,
+          "top1_accuracy": 0.5142857142857142
+        },
+        {
+          "bin_lower_inclusive": 0.5,
+          "bin_upper_exclusive_except_last": 0.6,
+          "mean_top_confidence": 0.5519583136939491,
+          "races": 66,
+          "top1_accuracy": 0.6515151515151515
+        },
+        {
+          "bin_lower_inclusive": 0.6,
+          "bin_upper_exclusive_except_last": 0.7,
+          "mean_top_confidence": 0.6390038553514942,
+          "races": 60,
+          "top1_accuracy": 0.55
+        },
+        {
+          "bin_lower_inclusive": 0.7,
+          "bin_upper_exclusive_except_last": 0.8,
+          "mean_top_confidence": 0.7328961297156701,
+          "races": 25,
+          "top1_accuracy": 0.84
+        },
+        {
+          "bin_lower_inclusive": 0.8,
+          "bin_upper_exclusive_except_last": 0.9,
+          "mean_top_confidence": 0.8260491941586046,
+          "races": 4,
+          "top1_accuracy": 0.75
+        },
+        {
+          "bin_lower_inclusive": 0.9,
+          "bin_upper_exclusive_except_last": 1.0,
+          "mean_top_confidence": null,
+          "races": 0,
+          "top1_accuracy": null
+        }
+      ],
+      "top_label_ece_10_bin": 0.04674295734039931
+    },
+    "sportsbet": {
+      "brier": 0.6981838087261093,
+      "log_loss": 1.4725050275698532,
+      "mean_top_confidence": 0.3866165520975657,
+      "mean_winner_probability": 0.2804735773379304,
+      "mean_winner_rank": 2.2747440273037545,
+      "median_winner_rank": 2.0,
+      "races": 586,
+      "top1_accuracy": 0.43686006825938567,
+      "top2_accuracy": 0.6706484641638225,
+      "top3_accuracy": 0.8139931740614335,
+      "top_confidence_minus_accuracy": -0.05024351616181999,
+      "top_label_calibration_bins": [
+        {
+          "bin_lower_inclusive": 0.0,
+          "bin_upper_exclusive_except_last": 0.1,
+          "mean_top_confidence": null,
+          "races": 0,
+          "top1_accuracy": null
+        },
+        {
+          "bin_lower_inclusive": 0.1,
+          "bin_upper_exclusive_except_last": 0.2,
+          "mean_top_confidence": 0.17925300254133775,
+          "races": 2,
+          "top1_accuracy": 0.0
+        },
+        {
+          "bin_lower_inclusive": 0.2,
+          "bin_upper_exclusive_except_last": 0.3,
+          "mean_top_confidence": 0.26157889263515804,
+          "races": 140,
+          "top1_accuracy": 0.24285714285714285
+        },
+        {
+          "bin_lower_inclusive": 0.3,
+          "bin_upper_exclusive_except_last": 0.4,
+          "mean_top_confidence": 0.3494201039362947,
+          "races": 213,
+          "top1_accuracy": 0.38967136150234744
+        },
+        {
+          "bin_lower_inclusive": 0.4,
+          "bin_upper_exclusive_except_last": 0.5,
+          "mean_top_confidence": 0.4458958843142961,
+          "races": 134,
+          "top1_accuracy": 0.5895522388059702
+        },
+        {
+          "bin_lower_inclusive": 0.5,
+          "bin_upper_exclusive_except_last": 0.6,
+          "mean_top_confidence": 0.5416290094488718,
+          "races": 72,
+          "top1_accuracy": 0.5555555555555556
+        },
+        {
+          "bin_lower_inclusive": 0.6,
+          "bin_upper_exclusive_except_last": 0.7,
+          "mean_top_confidence": 0.6402039299061671,
+          "races": 21,
+          "top1_accuracy": 0.7619047619047619
+        },
+        {
+          "bin_lower_inclusive": 0.7,
+          "bin_upper_exclusive_except_last": 0.8,
+          "mean_top_confidence": 0.7399116775684715,
+          "races": 4,
+          "top1_accuracy": 1.0
+        },
+        {
+          "bin_lower_inclusive": 0.8,
+          "bin_upper_exclusive_except_last": 0.9,
+          "mean_top_confidence": null,
+          "races": 0,
+          "top1_accuracy": null
+        },
+        {
+          "bin_lower_inclusive": 0.9,
+          "bin_upper_exclusive_except_last": 1.0,
+          "mean_top_confidence": null,
+          "races": 0,
+          "top1_accuracy": null
+        }
+      ],
+      "top_label_ece_10_bin": 0.06041263211405495
+    }
+  },
+  "future_protocol": {
+    "analysis_count": 1,
+    "end_date_inclusive": "2026-09-30",
+    "interim_scoring": "FORBIDDEN",
+    "outcomes_inspected_now": 0,
+    "population_rows_materialized_now": 0,
+    "start_date_inclusive": "2026-08-18"
+  },
+  "inputs": {
+    "Betfair_source_hashes": {
+      "ANZ_Greyhounds_2026_06.csv": "304085cec9dd7930c505f9b45d33835bdf1d2223dbb6f5c0723087c813114748",
+      "ANZ_Greyhounds_2026_07.csv": "f150a95b7ebd323d7626bb3653cae04a9a3165d04ebbf8c4611c22d2a647944f"
+    },
+    "betfair_audit_report_sha256": "b573d7d8512ba9cfa11373425e465f0b1b87901764966cb845e0ecd8fc0c9491",
+    "corrected_sportsbet_win_matrix_sha256": "eb1783d4cc07e6980463a097c97fdac9f5370b08f493ca15addf768aa0b014b6",
+    "joined_surface_sha256": "86fabb05556160e555f076322eb8786b6166e369a6a8ec57d475c0e4a06e67f7"
+  },
+  "leakage_controls": {
+    "August_2026_rows_in_joined_surface": 0,
+    "BSP_as_predictor": false,
+    "actual_off_as_predictor": false,
+    "future_rows_loaded": 0,
+    "future_rows_scored": 0,
+    "name_only_identity": false,
+    "post_hoc_exclusions": 0,
+    "predictor_fields": [
+      "sportsbet_normalized_probability",
+      "betfair_scheduled_off_back_price"
+    ]
+  },
+  "population": {
+    "fit_meeting_date_clusters": 114,
+    "fit_races": 586,
+    "fit_runner_rows": 4189,
+    "meeting_date_clusters": 200,
+    "races": 1008,
+    "runner_rows": 7142,
+    "validation_meeting_date_clusters": 86,
+    "validation_races": 422,
+    "validation_runner_rows": 2953
+  },
+  "prospective_test_readiness": "READY_TO_FREEZE",
+  "provenance_checks": {
+    "ambiguous_races_zero": true,
+    "matched_races": true,
+    "matched_runner_rows": true,
+    "reserve_tab_races_zero": true,
+    "result_conflicts_zero": true,
+    "runner_name_conflicts_zero": true,
+    "scheduled_before_actual_check": true,
+    "scheduled_prices_complete": true,
+    "terminal_state": true
+  },
+  "schema_version": "sportsbet_betfair_consensus_freeze_v1",
+  "selection": {
+    "fit_grid": [
+      {
+        "betfair_weight": 0.05,
+        "brier": 0.6970937760929258,
+        "log_loss": 1.4692611695266897
+      },
+      {
+        "betfair_weight": 0.1,
+        "brier": 0.6960521295733939,
+        "log_loss": 1.466128679448825
+      },
+      {
+        "betfair_weight": 0.15,
+        "brier": 0.6950588691675138,
+        "log_loss": 1.463106042089197
+      },
+      {
+        "betfair_weight": 0.2,
+        "brier": 0.6941139948752854,
+        "log_loss": 1.4601920013810996
+      },
+      {
+        "betfair_weight": 0.25,
+        "brier": 0.6932175066967087,
+        "log_loss": 1.4573855521989236
+      },
+      {
+        "betfair_weight": 0.3,
+        "brier": 0.6923694046317836,
+        "log_loss": 1.454685935355004
+      },
+      {
+        "betfair_weight": 0.35,
+        "brier": 0.6915696886805103,
+        "log_loss": 1.452092635674518
+      },
+      {
+        "betfair_weight": 0.4,
+        "brier": 0.6908183588428888,
+        "log_loss": 1.449605383098395
+      },
+      {
+        "betfair_weight": 0.45,
+        "brier": 0.6901154151189188,
+        "log_loss": 1.4472241568665354
+      },
+      {
+        "betfair_weight": 0.5,
+        "brier": 0.6894608575086008,
+        "log_loss": 1.4449491929373675
+      },
+      {
+        "betfair_weight": 0.55,
+        "brier": 0.6888546860119343,
+        "log_loss": 1.4427809949117425
+      },
+      {
+        "betfair_weight": 0.6,
+        "brier": 0.6882969006289196,
+        "log_loss": 1.440720348857007
+      },
+      {
+        "betfair_weight": 0.65,
+        "brier": 0.6877875013595567,
+        "log_loss": 1.4387683425797715
+      },
+      {
+        "betfair_weight": 0.7,
+        "brier": 0.6873264882038453,
+        "log_loss": 1.4369263900850169
+      },
+      {
+        "betfair_weight": 0.75,
+        "brier": 0.6869138611617858,
+        "log_loss": 1.4351962622003167
+      },
+      {
+        "betfair_weight": 0.8,
+        "brier": 0.686549620233378,
+        "log_loss": 1.433580124658666
+      },
+      {
+        "betfair_weight": 0.85,
+        "brier": 0.6862337654186217,
+        "log_loss": 1.4320805853526435
+      },
+      {
+        "betfair_weight": 0.9,
+        "brier": 0.6859662967175173,
+        "log_loss": 1.4307007530414213
+      },
+      {
+        "betfair_weight": 0.95,
+        "brier": 0.6857472141300647,
+        "log_loss": 1.4294443105777048
+      }
+    ],
+    "fit_log_loss_delta_consensus_minus_sportsbet": -0.04306071699214842,
+    "freeze_checks": {
+      "BSP_not_used_as_predictor": true,
+      "actual_off_not_used_as_predictor": true,
+      "fit_log_loss_improves_sportsbet": true,
+      "no_future_rows_loaded_or_scored": true,
+      "provenance_checks_pass": true,
+      "selected_weight_is_interior": true,
+      "validation_log_loss_improves_sportsbet": true
+    },
+    "selected_betfair_weight": 0.95,
+    "selected_sportsbet_weight": 0.050000000000000044,
+    "selection_metric": "fit mean multiclass race log loss",
+    "validation_log_loss_delta_consensus_minus_sportsbet": -0.03753343563149536
+  },
+  "terminal_state": "CONSENSUS_CANDIDATE_FROZEN",
+  "validation": {
+    "meeting_date_cluster_bootstrap": {
+      "betfair_only_vs_sportsbet": {
+        "cluster_count": 86,
+        "cluster_key": "race_date|sportsbet_venue",
+        "delta_direction": "alternative_minus_sportsbet; negative improves log_loss/brier/rank, positive improves accuracy",
+        "intervals": {
+          "brier": {
+            "lower_95": -0.02350601351949116,
+            "upper_95": -0.002887543876493642
+          },
+          "log_loss": {
+            "lower_95": -0.06146617471485984,
+            "upper_95": -0.01227234612264013
+          },
+          "mean_winner_rank": {
+            "lower_95": -0.07009656943721572,
+            "upper_95": 0.03417051518082813
+          },
+          "top1_accuracy": {
+            "lower_95": -0.012594458438287154,
+            "upper_95": 0.027093596059113302
+          },
+          "top2_accuracy": {
+            "lower_95": -0.009237875288683603,
+            "upper_95": 0.03846371882086165
+          },
+          "top3_accuracy": {
+            "lower_95": -0.021645021645021644,
+            "upper_95": 0.026635189669087962
+          },
+          "top_confidence": {
+            "lower_95": 0.052917858251677045,
+            "upper_95": 0.066916870478112
+          },
+          "winner_probability": {
+            "lower_95": 0.030337838626117945,
+            "upper_95": 0.04266617862934345
+          }
+        },
+        "replicates": 10000,
+        "seed": 20260817
+      },
+      "consensus_vs_sportsbet": {
+        "cluster_count": 86,
+        "cluster_key": "race_date|sportsbet_venue",
+        "delta_direction": "alternative_minus_sportsbet; negative improves log_loss/brier/rank, positive improves accuracy",
+        "intervals": {
+          "brier": {
+            "lower_95": -0.022933114466173594,
+            "upper_95": -0.00335732547877123
+          },
+          "log_loss": {
+            "lower_95": -0.05984064954126046,
+            "upper_95": -0.013857042910368773
+          },
+          "mean_winner_rank": {
+            "lower_95": -0.06948162620552045,
+            "upper_95": 0.029268567347835638
+          },
+          "top1_accuracy": {
+            "lower_95": -0.00963855421686747,
+            "upper_95": 0.029101171212821686
+          },
+          "top2_accuracy": {
+            "lower_95": -0.009237875288683603,
+            "upper_95": 0.03846371882086165
+          },
+          "top3_accuracy": {
+            "lower_95": -0.024097597633996753,
+            "upper_95": 0.02353004156694797
+          },
+          "top_confidence": {
+            "lower_95": 0.05005021433830413,
+            "upper_95": 0.06338872975305135
+          },
+          "winner_probability": {
+            "lower_95": 0.028820946694812048,
+            "upper_95": 0.04053286969787629
+          }
+        },
+        "replicates": 10000,
+        "seed": 20260817
+      }
+    },
+    "metrics": {
+      "betfair_only": {
+        "brier": 0.6691404976760055,
+        "log_loss": 1.3989296781338114,
+        "mean_top_confidence": 0.4668494909952018,
+        "mean_winner_probability": 0.33291928206739413,
+        "mean_winner_rank": 2.2014218009478674,
+        "median_winner_rank": 2.0,
+        "races": 422,
+        "top1_accuracy": 0.476303317535545,
+        "top2_accuracy": 0.6777251184834123,
+        "top3_accuracy": 0.8127962085308057,
+        "top_confidence_minus_accuracy": -0.009453826540343213,
+        "top_label_calibration_bins": [
+          {
+            "bin_lower_inclusive": 0.0,
+            "bin_upper_exclusive_except_last": 0.1,
+            "mean_top_confidence": null,
+            "races": 0,
+            "top1_accuracy": null
+          },
+          {
+            "bin_lower_inclusive": 0.1,
+            "bin_upper_exclusive_except_last": 0.2,
+            "mean_top_confidence": 0.18687233273245693,
+            "races": 4,
+            "top1_accuracy": 0.0
+          },
+          {
+            "bin_lower_inclusive": 0.2,
+            "bin_upper_exclusive_except_last": 0.3,
+            "mean_top_confidence": 0.2614568149087579,
+            "races": 68,
+            "top1_accuracy": 0.2647058823529412
+          },
+          {
+            "bin_lower_inclusive": 0.3,
+            "bin_upper_exclusive_except_last": 0.4,
+            "mean_top_confidence": 0.34471899358561164,
+            "races": 104,
+            "top1_accuracy": 0.46153846153846156
+          },
+          {
+            "bin_lower_inclusive": 0.4,
+            "bin_upper_exclusive_except_last": 0.5,
+            "mean_top_confidence": 0.4435669770588156,
+            "races": 81,
+            "top1_accuracy": 0.3950617283950617
+          },
+          {
+            "bin_lower_inclusive": 0.5,
+            "bin_upper_exclusive_except_last": 0.6,
+            "mean_top_confidence": 0.5503487224582788,
+            "races": 77,
+            "top1_accuracy": 0.5064935064935064
+          },
+          {
+            "bin_lower_inclusive": 0.6,
+            "bin_upper_exclusive_except_last": 0.7,
+            "mean_top_confidence": 0.6395471557168271,
+            "races": 34,
+            "top1_accuracy": 0.7647058823529411
+          },
+          {
+            "bin_lower_inclusive": 0.7,
+            "bin_upper_exclusive_except_last": 0.8,
+            "mean_top_confidence": 0.7483526979595757,
+            "races": 35,
+            "top1_accuracy": 0.5714285714285714
+          },
+          {
+            "bin_lower_inclusive": 0.8,
+            "bin_upper_exclusive_except_last": 0.9,
+            "mean_top_confidence": 0.8520440948162854,
+            "races": 16,
+            "top1_accuracy": 0.9375
+          },
+          {
+            "bin_lower_inclusive": 0.9,
+            "bin_upper_exclusive_except_last": 1.0,
+            "mean_top_confidence": 0.9192423704256066,
+            "races": 3,
+            "top1_accuracy": 1.0
+          }
+        ],
+        "top_label_ece_10_bin": 0.07696856839136934
+      },
+      "consensus": {
+        "brier": 0.6692059967801255,
+        "log_loss": 1.3990385671514396,
+        "mean_top_confidence": 0.4636396482949442,
+        "mean_winner_probability": 0.33109537673815614,
+        "mean_winner_rank": 2.199052132701422,
+        "median_winner_rank": 2.0,
+        "races": 422,
+        "top1_accuracy": 0.4786729857819905,
+        "top2_accuracy": 0.6777251184834123,
+        "top3_accuracy": 0.8104265402843602,
+        "top_confidence_minus_accuracy": -0.015033337487046328,
+        "top_label_calibration_bins": [
+          {
+            "bin_lower_inclusive": 0.0,
+            "bin_upper_exclusive_except_last": 0.1,
+            "mean_top_confidence": null,
+            "races": 0,
+            "top1_accuracy": null
+          },
+          {
+            "bin_lower_inclusive": 0.1,
+            "bin_upper_exclusive_except_last": 0.2,
+            "mean_top_confidence": 0.18613699682641982,
+            "races": 4,
+            "top1_accuracy": 0.0
+          },
+          {
+            "bin_lower_inclusive": 0.2,
+            "bin_upper_exclusive_except_last": 0.3,
+            "mean_top_confidence": 0.26065511598182967,
+            "races": 68,
+            "top1_accuracy": 0.29411764705882354
+          },
+          {
+            "bin_lower_inclusive": 0.3,
+            "bin_upper_exclusive_except_last": 0.4,
+            "mean_top_confidence": 0.3441328949886332,
+            "races": 106,
+            "top1_accuracy": 0.4528301886792453
+          },
+          {
+            "bin_lower_inclusive": 0.4,
+            "bin_upper_exclusive_except_last": 0.5,
+            "mean_top_confidence": 0.444822569768736,
+            "races": 83,
+            "top1_accuracy": 0.39759036144578314
+          },
+          {
+            "bin_lower_inclusive": 0.5,
+            "bin_upper_exclusive_except_last": 0.6,
+            "mean_top_confidence": 0.5489652504834638,
+            "races": 74,
+            "top1_accuracy": 0.5
+          },
+          {
+            "bin_lower_inclusive": 0.6,
+            "bin_upper_exclusive_except_last": 0.7,
+            "mean_top_confidence": 0.6386444237055209,
+            "races": 35,
+            "top1_accuracy": 0.7714285714285715
+          },
+          {
+            "bin_lower_inclusive": 0.7,
+            "bin_upper_exclusive_except_last": 0.8,
+            "mean_top_confidence": 0.7458694222123954,
+            "races": 34,
+            "top1_accuracy": 0.5882352941176471
+          },
+          {
+            "bin_lower_inclusive": 0.8,
+            "bin_upper_exclusive_except_last": 0.9,
+            "mean_top_confidence": 0.8478515103281857,
+            "races": 15,
+            "top1_accuracy": 0.9333333333333333
+          },
+          {
+            "bin_lower_inclusive": 0.9,
+            "bin_upper_exclusive_except_last": 1.0,
+            "mean_top_confidence": 0.911719723727458,
+            "races": 3,
+            "top1_accuracy": 1.0
+          }
+        ],
+        "top_label_ece_10_bin": 0.0797149022695512
+      },
+      "sportsbet": {
+        "brier": 0.6826381873640569,
+        "log_loss": 1.436572002782935,
+        "mean_top_confidence": 0.40715695945678193,
+        "mean_winner_probability": 0.2964411754826343,
+        "mean_winner_rank": 2.2180094786729856,
+        "median_winner_rank": 2.0,
+        "races": 422,
+        "top1_accuracy": 0.46919431279620855,
+        "top2_accuracy": 0.6635071090047393,
+        "top3_accuracy": 0.8104265402843602,
+        "top_confidence_minus_accuracy": -0.062037353339426615,
+        "top_label_calibration_bins": [
+          {
+            "bin_lower_inclusive": 0.0,
+            "bin_upper_exclusive_except_last": 0.1,
+            "mean_top_confidence": null,
+            "races": 0,
+            "top1_accuracy": null
+          },
+          {
+            "bin_lower_inclusive": 0.1,
+            "bin_upper_exclusive_except_last": 0.2,
+            "mean_top_confidence": 0.18998448631677253,
+            "races": 8,
+            "top1_accuracy": 0.25
+          },
+          {
+            "bin_lower_inclusive": 0.2,
+            "bin_upper_exclusive_except_last": 0.3,
+            "mean_top_confidence": 0.2595391066964048,
+            "races": 84,
+            "top1_accuracy": 0.34523809523809523
+          },
+          {
+            "bin_lower_inclusive": 0.3,
+            "bin_upper_exclusive_except_last": 0.4,
+            "mean_top_confidence": 0.3452479080568213,
+            "races": 136,
+            "top1_accuracy": 0.4117647058823529
+          },
+          {
+            "bin_lower_inclusive": 0.4,
+            "bin_upper_exclusive_except_last": 0.5,
+            "mean_top_confidence": 0.44617113927144686,
+            "races": 97,
+            "top1_accuracy": 0.4536082474226804
+          },
+          {
+            "bin_lower_inclusive": 0.5,
+            "bin_upper_exclusive_except_last": 0.6,
+            "mean_top_confidence": 0.547107850485149,
+            "races": 60,
+            "top1_accuracy": 0.65
+          },
+          {
+            "bin_lower_inclusive": 0.6,
+            "bin_upper_exclusive_except_last": 0.7,
+            "mean_top_confidence": 0.6464923368082522,
+            "races": 22,
+            "top1_accuracy": 0.6363636363636364
+          },
+          {
+            "bin_lower_inclusive": 0.7,
+            "bin_upper_exclusive_except_last": 0.8,
+            "mean_top_confidence": 0.7438877378348777,
+            "races": 14,
+            "top1_accuracy": 0.9285714285714286
+          },
+          {
+            "bin_lower_inclusive": 0.8,
+            "bin_upper_exclusive_except_last": 0.9,
+            "mean_top_confidence": 0.8030292640930112,
+            "races": 1,
+            "top1_accuracy": 1.0
+          },
+          {
+            "bin_lower_inclusive": 0.9,
+            "bin_upper_exclusive_except_last": 1.0,
+            "mean_top_confidence": null,
+            "races": 0,
+            "top1_accuracy": null
+          }
+        ],
+        "top_label_ece_10_bin": 0.06309342637156656
+      }
+    },
+    "paired_deltas_alternative_minus_sportsbet": {
+      "betfair_only": {
+        "brier": -0.013497689688051429,
+        "log_loss": -0.03764232464912354,
+        "mean_top_confidence": 0.05969253153841986,
+        "mean_winner_probability": 0.036478106584759806,
+        "mean_winner_rank": -0.016587677725118155,
+        "top1_accuracy": 0.007109004739336455,
+        "top2_accuracy": 0.014218009478673022,
+        "top3_accuracy": 0.0023696682464454666,
+        "top_confidence_minus_accuracy": 0.0525835267990834,
+        "top_label_ece_10_bin": 0.013875142019802778
+      },
+      "consensus": {
+        "brier": -0.013432190583931414,
+        "log_loss": -0.03753343563149536,
+        "mean_top_confidence": 0.056482688838162265,
+        "mean_winner_probability": 0.03465420125552182,
+        "mean_winner_rank": -0.018957345971563733,
+        "top1_accuracy": 0.009478672985781977,
+        "top2_accuracy": 0.014218009478673022,
+        "top3_accuracy": 0.0,
+        "top_confidence_minus_accuracy": 0.04700401585238029,
+        "top_label_ece_10_bin": 0.01662147589798464
+      }
+    }
+  }
+}

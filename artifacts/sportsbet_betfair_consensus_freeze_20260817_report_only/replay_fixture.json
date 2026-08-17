@@ -1,0 +1,33 @@
+{
+  "betfair_scheduled_off_prices": [
+    6.6,
+    40.0,
+    1.24,
+    320.0,
+    95.0
+  ],
+  "betfair_weight": 0.95,
+  "boxes": [
+    1,
+    2,
+    5,
+    7,
+    8
+  ],
+  "expected_consensus_probabilities": [
+    0.15316064059737158,
+    0.025729028653881502,
+    0.8063702049595474,
+    0.0034586485012800816,
+    0.011281477287919433
+  ],
+  "race_id": "Race 1 - AP_K - 2026-07-07",
+  "schema_version": "sportsbet_betfair_consensus_replay_fixture_v1",
+  "sportsbet_probabilities": [
+    0.17465606592944927,
+    0.03796870998466288,
+    0.7528278703855571,
+    0.009596487138980729,
+    0.02495086656134989
+  ]
+}
