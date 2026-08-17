@@ -623,10 +623,15 @@ def _request_race(
         if identity is not None
         else None
     )
-    projection = {"race_number": race_number, "venue": venue, "race_date": race_date[:10], "url": url}
+    canonical_url = identity["canonical_url"] if identity is not None else ""
+    projection = {
+        "race_number": race_number,
+        "venue": venue,
+        "race_date": race_date[:10],
+        "url": canonical_url,
+    }
     if (
         not race_date or not venue or identity is None
-        or identity["canonical_url"] != url
         or identity["race_date"] != race_date[:10]
         or identity["race_number"] != race_number
         or url_venue is None
@@ -638,7 +643,7 @@ def _request_race(
         raise PredictionBlocked("EXACT_RACE_IDENTITY_UNAVAILABLE")
     return {
         "race_id": race_id,
-        "url": url,
+        "url": canonical_url,
         "venue": venue,
         "venue_slug": identity["venue_slug"],
         "race_number": race_number,
