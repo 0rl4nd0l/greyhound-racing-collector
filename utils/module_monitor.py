@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Dict, List, Set, Tuple
 
 # Where to write structured system logs (JSONL)
-SYSTEM_LOG_PATH = Path("logs") / "system_log.jsonl"
+SYSTEM_LOG_PATH = Path(os.environ.get("OPERATOR_UI_LOG_DIR", "logs")) / "system_log.jsonl"
 SYSTEM_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 # In-memory snapshots

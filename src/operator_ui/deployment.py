@@ -586,6 +586,7 @@ def generate_package(*, source_root: Path, pinned_python: Path, evidence_root: P
         f"OPERATOR_UI_R3_PROFILE={'repository-v1' if active else 'disabled'}",
         f"OPERATOR_UI_DEPLOYED_COMMIT={source_commit}", f"OPERATOR_UI_DEPLOYED_TREE={source_tree}",
         f"OPERATOR_UI_DEPLOYED_VERSION={ui_version}", f"OPERATOR_UI_DEPLOYED_PROFILE={profile_id}",
+        f"OPERATOR_UI_LOG_DIR={operations / 'logs'}",
         "ENABLE_SCRAPING_DEFAULT=0", "ENABLE_LIVE_SCRAPING=0", "ENABLE_RESULTS_SCRAPERS=0", "TGR_ENABLED=0", "PREDICTION_IMPORT_MODE=prediction_only", ""))
     service = "\n".join((
         "[Unit]", "Description=Greyhound Operator UI R3 (generated, private)", "After=network-online.target", "Wants=network-online.target", "",

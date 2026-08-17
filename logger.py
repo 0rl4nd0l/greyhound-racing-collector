@@ -59,8 +59,12 @@ class SanitizingFormatter(logging.Formatter):
 class EnhancedLogger:
     """Enhanced logging system with persistent storage and web access"""
 
-    def __init__(self, log_dir="./logs"):
-        self.log_dir = Path(log_dir)
+    def __init__(self, log_dir=None):
+        self.log_dir = Path(
+            log_dir
+            if log_dir is not None
+            else os.environ.get("OPERATOR_UI_LOG_DIR", "./logs")
+        )
         self.log_dir.mkdir(exist_ok=True)
 
         # Initialize log files

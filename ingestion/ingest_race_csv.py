@@ -12,7 +12,7 @@ from typing import Dict, Iterable, Optional, Tuple
 from config.paths import ARCHIVE_DIR, DATA_DIR, UPCOMING_RACES_DIR
 from utils.race_lifecycle import UPCOMING_NOT_JUMPED, classify_race_file
 
-LOGS_DIR = Path("logs")
+LOGS_DIR = Path(os.environ.get("OPERATOR_UI_LOG_DIR", "logs"))
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 LOG_PATH = LOGS_DIR / "ingestion.log"
 ERROR_LOG_PATH = LOGS_DIR / "ingestion_errors.log"

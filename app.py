@@ -23,6 +23,8 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 import logging
 
+OPERATOR_UI_LOG_DIR = Path(os.environ.get("OPERATOR_UI_LOG_DIR", "logs"))
+
 # Force legacy ML v3 to use the lightweight stub by default to avoid archived import errors
 # This prevents attempts to import 'archive.ml_systems_old', which was relocated per ARCHIVE_MANIFEST.
 try:
@@ -862,7 +864,7 @@ else:
 
 # Performance profiling hooks
 request_times = {}
-performance_log_file = "logs/perf_server.log"
+performance_log_file = str(OPERATOR_UI_LOG_DIR / "perf_server.log")
 
 
 def _is_operator_ui_path(path):
@@ -871,7 +873,7 @@ def _is_operator_ui_path(path):
 
 
 # Ensure logs directory exists
-os.makedirs("logs", exist_ok=True)
+OPERATOR_UI_LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 # Initialize module monitoring snapshots at startup
 try:
@@ -1043,7 +1045,9 @@ def after_request(response):
                     disable_flag = bool(DISABLE_NAV_DROPDOWNS) or env_flag
                     try:
                         if _get_testing_flag():
-                            with open("logs/feature_flags.log", "a", encoding="utf-8") as _ff:
+                            with (OPERATOR_UI_LOG_DIR / "feature_flags.log").open(
+                                "a", encoding="utf-8"
+                            ) as _ff:
                                 _ff.write(f"{datetime.now().isoformat()} path={request.path} DISABLE_NAV_DROPDOWNS_env={os.environ.get('DISABLE_NAV_DROPDOWNS')} module={DISABLE_NAV_DROPDOWNS} disable_flag={disable_flag}\n")
                     except Exception:
                         pass
@@ -1631,7 +1635,7 @@ import uuid
 from flask import stream_with_context
 
 diag_jobs = {}
-DIAG_LOG_DIR = Path("logs") / "diagnostics" / "jobs"
+DIAG_LOG_DIR = OPERATOR_UI_LOG_DIR / "diagnostics" / "jobs"
 DIAG_LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -2544,7 +2548,9 @@ def view_log_file(log_filename):
                 ),
                 403,
             )
-        return send_from_directory("logs", log_filename, as_attachment=False)
+        return send_from_directory(
+            str(OPERATOR_UI_LOG_DIR), log_filename, as_attachment=False
+        )
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -3650,7 +3656,7 @@ def rescan_upcoming():
 
 
 # System log for UI events (jsonl)
-SYSTEM_LOG_PATH = Path("logs") / "system_log.jsonl"
+SYSTEM_LOG_PATH = OPERATOR_UI_LOG_DIR / "system_log.jsonl"
 SYSTEM_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 
@@ -7537,15 +7543,20 @@ def api_v4_eval_summary_latest():
         window = request.args.get("window", "500")
         if window not in ("100", "500"):
             window = "500"
-        pattern = (
-            f"logs/large_integration_summary_{window}_*.json"
-            if window in ("100", "500")
-            else "logs/large_integration_summary_*.json"
+        pattern = str(
+            OPERATOR_UI_LOG_DIR
+            / (
+                f"large_integration_summary_{window}_*.json"
+                if window in ("100", "500")
+                else "large_integration_summary_*.json"
+            )
         )
         files = sorted(glob.glob(pattern))
         if not files:
             # Fallback to non-windowed latest summary
-            files = sorted(glob.glob("logs/large_integration_summary_*.json"))
+            files = sorted(
+                glob.glob(str(OPERATOR_UI_LOG_DIR / "large_integration_summary_*.json"))
+            )
         if not files:
             return (
                 jsonify({"success": False, "error": "no evaluation summaries found"}),
@@ -7577,10 +7588,17 @@ def api_v4_eval_mispredictions_latest():
             window = "500"
         # Prefer analysis JSON if available
         analysis_files = sorted(
-            glob.glob(f"logs/misprediction_analysis_{window}_*.json")
+            glob.glob(
+                str(OPERATOR_UI_LOG_DIR / f"misprediction_analysis_{window}_*.json")
+            )
         )
         preds_files = sorted(
-            glob.glob(f"logs/large_integration_predictions_{window}_*.csv")
+            glob.glob(
+                str(
+                    OPERATOR_UI_LOG_DIR
+                    / f"large_integration_predictions_{window}_*.csv"
+                )
+            )
         )
         resp = {"success": True, "window": window}
         if analysis_files:
@@ -9149,11 +9167,14 @@ except Exception as e:
 logging.basicConfig(
     level=logging.DEBUG,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.FileHandler("logs/app_debug.log"), logging.StreamHandler()],
+    handlers=[
+        logging.FileHandler(OPERATOR_UI_LOG_DIR / "app_debug.log"),
+        logging.StreamHandler(),
+    ],
 )
 
 # Create logs directory if it doesn't exist
-os.makedirs("logs", exist_ok=True)
+OPERATOR_UI_LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 
 # Model registry debug logging function
@@ -9767,7 +9788,7 @@ def api_system_status():
         # Add GPT diagnostics summary (non-fatal if filesystem not present)
         gpt_diag = {}
         try:
-            base_dir = Path("logs/diagnostics/gpt")
+            base_dir = OPERATOR_UI_LOG_DIR / "diagnostics" / "gpt"
             archives_dir = base_dir / "archives"
             base_dir.mkdir(parents=True, exist_ok=True)
             archives_dir.mkdir(parents=True, exist_ok=True)
@@ -22232,7 +22253,7 @@ def api_gpt_test():
 def api_gpt_diagnostics():
     """Summarize GPT canary diagnostics and archives (non-mutating)."""
     try:
-        base_dir = Path("logs/diagnostics/gpt")
+        base_dir = OPERATOR_UI_LOG_DIR / "diagnostics" / "gpt"
         archives_dir = base_dir / "archives"
         base_dir.mkdir(parents=True, exist_ok=True)
         archives_dir.mkdir(parents=True, exist_ok=True)
@@ -24576,7 +24597,7 @@ def api_database_logs():
     """Return recent database-related logs"""
     try:
         limit = max(1, min(1000, int(request.args.get("limit", 100))))
-        logs_path = os.path.join("logs", "app_debug.log")
+        logs_path = str(OPERATOR_UI_LOG_DIR / "app_debug.log")
         entries = []
         if os.path.exists(logs_path):
             try:
