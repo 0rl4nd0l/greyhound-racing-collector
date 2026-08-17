@@ -1,0 +1,12 @@
+[Unit]
+Description=Run frozen forward overround successor sealer every two minutes
+
+[Timer]
+OnCalendar=*-*-* *:0/2:00
+AccuracySec=15s
+Persistent=false
+Unit=forward-overround-successor.service
+
+[Install]
+WantedBy=timers.target
+

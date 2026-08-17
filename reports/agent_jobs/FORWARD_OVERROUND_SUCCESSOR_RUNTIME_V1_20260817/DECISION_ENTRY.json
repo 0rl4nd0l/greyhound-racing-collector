@@ -1,0 +1,48 @@
+{
+  "blocks": [
+    "Successor cohort creation, activation receipt, installation, enablement, start, or live collection without separate owner authority",
+    "Any use of known V2 outcomes to change the successor model, features, protocol, configuration, membership, metric, or verdict",
+    "Any deployment whose protocol, model, preprocessing, scorer, finalizer, collector, service, or timer bytes do not match the frozen manifest"
+  ],
+  "claim_id": "FORWARD_OVERROUND_SUCCESSOR_RUNTIME_V1_20260817",
+  "dataset_version": "forward_overround_successor_runtime_v1_20260817",
+  "decision": "PASS",
+  "decision_delta": {
+    "after": "The exact prepared successor protocol has a hash-frozen tested collector/sealer, one-shot paired finalizer, and checked-in disabled service/timer package; no cohort or activation exists.",
+    "before": "The exact successor protocol and pure state machine were prepared and reviewed, but no collector, sealer, finalizer, or service unit existed."
+  },
+  "decision_id": "forward-overround-successor-runtime-v1-20260817-pass",
+  "does_not_block": [
+    "A separately authorized activation review on or after 2026-09-01 that preserves every frozen identity and pre-observation boundary",
+    "Shared shadow-autopilot and Sportsbet odds collection outside the absent successor cohort",
+    "Unrelated report-only evaluation programmes"
+  ],
+  "evidence_hash": "sha256:4978163d1dd9c0e4ced5eb1d4cb9425d3994379d8c617fb3306a489b838073be",
+  "evidence_refs": [
+    "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_RUNTIME_V1_20260817/RUNTIME_MANIFEST.json",
+    "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_RUNTIME_V1_20260817/DEPLOYMENT_READINESS.json",
+    "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_RUNTIME_V1_20260817/SYNTHETIC_E2E.json",
+    "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_RUNTIME_V1_20260817/VALIDATION.md",
+    "configs/prediction/forward_overround_successor_v1_protocol.json"
+  ],
+  "hypothesis_id": "frozen_overround_allocation_generalizes_prospectively_v1",
+  "invalidation_conditions": [
+    "Any frozen protocol, asset, runtime, finalizer, service, timer, or sealed evidence identity does not match the recorded manifest.",
+    "A successor cohort, activation, live request, prediction, result, or installed unit is shown to have existed during this preparation run.",
+    "The synthetic proof is represented as prospective model evidence rather than state-machine/runtime validation."
+  ],
+  "outcome_status": "ADVANCED",
+  "phase_after": "The successor implementation is READY_FOR_ACTIVATION_AUTHORIZATION, not active; V2 remains immutable BLOCKED_FORWARD_EVIDENCE with null metrics.",
+  "phase_before": "The successor protocol was PREPARED_NOT_AUTHORIZED with a tested pure state model but no runtime implementation or scheduler unit.",
+  "program_track": "prospective_readiness",
+  "project_id": "greyhound_racing_collector",
+  "reopen_conditions": [
+    "Begin a materially different activation task only with fresh explicit owner authority on or after the forward population boundary and a fresh exact-hash preflight."
+  ],
+  "run_id": "l4nd0-System-Product-Name:2515634:FORWARD_OVERROUND_SUCCESSOR_RUNTIME_V1_20260817",
+  "scope_fingerprint": "b2443b59b01f711bc707bfdb8b16a39523e7bb7285e62ef194a1bc5ff82a38d5",
+  "source_class": "frozen_protocol_and_synthetic_successor_runtime_validation",
+  "target_transition": "The exact protocol has a hash-frozen tested runtime/finalizer/unit package and synthetic empty-to-fixed-N proof, while no cohort, activation receipt, installed or enabled timer, live request, prediction, result, or database mutation exists; terminal readiness is READY_FOR_ACTIVATION_AUTHORIZATION.",
+  "task_id": "FORWARD_OVERROUND_SUCCESSOR_RUNTIME_V1_20260817",
+  "validated_at": "2026-08-17T00:56:59Z"
+}

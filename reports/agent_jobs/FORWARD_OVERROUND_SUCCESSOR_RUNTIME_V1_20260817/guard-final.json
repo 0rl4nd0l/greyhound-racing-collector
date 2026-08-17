@@ -1,0 +1,23 @@
+{
+  "checked_at": "2026-08-17T00:56:59Z",
+  "checks": {
+    "code_review": "PASS_NO_OPEN_FINDINGS",
+    "contract_validate": "PASS",
+    "frozen_assets": "PASS_EXACT_HASHES",
+    "json_and_checksum": "PASS",
+    "protocol_unchanged": "PASS_4978163d1dd9c0e4ced5eb1d4cb9425d3994379d8c617fb3306a489b838073be",
+    "py_compile": "PASS_EXACT_RUNTIME_INTERPRETER",
+    "successor_absence": "PASS_NO_COHORT_NO_ACTIVATION_NO_INSTALLED_UNITS_ZERO_PREDICTIONS_ZERO_RESULTS",
+    "successor_runtime_tests": "PASS_9",
+    "successor_state_machine_tests": "PASS_15",
+    "synthetic_exact_fixed_n": "PASS_1000_PREDICTIONS_1000_RESULTS_ONE_SCORE",
+    "systemd_static": "PASS_WITH_UNRELATED_HOST_WARNINGS",
+    "v2_terminal_immutable": "PASS_9_PREDICTIONS_6_RESULTS_NULL_METRICS"
+  },
+  "head": "24521a25687887d77bacd6202d471e864e8f986a",
+  "release_ready": true,
+  "schema_version": "tenn_git_guard_final_receipt_v1",
+  "scope_fingerprint": "b2443b59b01f711bc707bfdb8b16a39523e7bb7285e62ef194a1bc5ff82a38d5",
+  "task_card": "docs/agent_tasks/forward_overround_successor_runtime_v1_20260817.md",
+  "tree": "92f7d1d9ffc2adf5969e2203da7cc6e7228ea938"
+}

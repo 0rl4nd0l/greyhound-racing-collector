@@ -1,0 +1,33 @@
+{
+  "activation_receipt": "ABSENT",
+  "checked_at": "2026-08-17T00:56:59Z",
+  "cohort": "ABSENT",
+  "collection_active": false,
+  "earliest_population_jump_local": "2026-09-01T00:00:00+10:00",
+  "installed_service_file": "ABSENT",
+  "installed_timer_file": "ABSENT",
+  "live_request_performed": false,
+  "readiness": "READY_FOR_ACTIVATION_AUTHORIZATION",
+  "schema_version": "forward_overround_successor_deployment_readiness_v1",
+  "service": {
+    "active_state": "inactive",
+    "load_state": "not-found",
+    "sub_state": "dead",
+    "unit_file_state": null
+  },
+  "successor_prediction_count": 0,
+  "successor_result_count": 0,
+  "timer": {
+    "active_state": "inactive",
+    "load_state": "not-found",
+    "sub_state": "dead",
+    "unit_file_state": null
+  },
+  "v2_timer": {
+    "active_state": "inactive",
+    "load_state": "loaded",
+    "sub_state": "dead",
+    "unit_file_state": "disabled"
+  }
+}
+

@@ -1,0 +1,44 @@
+{
+  "blocked_by": [],
+  "changed_claims": [
+    "FORWARD_OVERROUND_SUCCESSOR_RUNTIME_READY_FOR_ACTIVATION_AUTHORIZATION"
+  ],
+  "decision_delta": {
+    "after": "The exact prepared successor protocol has a hash-frozen tested collector/sealer, one-shot paired finalizer, and checked-in disabled service/timer package; no cohort or activation exists.",
+    "before": "The exact successor protocol and pure state machine were prepared and reviewed, but no collector, sealer, finalizer, or service unit existed."
+  },
+  "new_evidence": [
+    "Protocol SHA-256 remains 4978163d1dd9c0e4ced5eb1d4cb9425d3994379d8c617fb3306a489b838073be.",
+    "Collector/sealer SHA-256 is e2d3fe1843994c1668369673352d6a0c70e3ff283c363321d42d72d583198dc1; finalizer SHA-256 is 6d84dfe9d8b0ab03ef8e208ad1c3a2cd4e78b925c5adc506b7a5bf86c5711ba7.",
+    "Service SHA-256 is 4e7b2a60bca018392ecd11f808f726c5223b758be72bae73471aa909f663c819; timer SHA-256 is 8c2e5ab929548e0628f2efc6d8ff2194ac5c57b76b6cc87dcce1b7d7c3d2f0c2.",
+    "Nine focused runtime tests and fifteen prepared state-machine tests pass in the exact runtime interpreter.",
+    "Synthetic empty-to-fixed-N proof seals 1000 predictions and 1000 results, then records exactly one finalization request and one paired-score commit.",
+    "The successor cohort, activation receipt, installed unit files, live request, prediction, result, and canonical DB write remain absent; installed successor units are not found and inactive."
+  ],
+  "new_goal_permitted": true,
+  "next_goal_target_transition": "Only with fresh explicit owner authority on or after 2026-09-01, independently review and bind the upstream source packet producer, exact deployment hashes, cohort creation, pre-observation activation receipt, installed unit bytes, and timer enablement before collection starts.",
+  "produced_artifacts": [
+    "scripts/forward_overround_successor_runtime.py",
+    "scripts/finalize_forward_overround_successor.py",
+    "ops/systemd/forward-overround-successor.service",
+    "ops/systemd/forward-overround-successor.timer",
+    "tests/test_forward_overround_successor_runtime.py",
+    "docs/forward_overround_successor_runtime.md",
+    "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_RUNTIME_V1_20260817/RUNTIME_MANIFEST.json",
+    "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_RUNTIME_V1_20260817/DEPLOYMENT_READINESS.json",
+    "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_RUNTIME_V1_20260817/SYNTHETIC_E2E.json",
+    "reports/agent_jobs/FORWARD_OVERROUND_SUCCESSOR_RUNTIME_V1_20260817/SHA256SUMS"
+  ],
+  "resume_only_if": "Start a distinct activation task only while all protocol, asset, runtime, finalizer, and unit hashes remain exact; V2 and known outcomes remain unused; no successor cohort or activation exists before the reviewed transition; and fresh owner authority explicitly permits activation.",
+  "reused_claims": [],
+  "scope_fingerprint": "b2443b59b01f711bc707bfdb8b16a39523e7bb7285e62ef194a1bc5ff82a38d5",
+  "state_after": "The successor implementation is READY_FOR_ACTIVATION_AUTHORIZATION, not active; V2 remains immutable BLOCKED_FORWARD_EVIDENCE with null metrics.",
+  "state_before": "The successor protocol was PREPARED_NOT_AUTHORIZED with a tested pure state model but no runtime implementation or scheduler unit.",
+  "status": "ADVANCED",
+  "used_capabilities": [
+    "READ",
+    "REPORT_WRITE",
+    "CODE_EDIT"
+  ]
+}
+
