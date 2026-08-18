@@ -13,6 +13,7 @@ from flask import Flask
 from src.operator_ui.deployment import DeploymentRejected, generate_package, main
 from src.operator_ui.security import load_connected_environment
 import src.operator_ui.bootstrap as bootstrap_module
+import src.operator_ui.deployment as deployment_module
 
 
 COMMIT = "881a3cee0c7f93dd26f5ece9185052f59c4c1aed"
@@ -831,6 +832,187 @@ def test_generated_operator_logger_uses_operations_root_with_read_only_source(
     assert stdout.rstrip().endswith("|".join([str(runtime_logs)] * 3))
     assert runtime_logs.is_dir()
     assert not (values["source_root"] / "logs").exists()
+
+
+def test_generated_connected_config_paths_use_only_bound_operations_root(
+    real_startup_tmp_path, monkeypatch
+):
+    values = deployment_inputs(real_startup_tmp_path)
+    git_identity(monkeypatch)
+    generate_package(**values, enabled=True)
+    generated = dict(
+        line.split("=", 1)
+        for line in (values["output_dir"] / "operator-ui-r3.env").read_text().splitlines()
+        if line
+    )
+    values["source_root"].chmod(0o500)
+    environment = os.environ.copy()
+    environment.update(generated)
+    environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
+    environment.update(
+        DATA_DIR=str(values["source_root"] / "hostile-data"),
+        UPCOMING_RACES_DIR=str(values["source_root"] / "hostile-upcoming"),
+        RACE_DATA_DIR=str(values["source_root"] / "hostile-race-data"),
+        ARCHIVE_DIR=str(values["source_root"] / "hostile-archive"),
+        DOWNLOADS_WATCH_DIR=str(values["source_root"] / "hostile-downloads"),
+    )
+
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from pathlib import Path; "
+                "from src.operator_ui import deployment; "
+                f"deployment._RUNTIME_SOURCE_ROOT=Path({str(values['source_root'])!r}); "
+                "deployment.bound_operator_ui_log_dir.cache_clear(); "
+                "from config.paths import (ARCHIVE_DIR, DATA_DIR, "
+                "DOWNLOADS_WATCH_DIR, RACE_DATA_DIR, UPCOMING_RACES_DIR); "
+                "print(DATA_DIR, UPCOMING_RACES_DIR, RACE_DATA_DIR, "
+                "ARCHIVE_DIR, DOWNLOADS_WATCH_DIR, sep='|')"
+            ),
+        ],
+        cwd=values["source_root"],
+        env=environment,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    stdout, stderr = process.communicate(timeout=10)
+
+    runtime_root = values["operations_root"] / "runtime"
+    expected = [
+        runtime_root / "data",
+        runtime_root / "upcoming_races",
+        runtime_root / "race_data",
+        runtime_root / "archive",
+        runtime_root / "downloads_watch",
+    ]
+    assert process.returncode == 0, stderr
+    assert stdout.rstrip().endswith("|".join(map(str, expected)))
+    assert all(path.is_dir() for path in expected)
+    assert not any(values["source_root"].glob("hostile-*"))
+
+
+def test_bound_runtime_parent_symlink_is_rejected_before_outside_write(
+    real_startup_tmp_path, monkeypatch
+):
+    values = deployment_inputs(real_startup_tmp_path)
+    git_identity(monkeypatch)
+    generate_package(**values, enabled=True)
+    load_generated_environment(monkeypatch, values)
+    outside = real_startup_tmp_path / "outside"
+    outside.mkdir(mode=0o700)
+    (values["operations_root"] / "runtime").symlink_to(
+        outside, target_is_directory=True
+    )
+    monkeypatch.setattr(
+        deployment_module, "_RUNTIME_SOURCE_ROOT", values["source_root"]
+    )
+    deployment_module.bound_operator_ui_log_dir.cache_clear()
+    try:
+        with pytest.raises(DeploymentRejected, match="runtime directory unavailable"):
+            deployment_module.bound_operator_ui_runtime_dir("DATA_DIR")
+    finally:
+        deployment_module.bound_operator_ui_log_dir.cache_clear()
+    assert not (outside / "data").exists()
+
+
+def test_generated_connected_app_import_uses_no_source_runtime_directories(
+    real_startup_tmp_path, monkeypatch
+):
+    values = deployment_inputs(real_startup_tmp_path)
+    git_identity(monkeypatch)
+    generate_package(**values, enabled=True)
+    generated = dict(
+        line.split("=", 1)
+        for line in (values["output_dir"] / "operator-ui-r3.env").read_text().splitlines()
+        if line
+    )
+    values["source_root"].chmod(0o500)
+    environment = os.environ.copy()
+    environment.update(generated)
+    environment.update(line.split("=", 1) for line in SECRET_LINES)
+    environment["OPERATOR_UI_SECRET_KEY"] = "startup-test-" + "x" * 40
+    environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
+    environment.update(
+        DATA_DIR=str(values["source_root"] / "hostile-data"),
+        UPCOMING_RACES_DIR=str(values["source_root"] / "hostile-upcoming"),
+        RACE_DATA_DIR=str(values["source_root"] / "hostile-race-data"),
+        ARCHIVE_DIR=str(values["source_root"] / "hostile-archive"),
+        DOWNLOADS_WATCH_DIR=str(values["source_root"] / "hostile-downloads"),
+    )
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from pathlib import Path; import runpy; "
+                "from src.operator_ui import bootstrap, deployment; "
+                f"deployment._RUNTIME_SOURCE_ROOT=Path({str(values['source_root'])!r}); "
+                f"bootstrap._REPOSITORY_ROOT=Path({str(values['source_root'])!r}); "
+                "deployment.bound_operator_ui_log_dir.cache_clear(); "
+                f"runpy.run_path({str(values['source_root'] / 'app.py')!r}); "
+                "print('CONNECTED_APP_IMPORT_READY')"
+            ),
+        ],
+        cwd=values["source_root"],
+        env=environment,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    stdout, stderr = process.communicate(timeout=75)
+    assert process.returncode == 0, stderr
+    assert "CONNECTED_APP_IMPORT_READY" in stdout
+    assert not any(values["source_root"].glob("hostile-*"))
+    assert not any(
+        (values["source_root"] / name).exists()
+        for name in (
+            "data",
+            "upcoming_races_temp",
+            "race_data",
+            "archive",
+            "downloads_watch",
+            "logs",
+        )
+    )
+
+
+def test_disabled_config_paths_preserve_environment_selected_directories(tmp_path):
+    selected = {
+        "DATA_DIR": tmp_path / "selected-data",
+        "UPCOMING_RACES_DIR": tmp_path / "selected-upcoming",
+        "RACE_DATA_DIR": tmp_path / "selected-race-data",
+        "ARCHIVE_DIR": tmp_path / "selected-archive",
+        "DOWNLOADS_WATCH_DIR": tmp_path / "selected-downloads",
+    }
+    environment = os.environ.copy()
+    environment["OPERATOR_UI_R3_PROFILE"] = "disabled"
+    environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
+    environment.update({name: str(path) for name, path in selected.items()})
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from config.paths import (ARCHIVE_DIR, DATA_DIR, "
+                "DOWNLOADS_WATCH_DIR, RACE_DATA_DIR, UPCOMING_RACES_DIR); "
+                "print(DATA_DIR, UPCOMING_RACES_DIR, RACE_DATA_DIR, "
+                "ARCHIVE_DIR, DOWNLOADS_WATCH_DIR, sep='|')"
+            ),
+        ],
+        cwd=tmp_path,
+        env=environment,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    stdout, stderr = process.communicate(timeout=10)
+    assert process.returncode == 0, stderr
+    assert stdout.rstrip().endswith("|".join(map(str, selected.values())))
+    assert all(selected[name].is_dir() for name in selected if name != "DOWNLOADS_WATCH_DIR")
+    assert not selected["DOWNLOADS_WATCH_DIR"].exists()
 
 
 def test_generated_serve_refuses_later_runtime_source_mutation_before_exec(

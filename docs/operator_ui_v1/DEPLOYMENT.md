@@ -43,8 +43,12 @@ closed before current publication.
 
 Browser requests and environment values cannot select paths or commands.
 Runtime log modules derive their fixed `operations_root/logs` directory from
-the retained, validated repository binding. The generated environment does not
-carry a log path, and a changed or conflicting binding fails before log setup.
+the retained, validated repository binding. Connected legacy application paths
+are likewise fixed below `operations_root/runtime`; hostile or inherited
+`DATA_DIR`, `UPCOMING_RACES_DIR`, `RACE_DATA_DIR`, `ARCHIVE_DIR`, and
+`DOWNLOADS_WATCH_DIR` values cannot redirect them. The generated environment
+does not carry these paths, and a changed or conflicting binding fails before
+runtime directory setup.
 
 The default package is disabled. Omitting `--enable` writes
 `OPERATOR_UI_CONNECTED_MODE=0`, `OPERATOR_UI_LEVEL=1`, and

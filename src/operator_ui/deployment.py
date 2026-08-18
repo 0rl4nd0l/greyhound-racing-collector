@@ -226,6 +226,83 @@ def _strict_json(raw: bytes) -> Any:
     )
 
 
+def _ensure_bound_directory(root: Path, relatives: tuple[str, ...]) -> Path:
+    """Create fixed descendants through retained, no-follow directory descriptors."""
+    if (
+        not relatives
+        or any(
+            not component
+            or component in {".", ".."}
+            or "/" in component
+            for component in relatives
+        )
+    ):
+        raise DeploymentRejected("runtime directory selection is invalid")
+    root = Path(root).absolute()
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_DIRECTORY
+    retained: list[tuple[int, Path, tuple[int, int, int]]] = []
+    descriptor = os.open("/", flags)
+    current = Path("/")
+    try:
+        info = os.fstat(descriptor)
+        retained.append(
+            (descriptor, current, (info.st_dev, info.st_ino, stat.S_IFMT(info.st_mode)))
+        )
+        for component in root.parts[1:]:
+            current /= component
+            descriptor = os.open(component, flags, dir_fd=descriptor)
+            info = os.fstat(descriptor)
+            retained.append(
+                (
+                    descriptor,
+                    current,
+                    (info.st_dev, info.st_ino, stat.S_IFMT(info.st_mode)),
+                )
+            )
+        root_info = os.fstat(descriptor)
+        if (
+            root_info.st_mode & 0o002
+            or (root_info.st_mode & 0o020 and root_info.st_uid != os.geteuid())
+        ):
+            raise DeploymentRejected("runtime directory root is permission-unsafe")
+        for component in relatives:
+            try:
+                os.mkdir(component, mode=0o700, dir_fd=descriptor)
+            except FileExistsError:
+                pass
+            current /= component
+            descriptor = os.open(component, flags, dir_fd=descriptor)
+            info = os.fstat(descriptor)
+            retained.append(
+                (
+                    descriptor,
+                    current,
+                    (info.st_dev, info.st_ino, stat.S_IFMT(info.st_mode)),
+                )
+            )
+        for item, path, identity in retained:
+            observed = os.fstat(item)
+            named = os.stat(path, follow_symlinks=False)
+            if (
+                (observed.st_dev, observed.st_ino, stat.S_IFMT(observed.st_mode))
+                != identity
+                or (named.st_dev, named.st_ino, stat.S_IFMT(named.st_mode))
+                != identity
+            ):
+                raise DeploymentRejected("runtime directory identity changed")
+        return current
+    except DeploymentRejected:
+        raise
+    except OSError as error:
+        raise DeploymentRejected("runtime directory unavailable") from error
+    finally:
+        for item, _, _ in reversed(retained):
+            try:
+                os.close(item)
+            except OSError:
+                pass
+
+
 @lru_cache(maxsize=1)
 def bound_operator_ui_log_dir() -> Path:
     """Return the fixed runtime log directory from the generated binding."""
@@ -277,12 +354,25 @@ def bound_operator_ui_log_dir() -> Path:
     _separate((source, evidence, producer, operations))
     if database == operations or database.is_relative_to(operations):
         raise DeploymentRejected("generated runtime log binding is invalid")
-    log_dir = operations / "logs"
-    try:
-        log_dir.mkdir(mode=0o700, exist_ok=True)
-    except OSError as error:
-        raise DeploymentRejected("runtime log directory unavailable") from error
-    return _safe_existing(log_dir, directory=True)
+    return _ensure_bound_directory(operations, ("logs",))
+
+
+def bound_operator_ui_runtime_dir(name: str) -> Path:
+    """Return one finite legacy runtime directory below the bound operations root."""
+    relatives = {
+        "DATA_DIR": "data",
+        "UPCOMING_RACES_DIR": "upcoming_races",
+        "RACE_DATA_DIR": "race_data",
+        "ARCHIVE_DIR": "archive",
+        "DOWNLOADS_WATCH_DIR": "downloads_watch",
+    }
+    if (
+        os.environ.get("OPERATOR_UI_R3_PROFILE") != "repository-v1"
+        or name not in relatives
+    ):
+        raise DeploymentRejected("runtime directory selection is invalid")
+    operations = bound_operator_ui_log_dir().parent
+    return _ensure_bound_directory(operations, ("runtime", relatives[name]))
 
 
 def _live_authority(path: Path) -> dict[str, Any]:
