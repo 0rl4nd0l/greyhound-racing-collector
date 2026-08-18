@@ -7,6 +7,8 @@ match the requested race.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from datetime import datetime, timezone
 from typing import Any, Mapping
@@ -181,15 +183,13 @@ def _matching_event(
     if not matches:
         return None, ["sportsbet_matching_pre_race_event_not_found"]
     matches.sort(key=lambda item: item[0])
+    if len(matches) > 1 and matches[0][0] == matches[1][0]:
+        return None, ["sportsbet_matching_pre_race_event_ambiguous"]
     return matches[0][1], []
 
 
-def collect_sportsbet_track_metadata(
-    race_info: Mapping[str, Any],
-    *,
-    session: Any = None,
-) -> dict[str, Any]:
-    """Return source-backed Sportsbet track metadata, or a rejection payload."""
+def fetch_sportsbet_next_events_snapshot(*, session: Any = None) -> dict[str, Any]:
+    """Fetch one immutable NextEvents payload for one bounded refresh."""
 
     client = session or get_shared_session()
     response = None
@@ -229,6 +229,47 @@ def collect_sportsbet_track_metadata(
                 "sportsbet_source_unexpected_payload"
             ],
         }
+    try:
+        snapshot_bytes = json.dumps(
+            events,
+            allow_nan=False,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    except (TypeError, ValueError):
+        return {
+            "weather_track_metadata_source": "sportsbet_pre_race_page",
+            "weather_track_metadata_source_url": SPORTSBET_NEXT_EVENTS_SOURCE_URL,
+            "rejected_weather_track_metadata_sources": [
+                "sportsbet_source_payload_not_canonical"
+            ],
+        }
+    return {
+        "weather_track_metadata_source": "sportsbet_pre_race_page",
+        "weather_track_metadata_source_url": SPORTSBET_NEXT_EVENTS_SOURCE_URL,
+        "snapshot_observed_at": datetime.now(timezone.utc).isoformat(),
+        "snapshot_payload_sha256": hashlib.sha256(snapshot_bytes).hexdigest(),
+        "events": events,
+    }
+
+
+def collect_sportsbet_track_metadata(
+    race_info: Mapping[str, Any],
+    *,
+    session: Any = None,
+    snapshot: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Return source-backed Sportsbet track metadata, or a rejection payload."""
+
+    source = (
+        dict(snapshot)
+        if snapshot is not None
+        else fetch_sportsbet_next_events_snapshot(session=session)
+    )
+    events = source.get("events")
+    if not isinstance(events, list):
+        return {key: value for key, value in source.items() if key != "events"}
 
     event, rejected = _matching_event(events, race_info)
     if event is None:
@@ -261,5 +302,9 @@ def collect_sportsbet_track_metadata(
             "start_time": event.get("startTime"),
             "distance": event.get("distance"),
             "track_status": event.get("trackStatus"),
+            "snapshot_observed_at": source.get("snapshot_observed_at"),
+            "snapshot_payload_sha256": source.get("snapshot_payload_sha256"),
+            "snapshot_event_count": len(events),
+            "raw_event": dict(event),
         },
     }

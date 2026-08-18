@@ -3,6 +3,7 @@ import json
 import os
 import stat
 import subprocess
+import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -198,6 +199,7 @@ def load_generated_environment(monkeypatch, values):
         for line in (values["output_dir"] / "operator-ui-r3.env").read_text().splitlines()
         if line
     )
+    assert "OPERATOR_UI_LOG_DIR" not in generated
     for name, value in generated.items():
         monkeypatch.setenv(name, value)
     return generated
@@ -230,6 +232,7 @@ def test_default_off_package_binds_identity_hashes_private_service_and_external_
     assert "OPERATOR_UI_R3_PROFILE=disabled" in environment
     assert "127.0.0.1" in service and "--port 5055" in service
     assert f"EnvironmentFile={values['secrets_file']}" in service
+    assert "PrivateUsers=true" in service.splitlines()
     assert "actual-secret" not in service + environment
     assert result["enabled"] is False
 
@@ -776,6 +779,58 @@ def test_clean_exact_generated_serve_identity_reaches_exec(real_startup_tmp_path
               "--host", "127.0.0.1", "--port", "5055"])
     assert executed[0][1][1:] == [str(values["source_root"] / "app.py"),
                                   "--host", "127.0.0.1", "--port", "5055"]
+
+
+def test_generated_operator_logger_uses_operations_root_with_read_only_source(
+    real_startup_tmp_path, monkeypatch
+):
+    values = deployment_inputs(real_startup_tmp_path)
+    git_identity(monkeypatch)
+    generate_package(**values, enabled=True)
+    generated = dict(
+        line.split("=", 1)
+        for line in (values["output_dir"] / "operator-ui-r3.env").read_text().splitlines()
+        if line
+    )
+    values["source_root"].chmod(0o500)
+    environment = os.environ.copy()
+    environment.update(generated)
+    environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
+    environment.update(
+        DATA_DIR=str(values["operations_root"] / "test-data"),
+        UPCOMING_RACES_DIR=str(values["operations_root"] / "test-upcoming"),
+        ARCHIVE_DIR=str(values["operations_root"] / "test-archive"),
+    )
+
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from pathlib import Path; "
+                "from src.operator_ui import deployment; "
+                f"deployment._RUNTIME_SOURCE_ROOT=Path({str(values['source_root'])!r}); "
+                "deployment.bound_operator_ui_log_dir.cache_clear(); "
+                "import logger; "
+                "from ingestion import ingest_race_csv; "
+                "from utils import module_monitor; "
+                "print(logger.logger.log_dir, ingest_race_csv.LOGS_DIR, "
+                "module_monitor.SYSTEM_LOG_PATH.parent, sep='|')"
+            ),
+        ],
+        cwd=values["source_root"],
+        env=environment,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    stdout, stderr = process.communicate(timeout=10)
+
+    runtime_logs = values["operations_root"] / "logs"
+    assert process.returncode == 0, stderr
+    assert stdout.rstrip().endswith("|".join([str(runtime_logs)] * 3))
+    assert runtime_logs.is_dir()
+    assert not (values["source_root"] / "logs").exists()
 
 
 def test_generated_serve_refuses_later_runtime_source_mutation_before_exec(

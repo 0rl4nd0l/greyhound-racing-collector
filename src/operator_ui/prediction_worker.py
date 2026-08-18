@@ -17,7 +17,7 @@ from race_collection.synchronous_manual_capture import CaptureOneRejected,Verifi
 from src.predictor.on_demand import PredictionBlocked,canonical_bytes,validate_prediction_result_v2
 from .job_store import AuditConfirmation,Job,JobStore,JobStoreError,Phase
 
-MAX_STDOUT_BYTES=1_048_576; MAX_STDERR_BYTES=65_536
+MAX_STDOUT_BYTES=1_048_576; MAX_STDERR_BYTES=65_536; MAX_FAILED_STDOUT_DIAGNOSTIC_BYTES=4096
 class WorkerRejected(RuntimeError): pass
 class _DurablyHandled(WorkerRejected): pass
 class CancellationRequested(RuntimeError): pass
@@ -269,6 +269,28 @@ def drain_bounded(process:Any,*,timeout:float,cancel_requested:Callable[[],bool]
 def _evidence(stdout,stdout_len,stdout_hash,stderr,stderr_len,stderr_hash,returncode):
     return {"exit_code":returncode,"stdout_complete":True,"stdout_length":stdout_len,"stdout_sha256":stdout_hash,"stdout_prefix_length":len(stdout),"stdout_prefix_sha256":hashlib.sha256(stdout).hexdigest(),"stderr_complete":True,"stderr_bytes":stderr.hex(),"stderr_length":stderr_len,"stderr_sha256":stderr_hash,"stderr_prefix_length":len(stderr),"stderr_prefix_sha256":hashlib.sha256(stderr).hexdigest()}
 
+def _failed_stdout_diagnostic(stdout:bytes)->dict[str,str]:
+    """Retain only small canonical terminal metadata, never prediction payloads or paths."""
+    if not stdout or len(stdout)>MAX_FAILED_STDOUT_DIAGNOSTIC_BYTES:return {}
+    try:
+        value=json.loads(stdout,parse_constant=lambda value: (_ for _ in ()).throw(ValueError("nonfinite JSON")))
+        allowed={"schema_version","status","research_only","production_persisted","betting_output","blocker_stage","blocker","blockers"}
+        if not isinstance(value,dict) or canonical_bytes(value)!=stdout or not set(value)<=allowed:raise ValueError
+        schema=value.get("schema_version"); status=value.get("status")
+        if not isinstance(schema,str) or not schema or len(schema)>128 or not isinstance(status,str) or not status or len(status)>128:raise ValueError
+        if value.get("research_only") is not True or value.get("production_persisted") is not False or value.get("betting_output",False) is not False:raise ValueError
+        blockers=[]
+        if value.get("blocker") is not None:blockers.append(value["blocker"])
+        raw_blockers=value.get("blockers",[])
+        if not isinstance(raw_blockers,list):raise ValueError
+        blockers.extend(raw_blockers)
+        if not blockers:raise ValueError
+        if any(not isinstance(item,dict) or set(item)!={"code"} or not isinstance(item["code"],str) or not item["code"] or len(item["code"])>128 for item in blockers):raise ValueError
+        stage=value.get("blocker_stage")
+        if stage is not None and (not isinstance(stage,str) or not stage or len(stage)>128):raise ValueError
+    except (UnicodeDecodeError,json.JSONDecodeError,AttributeError,KeyError,TypeError,ValueError):return {}
+    return {"stdout_bytes":stdout.hex()}
+
 def _bounded_result(job:Job,stdout:bytes,stdout_len:int,stdout_hash:str,stderr:bytes,stderr_len:int,stderr_hash:str,returncode:int):
     facts=_evidence(stdout,stdout_len,stdout_hash,stderr,stderr_len,stderr_hash,returncode)
     def semantics(): return {name:facts[name] for name in ("predictor_status","prediction_id","producer_job_id","producer_blocker","protocol_chain","authenticated_cutoff") if name in facts}
@@ -291,7 +313,7 @@ def _bounded_result(job:Job,stdout:bytes,stdout_len:int,stdout_hash:str,stderr:b
                 code=value["blocker"]["code"]
                 facts["producer_blocker"]={"code":code,"stage":value["blocker_stage"]}
         else:raise ValueError
-    except (UnicodeDecodeError,json.JSONDecodeError,PredictionBlocked,AttributeError,KeyError,TypeError,ValueError):return Phase.FAILED,"PROCESS_OUTPUT_INVALID",{}
+    except (UnicodeDecodeError,json.JSONDecodeError,PredictionBlocked,AttributeError,KeyError,TypeError,ValueError):return Phase.FAILED,"PROCESS_OUTPUT_INVALID",_failed_stdout_diagnostic(stdout)
     if returncode==0 and status=="PREDICTION_READY":return Phase.PRODUCER_COMPLETED,"PRODUCER_PREDICTION_READY",semantics()
     if schema=="on_demand_race_prediction_v2" and status=="PREDICTION_BLOCKED":return Phase.PRODUCER_COMPLETED,f"PRODUCER_PREDICTION_BLOCKED:{facts['producer_blocker']['code']}",semantics()
     if status=="RECEIPT_READY":return Phase.FAILED,"RECEIPT_READY_IS_NOT_PREDICTION_SUCCESS",semantics()

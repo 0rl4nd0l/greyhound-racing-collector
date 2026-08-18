@@ -124,9 +124,19 @@ test.describe('connected read-only operator workflow', () => {
   const envelope = { source_kind:'fixture_api', source_identity:'mock.source.exact', content_sha256:'a'.repeat(64), source_locator:'server.configured.mock', source_at:'2026-07-31T01:02:00Z', generated_at:null, observed_at:null, server_observed_at:'2026-07-31T01:02:03Z', age_seconds:3, freshness_policy:'P-OPS-5', availability:'present', schema_integrity:'valid', reference_hashes:{manifest:'b'.repeat(64)}, evidence_identity:{exact:'mock-1'}, status:'AVAILABLE/FRESH', supported_claim:'Exact mocked read-only browser evidence.' };
   async function connectedPage(page, overrides={}) {
     const sections=['overview','upcoming-races','recent-predictions','collector','corpus','models','system','audit','detail'].map(name=>`<section id="${name}" ${name==='detail'?'hidden':''}><h2 id="${name}-title" tabindex="-1">${name}</h2><article class="panel resource-panel" data-resource="${name}" aria-busy="true"><p class="resource-state">Loading…</p><div class="resource-data"></div><div class="resource-detail"></div></article></section>`).join('');
-    const html=`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Greyhound Operator Console — read only</title><link rel="stylesheet" href="/static/css/operator-ui.css"><script src="/static/js/operator-ui-connected.js" defer></script></head><body><a class="skip-link" href="#connected-content">Skip to connected content</a><div class="workspace"><header class="topbar"><h1>Operator console</h1><strong>CONNECTED MODE</strong><strong class="research-warning">RESEARCH ONLY — NOT FOR BETTING</strong></header><main id="connected-content"><div id="connection-state" role="status" aria-live="polite">Loading</div>${sections}</main></div></body></html>`;
+    const prediction=`<section id="manual-prediction" hidden aria-hidden="true"><form id="prediction-form"><select id="prediction-race"></select><select id="prediction-model"></select><select id="prediction-config"></select><select id="prediction-odds"></select><p id="runner-confirmation"></p><button id="prediction-submit" type="submit"></button></form><div id="job-status" tabindex="-1"></div><ol id="job-timeline"></ol><section id="job-result"></section><details id="job-evidence"><div class="evidence-view"></div></details></section>`;
+    const html=`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Greyhound Operator Console — read only</title><link rel="stylesheet" href="/static/css/operator-ui.css"><script src="/static/js/operator-ui-state.js" defer></script><script src="/static/js/operator-ui-connected.js" defer></script></head><body><a class="skip-link" href="#connected-content">Skip to connected content</a><div class="workspace"><header class="topbar"><h1>Operator console</h1><strong>CONNECTED MODE</strong><strong class="research-warning">RESEARCH ONLY — NOT FOR BETTING</strong></header><main id="connected-content"><div id="connection-state" role="status" aria-live="polite">Loading</div>${sections}${prediction}</main></div></body></html>`;
     await page.route('**/operator-ui', request=>request.fulfill({contentType:'text/html',body:html}));
-    await page.route('**/operator-ui/api/v1/**', async request=>{ expect(request.request().method()).toBe('GET'); expect(request.request().postData()).toBeNull(); expect(new URL(request.request().url()).search).toBe(''); const path=new URL(request.request().url()).pathname; if(overrides[path]==='OFFLINE') return request.abort('failed'); const fallback={classification:'AVAILABLE/FRESH',server_observed_at:envelope.server_observed_at,evidence:envelope,data:{}}; await request.fulfill({contentType:'application/json',body:JSON.stringify(overrides[path]||fallback)}); });
+    await page.route('**/operator-ui/api/v1/**', async route=>{
+      const request=route.request(); expect(request.method()).toBe('GET'); expect(request.postData()).toBeNull(); expect(new URL(request.url()).search).toBe('');
+      const path=new URL(request.url()).pathname; if(overrides[path]==='OFFLINE') return route.abort('failed');
+      if(path.endsWith('/r3-capability')) return route.fulfill({contentType:'application/json',body:JSON.stringify({schema:'operator_ui_r3_capability_v1',authorized:false,runtime_configured:false,level:2})});
+      const configured=(typeof overrides[path]==='function'?await overrides[path]():overrides[path])||{classification:'AVAILABLE/FRESH',data:{}};
+      const resource=path.endsWith('/races/upcoming')?'upcoming_races':path.includes('/races/')?'race_detail':path.endsWith('/predictions/recent')?'recent_predictions':path.includes('/predictions/')?'prediction_detail':path.split('/').at(-1).replaceAll('-','_');
+      const payload={schema:'operator_ui_level_1_api_v1',api_version:'v1',resource,classification:configured.classification,stale:configured.classification==='STALE',server_observed_at:configured.server_observed_at||envelope.server_observed_at,evidence:configured.evidence||envelope};
+      if(Object.hasOwn(configured,'reason'))payload.reason=configured.reason;else payload.data=configured.data||{};
+      await route.fulfill({contentType:'application/json',body:JSON.stringify(payload)});
+    });
     await page.goto('/operator-ui');
   }
   test('exact keyboard detail, reload, desktop containment, reduced motion and print evidence', async ({page})=>{
@@ -145,5 +155,24 @@ test.describe('connected read-only operator workflow', () => {
     for(const value of ['UNAVAILABLE/DATA_MISSING','INVALID/INTEGRITY_FAILED','DIVERGENT','NON_OPERATIONAL/OFFLINE','STALE']) await expect(page.getByText(value).first()).toBeVisible();
     await expect(page.locator('[data-resource="corpus"] details summary')).toContainText('request observed not supplied');
     await expectNoOverflow(page); expect((await new AxeBuilder({page}).analyze()).violations).toEqual([]);
+  });
+  test('exact-race readiness completes before background resource fanout', async ({page})=>{
+    const available=data=>({classification:'AVAILABLE/FRESH',server_observed_at:envelope.server_observed_at,evidence:envelope,data});
+    const unavailable={classification:'UNAVAILABLE/DATA_MISSING',server_observed_at:envelope.server_observed_at,evidence:{...envelope,status:'UNAVAILABLE/DATA_MISSING'},reason:'UNAVAILABLE/DATA_MISSING'};
+    let backgroundStarted=false;
+    const background=async()=>{backgroundStarted=true;await new Promise(resolve=>setTimeout(resolve,75));return available({});};
+    const race=async()=>{await new Promise(resolve=>setTimeout(resolve,25));return backgroundStarted?unavailable:available({races:[{route_id:'race-route-1',race_id:'exact-race-1',venue:'EXACT',race_number:1,jump_utc:'2099-04-01T10:30:00Z',runner_set_sha256:'c'.repeat(64),runners:[{box:1,name:'Exact Runner'}]}]});};
+    await connectedPage(page,{
+      '/operator-ui/api/v1/races/upcoming':race,
+      '/operator-ui/api/v1/models':available({models:[]}),
+      '/operator-ui/api/v1/overview':background,
+      '/operator-ui/api/v1/predictions/recent':background,
+      '/operator-ui/api/v1/collector':background,
+      '/operator-ui/api/v1/corpus':background,
+      '/operator-ui/api/v1/system':background,
+      '/operator-ui/api/v1/audit':background,
+    });
+    await expect(page.locator('[data-resource="upcoming-races"] .resource-state')).toHaveText('AVAILABLE/FRESH');
+    await expect(page.getByText('exact-race-1').first()).toBeVisible();
   });
 });

@@ -1058,15 +1058,19 @@ def test_scheduled_snapshot_rejects_unbounded_artifact_path(tmp_path: Path):
     assert unbounded.value.code == "PROTOCOL_PATH_UNSAFE"
 
 
-def test_operator_cli_emits_one_canonical_fixture_prediction(
+def test_operator_cli_canonicalizes_source_url_query_and_emits_one_v2_prediction(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ):
     source_db = tmp_path / "source.db"
     create_db(source_db)
+    deps = dependencies()
+    target = race()
+    target["url"] += "?trial=false"
+    deps.schedule = lambda *values: [target]
     monkeypatch.setattr(
-        predict_now, "default_dependencies", lambda parsed: dependencies()
+        predict_now, "default_dependencies", lambda parsed: deps
     )
 
     exit_code = main(
@@ -1095,7 +1099,9 @@ def test_operator_cli_emits_one_canonical_fixture_prediction(
     result = json.loads(stdout)
     assert exit_code == 0
     assert stdout == canonical_bytes(result)
+    assert result["schema_version"] == "on_demand_race_prediction_v2"
     assert result["status"] == "PREDICTION_READY"
+    assert result["race"]["url"] == target["url"].split("?", 1)[0]
     assert result["research_only"] is True
     assert result["production_persisted"] is False
 

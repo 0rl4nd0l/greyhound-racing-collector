@@ -21,8 +21,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Set, Tuple
 
+from src.operator_ui.deployment import bound_operator_ui_log_dir
+
 # Where to write structured system logs (JSONL)
-SYSTEM_LOG_PATH = Path("logs") / "system_log.jsonl"
+SYSTEM_LOG_PATH = bound_operator_ui_log_dir() / "system_log.jsonl"
 SYSTEM_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 # In-memory snapshots

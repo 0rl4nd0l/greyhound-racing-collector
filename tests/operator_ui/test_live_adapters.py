@@ -1161,14 +1161,25 @@ def test_model_catalog_is_exact_finite_order_and_hash_bound(tmp_path):
 
 def test_model_catalog_observation_age_and_unavailable_evaluation(tmp_path):
     live = make_live(tmp_path, now=NOW)
-    fresh = live.models(NOW + timedelta(seconds=60))
+    source_at_limit, _ = live._reader.read_payload(
+        "model_catalog", server_observed_at=NOW + timedelta(seconds=60)
+    )
+    source_past_limit, _ = live._reader.read_payload(
+        "model_catalog",
+        server_observed_at=NOW + timedelta(seconds=60, microseconds=1),
+    )
+    assert source_at_limit.status == "AVAILABLE/FRESH"
+    assert source_past_limit.status == "STALE"
+
+    fresh = live.models(NOW + timedelta(seconds=60, microseconds=1))
     assert fresh.evidence.status == "AVAILABLE/FRESH"
+    assert fresh.evidence.observed_at == fresh.evidence.server_observed_at
+    assert fresh.evidence.age_seconds == 0.0
     assert all(item["evaluation_status"] == "UNAVAILABLE" for item in fresh.data["models"])
     assert all(item["evaluation_claim"] is None and item["evaluation_hashes"] == {} for item in fresh.data["models"])
-    assert live.models(NOW + timedelta(seconds=60, microseconds=1)).evidence.status == "STALE"
 
 
-def test_model_catalog_age_is_bound_to_immutable_authority_observation(tmp_path):
+def test_model_catalog_is_reobserved_only_after_complete_request_validation(tmp_path):
     values = actual_payloads()
     live = make_live(tmp_path, values, now=NOW - timedelta(minutes=10))
     source = live._reader._sources["model_catalog"]
@@ -1185,7 +1196,39 @@ def test_model_catalog_age_is_bound_to_immutable_authority_observation(tmp_path)
         ),
         units=live._units,
     )
-    assert live.models(NOW).evidence.status == "STALE"
+    source_envelope, _ = live._reader.read_payload(
+        "model_catalog", server_observed_at=NOW
+    )
+    assert source_envelope.status == "STALE"
+
+    observation = live.models(NOW)
+    assert observation.evidence.status == "AVAILABLE/FRESH"
+    assert observation.evidence.observed_at == observation.evidence.server_observed_at
+    assert observation.evidence.age_seconds == 0.0
+    assert observation.evidence.content_sha256 == source_envelope.content_sha256
+    assert len(observation.data["models"]) == 2
+
+
+def test_model_catalog_does_not_reobserve_a_stale_hash_mismatch(tmp_path):
+    live = make_live(tmp_path, actual_payloads(), now=NOW - timedelta(minutes=10))
+    source = live._reader._sources["model_catalog"]
+    live = LiveEvidenceAdapters(
+        OperatorEvidenceReader(
+            {
+                **live._reader._sources,
+                "model_catalog": replace(source, expected_sha256="0" * 64),
+            },
+            raw_sources=live._reader._raw_sources,
+            clock=lambda: NOW,
+        ),
+        units=live._units,
+    )
+
+    observation = live.models(NOW)
+    assert observation.evidence.status == "DIVERGENT"
+    assert observation.evidence.observed_at == (NOW - timedelta(minutes=10)).isoformat()
+    assert observation.evidence.age_seconds == 600.0
+    assert observation.data == {}
 
 
 @pytest.mark.parametrize("lane", ["full", "odds"])

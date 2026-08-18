@@ -195,7 +195,10 @@ These policies are exhaustive; an adapter may not invent or defer a threshold:
   sizes/counts/deadline, v1 predictor behavior, no retry/second collector, and
   no canonical database/history write remain unchanged.
 - **P-CATALOG-60:** repository configs/schemas and deployed/model manifests
-  are observed within 60 seconds and every expected SHA-256 matches.
+  are observed within 60 seconds and every expected SHA-256 matches. A models
+  response publishes a new server observation only after the sealed normalized
+  catalog and every bound config, schema, model and manifest pass complete
+  request-time identity and semantic validation.
 - **P-BUNDLE-LIST-60:** a directory/index listing observation is fresh for 60
   seconds. For prediction bundles this means only the fixed producer index in
   P-PREDICTION-BUNDLE-SEALED, never a directory scan. Each listed bundle must

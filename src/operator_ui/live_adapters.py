@@ -778,6 +778,20 @@ def _status(envelope: EvidenceEnvelope, status: str, *, policy: str | None = Non
     return _new_envelope(**values)
 
 
+def _current_observation(envelope: EvidenceEnvelope) -> EvidenceEnvelope:
+    """Publish a current observation after complete adapter validation."""
+    values = envelope.to_dict()
+    values.update(
+        observed_at=values["server_observed_at"],
+        age_seconds=0.0,
+        status="AVAILABLE/FRESH",
+    )
+    values["reference_hashes"] = tuple(sorted(values["reference_hashes"].items()))
+    identity = values["evidence_identity"]
+    values["evidence_identity"] = tuple(identity.items()) if identity else None
+    return _new_envelope(**values)
+
+
 def _invalid(envelope: EvidenceEnvelope) -> EvidenceEnvelope:
     values = envelope.to_dict()
     values.update(
@@ -1778,6 +1792,8 @@ class LiveEvidenceAdapters:
         envelope, catalog = self._read("model_catalog", now)
         if catalog is None:
             return APIObservation(_status(envelope, _missing_or_invalid(envelope)), {})
+        if envelope.status == "DIVERGENT":
+            return APIObservation(envelope, {})
         expected = (
             ("market-form-residual-v1", "latest-research", "configs/prediction/manual-default.json", "market_form_residual_v1", "LATEST_RESEARCH", "model_latest"),
             ("market-only", "market-only", "configs/prediction/market-only.json", "market_only_v1", "BASELINE", "model_baseline"),
@@ -1882,5 +1898,4 @@ class LiveEvidenceAdapters:
                 })
         except (KeyError, TypeError, ValueError, OverflowError, UnicodeDecodeError):
             return APIObservation(_invalid(envelope), {})
-        status = "STALE" if age > 60 else "AVAILABLE/FRESH"
-        return APIObservation(_status(envelope, status), {"models": models})
+        return APIObservation(_current_observation(envelope), {"models": models})

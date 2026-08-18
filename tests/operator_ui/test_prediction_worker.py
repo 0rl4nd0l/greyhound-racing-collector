@@ -199,6 +199,26 @@ def test_bundle_text_is_never_persisted_as_response_bytes(tmp_path):
         facts=[json.loads(row[0]) for row in db.execute("SELECT facts_json FROM job_events WHERE phase='RESPONSE_RECORDED'")]
     assert len(facts)==1 and "stdout_bytes" not in facts[0] and facts[0]["stdout_sha256"]==hashlib.sha256(canonical_bytes(value)).hexdigest()
 
+def test_exact_failed_canonical_blocker_stdout_is_bounded_and_persisted(tmp_path):
+    cfg,store,job=setup(tmp_path); stdout=legacy_blocked("EXACT_RACE_IDENTITY_UNAVAILABLE")
+    assert len(stdout)==199 and hashlib.sha256(stdout).hexdigest()=="680ba229d0417b034ce6c9fbc6dbb15c0921327aa4e85ea29c35a4d36af62a30"
+    result=run_once(store,job.job_id,cfg,now=lambda:NOW,confirm_audit=CONFIRM,popen=lambda *a,**k:Process(stdout,code=2),reader=lambda **_:view())
+    assert result.reason=="PROCESS_OUTPUT_INVALID"
+    with sqlite3.connect(store.path) as db:
+        facts=[json.loads(row[0]) for row in db.execute("SELECT facts_json FROM job_events WHERE phase='RESPONSE_RECORDED'")]
+    assert len(facts)==1 and bytes.fromhex(facts[0]["stdout_bytes"])==stdout
+    assert facts[0]["stdout_length"]==199 and facts[0]["stdout_sha256"]==hashlib.sha256(stdout).hexdigest()
+
+def test_failed_canonical_blocker_stdout_over_diagnostic_cap_is_not_persisted(tmp_path):
+    cfg,store,job=setup(tmp_path)
+    value=json.loads(legacy_blocked()); value["blockers"]=[{"code":"X"*128} for _ in range(32)]
+    stdout=canonical_bytes(value); assert len(stdout)>4096
+    result=run_once(store,job.job_id,cfg,now=lambda:NOW,confirm_audit=CONFIRM,popen=lambda *a,**k:Process(stdout,code=2),reader=lambda **_:view())
+    assert result.reason=="PROCESS_OUTPUT_INVALID"
+    with sqlite3.connect(store.path) as db:
+        facts=[json.loads(row[0]) for row in db.execute("SELECT facts_json FROM job_events WHERE phase='RESPONSE_RECORDED'")]
+    assert len(facts)==1 and "stdout_bytes" not in facts[0]
+
 @pytest.mark.parametrize("field,value",[("research_only",False),("production_persisted",True),("betting_output",True)])
 def test_sealed_v2_safety_flags_fail_closed(tmp_path,field,value):
     cfg,store,job=setup(tmp_path); payload=json.loads(ready(job)); payload[field]=value
