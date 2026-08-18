@@ -24,6 +24,9 @@ hand-edited. Its working directory, binding commit/tree, pinned Python, source
 hashes, and generated package hashes must match the reviewed deployment. The
 source, collector evidence, producer evidence, and canonical database must be
 read-only; only the dedicated Operator UI operations root may be writable.
+Confirm connected legacy data/upcoming/archive/download directories resolve
+under the binding-derived operations root rather than the source checkout or
+environment-selected paths.
 Use `systemd-analyze verify` on the generated unit before installation. Follow
 `DEPLOYMENT.md` for complete generation, secret, installation, and rollback
 requirements.
