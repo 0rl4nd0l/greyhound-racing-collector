@@ -9317,6 +9317,8 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             else None,
             pause_path=lock_path.parent / "pause-heavy-scheduling",
         )
+        service_path = run_service_dir / SERVICE_NAME
+        timer_path = run_service_dir / TIMER_NAME
         write_text(output_dir / "daemon_design.md", daemon_design_markdown())
         write_json(output_dir / "lifecycle_diagram.json", lifecycle_diagram())
         write_text(output_dir / "service_install.md", install_markdown(service_info))

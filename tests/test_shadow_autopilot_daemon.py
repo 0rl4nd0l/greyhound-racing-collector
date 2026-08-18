@@ -1023,6 +1023,114 @@ def test_run_once_keeps_source_service_templates_immutable(tmp_path, monkeypatch
     )
 
 
+def test_run_once_non_deferred_validates_run_owned_service_files(
+    tmp_path, monkeypatch
+):
+    source_root = tmp_path / "source"
+    source_service_dir = source_root / "ops/systemd"
+    source_service_dir.mkdir(parents=True)
+    source_service = source_service_dir / daemon.SERVICE_NAME
+    source_timer = source_service_dir / daemon.TIMER_NAME
+    source_service.write_text("reviewed service template\n", encoding="utf-8")
+    source_timer.write_text("reviewed timer template\n", encoding="utf-8")
+    evidence_root = tmp_path / "evidence/full_evidence_orchestration_20260525"
+    output_dir = evidence_root / "shadow_autopilot_daemonization_v1_validation"
+
+    monkeypatch.setattr(daemon, "ROOT", source_root)
+    monkeypatch.setattr(daemon, "DEFAULT_SERVICE_DIR", source_service_dir)
+    monkeypatch.setattr(daemon, "protected_hashes", lambda: {})
+    monkeypatch.setattr(
+        daemon,
+        "acquire_lock_with_odds_capture_retry",
+        lambda **kwargs: {"run_id": kwargs["run_id"]},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "probe_duplicate_lock",
+        lambda *args, **kwargs: {"status": "PASS"},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "probe_stale_lock_cleanup",
+        lambda *args, **kwargs: {"status": "PASS"},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "simulate_timeout_recovery",
+        lambda *args, **kwargs: {"status": "PASS"},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "release_lock",
+        lambda *args, **kwargs: {"status": "RELEASED"},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "run_command",
+        lambda **kwargs: {
+            "name": kwargs["name"],
+            "returncode": 0,
+            "timed_out": False,
+            "status": "PASS",
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "rejoin_pending_shadow_runs",
+        lambda **kwargs: {"status": "PASS", "joined_races": []},
+    )
+    monkeypatch.setattr(
+        daemon,
+        "build_rejoin_unified_evidence_datasets",
+        lambda **kwargs: ({"status": "NOT_RUN"}, [], []),
+    )
+    monkeypatch.setattr(daemon, "systemd_deployment_status", lambda **kwargs: {})
+    monkeypatch.setattr(
+        daemon,
+        "full_daemon_odds_window_defer_decision",
+        lambda odds_state, current_time: {
+            "should_defer": False,
+            "reason": "test_no_fixed_window_open",
+        },
+    )
+
+    class ServiceValidationReached(Exception):
+        pass
+
+    def verify_run_owned_service_files(service_path, timer_path, verify_output_dir):
+        assert service_path == output_dir / "systemd" / daemon.SERVICE_NAME
+        assert timer_path == output_dir / "systemd" / daemon.TIMER_NAME
+        assert verify_output_dir == output_dir
+        assert service_path.is_file()
+        assert timer_path.is_file()
+        assert source_service.read_text(encoding="utf-8") == (
+            "reviewed service template\n"
+        )
+        assert source_timer.read_text(encoding="utf-8") == (
+            "reviewed timer template\n"
+        )
+        raise ServiceValidationReached
+
+    monkeypatch.setattr(daemon, "systemd_verify", verify_run_owned_service_files)
+
+    args = daemon.parse_args(
+        [
+            "run-once",
+            "--run-id",
+            "validation",
+            "--evidence-root",
+            str(evidence_root),
+            "--output-dir",
+            str(output_dir),
+            "--current-time",
+            "2026-06-13T15:17:11+10:00",
+        ]
+    )
+
+    with pytest.raises(ServiceValidationReached):
+        daemon.run_once(args)
+
+
 def test_run_once_defer_observes_result_before_odds_priority_return(
     tmp_path, monkeypatch
 ):
