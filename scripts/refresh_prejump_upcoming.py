@@ -459,6 +459,12 @@ def _metadata_record_for_csv(csv_path: Path) -> dict[str, Any]:
     payload = _read_json_object(sidecar_path) if sidecar_path.exists() else None
     weather_track = load_safe_weather_track_metadata(csv_path)
     expert_form = safe_expert_form_metadata_from_payload(payload or {})
+    shadow = (
+        payload.get("prejump_shadow_metadata")
+        if isinstance(payload, Mapping)
+        and isinstance(payload.get("prejump_shadow_metadata"), Mapping)
+        else {}
+    )
     weather_present = bool(weather_track.get("weather"))
     track_present = bool(weather_track.get("track_condition"))
     expert_form_safe = bool(expert_form.get("metadata_is_leakage_safe"))
@@ -475,6 +481,7 @@ def _metadata_record_for_csv(csv_path: Path) -> dict[str, Any]:
         "safe_all_weather_track_expert_form_present": (
             weather_present and track_present and expert_form_safe
         ),
+        "runner_source_observed_at": shadow.get("metadata_captured_at"),
         "weather": weather_track.get("weather"),
         "track_condition": weather_track.get("track_condition"),
         "weather_track_metadata_source": weather_track.get("weather_track_metadata_source"),
@@ -502,6 +509,7 @@ def _missing_metadata_record(record: Mapping[str, Any]) -> dict[str, Any]:
         "safe_both_weather_track_present": False,
         "safe_expert_form_present": False,
         "safe_all_weather_track_expert_form_present": False,
+        "runner_source_observed_at": None,
         "weather": None,
         "track_condition": None,
         "weather_track_metadata_source": None,
@@ -599,6 +607,8 @@ def sidecar_metadata_coverage(
 def current_index_metadata_selection(
     selected_records: Sequence[Mapping[str, Any]],
     metadata_coverage: Mapping[str, Any],
+    *,
+    source_generated_at: datetime | str | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Select only source-safe races without narrowing odds-capture candidates."""
 
@@ -607,6 +617,14 @@ def current_index_metadata_selection(
         coverage_rows = []
     eligible: list[dict[str, Any]] = []
     exclusions: list[dict[str, Any]] = []
+    try:
+        generated = (
+            source_generated_at
+            if isinstance(source_generated_at, datetime)
+            else datetime.fromisoformat(str(source_generated_at or ""))
+        )
+    except ValueError:
+        generated = None
     for index, selected in enumerate(selected_records):
         row = coverage_rows[index] if index < len(coverage_rows) else None
         selected_url = str(selected.get("race_url") or "").strip()
@@ -637,7 +655,29 @@ def current_index_metadata_selection(
             and row.get("safe_expert_form_present") is True
             and row.get("safe_all_weather_track_expert_form_present") is True
         )
-        if aligned and safe_components:
+        try:
+            observed = datetime.fromisoformat(
+                str(row.get("runner_source_observed_at") or "")
+            )
+            jump = datetime.fromisoformat(str(selected.get("jump_datetime") or ""))
+        except (AttributeError, ValueError):
+            observed = None
+            jump = None
+        safe_runner_timing = bool(
+            generated is not None
+            and generated.tzinfo is not None
+            and generated.utcoffset() is not None
+            and observed is not None
+            and observed.tzinfo is not None
+            and observed.utcoffset() is not None
+            and jump is not None
+            and jump.tzinfo is not None
+            and jump.utcoffset() is not None
+            and abs((generated - observed).total_seconds()) <= 1200
+            and generated < jump
+            and observed < jump
+        )
+        if aligned and safe_components and safe_runner_timing:
             eligible.append(dict(selected))
             continue
         missing = []
@@ -652,6 +692,8 @@ def current_index_metadata_selection(
                 missing.append("track_condition")
             if not row.get("safe_expert_form_present"):
                 missing.append("expert_form")
+            if not safe_runner_timing:
+                missing.append("runner_source_timing")
         exclusions.append(
             {
                 "race_id": selected.get("race_id"),
@@ -729,6 +771,7 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
     current_index_races, current_index_selection = current_index_metadata_selection(
         selected_records,
         metadata_coverage,
+        source_generated_at=now,
     )
     report = {
         "status": "SUCCESS",

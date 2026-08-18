@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 from scripts import prejump_prediction_loop as loop
 from scripts.refresh_prejump_upcoming import (
+    _metadata_record_for_csv,
     current_index_metadata_selection,
     expand_excluded_race_ids,
     refresh_prejump_upcoming,
@@ -818,7 +819,10 @@ def _write_safe_collection_sidecar(csv_path: Path, *, expert_form: bool = True):
     payload = {
         "schema_version": "form_guide_download_provenance_v1",
         "metadata_is_leakage_safe": True,
-        "metadata_captured_at": "2026-06-17T03:00:00Z",
+        "metadata_captured_at": "2026-06-17T02:45:00Z",
+        "prejump_shadow_metadata": {
+            "metadata_captured_at": "2026-06-17T02:45:00Z",
+        },
         "race_url": "https://www.thedogs.com.au/racing/sale/2026-06-17/9/test?trial=false",
         "race_info": {
             "date": "2026-06-17",
@@ -873,6 +877,7 @@ def test_current_index_metadata_selection_rejects_conflicting_sidecar_url():
         "race_url": (
             "https://www.thedogs.com.au/racing/sale/2026-06-17/9/test?trial=false"
         ),
+        "jump_datetime": "2026-06-17T13:57:00+10:00",
     }]
     coverage = {
         "races": [{
@@ -899,6 +904,7 @@ def test_current_index_metadata_selection_requires_complete_consistent_identity(
         "race_id": "Race 9 - SAL - 2026-06-17",
         "race_id_aliases": ["Race 9 - SAL - 2026-06-17"],
         "race_url": race_url,
+        "jump_datetime": "2026-06-17T13:57:00+10:00",
     }]
     row = {
         "race_id": "",
@@ -908,11 +914,13 @@ def test_current_index_metadata_selection_requires_complete_consistent_identity(
         "safe_track_condition_present": True,
         "safe_expert_form_present": True,
         "safe_all_weather_track_expert_form_present": True,
+        "runner_source_observed_at": "2026-06-17T12:45:00+10:00",
     }
 
     eligible, selection = current_index_metadata_selection(
         selected,
         {"races": [row]},
+        source_generated_at="2026-06-17T12:30:00+10:00",
     )
     assert eligible == []
     assert selection["exclusions"][0]["missing_safe_metadata"] == [
@@ -924,9 +932,88 @@ def test_current_index_metadata_selection_requires_complete_consistent_identity(
     eligible, selection = current_index_metadata_selection(
         selected,
         {"races": [row]},
+        source_generated_at="2026-06-17T12:30:00+10:00",
     )
     assert eligible == []
     assert selection["exclusions"][0]["missing_safe_metadata"] == ["weather"]
+
+
+def test_current_index_metadata_selection_excludes_postjump_runner_observation():
+    race_url = "https://www.thedogs.com.au/racing/sale/2026-06-17/9/test"
+    race = {
+        "race_id": "Race 9 - SAL - 2026-06-17",
+        "race_id_aliases": ["Race 9 - SAL - 2026-06-17"],
+        "race_url": race_url,
+        "jump_datetime": "2026-06-17T13:00:00+10:00",
+    }
+    row = {
+        "race_id": race["race_id"],
+        "race_url": race_url,
+        "csv_path": "/evidence/Race 9 - SAL - 2026-06-17.csv",
+        "safe_weather_present": True,
+        "safe_track_condition_present": True,
+        "safe_expert_form_present": True,
+        "safe_all_weather_track_expert_form_present": True,
+        "runner_source_observed_at": "2026-06-17T13:00:06+10:00",
+    }
+
+    eligible, selection = current_index_metadata_selection(
+        [race],
+        {"races": [row]},
+        source_generated_at="2026-06-17T12:59:00+10:00",
+    )
+
+    assert eligible == []
+    assert selection["status"] == "INCOMPLETE"
+    assert selection["exclusions"][0]["missing_safe_metadata"] == [
+        "runner_source_timing"
+    ]
+
+
+def test_metadata_record_does_not_substitute_top_level_runner_timestamp(tmp_path):
+    csv_path = tmp_path / "Race 9 - SAL - 2026-06-17.csv"
+    csv_path.write_text("box|dog_name\n1|Alpha Runner\n", encoding="utf-8")
+    csv_path.with_name(csv_path.name + ".metadata.json").write_text(
+        json.dumps({"metadata_captured_at": "2026-06-17T12:45:00+10:00"}),
+        encoding="utf-8",
+    )
+
+    record = _metadata_record_for_csv(csv_path)
+
+    assert record["runner_source_observed_at"] is None
+
+
+def test_current_index_metadata_selection_enforces_runner_source_age_boundary():
+    race_url = "https://www.thedogs.com.au/racing/sale/2026-06-17/9/test"
+    race = {
+        "race_id": "Race 9 - SAL - 2026-06-17",
+        "race_id_aliases": ["Race 9 - SAL - 2026-06-17"],
+        "race_url": race_url,
+        "jump_datetime": "2026-06-17T13:30:00+10:00",
+    }
+    row = {
+        "race_id": race["race_id"],
+        "race_url": race_url,
+        "csv_path": "/evidence/Race 9 - SAL - 2026-06-17.csv",
+        "safe_weather_present": True,
+        "safe_track_condition_present": True,
+        "safe_expert_form_present": True,
+        "safe_all_weather_track_expert_form_present": True,
+    }
+    cases = [
+        ("2026-06-17T12:50:00+10:00", True),
+        ("2026-06-17T12:50:01+10:00", False),
+        ("2026-06-17T12:45:00", False),
+    ]
+    for observed_at, expected_eligible in cases:
+        row["runner_source_observed_at"] = observed_at
+        eligible, selection = current_index_metadata_selection(
+            [race],
+            {"races": [row]},
+            source_generated_at="2026-06-17T12:30:00+10:00",
+        )
+        assert bool(eligible) is expected_eligible
+        assert selection["status"] == ("READY" if expected_eligible else "INCOMPLETE")
 
 
 def test_refresh_prejump_upcoming_can_fail_closed_on_incomplete_safe_metadata(

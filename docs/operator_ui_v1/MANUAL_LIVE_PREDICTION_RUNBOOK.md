@@ -54,7 +54,9 @@ Exclude every race with partial metadata. A mixed candidate batch is usable
 only when the refresh report itself is `SUCCESS`, its
 `current_index_metadata_selection` is `READY_WITH_EXCLUSIONS`, its counts and
 exclusions reconcile exactly with `selected_races`, and the published packet
-contains only `current_index_races`. Stale, missing, hash-conflicting,
+contains only `current_index_races`. Each included race's runner-source
+observation must be timezone-aware, within 20 minutes of the report generation
+time, and strictly before the scheduled jump. Stale, missing, hash-conflicting,
 post-jump, ambiguous, or contradictory evidence is an availability stop. Never
 reinterpret `METADATA_COVERAGE_INCOMPLETE` as a successful publication.
 
