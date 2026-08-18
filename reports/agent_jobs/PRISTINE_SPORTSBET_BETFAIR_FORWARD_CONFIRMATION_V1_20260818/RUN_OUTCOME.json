@@ -1,0 +1,48 @@
+{
+  "blocked_by": [
+    "No independently outcome-free, provenance-bound Betfair scheduled-off source exists for 2026-08-20 through 2026-09-30."
+  ],
+  "changed_claims": [
+    "The exact PR137 candidate is rebound to an immutable future replacement protocol without changing its bytes or scoring semantics.",
+    "Normal evaluator paths fail closed before result-bearing Betfair rows or unauthorized result projections are read.",
+    "Pristine forward collection is blocked and no collector is activated."
+  ],
+  "decision_delta": {
+    "after": "The exact candidate and future window are frozen with reviewed fail-closed quarantine, but collection is explicitly blocked because no independently outcome-free Betfair scheduled-off source exists.",
+    "before": "PR137 retained a compromised confirmation interval and the evaluator could read result-bearing source rows on ordinary paths."
+  },
+  "new_evidence": [
+    "Candidate SHA-256 is 3a12760aba2d84bbe6530337ea0d66ef0ce8ae79f402c66207a727efb155b739 and bytes match PR137.",
+    "Replacement protocol SHA-256 is 610baf8847afeef179a778b264e533be18da1ec6500dae59bc4599b5d454e0df.",
+    "Replacement evaluator SHA-256 is 821124f9aef14238b67ce44e59dedc4c017562481f841994841401e5906d2f78.",
+    "Seventeen focused tests, py_compile, JSON, checksums, deterministic replay, predecessor immutability, and diff checks pass.",
+    "Independent Standards and Spec reviews are clean."
+  ],
+  "new_goal_permitted": false,
+  "produced_artifacts": [
+    "docs/sportsbet_betfair_forward_consensus_protocol.md",
+    "scripts/evaluate_frozen_sportsbet_betfair_forward.py",
+    "tests/test_evaluate_frozen_sportsbet_betfair_forward.py",
+    "artifacts/sportsbet_betfair_pristine_forward_confirmation_20260818/frozen_consensus_rule.json",
+    "artifacts/sportsbet_betfair_pristine_forward_confirmation_20260818/protocol.json",
+    "artifacts/sportsbet_betfair_pristine_forward_confirmation_20260818/cohort_manifest.json",
+    "artifacts/sportsbet_betfair_pristine_forward_confirmation_20260818/SHA256SUMS",
+    "artifacts/sportsbet_betfair_pristine_forward_confirmation_20260818/STATUS.md"
+  ],
+  "resume_only_if": "Resume only when an independently reviewed, outcome-free, provenance-bound source of BEST_AVAIL_BACK_AT_SCHEDULED_OFF exists for the fixed 2026-08-20 through 2026-09-30 window, with zero outcomes inspected and all frozen hashes unchanged.",
+  "reused_claims": [
+    "PR137 remains immutable secondary evidence and cannot support a pristine untouched-forward-outcomes claim.",
+    "October overround begins 2026-10-01 and remains separate and inactive.",
+    "No retuning, Betfair-only substitution, historical re-evaluation, betting, or promotion is authorized."
+  ],
+  "scope_fingerprint": "bfa32c5dd6265ca563347ffa6471b888a22b592fe1e3c65512e0d6e29a6a213e",
+  "state_after": "BLOCKED_NO_OUTCOME_FREE_BETFAIR_SCHEDULED_OFF_SOURCE with immutable zero-population replacement metadata and reviewed quarantine guards.",
+  "state_before": "PR137 candidate frozen, but its 2026-08-18 confirmation interval was compromised for a pristine claim.",
+  "status": "DATA_MISSING",
+  "used_capabilities": [
+    "READ",
+    "REPORT_WRITE",
+    "CODE_EDIT",
+    "PUBLISH"
+  ]
+}

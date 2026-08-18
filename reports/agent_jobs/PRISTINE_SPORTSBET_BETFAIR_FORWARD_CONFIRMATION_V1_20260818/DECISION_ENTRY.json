@@ -1,0 +1,48 @@
+{
+  "blocks": [
+    "Pristine forward collection or readiness claims without an independently outcome-free Betfair scheduled-off source",
+    "Reading or projecting the verified result-bearing Betfair monthly surface for this replacement cohort",
+    "Scoring before 2026-09-30 plus explicit external authorization",
+    "October activation, model changes, betting, promotion, or deployment"
+  ],
+  "claim_id": "PRISTINE_SPORTSBET_BETFAIR_FORWARD_CONFIRMATION_V1_20260818",
+  "dataset_version": "prospective_unpopulated_replacement_cohort_20260820_20260930",
+  "decision": "DATA_MISSING",
+  "decision_delta": {
+    "after": "The exact candidate and future window are frozen with reviewed fail-closed quarantine, but collection is explicitly blocked because no independently outcome-free Betfair scheduled-off source exists.",
+    "before": "PR137 retained a compromised confirmation interval and the evaluator could read result-bearing source rows on ordinary paths."
+  },
+  "decision_id": "pristine-sportsbet-betfair-forward-confirmation-v1-20260818-data-missing",
+  "does_not_block": [
+    "Preserving PR137 as immutable secondary forward evidence",
+    "Read-only review of the replacement protocol and quarantine guards",
+    "Unrelated existing collectors outside this frozen cohort"
+  ],
+  "evidence_hash": "sha256:7a83adb4ebc4c793e8255a4ad07b99f7eb67b7a125deb6d3c79c7a2fd4b97688",
+  "evidence_refs": [
+    "artifacts/sportsbet_betfair_pristine_forward_confirmation_20260818/cohort_manifest.json",
+    "artifacts/sportsbet_betfair_pristine_forward_confirmation_20260818/SHA256SUMS",
+    "reports/agent_jobs/PRISTINE_SPORTSBET_BETFAIR_FORWARD_CONFIRMATION_V1_20260818/VALIDATION.md"
+  ],
+  "hypothesis_id": "sportsbet_betfair_pristine_forward_confirmation_v1",
+  "invalidation_conditions": [
+    "Any frozen candidate, protocol, scorer, eligibility, or evaluator hash changes.",
+    "Any replacement outcome is inspected or any score is produced before the gate.",
+    "PR137 artifacts are modified.",
+    "A reviewed outcome-free Betfair source becomes available, requiring a fresh bounded transition."
+  ],
+  "outcome_status": "DATA_MISSING",
+  "phase_after": "BLOCKED_NO_OUTCOME_FREE_BETFAIR_SCHEDULED_OFF_SOURCE with zero population, zero outcomes, zero scores, and no activation.",
+  "phase_before": "PR137 candidate frozen but pristine confirmation compromised by later outcome rendering.",
+  "program_track": "prospective_readiness",
+  "project_id": "greyhound_racing_collector",
+  "reopen_conditions": [
+    "An independently reviewed, outcome-free, provenance-bound Betfair scheduled-off source exists for the exact frozen window while all candidate and protocol hashes remain unchanged."
+  ],
+  "run_id": "l4nd0-System-Product-Name:832524:PRISTINE_SPORTSBET_BETFAIR_FORWARD_CONFIRMATION_V1_20260818",
+  "scope_fingerprint": "bfa32c5dd6265ca563347ffa6471b888a22b592fe1e3c65512e0d6e29a6a213e",
+  "source_class": "current_origin_master_plus_immutable_pr137_freeze",
+  "target_transition": "pristine_replacement_forward_collection_ready_without_outcome_access_or_scoring",
+  "task_id": "PRISTINE_SPORTSBET_BETFAIR_FORWARD_CONFIRMATION_V1_20260818",
+  "validated_at": "2026-08-18T11:01:18Z"
+}
