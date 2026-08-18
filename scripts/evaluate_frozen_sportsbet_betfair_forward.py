@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Seal and later score the frozen Sportsbet/Betfair forward consensus test.
 
-The ``seal-population`` command reads a label-free corrected Sportsbet WIN
-projection and official Betfair ANZ CSV files. It projects only identity and
-``BEST_AVAIL_BACK_AT_SCHEDULED_OFF`` fields from Betfair; BSP, WIN_RESULT,
-ACTUAL_OFF_TIME and all matched/in-play fields are neither projected nor used.
+The ``seal-population`` command reads label-free corrected Sportsbet WIN and
+independently outcome-free Betfair projections. Official result-bearing
+Betfair ANZ monthly files are rejected; this module never converts them.
 
 The ``score`` command is intentionally separate. It requires a sealed
 population plus an approved result projection and applies the already-frozen
@@ -26,24 +25,28 @@ import sys
 import tempfile
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 from urllib.parse import unquote, urlparse
+from zoneinfo import ZoneInfo
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts import build_sportsbet_betfair_consensus_freeze as frozen
 
 
-FORWARD_START = date(2026, 8, 18)
+FORWARD_START = date(2026, 8, 20)
 FORWARD_END = date(2026, 9, 30)
+MELBOURNE = ZoneInfo("Australia/Melbourne")
 BETFAIR_WEIGHT = 0.95
 SPORTSBET_WEIGHT = 0.05
 EXPECTED_SCORER_SHA256 = "929a9d5ebb073d199e30f20b4a724eee1eb2d42699ab0db6333d34d1e22ff5a6"
 EXPECTED_RULE_SHA256 = "3a12760aba2d84bbe6530337ea0d66ef0ce8ae79f402c66207a727efb155b739"
-EXPECTED_PROTOCOL_SHA256 = "2147a3181336326cb6df3222e9d39aba162db45be1cc614a7c59c0518432d2c8"
-EXPECTED_ELIGIBILITY_SHA256 = "729cfe4e487b80bc1cb888d8f65222d2ac75520d1d5d8a1af8d834922181f3f2"
+EXPECTED_PROTOCOL_SHA256 = "610baf8847afeef179a778b264e533be18da1ec6500dae59bc4599b5d454e0df"
+EXPECTED_PREDECESSOR_ELIGIBILITY_SHA256 = (
+    "729cfe4e487b80bc1cb888d8f65222d2ac75520d1d5d8a1af8d834922181f3f2"
+)
 BETFAIR_REQUIRED_COLUMNS = (
     "LOCAL_MEETING_DATE",
     "SCHEDULED_RACE_TIME",
@@ -111,6 +114,9 @@ EXPECTED_BETFAIR_FILENAMES = {
     "ANZ_Greyhounds_2026_08.csv",
     "ANZ_Greyhounds_2026_09.csv",
 }
+EXPECTED_SPORTSBET_PREDICTOR_FILENAME = (
+    "sportsbet_corrected_win_predictors_20260820_20260930.jsonl"
+)
 POPULATION_MANIFEST_FIELDS = {
     "schema_version",
     "terminal_state",
@@ -153,7 +159,18 @@ FORWARD_PREDICTOR_FIELDS = frozenset(
         "betfair_source_row_number",
     }
 )
-
+RACE_AUDIT_FIELDS = frozenset(
+    {
+        "schema_version",
+        "race_date",
+        "sportsbet_venue",
+        "race_number",
+        "scheduled_race_time_raw",
+        "eligible",
+        "exclusion_reason",
+        "candidate_betfair_market_count",
+    }
+)
 if set(BETFAIR_REQUIRED_COLUMNS) & BETFAIR_FORBIDDEN_PREDICTORS:
     raise RuntimeError("Betfair predictor whitelist includes a forbidden field")
 
@@ -281,26 +298,6 @@ def parse_price(value: Any) -> float:
     return parsed
 
 
-def strict_jsonl(path: Path, expected_fields: frozenset[str], schema: str) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    with path.open(encoding="utf-8") as handle:
-        for line_number, raw in enumerate(handle, 1):
-            if not raw.strip():
-                raise ForwardContractError(f"blank JSONL row at {path}:{line_number}")
-            try:
-                row = json.loads(raw)
-            except json.JSONDecodeError as exc:
-                raise ForwardContractError(f"invalid JSONL at {path}:{line_number}") from exc
-            if not isinstance(row, dict) or frozenset(row) != expected_fields:
-                raise ForwardContractError(f"unexpected fields at {path}:{line_number}")
-            if row["schema_version"] != schema:
-                raise ForwardContractError(f"schema mismatch at {path}:{line_number}")
-            rows.append(row)
-    if not rows:
-        raise ForwardContractError(f"empty JSONL input: {path}")
-    return rows
-
-
 def closed_json_object(path: Path, fields: set[str], label: str) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -324,6 +321,36 @@ def _validate_official_betfair_url(value: Any, filename: str) -> str:
     ):
         raise ForwardContractError("invalid official Betfair source URL")
     return url
+
+
+def _validate_betfair_predictor_header(header: Sequence[str]) -> None:
+    if len(header) != len(set(header)):
+        raise ForwardContractError("duplicate Betfair CSV header")
+    forbidden = sorted(set(header) & BETFAIR_FORBIDDEN_PREDICTORS)
+    if forbidden:
+        raise ForwardContractError(
+            f"result-bearing Betfair columns are quarantined: {forbidden}"
+        )
+    missing = [field for field in BETFAIR_REQUIRED_COLUMNS if field not in header]
+    if missing:
+        raise ForwardContractError(f"missing Betfair columns: {missing}")
+    unexpected = sorted(set(header) - set(BETFAIR_REQUIRED_COLUMNS))
+    if unexpected:
+        raise ForwardContractError(
+            f"unexpected Betfair predictor projection columns: {unexpected}"
+        )
+
+
+def _verify_betfair_predictor_header(path: Path) -> None:
+    """Reject a result-bearing Betfair file before any data row or full hash read."""
+
+    with path.open(encoding="utf-8-sig", newline="") as handle:
+        reader = csv.reader(handle)
+        try:
+            header = next(reader)
+        except StopIteration as exc:
+            raise ForwardContractError("empty Betfair CSV") from exc
+    _validate_betfair_predictor_header(header)
 
 
 def verify_betfair_source_receipt(
@@ -387,6 +414,7 @@ def verify_betfair_source_receipt(
         raise ForwardContractError("Betfair source receipt does not contain the exact monthly files")
     for path in betfair_paths:
         source = sources[path.name]
+        _verify_betfair_predictor_header(path)
         if path.stat().st_size != source["byte_size"] or sha256_file(path) != source["sha256"]:
             raise ForwardContractError(f"Betfair source receipt drift: {path.name}")
     return sources, sha256_file(receipt_path)
@@ -396,11 +424,17 @@ def verify_frozen_artifacts(artifact_dir: Path) -> dict[str, str]:
     expected = {
         "frozen_consensus_rule.json": EXPECTED_RULE_SHA256,
         "protocol.json": EXPECTED_PROTOCOL_SHA256,
-        "future_eligibility_protocol.json": EXPECTED_ELIGIBILITY_SHA256,
     }
     actual = {name: sha256_file(artifact_dir / name) for name in expected}
     if actual != expected:
         raise ForwardContractError("frozen artifact hash mismatch")
+    predecessor_eligibility_path = (
+        Path(__file__).resolve().parents[1]
+        / "artifacts/sportsbet_betfair_consensus_freeze_20260817_report_only"
+        / "future_eligibility_protocol.json"
+    )
+    if sha256_file(predecessor_eligibility_path) != EXPECTED_PREDECESSOR_ELIGIBILITY_SHA256:
+        raise ForwardContractError("frozen predecessor eligibility hash mismatch")
     scorer_path = Path(frozen.__file__).resolve()
     if sha256_file(scorer_path) != EXPECTED_SCORER_SHA256:
         raise ForwardContractError("frozen scorer hash mismatch")
@@ -416,13 +450,20 @@ def verify_frozen_artifacts(artifact_dir: Path) -> dict[str, str]:
         )
     ):
         raise ForwardContractError("frozen 95/5 rule mismatch")
-    return {**actual, "scorer": EXPECTED_SCORER_SHA256}
+    return {
+        **actual,
+        "predecessor_future_eligibility_protocol.json": (
+            EXPECTED_PREDECESSOR_ELIGIBILITY_SHA256
+        ),
+        "scorer": EXPECTED_SCORER_SHA256,
+    }
 
 
 def verify_completeness_receipt(receipt_path: Path, sportsbet_path: Path) -> dict[str, Any]:
     receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
     expected = {
         "schema_version",
+        "sportsbet_predictor_filename",
         "sportsbet_predictor_sha256",
         "start_date_inclusive",
         "end_date_inclusive",
@@ -432,8 +473,11 @@ def verify_completeness_receipt(receipt_path: Path, sportsbet_path: Path) -> dic
     }
     if not isinstance(receipt, dict) or set(receipt) != expected:
         raise ForwardContractError("invalid completeness receipt fields")
+    if sportsbet_path.name != EXPECTED_SPORTSBET_PREDICTOR_FILENAME:
+        raise ForwardContractError("Sportsbet predictor path is not the frozen input name")
     required_values = {
         "schema_version": "sportsbet_forward_completeness_receipt_v1",
+        "sportsbet_predictor_filename": EXPECTED_SPORTSBET_PREDICTOR_FILENAME,
         "sportsbet_predictor_sha256": sha256_file(sportsbet_path),
         "start_date_inclusive": FORWARD_START.isoformat(),
         "end_date_inclusive": FORWARD_END.isoformat(),
@@ -446,8 +490,27 @@ def verify_completeness_receipt(receipt_path: Path, sportsbet_path: Path) -> dic
     return receipt
 
 
-def load_sportsbet(path: Path) -> dict[tuple[str, str, int, str], list[dict[str, Any]]]:
-    rows = strict_jsonl(path, SPORTSBET_ROW_FIELDS, SPORTSBET_ROW_SCHEMA)
+def load_sportsbet(
+    path: Path,
+    receipt_path: Path,
+) -> dict[tuple[str, str, int, str], list[dict[str, Any]]]:
+    verify_completeness_receipt(receipt_path, path)
+    rows: list[dict[str, Any]] = []
+    with path.open(encoding="utf-8") as handle:
+        for line_number, raw in enumerate(handle, 1):
+            if not raw.strip():
+                raise ForwardContractError(f"blank JSONL row at {path}:{line_number}")
+            try:
+                row = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise ForwardContractError(f"invalid JSONL at {path}:{line_number}") from exc
+            if not isinstance(row, dict) or frozenset(row) != SPORTSBET_ROW_FIELDS:
+                raise ForwardContractError(f"unexpected fields at {path}:{line_number}")
+            if row["schema_version"] != SPORTSBET_ROW_SCHEMA:
+                raise ForwardContractError(f"schema mismatch at {path}:{line_number}")
+            rows.append(row)
+    if not rows:
+        raise ForwardContractError(f"empty JSONL input: {path}")
     grouped: dict[tuple[str, str, int, str], list[dict[str, Any]]] = defaultdict(list)
     seen_source_ids: set[str] = set()
     source_hashes: set[str] = set()
@@ -510,11 +573,7 @@ def _project_betfair_csv(path: Path, source: Mapping[str, Any]) -> list[BetfairR
             header = next(reader)
         except StopIteration as exc:
             raise ForwardContractError("empty Betfair CSV") from exc
-        if len(header) != len(set(header)):
-            raise ForwardContractError("duplicate Betfair CSV header")
-        missing = [field for field in BETFAIR_REQUIRED_COLUMNS if field not in header]
-        if missing:
-            raise ForwardContractError(f"missing Betfair columns: {missing}")
+        _validate_betfair_predictor_header(header)
         indexes = {field: header.index(field) for field in BETFAIR_REQUIRED_COLUMNS}
         for row_number, values in enumerate(reader, 2):
             if len(values) != len(header):
@@ -885,17 +944,17 @@ def verify_population_approval_receipt(
     source_hashes: dict[str, str] = {}
     for source in manifest["betfair_sources"]:
         if not isinstance(source, dict) or set(source) != {
-            "filename",
-            "source_url",
-            "byte_size",
-            "sha256",
+            "filename", "source_url", "byte_size", "sha256",
         }:
             raise ForwardContractError("sealed Betfair source entry is invalid")
         filename = nonempty_string(source["filename"], "sealed Betfair filename")
         _validate_official_betfair_url(source["source_url"], filename)
         parse_positive_int(source["byte_size"], "sealed Betfair byte size")
         source_hash = nonempty_string(source["sha256"], "sealed Betfair SHA-256")
-        if not re.fullmatch(r"[0-9a-f]{64}", source_hash) or filename in source_hashes:
+        if (
+            not re.fullmatch(r"[0-9a-f]{64}", source_hash)
+            or filename in source_hashes
+        ):
             raise ForwardContractError("sealed Betfair source entry is invalid")
         source_hashes[filename] = source_hash
     if set(source_hashes) != EXPECTED_BETFAIR_FILENAMES:
@@ -909,22 +968,24 @@ def verify_population_approval_receipt(
         raise ForwardContractError("invalid population manifest counts")
     if manifest["candidate_races"] < 1 or manifest["eligible_races"] < 1:
         raise ForwardContractError("empty approved population manifest")
-    audit_rows = strict_jsonl(
-        audit_path,
-        frozenset(
-            {
-                "schema_version",
-                "race_date",
-                "sportsbet_venue",
-                "race_number",
-                "scheduled_race_time_raw",
-                "eligible",
-                "exclusion_reason",
-                "candidate_betfair_market_count",
-            }
-        ),
-        "sportsbet_betfair_forward_race_audit_v1",
-    )
+    audit_rows: list[dict[str, Any]] = []
+    with audit_path.open(encoding="utf-8") as handle:
+        for line_number, raw in enumerate(handle, 1):
+            if not raw.strip():
+                raise ForwardContractError(f"blank JSONL row at {audit_path}:{line_number}")
+            try:
+                row = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise ForwardContractError(
+                    f"invalid JSONL at {audit_path}:{line_number}"
+                ) from exc
+            if not isinstance(row, dict) or frozenset(row) != RACE_AUDIT_FIELDS:
+                raise ForwardContractError(f"unexpected fields at {audit_path}:{line_number}")
+            if row["schema_version"] != "sportsbet_betfair_forward_race_audit_v1":
+                raise ForwardContractError(f"schema mismatch at {audit_path}:{line_number}")
+            audit_rows.append(row)
+    if not audit_rows:
+        raise ForwardContractError(f"empty JSONL input: {audit_path}")
     exclusions = Counter(
         str(row["exclusion_reason"])
         for row in audit_rows
@@ -944,22 +1005,80 @@ def verify_population_approval_receipt(
     }
 
 
-def load_sealed_races(
+def authorize_and_load_sealed_races_for_score(
     population_dir: Path,
     results_path: Path,
-    manifest: Mapping[str, Any],
-) -> tuple[list[frozen.Race], dict[str, Any]]:
+    approval_receipt_path: Path,
+    frozen_hashes: Mapping[str, str],
+) -> tuple[
+    list[frozen.Race],
+    dict[str, Any],
+    dict[str, Any],
+    dict[str, Any],
+    Path,
+    Path,
+]:
+    """Apply every gate and consume the attempt before opening result bytes."""
+
+    enforce_score_date()
+    manifest, approval_provenance = verify_population_approval_receipt(
+        population_dir,
+        approval_receipt_path,
+        frozen_hashes,
+    )
+    output_path, consumed_marker_path = consume_score_once(
+        population_dir,
+        approval_provenance,
+    )
     if manifest.get("terminal_state") != "FORWARD_POPULATION_SEALED_UNSCORED":
         raise ForwardContractError("population is not sealed and unscored")
     predictor_path = population_dir / "eligible_predictors.jsonl"
     if sha256_file(predictor_path) != manifest.get("eligible_predictors_sha256"):
         raise ForwardContractError("sealed predictor hash mismatch")
-    predictor_rows = strict_jsonl(
-        predictor_path,
-        FORWARD_PREDICTOR_FIELDS,
-        "sportsbet_betfair_forward_predictor_v1",
-    )
-    results = strict_jsonl(results_path, RESULT_ROW_FIELDS, RESULT_ROW_SCHEMA)
+    predictor_rows: list[dict[str, Any]] = []
+    with predictor_path.open(encoding="utf-8") as handle:
+        for line_number, raw in enumerate(handle, 1):
+            if not raw.strip():
+                raise ForwardContractError(f"blank JSONL row at {predictor_path}:{line_number}")
+            try:
+                row = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise ForwardContractError(
+                    f"invalid JSONL at {predictor_path}:{line_number}"
+                ) from exc
+            if not isinstance(row, dict) or frozenset(row) != FORWARD_PREDICTOR_FIELDS:
+                raise ForwardContractError(
+                    f"unexpected fields at {predictor_path}:{line_number}"
+                )
+            if row["schema_version"] != "sportsbet_betfair_forward_predictor_v1":
+                raise ForwardContractError(f"schema mismatch at {predictor_path}:{line_number}")
+            predictor_rows.append(row)
+    if not predictor_rows:
+        raise ForwardContractError(f"empty JSONL input: {predictor_path}")
+    results: list[dict[str, Any]] = []
+    with results_path.open(encoding="utf-8") as handle:
+        for line_number, raw in enumerate(handle, 1):
+            if not raw.strip():
+                raise ForwardContractError(
+                    f"blank JSONL row at {results_path}:{line_number}"
+                )
+            try:
+                row = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise ForwardContractError(
+                    f"invalid JSONL at {results_path}:{line_number}"
+                ) from exc
+            if not isinstance(row, dict) or frozenset(row) != RESULT_ROW_FIELDS:
+                raise ForwardContractError(
+                    f"unexpected fields at {results_path}:{line_number}"
+                )
+            if row["schema_version"] != RESULT_ROW_SCHEMA:
+                raise ForwardContractError(
+                    f"schema mismatch at {results_path}:{line_number}"
+                )
+            results.append(row)
+    if not results:
+        raise ForwardContractError(f"empty JSONL input: {results_path}")
     result_by_key: dict[tuple[str, str, int, str], dict[str, Any]] = {}
     result_source_hashes: set[str] = set()
     result_source_row_ids: set[str] = set()
@@ -1142,7 +1261,7 @@ def load_sealed_races(
         "approved_results_projection_sha256": sha256_file(results_path),
         "approved_result_source_sha256": next(iter(result_source_hashes)),
         "approved_result_rows": len(results),
-    }
+    }, manifest, approval_provenance, output_path, consumed_marker_path
 
 
 def forward_report_schema() -> dict[str, Any]:
@@ -1241,7 +1360,7 @@ def score_forward(
 
 
 def enforce_score_date(today: date | None = None) -> None:
-    effective_date = date.today() if today is None else today
+    effective_date = datetime.now(MELBOURNE).date() if today is None else today
     if effective_date <= FORWARD_END:
         raise ForwardContractError("forward score is forbidden until after 2026-09-30")
 
@@ -1302,15 +1421,14 @@ def main() -> int:
     args = parse_args()
     frozen_hashes = verify_frozen_artifacts(args.frozen_artifact_dir)
     if args.command == "seal-population":
-        verify_completeness_receipt(
-            args.sportsbet_completeness_receipt,
-            args.sportsbet_predictors,
-        )
         betfair_sources, _ = verify_betfair_source_receipt(
             args.betfair_source_manifest_receipt,
             args.betfair_csv,
         )
-        sportsbet = load_sportsbet(args.sportsbet_predictors)
+        sportsbet = load_sportsbet(
+            args.sportsbet_predictors,
+            args.sportsbet_completeness_receipt,
+        )
         betfair = load_betfair(args.betfair_csv, betfair_sources)
         predictor_rows, audit_rows = seal_population(sportsbet, betfair)
         write_seal(
@@ -1326,20 +1444,18 @@ def main() -> int:
         )
         print(json.dumps({"terminal_state": "FORWARD_POPULATION_SEALED_UNSCORED"}))
         return 0
-    enforce_score_date()
-    manifest, approval_provenance = verify_population_approval_receipt(
-        args.population_dir,
-        args.population_approval_receipt,
-        frozen_hashes,
-    )
-    output_path, consumed_marker_path = consume_score_once(
-        args.population_dir,
+    (
+        races,
+        result_provenance,
+        manifest,
         approval_provenance,
-    )
-    races, result_provenance = load_sealed_races(
+        output_path,
+        consumed_marker_path,
+    ) = authorize_and_load_sealed_races_for_score(
         args.population_dir,
         args.approved_results,
-        manifest,
+        args.population_approval_receipt,
+        frozen_hashes,
     )
     provenance = {
         **approval_provenance,

@@ -1,0 +1,32 @@
+{
+  "claim_boundary": "development-screening artifact only; no promotion, deployment, EV, betting, or future scoring",
+  "formula": "p_consensus=(1-betfair_weight)*p_sportsbet_normalized+betfair_weight*p_betfair_scheduled_off_normalized",
+  "freeze_checks": {
+    "BSP_not_used_as_predictor": true,
+    "actual_off_not_used_as_predictor": true,
+    "fit_log_loss_improves_sportsbet": true,
+    "no_future_rows_loaded_or_scored": true,
+    "provenance_checks_pass": true,
+    "selected_weight_is_interior": true,
+    "validation_log_loss_improves_sportsbet": true
+  },
+  "frozen": true,
+  "normalization": "normalize_each_market_source_to_sum_one_within_race_before_combination",
+  "protocol_sha256": "2147a3181336326cb6df3222e9d39aba162db45be1cc614a7c59c0518432d2c8",
+  "schema_version": "sportsbet_betfair_frozen_consensus_rule_v1",
+  "scorer_sha256": "929a9d5ebb073d199e30f20b4a724eee1eb2d42699ab0db6333d34d1e22ff5a6",
+  "screened_weight_if_not_frozen": null,
+  "selected_betfair_weight": 0.95,
+  "selected_sportsbet_weight": 0.050000000000000044,
+  "source_hashes": {
+    "Betfair_source_hashes": {
+      "ANZ_Greyhounds_2026_06.csv": "304085cec9dd7930c505f9b45d33835bdf1d2223dbb6f5c0723087c813114748",
+      "ANZ_Greyhounds_2026_07.csv": "f150a95b7ebd323d7626bb3653cae04a9a3165d04ebbf8c4611c22d2a647944f"
+    },
+    "betfair_audit_report_sha256": "b573d7d8512ba9cfa11373425e465f0b1b87901764966cb845e0ecd8fc0c9491",
+    "corrected_sportsbet_win_matrix_sha256": "eb1783d4cc07e6980463a097c97fdac9f5370b08f493ca15addf768aa0b014b6",
+    "joined_surface_sha256": "86fabb05556160e555f076322eb8786b6166e369a6a8ec57d475c0e4a06e67f7"
+  },
+  "terminal_state": "CONSENSUS_CANDIDATE_FROZEN",
+  "tie_break": "probability_descending_then_box_ascending"
+}

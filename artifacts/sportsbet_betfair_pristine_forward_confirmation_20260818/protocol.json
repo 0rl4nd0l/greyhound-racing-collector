@@ -1,0 +1,72 @@
+{
+  "baseline": "corrected_normalized_Sportsbet_WIN_probability",
+  "candidate": {
+    "betfair_weight": 0.95,
+    "formula": "p_consensus=(1-betfair_weight)*p_sportsbet_normalized+betfair_weight*p_betfair_scheduled_off_normalized",
+    "frozen_rule_sha256": "3a12760aba2d84bbe6530337ea0d66ef0ce8ae79f402c66207a727efb155b739",
+    "normalization": "normalize_each_market_source_to_sum_one_within_race_before_combination",
+    "sportsbet_weight": 0.050000000000000044,
+    "tie_break": "probability_descending_then_box_ascending"
+  },
+  "eligibility": {
+    "betfair_predictor_field": "BEST_AVAIL_BACK_AT_SCHEDULED_OFF",
+    "identity": "date_plus_venue_alias_plus_race_number_plus_exact_scheduled_clock_plus_complete_box_TAB_agreement",
+    "no_name_only_join": true,
+    "reject_missing_or_nonfinite_prices": true,
+    "reject_partial_or_duplicate_runner_sets": true,
+    "reject_reserve_box_or_TAB_mismatch": true,
+    "sportsbet_predictor": "corrected_normalized_WIN_probability",
+    "winner_label": "exactly_one_WINNER_per_complete_race"
+  },
+  "frozen_bindings": {
+    "development_protocol_sha256": "2147a3181336326cb6df3222e9d39aba162db45be1cc614a7c59c0518432d2c8",
+    "predecessor_future_eligibility_sha256": "729cfe4e487b80bc1cb888d8f65222d2ac75520d1d5d8a1af8d834922181f3f2",
+    "scorer_sha256": "929a9d5ebb073d199e30f20b4a724eee1eb2d42699ab0db6333d34d1e22ff5a6"
+  },
+  "population": {
+    "fixed_calendar_no_results_driven_stopping": true,
+    "label_blind": true,
+    "reproducible_identity_rule": true
+  },
+  "predecessor": {
+    "artifact_mutation_permitted": false,
+    "start_date_inclusive": "2026-08-18",
+    "status": "COMPROMISED_FOR_PRISTINE_CONFIRMATION"
+  },
+  "quarantine": {
+    "betfair_input": "exact_closed_schema_predictor_only_projection",
+    "betfair_projection": "must_be_produced_by_an_independently_outcome_free_source",
+    "forbidden_columns_rejected_before_first_data_row": true,
+    "known_result_bearing_monthly_source": "forbidden_before_any_row_bytes_are_read",
+    "normal_diagnostics_result_access": "fail_closed",
+    "result_parser_requires_gated_single_use_score_operation": true,
+    "score_capability_prerequisites": [
+      "Australia/Melbourne date after 2026-09-30",
+      "external approval receipt bound to population manifest SHA-256",
+      "durable exclusive consumed marker written before result open"
+    ]
+  },
+  "schema_version": "sportsbet_betfair_pristine_forward_protocol_v1",
+  "scoring": {
+    "bootstrap": {
+      "cluster_key": [
+        "race_date",
+        "sportsbet_venue"
+      ],
+      "confidence_interval": "percentile_2.5_97.5",
+      "replicates": 10000,
+      "seed": 20260817
+    },
+    "confirmation_rule": "paired future delta_log_loss<0 and meeting-date-cluster bootstrap upper_95<0",
+    "interim_metrics": "forbidden",
+    "primary_metric": "paired_mean_multiclass_race_log_loss_consensus_minus_sportsbet",
+    "one_shot": true
+  },
+  "terminal_state": "BLOCKED_NO_OUTCOME_FREE_BETFAIR_SCHEDULED_OFF_SOURCE",
+  "timezone": "Australia/Melbourne",
+  "window": {
+    "end_date_inclusive": "2026-09-30",
+    "october_separate": true,
+    "start_date_inclusive": "2026-08-20"
+  }
+}

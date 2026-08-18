@@ -1,0 +1,46 @@
+{
+  "bindings": {
+    "candidate_sha256": "3a12760aba2d84bbe6530337ea0d66ef0ce8ae79f402c66207a727efb155b739",
+    "development_protocol_sha256": "2147a3181336326cb6df3222e9d39aba162db45be1cc614a7c59c0518432d2c8",
+    "predecessor_future_eligibility_sha256": "729cfe4e487b80bc1cb888d8f65222d2ac75520d1d5d8a1af8d834922181f3f2",
+    "predecessor_sha256s_file_sha256": "af1fa6e4e3586248f903a3863bd71d7393eb382db7a473dbd99056f06d079a03",
+    "replacement_evaluator_sha256": "821124f9aef14238b67ce44e59dedc4c017562481f841994841401e5906d2f78",
+    "replacement_protocol_sha256": "610baf8847afeef179a778b264e533be18da1ec6500dae59bc4599b5d454e0df",
+    "scorer_sha256": "929a9d5ebb073d199e30f20b4a724eee1eb2d42699ab0db6333d34d1e22ff5a6"
+  },
+  "cohort": {
+    "eligible_races": 0,
+    "eligible_runner_rows": 0,
+    "outcome_rows_inspected": 0,
+    "population_rows_materialized": 0,
+    "population_status": "FUTURE_UNMATERIALIZED_BLOCKED_NO_OUTCOME_FREE_BETFAIR_SOURCE",
+    "scored_races": 0,
+    "scores_produced": 0
+  },
+  "freeze": {
+    "frozen_at": "2026-08-18T20:27:06+10:00",
+    "git_head": "74f6ea7a3527279b898daf6484ceee5e8f2e9950",
+    "git_tree": "1ff32042fb54a4ede42dd69b3f500329c216bcb1",
+    "replacement_start_was_future": true,
+    "timezone": "Australia/Melbourne"
+  },
+  "predecessor": {
+    "artifact_directory": "artifacts/sportsbet_betfair_consensus_freeze_20260817_report_only",
+    "artifacts_modified": false,
+    "further_outcomes_inspected": false,
+    "status": "COMPROMISED_FOR_PRISTINE_CONFIRMATION"
+  },
+  "quarantine": {
+    "collection_accepts_result_bearing_columns": false,
+    "collection_status": "BLOCKED_NO_OUTCOME_FREE_BETFAIR_SCHEDULED_OFF_SOURCE",
+    "normal_result_parser_access": "DENIED",
+    "premature_score_access": "DENIED",
+    "result_read_capabilities_issued": 0
+  },
+  "schema_version": "sportsbet_betfair_pristine_forward_cohort_manifest_v1",
+  "terminal_state": "BLOCKED_NO_OUTCOME_FREE_BETFAIR_SCHEDULED_OFF_SOURCE",
+  "window": {
+    "end_date_inclusive": "2026-09-30",
+    "start_date_inclusive": "2026-08-20"
+  }
+}

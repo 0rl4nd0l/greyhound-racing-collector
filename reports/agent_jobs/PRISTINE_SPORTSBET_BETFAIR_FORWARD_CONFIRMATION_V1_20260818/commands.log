@@ -1,0 +1,8 @@
+python3 -m unittest tests.test_evaluate_frozen_sportsbet_betfair_forward
+python3 -m py_compile scripts/evaluate_frozen_sportsbet_betfair_forward.py tests/test_evaluate_frozen_sportsbet_betfair_forward.py
+(cd artifacts/sportsbet_betfair_pristine_forward_confirmation_20260818 && sha256sum -c SHA256SUMS)
+python3 -m json.tool artifacts/sportsbet_betfair_pristine_forward_confirmation_20260818/protocol.json
+python3 -m json.tool artifacts/sportsbet_betfair_pristine_forward_confirmation_20260818/cohort_manifest.json
+cmp artifacts/sportsbet_betfair_pristine_forward_confirmation_20260818/frozen_consensus_rule.json artifacts/sportsbet_betfair_consensus_freeze_20260817_report_only/frozen_consensus_rule.json
+git diff --quiet origin/master -- artifacts/sportsbet_betfair_consensus_freeze_20260817_report_only
+git diff --check

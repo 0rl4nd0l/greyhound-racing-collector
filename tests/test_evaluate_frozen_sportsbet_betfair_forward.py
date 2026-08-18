@@ -6,7 +6,7 @@ import sys
 import tempfile
 import unittest
 from dataclasses import asdict
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from unittest import mock
 
@@ -19,7 +19,7 @@ class TestFrozenSportsbetBetfairForward(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.august = self.root / "ANZ_Greyhounds_2026_08.csv"
         self.september = self.root / "ANZ_Greyhounds_2026_09.csv"
-        self.sportsbet = self.root / "sportsbet.jsonl"
+        self.sportsbet = self.root / forward.EXPECTED_SPORTSBET_PREDICTOR_FILENAME
         self.sportsbet_receipt = self.root / "sportsbet_receipt.json"
         self.betfair_receipt = self.root / "betfair_receipt.json"
         self.results = self.root / "results.jsonl"
@@ -53,21 +53,19 @@ class TestFrozenSportsbetBetfairForward(unittest.TestCase):
     def _write_betfair_files(
         self,
         *,
-        august_date="2026-08-18",
+        august_date="2026-08-20",
         market_id="1.100",
         first_selection_id="selection-a",
         scheduled_clock="12:00:00.000",
+        include_outcomes=False,
     ):
-        header = list(forward.BETFAIR_REQUIRED_COLUMNS) + [
-            "WIN_RESULT",
-            "WIN_BSP",
-            "ACTUAL_OFF_TIME",
-        ]
+        header = list(forward.BETFAIR_REQUIRED_COLUMNS)
+        if include_outcomes:
+            header += ["WIN_RESULT", "WIN_BSP", "ACTUAL_OFF_TIME"]
         with self.august.open("w", encoding="utf-8", newline="") as handle:
             writer = csv.writer(handle)
             writer.writerow(header)
-            writer.writerow(
-                [
+            first = [
                     august_date,
                     scheduled_clock,
                     "Angle Park",
@@ -77,13 +75,8 @@ class TestFrozenSportsbetBetfairForward(unittest.TestCase):
                     1,
                     "Alpha",
                     2.0,
-                    "WINNER",
-                    1.8,
-                    "12:00:01.000",
-                ]
-            )
-            writer.writerow(
-                [
+            ]
+            second = [
                     august_date,
                     scheduled_clock,
                     "Angle Park",
@@ -93,18 +86,27 @@ class TestFrozenSportsbetBetfairForward(unittest.TestCase):
                     2,
                     "Beta",
                     3.0,
+            ]
+            if include_outcomes:
+                first += [
+                    "WINNER",
+                    1.8,
+                    "12:00:01.000",
+                ]
+                second += [
                     "LOSER",
                     3.2,
                     "12:00:01.000",
                 ]
-            )
+            writer.writerow(first)
+            writer.writerow(second)
         with self.september.open("w", encoding="utf-8", newline="") as handle:
             csv.writer(handle).writerow(header)
 
     def _sportsbet_rows(self):
         base = {
             "schema_version": forward.SPORTSBET_ROW_SCHEMA,
-            "race_date": "2026-08-18",
+            "race_date": "2026-08-20",
             "sportsbet_venue": "AP K",
             "race_number": 1,
             "scheduled_race_time_raw": "12:00:00.000",
@@ -135,8 +137,9 @@ class TestFrozenSportsbetBetfairForward(unittest.TestCase):
             self.sportsbet_receipt,
             {
                 "schema_version": "sportsbet_forward_completeness_receipt_v1",
+                "sportsbet_predictor_filename": self.sportsbet.name,
                 "sportsbet_predictor_sha256": self._sha256(self.sportsbet),
-                "start_date_inclusive": "2026-08-18",
+                "start_date_inclusive": "2026-08-20",
                 "end_date_inclusive": "2026-09-30",
                 "declared_complete_without_results": True,
                 "labels_inspected": False,
@@ -159,7 +162,7 @@ class TestFrozenSportsbetBetfairForward(unittest.TestCase):
                 "schema_version": forward.BETFAIR_SOURCE_RECEIPT_SCHEMA,
                 "terminal_state": "BETFAIR_FORWARD_SOURCES_FROZEN_LABEL_BLIND",
                 "window": {
-                    "start_date_inclusive": "2026-08-18",
+                    "start_date_inclusive": "2026-08-20",
                     "end_date_inclusive": "2026-09-30",
                 },
                 "declared_complete_without_results": True,
@@ -177,7 +180,7 @@ class TestFrozenSportsbetBetfairForward(unittest.TestCase):
             rows = [
                 {
                     "schema_version": forward.RESULT_ROW_SCHEMA,
-                    "race_date": "2026-08-18",
+                    "race_date": "2026-08-20",
                     "sportsbet_venue": "AP K",
                     "race_number": 1,
                     "scheduled_race_time_raw": "12:00:00.000",
@@ -196,7 +199,7 @@ class TestFrozenSportsbetBetfairForward(unittest.TestCase):
 
     def _seal(self, name="population"):
         sources = self._source_contract()
-        sportsbet = forward.load_sportsbet(self.sportsbet)
+        sportsbet = forward.load_sportsbet(self.sportsbet, self.sportsbet_receipt)
         betfair = forward.load_betfair([self.august, self.september], sources)
         predictor_rows, audit_rows = forward.seal_population(sportsbet, betfair)
         output = self.root / name
@@ -231,6 +234,16 @@ class TestFrozenSportsbetBetfairForward(unittest.TestCase):
         )
         return path
 
+    def _authorize_and_load(self, population, approval):
+        with mock.patch.object(forward, "datetime") as clock:
+            clock.now.return_value = datetime(2026, 10, 1)
+            return forward.authorize_and_load_sealed_races_for_score(
+                population,
+                self.results,
+                approval,
+                self.frozen_hashes,
+            )
+
     def test_direct_cli_help_works_outside_repo(self):
         script = Path(forward.__file__).resolve()
         result = subprocess.run(
@@ -244,6 +257,56 @@ class TestFrozenSportsbetBetfairForward(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("seal-population", result.stdout)
         self.assertIn("score", result.stdout)
+
+    def test_replacement_artifacts_bind_the_exact_predecessor_candidate(self):
+        repo_root = Path(forward.__file__).resolve().parents[1]
+        predecessor = (
+            repo_root
+            / "artifacts/sportsbet_betfair_consensus_freeze_20260817_report_only"
+        )
+        replacement = (
+            repo_root
+            / "artifacts/sportsbet_betfair_pristine_forward_confirmation_20260818"
+        )
+
+        self.assertEqual(
+            (replacement / "frozen_consensus_rule.json").read_bytes(),
+            (predecessor / "frozen_consensus_rule.json").read_bytes(),
+        )
+        self.assertEqual(
+            forward.sha256_file(predecessor / "SHA256SUMS"),
+            "af1fa6e4e3586248f903a3863bd71d7393eb382db7a473dbd99056f06d079a03",
+        )
+        self.assertEqual(
+            forward.sha256_file(replacement / "frozen_consensus_rule.json"),
+            forward.EXPECTED_RULE_SHA256,
+        )
+        self.assertEqual(
+            forward.sha256_file(replacement / "protocol.json"),
+            forward.EXPECTED_PROTOCOL_SHA256,
+        )
+        replacement_manifest = json.loads(
+            (replacement / "cohort_manifest.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            replacement_manifest["bindings"]["replacement_evaluator_sha256"],
+            forward.sha256_file(Path(forward.__file__)),
+        )
+        self.assertEqual(
+            replacement_manifest["bindings"]["predecessor_future_eligibility_sha256"],
+            forward.EXPECTED_PREDECESSOR_ELIGIBILITY_SHA256,
+        )
+        self.assertEqual(
+            forward.verify_frozen_artifacts(replacement),
+            {
+                "frozen_consensus_rule.json": forward.EXPECTED_RULE_SHA256,
+                "protocol.json": forward.EXPECTED_PROTOCOL_SHA256,
+                "predecessor_future_eligibility_protocol.json": (
+                    forward.EXPECTED_PREDECESSOR_ELIGIBILITY_SHA256
+                ),
+                "scorer": forward.EXPECTED_SCORER_SHA256,
+            },
+        )
 
     def test_clock_accepts_only_seconds_or_dot_zero_zero_zero(self):
         self.assertEqual(forward.normalized_clock("12:34:56", "clock"), "12:34:56")
@@ -280,14 +343,110 @@ class TestFrozenSportsbetBetfairForward(unittest.TestCase):
                 with self.assertRaisesRegex(forward.ForwardContractError, message):
                     forward.load_betfair([self.august, self.september], sources)
 
-    def test_forbidden_betfair_fields_are_not_projected(self):
+    def test_result_bearing_betfair_projection_fails_before_rows_are_parsed(self):
+        self._write_betfair_files(include_outcomes=True)
+        self._write_betfair_receipt()
+        original_sha256_file = forward.sha256_file
+
+        def deny_full_outcome_file_read(path):
+            if path == self.august:
+                raise AssertionError("outcome-bearing Betfair rows hashed")
+            return original_sha256_file(path)
+
+        with mock.patch.object(forward, "sha256_file", side_effect=deny_full_outcome_file_read):
+            with self.assertRaisesRegex(
+                forward.ForwardContractError,
+                "result-bearing Betfair columns are quarantined",
+            ):
+                self._source_contract()
+
+    def test_predictor_only_betfair_projection_has_no_outcome_members(self):
         source = self._source_contract()[self.august.name]
-        runners = forward._project_betfair_csv(self.august, source)
-        projected = asdict(runners[0])
+        projected = asdict(forward._project_betfair_csv(self.august, source)[0])
 
         self.assertNotIn("WIN_RESULT", projected)
         self.assertNotIn("WIN_BSP", projected)
         self.assertNotIn("ACTUAL_OFF_TIME", projected)
+
+    def test_wrong_path_predictor_parse_fails_before_result_open(self):
+        original_open = Path.open
+
+        def deny_result_open(path, *args, **kwargs):
+            if path == self.results:
+                raise AssertionError("result opened")
+            return original_open(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "open", new=deny_result_open):
+            with self.assertRaisesRegex(
+                forward.ForwardContractError,
+                "not the frozen input name",
+            ):
+                forward.load_sportsbet(self.results, self.sportsbet_receipt)
+
+    def test_no_import_level_result_read_bypass_is_exposed(self):
+        for name in (
+            "load_sealed_races",
+            "authorize_outcome_read_for_score",
+            "OutcomeReadAuthorization",
+            "_ISSUE_OUTCOME_AUTHORIZATION",
+            "strict_jsonl",
+            "_strict_jsonl_unchecked",
+            "_parse_jsonl_handle",
+        ):
+            with self.subTest(name=name):
+                self.assertFalse(hasattr(forward, name))
+
+    def test_authorization_fails_before_end_without_consuming_or_opening_results(self):
+        population = self._seal()
+        approval = self._approval_receipt(population)
+
+        original_open = Path.open
+
+        def deny_result_open(path, *args, **kwargs):
+            if path == self.results:
+                raise AssertionError("result opened")
+            return original_open(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "open", new=deny_result_open):
+            with self.assertRaisesRegex(
+                forward.ForwardContractError,
+                "forbidden until after",
+            ):
+                with mock.patch.object(forward, "datetime") as clock:
+                    clock.now.return_value = datetime(2026, 9, 30)
+                    forward.authorize_and_load_sealed_races_for_score(
+                        population,
+                        self.results,
+                        approval,
+                        self.frozen_hashes,
+                    )
+        self.assertEqual(list(self.root.glob("*.score_consumed.json")), [])
+
+    def test_authorized_result_read_is_single_use(self):
+        population = self._seal()
+        approval = self._approval_receipt(population)
+        self._authorize_and_load(population, approval)
+
+        original_open = Path.open
+
+        def deny_result_open(path, *args, **kwargs):
+            if path == self.results:
+                raise AssertionError("result reopened")
+            return original_open(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "open", new=deny_result_open):
+            with self.assertRaisesRegex(
+                forward.ForwardContractError,
+                "already been consumed",
+            ):
+                with mock.patch.object(forward, "datetime") as clock:
+                    clock.now.return_value = datetime(2026, 10, 1)
+                    forward.authorize_and_load_sealed_races_for_score(
+                        population,
+                        self.results,
+                        approval,
+                        self.frozen_hashes,
+                    )
 
     def test_population_approval_receipt_rejects_manifest_drift(self):
         population = self._seal()
@@ -310,20 +469,15 @@ class TestFrozenSportsbetBetfairForward(unittest.TestCase):
     def test_approved_results_must_exactly_equal_sealed_races(self):
         population = self._seal()
         approval = self._approval_receipt(population)
-        manifest, _ = forward.verify_population_approval_receipt(
-            population,
-            approval,
-            self.frozen_hashes,
-        )
         rows = json.loads(self.results.read_text(encoding="utf-8"))
         rows["race_number"] = 2
         self._write_results([rows])
 
         with self.assertRaisesRegex(forward.ForwardContractError, "does not exactly equal"):
-            forward.load_sealed_races(population, self.results, manifest)
+            self._authorize_and_load(population, approval)
 
     def test_score_is_forbidden_through_window_end(self):
-        for value in (date(2026, 8, 17), date(2026, 9, 30)):
+        for value in (date(2026, 8, 19), date(2026, 8, 20), date(2026, 9, 30)):
             with self.subTest(value=value):
                 with self.assertRaisesRegex(forward.ForwardContractError, "forbidden until after"):
                     forward.enforce_score_date(value)
@@ -358,25 +512,16 @@ class TestFrozenSportsbetBetfairForward(unittest.TestCase):
         self.assertEqual(first_members, second_members)
 
         approval = self._approval_receipt(first)
-        first_manifest, first_provenance = forward.verify_population_approval_receipt(
+        (
+            first_races,
+            first_results,
+            _,
+            first_provenance,
+            _,
+            _,
+        ) = self._authorize_and_load(
             first,
             approval,
-            self.frozen_hashes,
-        )
-        second_manifest, second_provenance = forward.verify_population_approval_receipt(
-            second,
-            approval,
-            self.frozen_hashes,
-        )
-        first_races, first_results = forward.load_sealed_races(
-            first,
-            self.results,
-            first_manifest,
-        )
-        second_races, second_results = forward.load_sealed_races(
-            second,
-            self.results,
-            second_manifest,
         )
         with mock.patch.object(
             forward.frozen,
@@ -388,8 +533,8 @@ class TestFrozenSportsbetBetfairForward(unittest.TestCase):
                 {**first_provenance, **first_results},
             )
         second_report = forward.score_forward(
-            second_races,
-            {**second_provenance, **second_results},
+            first_races,
+            {**first_provenance, **first_results},
         )
 
         self.assertEqual(
