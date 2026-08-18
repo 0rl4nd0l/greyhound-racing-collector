@@ -50,9 +50,13 @@ following before opening prediction controls:
 - `GET /operator-ui/api/v1/r3-capability` reports authorized and runtime
   configured at level 2.
 
-Any partial, mixed, stale, missing, hash-conflicting, post-jump, ambiguous, or
-contradictory evidence is an availability stop. Never reinterpret
-`METADATA_COVERAGE_INCOMPLETE` as a successful publication.
+Exclude every race with partial metadata. A mixed candidate batch is usable
+only when the refresh report itself is `SUCCESS`, its
+`current_index_metadata_selection` is `READY_WITH_EXCLUSIONS`, its counts and
+exclusions reconcile exactly with `selected_races`, and the published packet
+contains only `current_index_races`. Stale, missing, hash-conflicting,
+post-jump, ambiguous, or contradictory evidence is an availability stop. Never
+reinterpret `METADATA_COVERAGE_INCOMPLETE` as a successful publication.
 
 ## 3. Submit once
 

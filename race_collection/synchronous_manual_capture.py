@@ -691,8 +691,66 @@ def _normalize_current_index_rows(
     *,
     max_races: int,
 ) -> list[dict[str, Any]]:
+    from scripts.refresh_prejump_upcoming import (
+        current_index_metadata_selection,
+        stable_race_id,
+        stable_race_id_variants,
+    )
+
     selected = source.get("selected_races")
     selected_count = source.get("selected_count")
+    subset_fields = {
+        "current_index_races",
+        "current_index_race_count",
+        "current_index_metadata_selection",
+    }
+    if any(field in source for field in subset_fields):
+        if not all(field in source for field in subset_fields):
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_SOURCE_INVALID",
+                reason="current_index_metadata_selection_incomplete",
+            )
+        candidates = selected
+        candidate_count = selected_count
+        selection = source.get("current_index_metadata_selection")
+        selected = source.get("current_index_races")
+        selected_count = source.get("current_index_race_count")
+        coverage = source.get("sidecar_metadata_coverage")
+        if (
+            not isinstance(candidates, list)
+            or any(not isinstance(race, Mapping) for race in candidates)
+            or isinstance(candidate_count, bool)
+            or not isinstance(candidate_count, int)
+            or candidate_count != len(candidates)
+            or not isinstance(selected, list)
+            or any(not isinstance(race, Mapping) for race in selected)
+            or isinstance(selected_count, bool)
+            or not isinstance(selected_count, int)
+            or not isinstance(selection, Mapping)
+            or not isinstance(coverage, Mapping)
+        ):
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_SOURCE_INVALID",
+                reason="current_index_metadata_selection_invalid",
+            )
+        expected_races, expected_selection = current_index_metadata_selection(
+            candidates,
+            coverage,
+        )
+        if (
+            selected_count != len(selected)
+            or selected != expected_races
+            or dict(selection) != expected_selection
+            or expected_selection["status"] not in {
+                "READY",
+                "READY_WITH_EXCLUSIONS",
+                "NOT_REQUESTED_NO_SELECTED_RACES",
+            }
+        ):
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_SOURCE_INVALID",
+                reason="current_index_metadata_selection_invalid",
+            )
     if (
         not isinstance(selected, list)
         or isinstance(selected_count, bool)
@@ -706,7 +764,6 @@ def _normalize_current_index_rows(
             selected_count=selected_count,
             max_races=max_races,
         )
-    from scripts.refresh_prejump_upcoming import stable_race_id, stable_race_id_variants
     from utils.csv_metadata import canonical_thedogs_race_identity
 
     normalized: list[dict[str, Any]] = []

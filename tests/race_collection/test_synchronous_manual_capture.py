@@ -15,7 +15,10 @@ import pytest
 
 import race_collection.synchronous_manual_capture as capture
 from scripts import shadow_autopilot_daemon as daemon
-from scripts.refresh_prejump_upcoming import race_window_record
+from scripts.refresh_prejump_upcoming import (
+    current_index_metadata_selection,
+    race_window_record,
+)
 from race_collection.manual_prediction_collector_request import (
     ManualPredictionCollectorProtocol,
     ProtocolRejected,
@@ -553,6 +556,164 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
 
     assert rejected["status"] == "REJECTED"
     assert index_path.read_bytes() == original
+
+
+def test_current_race_index_publishes_explicit_safe_subset_from_mixed_candidates(
+    tmp_path: Path,
+):
+    evidence_root = tmp_path / "evidence"
+    state = evidence_root / "shadow_autopilot_daemon_runtime/odds_capture_state.json"
+    source = evidence_root / "run/odds_capture_refresh_report.json"
+    source.parent.mkdir(parents=True)
+    generated = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
+    safe_url = "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
+    safe_race = {
+        "date": "2026-07-19",
+        "jump_datetime": "2026-07-19T13:00:00+10:00",
+        "race_id": "Race 5 - GUNN - 2026-07-19",
+        "race_id_aliases": [
+            "Race 5 - GUNN - 2026-07-19",
+            "Race 5 - GUNNEDAH - 2026-07-19",
+        ],
+        "race_number": 5,
+        "race_time": "13:00",
+        "race_url": safe_url,
+        "venue": "GUNN",
+    }
+    incomplete_race = {
+        "date": "2026-07-19",
+        "jump_datetime": "2026-07-19T13:05:00+10:00",
+        "race_id": "Race 6 - GUNN - 2026-07-19",
+        "race_id_aliases": [
+            "Race 6 - GUNN - 2026-07-19",
+            "Race 6 - GUNNEDAH - 2026-07-19",
+        ],
+        "race_number": 6,
+        "race_time": "13:05",
+        "race_url": "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/6",
+        "venue": "GUNN",
+    }
+    coverage = _runner_coverage(evidence_root, safe_url, generated)
+    coverage["races"][0].update({
+        "race_id": safe_race["race_id"],
+        "safe_weather_present": True,
+        "safe_track_condition_present": True,
+        "safe_expert_form_present": True,
+        "safe_all_weather_track_expert_form_present": True,
+    })
+    coverage["races"].append({
+        "race_id": incomplete_race["race_id"],
+        "race_url": incomplete_race["race_url"],
+        "csv_path": None,
+        "safe_weather_present": False,
+        "safe_track_condition_present": False,
+        "safe_expert_form_present": False,
+        "safe_all_weather_track_expert_form_present": False,
+    })
+    current_index_races, selection = current_index_metadata_selection(
+        [safe_race, incomplete_race],
+        coverage,
+    )
+    source.write_bytes(canonical_bytes({
+        "status": "SUCCESS",
+        "generated_at": generated.isoformat(),
+        "sidecar_metadata_coverage": coverage,
+        "selected_count": 2,
+        "selected_races": [safe_race, incomplete_race],
+        "current_index_race_count": len(current_index_races),
+        "current_index_races": current_index_races,
+        "current_index_metadata_selection": selection,
+    }))
+
+    published = publish_current_race_index(
+        state_path=state,
+        evidence_root=evidence_root,
+        source_refresh_report_path=source,
+        run_id="mixed",
+    )
+
+    assert published["status"] == "PUBLISHED"
+    packet = json.loads(current_race_index_path(state).read_bytes())
+    assert packet["race_count"] == 1
+    assert [race["race_id"] for race in packet["races"]] == [safe_race["race_id"]]
+
+    tampered = json.loads(source.read_bytes())
+    tampered["current_index_races"] = [incomplete_race]
+    source.write_bytes(canonical_bytes(tampered))
+    rejected = publish_current_race_index(
+        state_path=state,
+        evidence_root=evidence_root,
+        source_refresh_report_path=source,
+        run_id="mixed-swapped-subset",
+    )
+    assert rejected["status"] == "REJECTED"
+    assert rejected["reason"] == "CURRENT_INDEX_SOURCE_INVALID"
+
+
+def test_current_race_index_rejects_contradictory_explicit_subset_report(
+    tmp_path: Path,
+):
+    evidence_root = tmp_path / "evidence"
+    state = evidence_root / "runtime/odds_capture_state.json"
+    source = evidence_root / "run/odds_capture_refresh_report.json"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(canonical_bytes({
+        "status": "SUCCESS",
+        "generated_at": "2026-07-19T12:55:00+10:00",
+        "selected_count": 1,
+        "selected_races": [{}],
+        "current_index_race_count": 1,
+        "current_index_races": [{}],
+        "current_index_metadata_selection": {
+            "schema_version": "current_index_metadata_selection_v1",
+            "status": "INCOMPLETE",
+            "candidate_race_count": 1,
+            "eligible_race_count": 0,
+            "excluded_race_count": 1,
+            "exclusions": [{}],
+        },
+    }))
+
+    rejected = publish_current_race_index(
+        state_path=state,
+        evidence_root=evidence_root,
+        source_refresh_report_path=source,
+        run_id="contradictory",
+    )
+
+    assert rejected["status"] == "REJECTED"
+    assert rejected["reason"] == "CURRENT_INDEX_SOURCE_INVALID"
+
+
+def test_current_race_index_rejects_partial_explicit_subset_contract(tmp_path: Path):
+    evidence_root = tmp_path / "evidence"
+    state = evidence_root / "runtime/odds_capture_state.json"
+    source = evidence_root / "run/odds_capture_refresh_report.json"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(canonical_bytes({
+        "status": "SUCCESS",
+        "generated_at": "2026-07-19T12:55:00+10:00",
+        "selected_count": 0,
+        "selected_races": [],
+        "current_index_metadata_selection": {
+            "schema_version": "current_index_metadata_selection_v1",
+            "status": "NOT_REQUESTED_NO_SELECTED_RACES",
+            "candidate_race_count": 0,
+            "eligible_race_count": 0,
+            "excluded_race_count": 0,
+            "exclusions": [],
+        },
+    }))
+
+    rejected = publish_current_race_index(
+        state_path=state,
+        evidence_root=evidence_root,
+        source_refresh_report_path=source,
+        run_id="partial-contract",
+    )
+
+    assert rejected["status"] == "REJECTED"
+    assert rejected["reason"] == "CURRENT_INDEX_SOURCE_INVALID"
 
 
 def test_current_race_index_rejects_stale_or_changed_source(tmp_path: Path):

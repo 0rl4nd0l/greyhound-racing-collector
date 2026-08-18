@@ -24,7 +24,10 @@ ROOT_STR = str(ROOT)
 sys.path = [path for path in sys.path if path != ROOT_STR]
 sys.path.insert(0, ROOT_STR)
 
-from utils.csv_metadata import load_safe_weather_track_metadata  # noqa: E402
+from utils.csv_metadata import (  # noqa: E402
+    canonical_thedogs_race_identity,
+    load_safe_weather_track_metadata,
+)
 from utils.expert_form_metadata import safe_expert_form_metadata_from_payload  # noqa: E402
 from utils.race_lifecycle import melbourne_now  # noqa: E402
 
@@ -593,6 +596,91 @@ def sidecar_metadata_coverage(
     }
 
 
+def current_index_metadata_selection(
+    selected_records: Sequence[Mapping[str, Any]],
+    metadata_coverage: Mapping[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Select only source-safe races without narrowing odds-capture candidates."""
+
+    coverage_rows = metadata_coverage.get("races")
+    if not isinstance(coverage_rows, list) or len(coverage_rows) != len(selected_records):
+        coverage_rows = []
+    eligible: list[dict[str, Any]] = []
+    exclusions: list[dict[str, Any]] = []
+    for index, selected in enumerate(selected_records):
+        row = coverage_rows[index] if index < len(coverage_rows) else None
+        selected_url = str(selected.get("race_url") or "").strip()
+        selected_ids = {
+            str(value)
+            for value in [
+                selected.get("race_id"),
+                *(selected.get("race_id_aliases") or []),
+            ]
+            if value
+        }
+        row_url = str(row.get("race_url") or "").strip() if isinstance(row, Mapping) else ""
+        row_id = str(row.get("race_id") or "").strip() if isinstance(row, Mapping) else ""
+        selected_identity = canonical_thedogs_race_identity(selected_url)
+        row_identity = canonical_thedogs_race_identity(row_url)
+        aligned = bool(
+            isinstance(row, Mapping)
+            and selected_identity is not None
+            and row_identity is not None
+            and selected_identity == row_identity
+            and row_id in selected_ids
+        )
+        safe_components = bool(
+            isinstance(row, Mapping)
+            and row.get("csv_path")
+            and row.get("safe_weather_present") is True
+            and row.get("safe_track_condition_present") is True
+            and row.get("safe_expert_form_present") is True
+            and row.get("safe_all_weather_track_expert_form_present") is True
+        )
+        if aligned and safe_components:
+            eligible.append(dict(selected))
+            continue
+        missing = []
+        if not aligned:
+            missing.append("metadata_alignment")
+        elif isinstance(row, Mapping):
+            if not row.get("csv_path"):
+                missing.append("accepted_csv")
+            if not row.get("safe_weather_present"):
+                missing.append("weather")
+            if not row.get("safe_track_condition_present"):
+                missing.append("track_condition")
+            if not row.get("safe_expert_form_present"):
+                missing.append("expert_form")
+        exclusions.append(
+            {
+                "race_id": selected.get("race_id"),
+                "race_url": selected_url or None,
+                "reason": "safe_metadata_incomplete",
+                "missing_safe_metadata": missing,
+            }
+        )
+
+    candidate_count = len(selected_records)
+    eligible_count = len(eligible)
+    if candidate_count == 0:
+        status = "NOT_REQUESTED_NO_SELECTED_RACES"
+    elif eligible_count == 0:
+        status = "INCOMPLETE"
+    elif exclusions:
+        status = "READY_WITH_EXCLUSIONS"
+    else:
+        status = "READY"
+    return eligible, {
+        "schema_version": "current_index_metadata_selection_v1",
+        "status": status,
+        "candidate_race_count": candidate_count,
+        "eligible_race_count": eligible_count,
+        "excluded_race_count": len(exclusions),
+        "exclusions": exclusions,
+    }
+
+
 def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
     upcoming_dir = Path(args.upcoming_dir)
     if not upcoming_dir.is_absolute():
@@ -638,6 +726,10 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
     artifact_counts = _artifact_counts(upcoming_dir)
     selected_records = list(selected_prejump_records(records, limit=int(args.limit)))
     metadata_coverage = sidecar_metadata_coverage(upcoming_dir, selected_records)
+    current_index_races, current_index_selection = current_index_metadata_selection(
+        selected_records,
+        metadata_coverage,
+    )
     report = {
         "status": "SUCCESS",
         "dry_run": bool(args.dry_run),
@@ -669,6 +761,9 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
         "selected_races": list(
             selected_records
         ),
+        "current_index_race_count": len(current_index_races),
+        "current_index_races": current_index_races,
+        "current_index_metadata_selection": current_index_selection,
         "downloads": downloads,
         **artifact_counts,
         "artifact_counts": artifact_counts,
@@ -682,8 +777,7 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
     }
     if (
         bool(getattr(args, "require_safe_metadata", False))
-        and metadata_coverage.get("status")
-        not in {"READY", "NOT_REQUESTED_NO_SELECTED_RACES"}
+        and current_index_selection.get("status") == "INCOMPLETE"
     ):
         report["status"] = "METADATA_COVERAGE_INCOMPLETE"
         report["reason"] = metadata_coverage.get("reason") or "safe_metadata_incomplete"
@@ -714,8 +808,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--require-safe-metadata",
         action="store_true",
         help=(
-            "Return a non-success status when any selected race lacks source-safe "
-            "weather, track_condition, or expert-form sidecar metadata."
+            "Exclude races lacking source-safe weather, track_condition, or "
+            "expert-form sidecar metadata from current-index eligibility; return "
+            "a non-success status when selected races exist but none is eligible."
         ),
     )
     parser.add_argument("--output")

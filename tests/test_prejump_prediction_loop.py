@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 from scripts import prejump_prediction_loop as loop
 from scripts.refresh_prejump_upcoming import (
+    current_index_metadata_selection,
     expand_excluded_race_ids,
     refresh_prejump_upcoming,
     refresh_timing_summary,
@@ -865,6 +866,69 @@ def test_sidecar_metadata_coverage_accepts_safe_weather_track_and_expert_form(tm
     assert coverage["safe_all_weather_track_expert_form_race_count"] == 1
 
 
+def test_current_index_metadata_selection_rejects_conflicting_sidecar_url():
+    selected = [{
+        "race_id": "Race 9 - SAL - 2026-06-17",
+        "race_id_aliases": ["Race 9 - SAL - 2026-06-17"],
+        "race_url": (
+            "https://www.thedogs.com.au/racing/sale/2026-06-17/9/test?trial=false"
+        ),
+    }]
+    coverage = {
+        "races": [{
+            "race_id": "Race 9 - SAL - 2026-06-17",
+            "race_url": (
+                "https://www.thedogs.com.au/racing/gunnedah/2026-06-17/9/test"
+            ),
+            "safe_all_weather_track_expert_form_present": True,
+        }]
+    }
+
+    eligible, selection = current_index_metadata_selection(selected, coverage)
+
+    assert eligible == []
+    assert selection["status"] == "INCOMPLETE"
+    assert selection["exclusions"][0]["missing_safe_metadata"] == [
+        "metadata_alignment"
+    ]
+
+
+def test_current_index_metadata_selection_requires_complete_consistent_identity():
+    race_url = "https://www.thedogs.com.au/racing/sale/2026-06-17/9/test"
+    selected = [{
+        "race_id": "Race 9 - SAL - 2026-06-17",
+        "race_id_aliases": ["Race 9 - SAL - 2026-06-17"],
+        "race_url": race_url,
+    }]
+    row = {
+        "race_id": "",
+        "race_url": race_url,
+        "csv_path": "/evidence/Race 9 - SAL - 2026-06-17.csv",
+        "safe_weather_present": True,
+        "safe_track_condition_present": True,
+        "safe_expert_form_present": True,
+        "safe_all_weather_track_expert_form_present": True,
+    }
+
+    eligible, selection = current_index_metadata_selection(
+        selected,
+        {"races": [row]},
+    )
+    assert eligible == []
+    assert selection["exclusions"][0]["missing_safe_metadata"] == [
+        "metadata_alignment"
+    ]
+
+    row["race_id"] = selected[0]["race_id"]
+    row["safe_weather_present"] = False
+    eligible, selection = current_index_metadata_selection(
+        selected,
+        {"races": [row]},
+    )
+    assert eligible == []
+    assert selection["exclusions"][0]["missing_safe_metadata"] == ["weather"]
+
+
 def test_refresh_prejump_upcoming_can_fail_closed_on_incomplete_safe_metadata(
     tmp_path,
     monkeypatch,
@@ -912,9 +976,86 @@ def test_refresh_prejump_upcoming_can_fail_closed_on_incomplete_safe_metadata(
 
     assert report["status"] == "METADATA_COVERAGE_INCOMPLETE"
     assert report["metadata_collection_status"] == "PARTIAL"
+    assert report["current_index_race_count"] == 0
+    assert report["current_index_races"] == []
+    assert report["current_index_metadata_selection"]["status"] == "INCOMPLETE"
     assert report["sidecar_metadata_coverage"]["safe_both_weather_track_race_count"] == 1
     assert report["sidecar_metadata_coverage"]["safe_expert_form_race_count"] == 0
     assert report["reason"] == "missing_safe_expert_form"
+
+
+def test_refresh_prejump_upcoming_exposes_only_safe_current_index_subset(
+    tmp_path,
+    monkeypatch,
+):
+    refresh_module = sys.modules[refresh_prejump_upcoming.__module__]
+    now = datetime(2026, 6, 17, 12, 30, tzinfo=ZoneInfo("Australia/Melbourne"))
+    monkeypatch.setattr(refresh_module, "melbourne_now", lambda: now)
+    safe_url = (
+        "https://www.thedogs.com.au/racing/sale/2026-06-17/9/test?trial=false"
+    )
+    incomplete_url = (
+        "https://www.thedogs.com.au/racing/wagga/2026-06-17/4/test?trial=false"
+    )
+
+    class FakeUpcomingRaceBrowser:
+        def get_upcoming_races(self, days_ahead):
+            return [
+                {
+                    "url": safe_url,
+                    "date": "2026-06-17",
+                    "race_time": "1:57 PM",
+                    "race_number": 9,
+                    "venue": "SAL",
+                },
+                {
+                    "url": incomplete_url,
+                    "date": "2026-06-17",
+                    "race_time": "2:00 PM",
+                    "race_number": 4,
+                    "venue": "WAG",
+                },
+            ]
+
+        def download_race_csv(self, url, *, race_info_hint=None):
+            if url == safe_url:
+                csv_path = tmp_path / "upcoming" / "Race 9 - SAL - 2026-06-17.csv"
+                _write_safe_collection_sidecar(csv_path)
+                return {"success": True, "filepath": str(csv_path)}
+            return {"success": False, "reason": "source_unavailable"}
+
+    monkeypatch.setitem(
+        sys.modules,
+        "upcoming_race_browser",
+        types.SimpleNamespace(UpcomingRaceBrowser=FakeUpcomingRaceBrowser),
+    )
+
+    report = refresh_prejump_upcoming(
+        Namespace(
+            upcoming_dir=str(tmp_path / "upcoming"),
+            days_ahead=0,
+            min_minutes=20,
+            max_minutes=160,
+            limit=16,
+            exclude_race_id=[],
+            exclude_race_ids_file=None,
+            dry_run=False,
+            require_safe_metadata=True,
+        )
+    )
+
+    assert report["status"] == "SUCCESS"
+    assert report["selected_count"] == 2
+    assert len(report["selected_races"]) == 2
+    assert report["current_index_race_count"] == 1
+    assert [row["race_url"] for row in report["current_index_races"]] == [safe_url]
+    selection = report["current_index_metadata_selection"]
+    assert selection["status"] == "READY_WITH_EXCLUSIONS"
+    assert selection["candidate_race_count"] == 2
+    assert selection["eligible_race_count"] == 1
+    assert selection["excluded_race_count"] == 1
+    assert selection["exclusions"][0]["race_url"] == incomplete_url
+    assert selection["exclusions"][0]["reason"] == "safe_metadata_incomplete"
 
 
 def test_prejump_loop_operator_action_surfaces_refresh_rerun_window(
