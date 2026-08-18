@@ -9300,7 +9300,9 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             return result
 
     try:
+        run_service_dir = output_dir / "systemd"
         service_info = write_service_files(
+            service_dir=run_service_dir,
             repo_path=ROOT,
             timeout_seconds=args.timeout_seconds,
             python_path=Path(sys.executable),
@@ -9315,13 +9317,11 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             else None,
             pause_path=lock_path.parent / "pause-heavy-scheduling",
         )
-        service_path = DEFAULT_SERVICE_DIR / SERVICE_NAME
-        timer_path = DEFAULT_SERVICE_DIR / TIMER_NAME
+        service_path = run_service_dir / SERVICE_NAME
+        timer_path = run_service_dir / TIMER_NAME
         write_text(output_dir / "daemon_design.md", daemon_design_markdown())
         write_json(output_dir / "lifecycle_diagram.json", lifecycle_diagram())
         write_text(output_dir / "service_install.md", install_markdown(service_info))
-        copy_if_exists(service_path, output_dir / "systemd" / SERVICE_NAME)
-        copy_if_exists(timer_path, output_dir / "systemd" / TIMER_NAME)
         write_json(output_dir / "output_manifest.json", output_manifest(output_dir))
 
         if args.enable_forward_official_result_observer:
