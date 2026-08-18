@@ -79,20 +79,23 @@ services, PRs, worktrees, or archived claim records.
 
 The inventory began with ten open PRs. PRs #2 and #3 were then closed because
 all their commits were patch-equivalent on master. The remaining eight retain
-unique patches or dependencies but are not merge-ready.
+unique patches or dependencies but are not merge-ready. Draft PR #144 now owns
+publication of this coordination ledger, making nine open PRs after the
+housekeeping and publication steps.
 
-| PR                                                                      | Head       | Classification                | Coordination action                                                            |
-| ----------------------------------------------------------------------- | ---------- | ----------------------------- | ------------------------------------------------------------------------------ |
-| [#123](https://github.com/0rl4nd0l/greyhound-racing-collector/pull/123) | `57f47471` | Useful, conflicting           | Retain; reimplement the small delta from fresh master if separately authorized |
-| [#75](https://github.com/0rl4nd0l/greyhound-racing-collector/pull/75)   | `0796fa0c` | Superseded                    | Retain for history; do not merge its older classifier over current master      |
-| [#54](https://github.com/0rl4nd0l/greyhound-racing-collector/pull/54)   | `078296b0` | Superseded                    | Retain pending exact archaeology; obsolete stacked runtime lane                |
-| [#53](https://github.com/0rl4nd0l/greyhound-racing-collector/pull/53)   | `2deb5aec` | Dependency-blocked            | Retain as a stale draft; respecify from current master if issue #50 survives   |
-| [#52](https://github.com/0rl4nd0l/greyhound-racing-collector/pull/52)   | `8698a399` | Useful                        | Retain; fresh review/reimplementation required before any merge                |
-| [#48](https://github.com/0rl4nd0l/greyhound-racing-collector/pull/48)   | `f776bfd1` | Superseded                    | Retain for archaeology; do not merge or activate                               |
-| [#47](https://github.com/0rl4nd0l/greyhound-racing-collector/pull/47)   | `0ae5937c` | Superseded                    | Retain for archaeology; current manual path has moved on                       |
-| [#15](https://github.com/0rl4nd0l/greyhound-racing-collector/pull/15)   | `ea7eb00a` | Orphaned                      | Retain; no current owner or current-baseline proof                             |
-| [#3](https://github.com/0rl4nd0l/greyhound-racing-collector/pull/3)     | `31bcdeb1` | Superseded, closed 2026-08-18 | Closed with a patch-equivalence reason; branch not deleted                     |
-| [#2](https://github.com/0rl4nd0l/greyhound-racing-collector/pull/2)     | `f6ed83df` | Superseded, closed 2026-08-18 | Closed with a patch-equivalence reason; branch not deleted                     |
+| PR                                                                      | Head        | Classification                | Coordination action                                                              |
+| ----------------------------------------------------------------------- | ----------- | ----------------------------- | -------------------------------------------------------------------------------- |
+| [#144](https://github.com/0rl4nd0l/greyhound-racing-collector/pull/144) | this branch | Useful, active coordination   | Review this documentation-only ledger; it changes no predictive or runtime state |
+| [#123](https://github.com/0rl4nd0l/greyhound-racing-collector/pull/123) | `57f47471`  | Useful, conflicting           | Retain; reimplement the small delta from fresh master if separately authorized   |
+| [#75](https://github.com/0rl4nd0l/greyhound-racing-collector/pull/75)   | `0796fa0c`  | Superseded                    | Retain for history; do not merge its older classifier over current master        |
+| [#54](https://github.com/0rl4nd0l/greyhound-racing-collector/pull/54)   | `078296b0`  | Superseded                    | Retain pending exact archaeology; obsolete stacked runtime lane                  |
+| [#53](https://github.com/0rl4nd0l/greyhound-racing-collector/pull/53)   | `2deb5aec`  | Dependency-blocked            | Retain as a stale draft; respecify from current master if issue #50 survives     |
+| [#52](https://github.com/0rl4nd0l/greyhound-racing-collector/pull/52)   | `8698a399`  | Useful                        | Retain; fresh review/reimplementation required before any merge                  |
+| [#48](https://github.com/0rl4nd0l/greyhound-racing-collector/pull/48)   | `f776bfd1`  | Superseded                    | Retain for archaeology; do not merge or activate                                 |
+| [#47](https://github.com/0rl4nd0l/greyhound-racing-collector/pull/47)   | `0ae5937c`  | Superseded                    | Retain for archaeology; current manual path has moved on                         |
+| [#15](https://github.com/0rl4nd0l/greyhound-racing-collector/pull/15)   | `ea7eb00a`  | Orphaned                      | Retain; no current owner or current-baseline proof                               |
+| [#3](https://github.com/0rl4nd0l/greyhound-racing-collector/pull/3)     | `31bcdeb1`  | Superseded, closed 2026-08-18 | Closed with a patch-equivalence reason; branch not deleted                       |
+| [#2](https://github.com/0rl4nd0l/greyhound-racing-collector/pull/2)     | `f6ed83df`  | Superseded, closed 2026-08-18 | Closed with a patch-equivalence reason; branch not deleted                       |
 
 ## Open GitHub issues
 
