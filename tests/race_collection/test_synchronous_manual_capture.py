@@ -600,6 +600,7 @@ def test_current_race_index_publishes_explicit_safe_subset_from_mixed_candidates
         "safe_track_condition_present": True,
         "safe_expert_form_present": True,
         "safe_all_weather_track_expert_form_present": True,
+        "runner_source_observed_at": generated.isoformat(),
     })
     coverage["races"].append({
         "race_id": incomplete_race["race_id"],
@@ -609,10 +610,12 @@ def test_current_race_index_publishes_explicit_safe_subset_from_mixed_candidates
         "safe_track_condition_present": False,
         "safe_expert_form_present": False,
         "safe_all_weather_track_expert_form_present": False,
+        "runner_source_observed_at": generated.isoformat(),
     })
     current_index_races, selection = current_index_metadata_selection(
         [safe_race, incomplete_race],
         coverage,
+        source_generated_at=generated,
     )
     source.write_bytes(canonical_bytes({
         "status": "SUCCESS",

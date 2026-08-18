@@ -736,6 +736,7 @@ def _normalize_current_index_rows(
         expected_races, expected_selection = current_index_metadata_selection(
             candidates,
             coverage,
+            source_generated_at=source.get("generated_at"),
         )
         if (
             selected_count != len(selected)
