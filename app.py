@@ -23,7 +23,9 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 import logging
 
-OPERATOR_UI_LOG_DIR = Path(os.environ.get("OPERATOR_UI_LOG_DIR", "logs"))
+from src.operator_ui.deployment import bound_operator_ui_log_dir
+
+OPERATOR_UI_LOG_DIR = bound_operator_ui_log_dir()
 
 # Force legacy ML v3 to use the lightweight stub by default to avoid archived import errors
 # This prevents attempts to import 'archive.ml_systems_old', which was relocated per ARCHIVE_MANIFEST.

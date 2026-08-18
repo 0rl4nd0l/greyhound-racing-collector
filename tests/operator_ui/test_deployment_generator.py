@@ -199,6 +199,7 @@ def load_generated_environment(monkeypatch, values):
         for line in (values["output_dir"] / "operator-ui-r3.env").read_text().splitlines()
         if line
     )
+    assert "OPERATOR_UI_LOG_DIR" not in generated
     for name, value in generated.items():
         monkeypatch.setenv(name, value)
     return generated
@@ -806,6 +807,10 @@ def test_generated_operator_logger_uses_operations_root_with_read_only_source(
             sys.executable,
             "-c",
             (
+                "from pathlib import Path; "
+                "from src.operator_ui import deployment; "
+                f"deployment._RUNTIME_SOURCE_ROOT=Path({str(values['source_root'])!r}); "
+                "deployment.bound_operator_ui_log_dir.cache_clear(); "
                 "import logger; "
                 "from ingestion import ingest_race_csv; "
                 "from utils import module_monitor; "

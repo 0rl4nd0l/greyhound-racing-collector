@@ -42,6 +42,9 @@ identity and semantic check succeeds. A missing, changed or invalid input fails
 closed before current publication.
 
 Browser requests and environment values cannot select paths or commands.
+Runtime log modules derive their fixed `operations_root/logs` directory from
+the retained, validated repository binding. The generated environment does not
+carry a log path, and a changed or conflicting binding fails before log setup.
 
 The default package is disabled. Omitting `--enable` writes
 `OPERATOR_UI_CONNECTED_MODE=0`, `OPERATOR_UI_LEVEL=1`, and

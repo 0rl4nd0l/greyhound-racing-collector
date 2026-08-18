@@ -1,8 +1,9 @@
-# One live manual prediction runbook
+# One manual On-demand Forecast runbook
 
-This runbook proves one research-only pre-jump prediction. It does not train,
+This runbook proves one research-only On-demand Forecast. It does not train,
 score, promote, calculate value, or authorize betting. Stop at the first
-strictly verified `PREDICTION_READY` result.
+strictly verified `PREDICTION_READY` result. Endpoint and artifact names retain
+their existing `prediction` identifiers where required by the API contract.
 
 ## 1. Verify the installed source
 

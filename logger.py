@@ -26,6 +26,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from src.operator_ui.deployment import bound_operator_ui_log_dir
+
 
 class SanitizingFormatter(logging.Formatter):
     """Formatter that strips Python traceback content from formatted output.
@@ -60,11 +62,7 @@ class EnhancedLogger:
     """Enhanced logging system with persistent storage and web access"""
 
     def __init__(self, log_dir=None):
-        self.log_dir = Path(
-            log_dir
-            if log_dir is not None
-            else os.environ.get("OPERATOR_UI_LOG_DIR", "./logs")
-        )
+        self.log_dir = Path(log_dir) if log_dir is not None else bound_operator_ui_log_dir()
         self.log_dir.mkdir(exist_ok=True)
 
         # Initialize log files

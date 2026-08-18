@@ -12,6 +12,7 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -58,6 +59,7 @@ _UNIT_BASENAMES = {
     "odds_timer": "shadow-autopilot-odds-capture.timer",
     "odds_service": "shadow-autopilot-odds-capture.service",
 }
+_RUNTIME_SOURCE_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _safe_existing(path: Path, *, directory: bool, executable: bool = False) -> Path:
@@ -222,6 +224,65 @@ def _strict_json(raw: bytes) -> Any:
         parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)),
         object_pairs_hook=exact,
     )
+
+
+@lru_cache(maxsize=1)
+def bound_operator_ui_log_dir() -> Path:
+    """Return the fixed runtime log directory from the generated binding."""
+    if os.environ.get("OPERATOR_UI_R3_PROFILE") != "repository-v1":
+        return Path("logs")
+    source = _safe_existing(_RUNTIME_SOURCE_ROOT, directory=True)
+    binding = _strict_json(
+        _retained_file_read(
+            source / "var/operator_ui/generated/repository-v1.binding.json"
+        )
+    )
+    expected = {
+        "schema_version", "profile_id", "generator", "deployment",
+        "profile_sha256", "artifacts", "roots", "live_evidence",
+    }
+    roots = binding.get("roots") if isinstance(binding, dict) else None
+    deployment = binding.get("deployment") if isinstance(binding, dict) else None
+    if (
+        not isinstance(binding, dict)
+        or set(binding) != expected
+        or binding.get("schema_version") != "operator_ui_repository_binding_v1"
+        or binding.get("profile_id") != "repository-v1"
+        or binding.get("generator") != {
+            "generator_id": "GHU-036-repository-v1-generator",
+            "schema_version": "operator_ui_repository_binding_generator_v1",
+            "version": "1",
+        }
+        or not isinstance(deployment, dict)
+        or set(deployment) != {"source_commit", "source_tree", "ui_version", "profile_id"}
+        or deployment.get("source_commit") != os.environ.get("OPERATOR_UI_DEPLOYED_COMMIT")
+        or deployment.get("source_tree") != os.environ.get("OPERATOR_UI_DEPLOYED_TREE")
+        or deployment.get("ui_version") != os.environ.get("OPERATOR_UI_DEPLOYED_VERSION")
+        or deployment.get("profile_id") != os.environ.get("OPERATOR_UI_DEPLOYED_PROFILE")
+        or not isinstance(roots, dict)
+        or set(roots) != {
+            "source_root", "pinned_python", "evidence_root", "producer_root",
+            "canonical_db", "operations_root",
+        }
+        or roots.get("source_root") != str(source)
+    ):
+        raise DeploymentRejected("generated runtime log binding is invalid")
+    profile = _retained_file_read(source / "configs/operator_ui/repository-v1.toml")
+    if binding.get("profile_sha256") != hashlib.sha256(profile).hexdigest():
+        raise DeploymentRejected("generated runtime log binding is invalid")
+    evidence = _safe_existing(Path(roots["evidence_root"]), directory=True)
+    producer = _safe_existing(Path(roots["producer_root"]), directory=True)
+    operations = _safe_existing(Path(roots["operations_root"]), directory=True)
+    database = _safe_existing(Path(roots["canonical_db"]), directory=False)
+    _separate((source, evidence, producer, operations))
+    if database == operations or database.is_relative_to(operations):
+        raise DeploymentRejected("generated runtime log binding is invalid")
+    log_dir = operations / "logs"
+    try:
+        log_dir.mkdir(mode=0o700, exist_ok=True)
+    except OSError as error:
+        raise DeploymentRejected("runtime log directory unavailable") from error
+    return _safe_existing(log_dir, directory=True)
 
 
 def _live_authority(path: Path) -> dict[str, Any]:
@@ -586,7 +647,6 @@ def generate_package(*, source_root: Path, pinned_python: Path, evidence_root: P
         f"OPERATOR_UI_R3_PROFILE={'repository-v1' if active else 'disabled'}",
         f"OPERATOR_UI_DEPLOYED_COMMIT={source_commit}", f"OPERATOR_UI_DEPLOYED_TREE={source_tree}",
         f"OPERATOR_UI_DEPLOYED_VERSION={ui_version}", f"OPERATOR_UI_DEPLOYED_PROFILE={profile_id}",
-        f"OPERATOR_UI_LOG_DIR={operations / 'logs'}",
         "ENABLE_SCRAPING_DEFAULT=0", "ENABLE_LIVE_SCRAPING=0", "ENABLE_RESULTS_SCRAPERS=0", "TGR_ENABLED=0", "PREDICTION_IMPORT_MODE=prediction_only", ""))
     service = "\n".join((
         "[Unit]", "Description=Greyhound Operator UI R3 (generated, private)", "After=network-online.target", "Wants=network-online.target", "",
