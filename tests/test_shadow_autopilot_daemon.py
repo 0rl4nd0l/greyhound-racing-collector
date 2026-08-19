@@ -1890,7 +1890,6 @@ def test_odds_capture_only_autopilot_command_is_narrow_and_append_only():
         odds_capture_max_minutes=60.0,
         odds_capture_refresh_limit=8,
         timeout_seconds=600,
-        state_path=Path("/runtime/odds_capture_state.json"),
         forward_corpus_root=Path("/evidence/forward-corpus"),
     )
 
@@ -1909,9 +1908,7 @@ def test_odds_capture_only_autopilot_command_is_narrow_and_append_only():
     assert command[command.index("--collector-lock-path") + 1] == (
         "/runtime/shared.lock"
     )
-    assert command[command.index("--current-race-index-state-path") + 1] == (
-        "/runtime/odds_capture_state.json"
-    )
+    assert "--current-race-index-state-path" not in command
     assert command[command.index("--forward-corpus-root") + 1] == (
         "/evidence/forward-corpus"
     )
@@ -2921,6 +2918,11 @@ def test_run_odds_capture_once_uses_lock_and_writes_compact_report(tmp_path, mon
         assert "--enable-autonomous-odds-capture" in command
         assert "--allow-auto-scrape-odds" in command
         assert "--require-safe-refresh-metadata" in command
+        # The parent daemon is the sole current-index publisher.  Passing its
+        # state path into the child publishes a new packet before the bounded
+        # odds-capture cycle and leaves the packet/report/state contract
+        # contradictory for the duration of every live run.
+        assert "--current-race-index-state-path" not in command
         assert command[command.index("--collector-lock-path") + 1] == str(lock_path)
         running_report = json.loads(
             (output_dir / "odds_capture_only_daemon_report.json").read_text(

@@ -1808,7 +1808,6 @@ def odds_capture_only_autopilot_command(
     odds_capture_max_minutes: float,
     odds_capture_refresh_limit: int,
     timeout_seconds: int,
-    state_path: Path | None = None,
     forward_corpus_root: Path | None = None,
     refresh_command_mode: str = "auto",
     require_safe_refresh_metadata: bool = True,
@@ -1853,8 +1852,6 @@ def odds_capture_only_autopilot_command(
     ]
     if require_safe_refresh_metadata:
         command.append("--require-safe-refresh-metadata")
-    if state_path is not None:
-        command.extend(["--current-race-index-state-path", str(state_path)])
     if forward_corpus_root is not None:
         command.extend(["--forward-corpus-root", str(forward_corpus_root)])
     return command
@@ -3682,7 +3679,6 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
             odds_capture_max_minutes=args.odds_capture_max_minutes,
             odds_capture_refresh_limit=args.odds_capture_refresh_limit,
             timeout_seconds=args.timeout_seconds,
-            state_path=args.state_path,
             forward_corpus_root=args.forward_corpus_root,
             refresh_command_mode=args.refresh_command_mode,
             require_safe_refresh_metadata=args.require_safe_refresh_metadata,
