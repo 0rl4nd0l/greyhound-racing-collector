@@ -65,15 +65,26 @@ def test_current_race_index_is_published_from_completed_refresh(
 ):
     evidence_root = tmp_path / "evidence"
     output_dir = evidence_root / "run"
+    output_dir.mkdir(parents=True)
     state_path = evidence_root / "runtime/odds_capture_state.json"
     source_path = output_dir / "odds_capture_refresh_report.json"
     observed = {}
+    lifecycle = {}
 
     def fake_publish(**kwargs):
         observed.update(kwargs)
         return {"status": "PUBLISHED", "race_count": 1}
 
+    def fake_lifecycle(**kwargs):
+        lifecycle.update(kwargs)
+        assert json.loads(
+            kwargs["publication_report_path"].read_text(encoding="utf-8")
+        ) == kwargs["publication"]
+
     monkeypatch.setattr(autopilot, "publish_current_race_index", fake_publish)
+    monkeypatch.setattr(
+        autopilot, "publish_current_race_index_lifecycle", fake_lifecycle
+    )
 
     result = autopilot.publish_current_race_index_after_refresh(
         state_path=state_path,
@@ -88,6 +99,12 @@ def test_current_race_index_is_published_from_completed_refresh(
         "evidence_root": evidence_root,
         "source_refresh_report_path": source_path,
         "run_id": "scheduled-run",
+    }
+    assert lifecycle == {
+        "state_path": state_path,
+        "evidence_root": evidence_root,
+        "publication_report_path": output_dir / "current_race_index_publish.json",
+        "publication": result,
     }
 
 

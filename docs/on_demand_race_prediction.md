@@ -29,6 +29,12 @@ replaces this fixed packet with at most 32 selected races and seals the source
 refresh-report path and SHA-256. Publication occurs immediately after that
 bounded refresh completes, before the slower multi-race odds-capture batch, so
 a later batch timeout cannot leave discovery dependent on an older index. The
+publisher also seals a run-local `current_race_index_publish.json` and then
+atomically advances the dedicated
+`manual_prediction_current_race_index.state.json` lifecycle. Discovery binds
+the packet to those completed-refresh artifacts; it does not require the
+separate odds-capture daemon state to claim that the slower batch has already
+finished.
 predictor validates the packet schema,
 canonical bytes, source path and hash, exact TheDogs identities, timezone-aware
 jump timestamps, uniqueness, row bound, and configured 1,200-second maximum

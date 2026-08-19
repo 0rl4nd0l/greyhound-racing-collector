@@ -45,8 +45,8 @@ CURRENT_RACE_INDEX_FILENAME = "manual_prediction_current_race_index.json"
 CURRENT_RACE_INDEX_PUBLICATION_FILENAME = (
     "manual_prediction_current_race_index.publication.json"
 )
-ODDS_CAPTURE_ONLY_STATE_FILENAME = "odds_capture_state.json"
-ODDS_CAPTURE_ONLY_REPORT_FILENAME = "odds_capture_only_daemon_report.json"
+CURRENT_RACE_INDEX_STATE_FILENAME = "manual_prediction_current_race_index.state.json"
+CURRENT_RACE_INDEX_PUBLISH_REPORT_FILENAME = "current_race_index_publish.json"
 MAX_CURRENT_INDEX_RACES = 32
 MAX_CURRENT_INDEX_BYTES = 2 * 1024 * 1024
 CANONICAL_LOCK_RELATIVE_PATH = Path(
@@ -1370,6 +1370,56 @@ def publish_current_race_index(
     return report
 
 
+def publish_current_race_index_lifecycle(
+    *,
+    state_path: Path,
+    evidence_root: Path,
+    publication_report_path: Path,
+    publication: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    """Commit the immutable refresh publication as the discoverable lifecycle."""
+
+    if (
+        publication.get("schema_version")
+        != "collector_current_race_index_publish_v2"
+        or publication.get("status") != "PUBLISHED"
+    ):
+        raise CaptureOneRejected("CURRENT_INDEX_REPORT_INVALID")
+    retained = _RetainedSafeFiles(evidence_root)
+    report_raw = retained.read(
+        publication_report_path,
+        missing_code="CURRENT_INDEX_REPORT_MISSING",
+    )
+    try:
+        report = json.loads(report_raw)
+    except json.JSONDecodeError as exc:
+        raise CaptureOneRejected("CURRENT_INDEX_REPORT_INVALID") from exc
+    if canonical_bytes(report) != report_raw or report != publication:
+        raise CaptureOneRejected("CURRENT_INDEX_REPORT_INVALID")
+    try:
+        report_locator = publication_report_path.absolute().relative_to(
+            evidence_root.absolute()
+        ).as_posix()
+    except ValueError as exc:
+        raise CaptureOneRejected("CURRENT_INDEX_REPORT_INVALID") from exc
+    lifecycle = {
+        "schema_version": "collector_current_race_index_state_v1",
+        "status": "PUBLISHED",
+        "updated_at": publication["source_generated_at"],
+        "run_id": publication["run_id"],
+        "packet_sha256": publication["packet_sha256"],
+        "publication_report_path": report_locator,
+        "publication_report_sha256": sha256_bytes(report_raw),
+    }
+    _atomic_replace_canonical(
+        current_race_index_path(state_path).parent / CURRENT_RACE_INDEX_STATE_FILENAME,
+        lifecycle,
+        evidence_root=evidence_root,
+        _pre_replace=retained.validate,
+    )
+    return lifecycle
+
+
 def _aware_datetime(value: object) -> datetime | None:
     try:
         parsed = datetime.fromisoformat(str(value))
@@ -1380,39 +1430,29 @@ def _aware_datetime(value: object) -> datetime | None:
     return parsed
 
 
-def _validate_current_odds_evidence(
+def _validate_current_index_lifecycle(
     *,
     state: Mapping[str, Any],
     report: Mapping[str, Any],
     packet: Mapping[str, Any],
-    publication: Mapping[str, Any],
     current_time: datetime,
     max_age_seconds: int,
     enforce_max_age: bool = True,
 ) -> None:
-    """Bind the producer's current state/report lifecycle to this publication."""
+    """Bind discovery to the completed refresh publication, not slower capture."""
 
     state_time = _aware_datetime(state.get("updated_at"))
-    report_time = _aware_datetime(report.get("generated_at"))
+    report_time = _aware_datetime(report.get("source_generated_at"))
     source_time = _aware_datetime(packet.get("source_generated_at"))
-    allowed = {
-        "ODDS_CAPTURE_ONLY_READY": {"READY", "READY_WITH_BLOCKED_ATTEMPTS"},
-        "ODDS_CAPTURE_ONLY_HANDLED_NO_WRITE": {"HANDLED_NO_WRITE"},
-    }
-    final_status = report.get("final_status")
     if (
-        set(publication).isdisjoint({"packet_sha256"})
-        or state_time is None
+        state_time is None
         or report_time is None
         or source_time is None
-        or final_status not in allowed
-        or report.get("status") not in allowed[final_status]
-        or state.get("final_status") != final_status
-        or state.get("status") != report.get("status")
-        or state.get("output_dir") != report.get("output_dir")
-        or state.get("autopilot_output_dir") != report.get("autopilot_output_dir")
+        or state.get("status") != "PUBLISHED"
+        or report.get("status") != "PUBLISHED"
         or state.get("run_id") != report.get("run_id")
         or report.get("run_id") != packet.get("run_id")
+        or state.get("packet_sha256") != report.get("packet_sha256")
         or state_time != report_time
         or any(
             (current_time - moment).total_seconds() < 0
@@ -1558,23 +1598,33 @@ def bounded_current_race_index(
                 or publication != expected_publication
             ):
                 raise CaptureOneRejected("CURRENT_INDEX_PUBLICATION_INVALID")
-            state_path = index_path.parent / ODDS_CAPTURE_ONLY_STATE_FILENAME
+            state_path = index_path.parent / CURRENT_RACE_INDEX_STATE_FILENAME
             state_raw = snapshot.read(state_path, missing_code="CURRENT_INDEX_REPORT_MISSING")
             state = json.loads(state_raw)
+            state_keys = {
+                "schema_version", "status", "updated_at", "run_id",
+                "packet_sha256", "publication_report_path",
+                "publication_report_sha256",
+            }
             if (
                 not isinstance(state, Mapping)
                 or state.get("schema_version")
-                != "shadow_autopilot_odds_capture_only_state_v1"
+                != "collector_current_race_index_state_v1"
+                or canonical_bytes(state) != state_raw
+                or set(state) != state_keys
                 or state.get("run_id") != packet["run_id"]
+                or state.get("packet_sha256") != publication["packet_sha256"]
             ):
                 raise CaptureOneRejected("CURRENT_INDEX_REPORT_INVALID")
-            output_dir = _evidence_locator_path(
-                state.get("output_dir"), evidence_root=evidence_root
+            report_path = _evidence_locator_path(
+                state.get("publication_report_path"), evidence_root=evidence_root
             )
             report_raw = snapshot.read(
-                output_dir / ODDS_CAPTURE_ONLY_REPORT_FILENAME,
+                report_path,
                 missing_code="CURRENT_INDEX_REPORT_MISSING",
             )
+            if sha256_bytes(report_raw) != state.get("publication_report_sha256"):
+                raise CaptureOneRejected("CURRENT_INDEX_REPORT_INVALID")
             report = json.loads(report_raw)
             expected_publish = {
                 "schema_version": "collector_current_race_index_publish_v2",
@@ -1594,18 +1644,17 @@ def bounded_current_race_index(
             }
             if (
                 not isinstance(report, Mapping)
+                or canonical_bytes(report) != report_raw
                 or report.get("schema_version")
-                != "shadow_autopilot_odds_capture_only_daemon_report_v1"
+                != "collector_current_race_index_publish_v2"
                 or report.get("run_id") != packet["run_id"]
-                or report.get("output_dir") != state.get("output_dir")
-                or report.get("current_race_index_publish") != expected_publish
+                or report != expected_publish
             ):
                 raise CaptureOneRejected("CURRENT_INDEX_REPORT_INVALID")
-            _validate_current_odds_evidence(
+            _validate_current_index_lifecycle(
                 state=state,
                 report=report,
                 packet=packet,
-                publication=publication,
                 current_time=current_time,
                 max_age_seconds=max_age_seconds,
                 enforce_max_age=not return_verified_view,
