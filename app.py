@@ -28004,6 +28004,12 @@ Examples:
     parser.add_argument("--debug", action="store_true", help="Enable Flask debug mode")
 
     parser.add_argument(
+        "--single-threaded",
+        action="store_true",
+        help="Serve requests on the main interpreter thread",
+    )
+
+    parser.add_argument(
         "--enable-profiling",
         action="store_true",
         help="Enable profiling for performance analysis (default: disabled for zero overhead)",
@@ -28111,7 +28117,12 @@ def main():
     print(f"🚀 Setting server port to {args.port}")
 
     # Run Flask app with configured options
-    app.run(host=host_arg, port=args.port, debug=args.debug)
+    app.run(
+        host=host_arg,
+        port=args.port,
+        debug=args.debug,
+        threaded=not args.single_threaded,
+    )
 
 
 if __name__ == "__main__":

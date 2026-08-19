@@ -779,7 +779,8 @@ def test_clean_exact_generated_serve_identity_reaches_exec(real_startup_tmp_path
         main(["serve", "--source-root", str(values["source_root"]),
               "--host", "127.0.0.1", "--port", "5055"])
     assert executed[0][1][1:] == [str(values["source_root"] / "app.py"),
-                                  "--host", "127.0.0.1", "--port", "5055"]
+                                  "--host", "127.0.0.1", "--port", "5055",
+                                  "--single-threaded"]
 
 
 def test_generated_operator_logger_uses_operations_root_with_read_only_source(
