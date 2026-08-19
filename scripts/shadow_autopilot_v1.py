@@ -42,7 +42,9 @@ from race_collection.manual_prediction_collector_request import (  # noqa: E402
     canonical_bytes,
 )
 from race_collection.synchronous_manual_capture import (  # noqa: E402
+    CURRENT_RACE_INDEX_PUBLISH_REPORT_FILENAME,
     publish_current_race_index,
+    publish_current_race_index_lifecycle,
 )
 from scripts.shadow_feature_audit_packet import feature_activation_gate_input_paths  # noqa: E402
 
@@ -6638,19 +6640,30 @@ def publish_current_race_index_after_refresh(
     """Publish the bounded index before the slower odds-capture batch begins."""
 
     if state_path is None:
-        return {
+        publication = {
             "schema_version": "collector_current_race_index_publish_v1",
             "status": "SKIPPED",
             "reason": "state_path_missing",
         }
-    return publish_current_race_index(
-        state_path=state_path,
-        evidence_root=evidence_root,
-        source_refresh_report_path=(
-            output_dir / "odds_capture_refresh_report.json"
-        ),
-        run_id=run_id,
-    )
+    else:
+        publication = publish_current_race_index(
+            state_path=state_path,
+            evidence_root=evidence_root,
+            source_refresh_report_path=(
+                output_dir / "odds_capture_refresh_report.json"
+            ),
+            run_id=run_id,
+        )
+    report_path = output_dir / CURRENT_RACE_INDEX_PUBLISH_REPORT_FILENAME
+    report_path.write_bytes(canonical_bytes(publication))
+    if state_path is not None and publication.get("status") == "PUBLISHED":
+        publish_current_race_index_lifecycle(
+            state_path=state_path,
+            evidence_root=evidence_root,
+            publication_report_path=report_path,
+            publication=publication,
+        )
+    return publication
 
 
 def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
@@ -6849,10 +6862,6 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         evidence_root=evidence_root,
         output_dir=output_dir,
         run_id=collector_run_id or run_id,
-    )
-    write_json(
-        output_dir / "current_race_index_publish.json",
-        current_race_index_publish,
     )
     if args.enable_autonomous_odds_capture:
         capture_current_time = (

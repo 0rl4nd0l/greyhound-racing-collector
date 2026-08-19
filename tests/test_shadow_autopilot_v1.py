@@ -65,13 +65,20 @@ def test_current_race_index_is_published_from_completed_refresh(
 ):
     evidence_root = tmp_path / "evidence"
     output_dir = evidence_root / "run"
+    output_dir.mkdir(parents=True)
     state_path = evidence_root / "runtime/odds_capture_state.json"
     source_path = output_dir / "odds_capture_refresh_report.json"
     observed = {}
-
     def fake_publish(**kwargs):
         observed.update(kwargs)
-        return {"status": "PUBLISHED", "race_count": 1}
+        return {
+            "schema_version": "collector_current_race_index_publish_v2",
+            "status": "PUBLISHED",
+            "source_generated_at": "2026-06-12T00:01:01+10:00",
+            "run_id": "scheduled-run",
+            "packet_sha256": "a" * 64,
+            "race_count": 1,
+        }
 
     monkeypatch.setattr(autopilot, "publish_current_race_index", fake_publish)
 
@@ -82,13 +89,24 @@ def test_current_race_index_is_published_from_completed_refresh(
         run_id="scheduled-run",
     )
 
-    assert result == {"status": "PUBLISHED", "race_count": 1}
+    assert result["status"] == "PUBLISHED"
+    assert result["race_count"] == 1
     assert observed == {
         "state_path": state_path,
         "evidence_root": evidence_root,
         "source_refresh_report_path": source_path,
         "run_id": "scheduled-run",
     }
+    report_path = output_dir / "current_race_index_publish.json"
+    assert report_path.read_bytes() == canonical_bytes(result)
+    lifecycle_path = state_path.parent / "manual_prediction_current_race_index.state.json"
+    lifecycle = json.loads(lifecycle_path.read_text(encoding="utf-8"))
+    assert lifecycle["run_id"] == "scheduled-run"
+    assert lifecycle["packet_sha256"] == "a" * 64
+    assert lifecycle["publication_report_path"] == "run/current_race_index_publish.json"
+    assert lifecycle["publication_report_sha256"] == sha256_bytes(
+        canonical_bytes(result)
+    )
 
 
 def test_step_command_records_timeout_and_logs_output(tmp_path, monkeypatch):

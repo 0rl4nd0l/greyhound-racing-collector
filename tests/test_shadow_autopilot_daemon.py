@@ -2921,6 +2921,9 @@ def test_run_odds_capture_once_uses_lock_and_writes_compact_report(tmp_path, mon
         assert "--enable-autonomous-odds-capture" in command
         assert "--allow-auto-scrape-odds" in command
         assert "--require-safe-refresh-metadata" in command
+        assert command[command.index("--current-race-index-state-path") + 1] == str(
+            state_path
+        )
         assert command[command.index("--collector-lock-path") + 1] == str(lock_path)
         running_report = json.loads(
             (output_dir / "odds_capture_only_daemon_report.json").read_text(

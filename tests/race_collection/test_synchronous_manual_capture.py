@@ -15,6 +15,7 @@ import pytest
 
 import race_collection.synchronous_manual_capture as capture
 from scripts import shadow_autopilot_daemon as daemon
+from scripts import shadow_autopilot_v1 as autopilot
 from scripts.refresh_prejump_upcoming import (
     current_index_metadata_selection,
     race_window_record,
@@ -77,24 +78,13 @@ def _write_publication_evidence(
     output_locator = "daemon_publication"
     output_dir = evidence_root / output_locator
     output_dir.mkdir(parents=True, exist_ok=True)
-    state.parent.mkdir(parents=True, exist_ok=True)
-    state.write_bytes(canonical_bytes({
-        "schema_version": "shadow_autopilot_odds_capture_only_state_v1",
-        "updated_at": published["source_generated_at"],
-        "run_id": published["run_id"], "output_dir": output_locator,
-        "autopilot_output_dir": output_locator,
-        "final_status": "ODDS_CAPTURE_ONLY_READY", "status": "READY",
-    }))
-    (output_dir / capture.ODDS_CAPTURE_ONLY_REPORT_FILENAME).write_bytes(
-        canonical_bytes({
-            "schema_version": "shadow_autopilot_odds_capture_only_daemon_report_v1",
-            "generated_at": published["source_generated_at"],
-            "run_id": published["run_id"],
-            "output_dir": output_locator,
-            "autopilot_output_dir": output_locator,
-            "final_status": "ODDS_CAPTURE_ONLY_READY", "status": "READY",
-            "current_race_index_publish": dict(published),
-        })
+    report_path = output_dir / capture.CURRENT_RACE_INDEX_PUBLISH_REPORT_FILENAME
+    report_path.write_bytes(canonical_bytes(dict(published)))
+    capture.publish_current_race_index_lifecycle(
+        state_path=state,
+        evidence_root=evidence_root,
+        publication_report_path=report_path,
+        publication=published,
     )
 
 NOW = datetime.fromisoformat("2026-07-30T16:55:00+10:00")
@@ -349,39 +339,23 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
         )
     )
 
-    published = publish_current_race_index(
-        state_path=state,
-        evidence_root=evidence_root,
-        source_refresh_report_path=source,
-        run_id="fixture",
+    published = autopilot.publish_current_race_index_after_refresh(
+        state_path=state, evidence_root=evidence_root,
+        output_dir=source.parent, run_id="fixture",
     )
     index_path = current_race_index_path(state)
     original = index_path.read_bytes()
-    _write_publication_evidence(evidence_root, state, published)
+    # The slower capture lifecycle is deliberately still on the preceding run.
+    # Current-index admission must depend on the completed refresh publication,
+    # so an in-progress or timed-out capture cannot invalidate discovery.
+    state.write_bytes(canonical_bytes({
+        "schema_version": "shadow_autopilot_odds_capture_only_state_v1",
+        "updated_at": (index_now - timedelta(minutes=1)).isoformat(),
+        "run_id": "preceding-capture-run",
+        "final_status": "ODDS_CAPTURE_ONLY_RUNNING",
+    }))
     producer_root = evidence_root.parent
     monkeypatch.setattr(capture, "ROOT", producer_root)
-    monkeypatch.setattr(daemon, "ROOT", producer_root)
-    producer_output_dir = evidence_root / "daemon_publication"
-    producer_output_locator = daemon.relpath(producer_output_dir)
-    daemon.write_json(state, {
-        "schema_version": "shadow_autopilot_odds_capture_only_state_v1",
-        "updated_at": published["source_generated_at"],
-        "run_id": published["run_id"], "output_dir": producer_output_locator,
-        "autopilot_output_dir": producer_output_locator,
-        "final_status": "ODDS_CAPTURE_ONLY_READY", "status": "READY",
-    })
-    daemon.write_json(
-        producer_output_dir / capture.ODDS_CAPTURE_ONLY_REPORT_FILENAME,
-        {
-            "schema_version": "shadow_autopilot_odds_capture_only_daemon_report_v1",
-            "generated_at": published["source_generated_at"],
-            "run_id": published["run_id"],
-            "output_dir": producer_output_locator,
-            "autopilot_output_dir": producer_output_locator,
-            "final_status": "ODDS_CAPTURE_ONLY_READY", "status": "READY",
-            "current_race_index_publish": dict(published),
-        },
-    )
 
     assert published["status"] == "PUBLISHED"
     assert json.loads(original)["source_refresh_report_sha256"] == sha256_bytes(
@@ -446,12 +420,10 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
     assert replaced.value.code == "CURRENT_INDEX_PATH_UNSAFE"
     assert replaced.value.details["reason"] == "path_replaced"
 
-    state_bytes = state.read_bytes()
+    lifecycle_path = index_path.parent / capture.CURRENT_RACE_INDEX_STATE_FILENAME
+    state_bytes = lifecycle_path.read_bytes()
     state_payload = json.loads(state_bytes)
-    report_path = (
-        producer_root / state_payload["output_dir"]
-        / capture.ODDS_CAPTURE_ONLY_REPORT_FILENAME
-    )
+    report_path = evidence_root / state_payload["publication_report_path"]
     report_bytes = report_path.read_bytes()
     report_payload = json.loads(report_bytes)
 
@@ -465,11 +437,10 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
     report_path.write_bytes(report_bytes)
 
     for target, field, value in (
-        (state, "updated_at", (index_now + timedelta(seconds=1)).isoformat()),
-        (state, "final_status", "SKIPPED_LOCK_HELD"),
-        (report_path, "generated_at", (index_now - timedelta(seconds=901)).isoformat()),
-        (report_path, "generated_at", (index_now + timedelta(seconds=1)).isoformat()),
-        (report_path, "final_status", "ODDS_CAPTURE_ONLY_FAILED"),
+        (lifecycle_path, "updated_at", (index_now + timedelta(seconds=1)).isoformat()),
+        (lifecycle_path, "status", "RUNNING"),
+        (report_path, "source_generated_at", (index_now - timedelta(seconds=901)).isoformat()),
+        (report_path, "source_generated_at", (index_now + timedelta(seconds=1)).isoformat()),
         (report_path, "status", "SKIPPED"),
     ):
         original_target = target.read_bytes()
@@ -496,25 +467,25 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
     report_path.write_bytes(report_bytes)
 
     for unsafe_output in ("../outside", str(evidence_root / "outside")):
-        unsafe_state = dict(state_payload, output_dir=unsafe_output)
-        state.write_bytes(canonical_bytes(unsafe_state))
+        unsafe_state = dict(state_payload, publication_report_path=unsafe_output)
+        lifecycle_path.write_bytes(canonical_bytes(unsafe_state))
         with pytest.raises(CaptureOneRejected) as unsafe:
             bounded_current_race_index(
                 current_time=index_now, timeout_seconds=1, index_path=index_path,
                 evidence_root=evidence_root, max_age_seconds=900,
             )
         assert unsafe.value.code == "CURRENT_INDEX_REPORT_INVALID"
-    state.write_bytes(state_bytes)
+    lifecycle_path.write_bytes(state_bytes)
 
     stale_state = dict(state_payload, run_id="stale-run")
-    state.write_bytes(canonical_bytes(stale_state))
+    lifecycle_path.write_bytes(canonical_bytes(stale_state))
     with pytest.raises(CaptureOneRejected) as stale_run:
         bounded_current_race_index(
             current_time=index_now, timeout_seconds=1, index_path=index_path,
             evidence_root=evidence_root, max_age_seconds=900,
         )
     assert stale_run.value.code == "CURRENT_INDEX_REPORT_INVALID"
-    state.write_bytes(state_bytes)
+    lifecycle_path.write_bytes(state_bytes)
 
     for field, value in (
         ("run_id", "wrong-run"),
@@ -524,9 +495,9 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
     ):
         changed_report = json.loads(report_bytes)
         if field == "publish_status":
-            changed_report["current_race_index_publish"]["status"] = value
+            changed_report["status"] = value
         elif field == "packet_sha256":
-            changed_report["current_race_index_publish"][field] = value
+            changed_report[field] = value
         else:
             changed_report[field] = value
         report_path.write_bytes(canonical_bytes(changed_report))
