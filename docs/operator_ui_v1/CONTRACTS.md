@@ -465,6 +465,17 @@ invoke the one fixed-argv collector-owned `capture-one` entrypoint described in
 sections 1 and 7; the background timer remains unchanged and is not manual
 request transport.
 
+The worker's descriptor-bound exact-byte launch identity covers the fixed
+Python executable and predictor script. CPython still resolves `pyvenv.cfg`,
+the standard library and installed packages from the deployment-pinned Python
+installation named by the generated binding. The binding selects but does not
+hash or request-time revalidate that import tree, and service filesystem
+controls do not hide host-side changes. Those dependencies are deliberately
+outside the descriptor-sealed exact-byte claim; this worker does not detect or
+stop an external same-owner mutation or a writable-root overlap in a
+misconfigured package. Any stronger interpreter-environment integrity claim is
+unsupported by this contract.
+
 ## 9. Release and proof gates
 
 R1 requires fixture-only values, both mandatory labels, no operational
