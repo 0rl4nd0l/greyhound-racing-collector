@@ -780,7 +780,23 @@ def test_clean_exact_generated_serve_identity_reaches_exec(real_startup_tmp_path
               "--host", "127.0.0.1", "--port", "5055"])
     assert executed[0][1][1:] == [str(values["source_root"] / "app.py"),
                                   "--host", "127.0.0.1", "--port", "5055",
-                                  "--single-threaded"]
+                                  "--operator-ui-current-index-worker"]
+
+
+def test_connected_server_is_explicitly_threaded():
+    calls = []
+
+    class Application:
+        def run(self, **kwargs):
+            calls.append(kwargs)
+
+    deployment_module.run_threaded_server(
+        Application(), host="127.0.0.1", port=5055, debug=False
+    )
+
+    assert calls == [{
+        "host": "127.0.0.1", "port": 5055, "debug": False, "threaded": True,
+    }]
 
 
 def test_generated_operator_logger_uses_operations_root_with_read_only_source(

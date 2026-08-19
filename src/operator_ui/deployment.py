@@ -21,6 +21,12 @@ class DeploymentRejected(RuntimeError):
     """The requested package cannot safely bind the repository deployment."""
 
 
+def run_threaded_server(application: Any, *, host: str, port: int, debug: bool) -> None:
+    """Serve connected UI requests concurrently after its worker is ready."""
+
+    application.run(host=host, port=port, debug=debug, threaded=True)
+
+
 _COMMIT = re.compile(r"^[0-9a-f]{40}$")
 _VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _SYSTEMD_SAFE_PATH = re.compile(r"^/[A-Za-z0-9_./+-]+$")
@@ -826,7 +832,7 @@ def main(argv: list[str] | None = None) -> int:
         _verify_source_identity(source, deployed_commit, deployed_tree)
         os.execv(sys.executable, [
             sys.executable, str(source / "app.py"), "--host", args.host,
-            "--port", str(args.port), "--single-threaded",
+            "--port", str(args.port), "--operator-ui-current-index-worker",
         ])
     values = vars(args); values.pop("command")
     result = generate_package(**values)

@@ -28004,9 +28004,9 @@ Examples:
     parser.add_argument("--debug", action="store_true", help="Enable Flask debug mode")
 
     parser.add_argument(
-        "--single-threaded",
+        "--operator-ui-current-index-worker",
         action="store_true",
-        help="Serve requests on the main interpreter thread",
+        help="Start the pre-request strict current-index reader worker",
     )
 
     parser.add_argument(
@@ -28116,13 +28116,17 @@ def main():
     CURRENT_SERVER_PORT = args.port
     print(f"🚀 Setting server port to {args.port}")
 
+    if args.operator_ui_current_index_worker:
+        from race_collection.synchronous_manual_capture import (
+            initialize_current_index_reader_worker,
+        )
+
+        initialize_current_index_reader_worker()
+
     # Run Flask app with configured options
-    app.run(
-        host=host_arg,
-        port=args.port,
-        debug=args.debug,
-        threaded=not args.single_threaded,
-    )
+    from src.operator_ui.deployment import run_threaded_server
+
+    run_threaded_server(app, host=host_arg, port=args.port, debug=args.debug)
 
 
 if __name__ == "__main__":
