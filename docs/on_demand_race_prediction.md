@@ -130,14 +130,16 @@ lock implementation.
 
 ## Feature cutoff
 
-For the residual model, the source database is opened with SQLite URI
-`mode=ro` and `PRAGMA query_only=ON`. Before feature materialization, the command
-creates a private SQLite database containing only uniquely identified history
-whose `race_date` is strictly before the target jump date. The exact target
-race, every same-day row, every future row, and ambiguous dates are excluded.
-Relevant runner history without a unique dated race identity is a hard blocker.
-The reviewed feature builder then reads only this sealed database. Its
-target-row and post-outcome provenance counters must remain zero.
+For the residual model, the canonical source database is copied as verified
+bytes without asking SQLite to open it. SQLite opens that private copy with URI
+`mode=ro&immutable=1` and `PRAGMA query_only=ON`. Before feature
+materialization, the command creates a second private SQLite database containing
+only uniquely identified history whose `race_date` is strictly before the
+target jump date. The exact target race, every same-day row, every future row,
+and ambiguous dates are excluded. Relevant runner history without a unique
+dated race identity is a hard blocker. The reviewed feature builder then reads
+only this sealed database. Its target-row and post-outcome provenance counters
+must remain zero.
 
 This deliberately excludes same-day history when the source schema cannot
 prove a precise pre-jump timestamp. It trades some feature coverage for a
@@ -183,6 +185,13 @@ stable blocker in `blockers`; the CLI exits 2.
 The bundle contains the request, canonical config, model schema, copied frozen
 artifacts when applicable, receipt/capture provenance, source form and sidecar,
 sealed history database and audit, sealed features, result, and a hash manifest.
+The history sealer never opens SQLite against the canonical database inside the
+read-only service namespace. It requires an empty WAL/rollback journal, copies
+the main image into private bundle workspace, and verifies stable source
+identity plus equal source/copy hashes before opening the copy. A concurrent or
+uncheckpointed writer fails closed as `HISTORY_DATABASE_BUSY` or
+`HISTORY_DATABASE_CHANGED`; operators should wait for a later qualified race,
+not make the canonical database writable to the UI.
 Replay is offline and rejects changed, missing, or added file bytes:
 
 ```bash
