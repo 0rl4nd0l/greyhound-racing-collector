@@ -72,7 +72,7 @@ def deployment_inputs(tmp_path: Path) -> dict[str, object]:
     (evidence / "shadow_autopilot_daemon_runtime").mkdir(mode=0o700)
     (evidence / "manual_prediction_collector_requests_v1").mkdir(mode=0o700)
     (evidence / "shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json").write_text("{}")
-    (producer / "artifacts/on_demand_prediction_runs").mkdir(parents=True, mode=0o700)
+    (operations / "artifacts/on_demand_prediction_runs").mkdir(parents=True, mode=0o700)
     python = tmp_path / "python"
     python.write_text("python")
     python.chmod(0o700)

@@ -714,7 +714,7 @@ def generate_package(*, source_root: Path, pinned_python: Path, evidence_root: P
     app_path = _safe_existing(source / "app.py", directory=False)
     index = _safe_existing(evidence / "shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json", directory=False)
     protocol = _safe_existing(evidence / "manual_prediction_collector_requests_v1", directory=True)
-    bundles = _safe_existing(producer / "artifacts/on_demand_prediction_runs", directory=True)
+    bundles = _safe_existing(operations / "artifacts/on_demand_prediction_runs", directory=True)
     artifact_paths = {name: _safe_existing(source / relative, directory=False) for name, relative in _ARTIFACTS.items()}
     _validate_secrets_file(secrets)
 
@@ -757,8 +757,9 @@ def generate_package(*, source_root: Path, pinned_python: Path, evidence_root: P
 
 Regenerate this package without `--enable`, stop/disable only
 `greyhound-operator-ui-r3.service`, and verify the existing UI remains available.
-Do not delete `{operations}`: it contains Operator UI audit/job evidence. Do not
-delete `{producer}` or `{evidence}`: prediction and collector evidence is retained.
+Do not delete `{operations}`: it contains Operator UI audit/job and prediction
+bundle evidence. Do not delete `{producer}` or `{evidence}`: producer and collector
+evidence is retained.
 Rollback changes the feature gate only; it does not edit installed/generated files
 by hand and does not alter the canonical database `{database}`.
 """

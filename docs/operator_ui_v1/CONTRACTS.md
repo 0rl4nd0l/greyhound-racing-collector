@@ -518,10 +518,13 @@ evidence deletion, and matching deployed commit/tree/unit/config hashes.
 The finite `repository-v1` composition is default-off. Its checked-in profile
 defines exact relative locators and the one fixed generated-binding location;
 the later repository-owned deployment generator must bind the deployed source,
-pinned regular Python, authoritative collector DB/evidence/current-index,
-producer bundle/protocol root, and separate writable Operator UI operations
-root. A missing, malformed, symlinked, permission-unsafe, overlapping, or
-incomplete binding/source fails startup. The application accepts no binding
+pinned regular Python, authoritative collector DB/evidence/current-index and
+protocol root, a read-only historical producer preservation root, and the
+separate writable Operator UI operations root containing the current private
+prediction-bundle root. Current bundle production and catalog reads never use
+the historical producer root. A missing, malformed, symlinked,
+permission-unsafe, overlapping, or incomplete binding/source fails startup.
+The application accepts no binding
 path or arbitrary path, root, executable, command, lock, time, or model
 location from environment, operator, API, or browser input.
 
