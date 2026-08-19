@@ -178,6 +178,24 @@ def planned_time(jump_utc: datetime, nominal_window: str) -> datetime:
     return jump_utc - timedelta(minutes=nominal_window_minutes(nominal_window))
 
 
+def validate_window_tolerances(
+    early_value: Any, late_value: Any
+) -> tuple[int, int]:
+    values = (
+        (early_value, DEFAULT_EARLY_TOLERANCE_SECONDS),
+        (late_value, DEFAULT_LATE_TOLERANCE_SECONDS),
+    )
+    if any(
+        not isinstance(value, int)
+        or isinstance(value, bool)
+        or value < 0
+        or value > maximum
+        for value, maximum in values
+    ):
+        raise CaptureError("window_tolerance_invalid")
+    return early_value, late_value
+
+
 def validate_due_window(
     *,
     now: datetime,
@@ -479,6 +497,19 @@ def _quote_for_runner(
 def normalize_api_snapshot(
     payload: Mapping[str, Any], source_runners: tuple[SourceRunner, ...]
 ) -> tuple[list[dict[str, Any]], dict[str, Any], str]:
+    runner_odds = payload.get("runner_odds")
+    if not isinstance(runner_odds, Mapping):
+        raise CaptureError("odds_api_runner_odds_missing")
+    expected_runner_ids = {runner.native_runner_id for runner in source_runners}
+    observed_runner_ids = set(runner_odds)
+    if (
+        any(
+            not isinstance(runner_id, str) or runner_id.strip() != runner_id
+            for runner_id in observed_runner_ids
+        )
+        or observed_runner_ids - expected_runner_ids
+    ):
+        raise CaptureError("odds_api_native_runner_set_mismatch")
     rows: list[dict[str, Any]] = []
     active_effective_boxes: list[int] = []
     provider_values: set[tuple[str, str, str]] = set()
@@ -731,6 +762,12 @@ def _validate_existing(
         "race_id": str(plan.get("race_id") or "").strip(),
         "odds_url": str(plan.get("odds_url") or "").strip(),
         "nominal_window": str(plan.get("nominal_window") or "").strip().upper(),
+        "early_tolerance_seconds": plan.get(
+            "early_tolerance_seconds", DEFAULT_EARLY_TOLERANCE_SECONDS
+        ),
+        "late_tolerance_seconds": plan.get(
+            "late_tolerance_seconds", DEFAULT_LATE_TOLERANCE_SECONDS
+        ),
         "raw_html_sha256": observed_raw_hash,
     }
     if any(receipt.get(key) != value for key, value in expected.items()):
@@ -859,12 +896,16 @@ def _validate_existing(
             planned_time(plan_jump, nominal_window)
         ):
             raise CaptureError("nominal_capture_timestamp_mismatch")
+        early_tolerance_seconds, late_tolerance_seconds = validate_window_tolerances(
+            receipt.get("early_tolerance_seconds"),
+            receipt.get("late_tolerance_seconds"),
+        )
         validate_due_window(
             now=capture_end,
             jump_utc=plan_jump,
             nominal_window=nominal_window,
-            early_tolerance_seconds=int(receipt.get("early_tolerance_seconds")),
-            late_tolerance_seconds=int(receipt.get("late_tolerance_seconds")),
+            early_tolerance_seconds=early_tolerance_seconds,
+            late_tolerance_seconds=late_tolerance_seconds,
         )
     except (CaptureError, KeyError, TypeError, ValueError, UnicodeError, json.JSONDecodeError) as exc:
         raise CaptureError("conflicting_snapshot") from exc
@@ -906,6 +947,10 @@ def capture_snapshot(
     expected_ids = {str(value).strip() for value in expected_values}
     if "" in expected_ids or len(expected_ids) != len(expected_values):
         raise CaptureError("expected_active_runner_ids_invalid")
+    early_tolerance_seconds, late_tolerance_seconds = validate_window_tolerances(
+        plan.get("early_tolerance_seconds", DEFAULT_EARLY_TOLERANCE_SECONDS),
+        plan.get("late_tolerance_seconds", DEFAULT_LATE_TOLERANCE_SECONDS),
+    )
     safe_output_dir = assert_output_dir_safe(output_dir, repo_root=repo_root)
     raw_path = safe_output_dir / "raw.html"
     receipt_path = safe_output_dir / "receipt.json"
@@ -917,12 +962,6 @@ def capture_snapshot(
     if existing is not None:
         return existing
     now = (current_time or clock()).astimezone(timezone.utc)
-    early_tolerance_seconds = int(
-        plan.get("early_tolerance_seconds", DEFAULT_EARLY_TOLERANCE_SECONDS)
-    )
-    late_tolerance_seconds = int(
-        plan.get("late_tolerance_seconds", DEFAULT_LATE_TOLERANCE_SECONDS)
-    )
     nominal_at = validate_due_window(
         now=now,
         jump_utc=jump_utc,
@@ -990,6 +1029,15 @@ def capture_snapshot(
         exact_url=api_url,
         content_type_prefix="application/json",
     )
+    if not (
+        meeting.request_end_utc <= race.request_start_utc
+        <= race.request_end_utc
+        <= odds.request_start_utc
+        <= odds.request_end_utc
+        <= api.request_start_utc
+        <= api.request_end_utc
+    ):
+        raise CaptureError("request_chain_time_order_invalid")
     try:
         api_payload = json.loads(api.body.decode("utf-8"))
     except (UnicodeError, json.JSONDecodeError) as exc:

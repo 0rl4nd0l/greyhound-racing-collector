@@ -29,6 +29,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.capture_thedogs_market_history import (
+    DEFAULT_EARLY_TOLERANCE_SECONDS,
+    DEFAULT_LATE_TOLERANCE_SECONDS,
     NOMINAL_WINDOWS,
     RECEIPT_SCHEMA_VERSIONS,
     SERVER_DATE_TOLERANCE_SECONDS,
@@ -322,6 +324,32 @@ def _audit_entry(
     )
     if request_end != api_request_end:
         raise AuditError("request_end_odds_api_end_mismatch")
+    meeting_end = parse_timestamp(
+        warm_meeting.get("request_end_utc"), field="warm_meeting_end"
+    )
+    if not isinstance(jump_source, Mapping):
+        raise AuditError("jump_source_receipt_missing")
+    jump_request_start = parse_timestamp(
+        jump_source.get("request_start_utc"), field="jump_source_start"
+    )
+    jump_request_end = parse_timestamp(
+        jump_source.get("request_end_utc"), field="jump_source_end"
+    )
+    odds_request_end = parse_timestamp(
+        odds_http.get("request_end_utc"), field="odds_page_end"
+    )
+    api_request_start = parse_timestamp(
+        api_http.get("request_start_utc"), field="odds_api_start"
+    )
+    if not (
+        meeting_end <= jump_request_start
+        <= jump_request_end
+        <= odds_request_start
+        <= odds_request_end
+        <= api_request_start
+        <= api_request_end
+    ):
+        raise AuditError("request_chain_time_order_invalid")
     _verify_api_url(str(api_http.get("requested_url") or ""), source_all_ids)
     try:
         api_payload = json.loads(api_body.decode("utf-8"))
@@ -380,9 +408,11 @@ def _audit_entry(
         not isinstance(early_tolerance, int)
         or isinstance(early_tolerance, bool)
         or early_tolerance < 0
+        or early_tolerance > DEFAULT_EARLY_TOLERANCE_SECONDS
         or not isinstance(late_tolerance, int)
         or isinstance(late_tolerance, bool)
         or late_tolerance < 0
+        or late_tolerance > DEFAULT_LATE_TOLERANCE_SECONDS
     ):
         raise AuditError("window_tolerance_invalid")
     if capture_end < nominal_capture - timedelta(seconds=early_tolerance):

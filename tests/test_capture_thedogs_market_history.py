@@ -330,6 +330,23 @@ def test_incomplete_active_field_is_rejected(tmp_path):
         capture(tmp_path, missing_runner="102")
 
 
+def test_unexpected_api_native_runner_is_rejected(tmp_path):
+    payload = json.loads(api_payload())
+    payload["runner_odds"]["999"] = [
+        {
+            "runner_id": 999,
+            "run_box": 8,
+            "price": 9.0,
+            "preferred_bookmaker_id": 63,
+            "bookmaker": {"id": 63, "code": "ladbrokes", "name": "Ladbrokes"},
+            "market": {"code": "fixed_win", "race_id": 9001},
+        }
+    ]
+
+    with pytest.raises(CaptureError, match="odds_api_native_runner_set_mismatch"):
+        capture(tmp_path, api_body=json.dumps(payload).encode())
+
+
 def test_native_id_expectation_mismatch_is_rejected(tmp_path):
     with pytest.raises(CaptureError, match="expected_native_runner_set_mismatch"):
         capture(
@@ -588,6 +605,30 @@ def test_missed_window_is_rejected_before_network(tmp_path):
             tmp_path / "capture" / "snapshot",
             session=session,
             current_time=JUMP - timedelta(minutes=118),
+            repo_root=tmp_path,
+        )
+
+    assert session.calls == []
+
+
+@pytest.mark.parametrize(
+    "plan_payload",
+    [
+        plan(early_tolerance_seconds=31),
+        plan(late_tolerance_seconds=91),
+        plan(early_tolerance_seconds=-1),
+        plan(late_tolerance_seconds=-1),
+    ],
+)
+def test_window_tolerance_cannot_weaken_prescribed_interval(tmp_path, plan_payload):
+    session = FakeSession()
+
+    with pytest.raises(CaptureError, match="window_tolerance_invalid"):
+        capture_snapshot(
+            plan_payload,
+            tmp_path / "capture" / "snapshot",
+            session=session,
+            current_time=JUMP - timedelta(minutes=120),
             repo_root=tmp_path,
         )
 

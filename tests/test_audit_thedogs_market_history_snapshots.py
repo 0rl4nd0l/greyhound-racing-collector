@@ -1,3 +1,4 @@
+import base64
 import json
 from datetime import datetime, timedelta, timezone
 from email.utils import format_datetime
@@ -262,6 +263,60 @@ def test_receipt_native_id_mismatch_is_rejected(tmp_path):
     report = audit_manifest(write_manifest(tmp_path, [entry]))
 
     assert "receipt_active_native_runner_set_mismatch" in report["snapshots"][0]["blockers"]
+
+
+def test_unexpected_api_native_runner_is_rejected(tmp_path):
+    entry = make_snapshot(tmp_path)
+    receipt_path = Path(entry["receipt_path"])
+
+    def add_unexpected_runner(receipt):
+        api_http = receipt["odds_api_http"]
+        payload = json.loads(base64.b64decode(api_http["body_base64"]))
+        payload["runner_odds"]["999"] = [
+            {
+                "runner_id": 999,
+                "run_box": 8,
+                "price": 9.0,
+                "bookmaker": {"id": 63, "code": "ladbrokes", "name": "Ladbrokes"},
+                "market": {"code": "fixed_win", "race_id": 9001},
+            }
+        ]
+        body = json.dumps(payload).encode()
+        api_http["body_base64"] = base64.b64encode(body).decode("ascii")
+        api_http["body_sha256"] = sha256_bytes(body)
+        api_http["body_bytes"] = len(body)
+
+    mutate_receipt(receipt_path, add_unexpected_runner)
+    report = audit_manifest(write_manifest(tmp_path, [entry]))
+
+    assert "odds_api_native_runner_set_mismatch" in report["snapshots"][0]["blockers"]
+
+
+def test_overlapping_warmed_request_chain_is_rejected(tmp_path):
+    entry = make_snapshot(tmp_path)
+    receipt_path = Path(entry["receipt_path"])
+
+    def overlap_meeting_and_race(receipt):
+        meeting_start = receipt["warm_meeting_http"]["request_start_utc"]
+        receipt["jump_source"]["request_start_utc"] = meeting_start
+
+    mutate_receipt(receipt_path, overlap_meeting_and_race)
+    report = audit_manifest(write_manifest(tmp_path, [entry]))
+
+    assert "request_chain_time_order_invalid" in report["snapshots"][0]["blockers"]
+
+
+def test_receipt_window_tolerance_cannot_exceed_prescribed_interval(tmp_path):
+    entry = make_snapshot(tmp_path)
+    receipt_path = Path(entry["receipt_path"])
+    mutate_receipt(
+        receipt_path,
+        lambda receipt: receipt.update({"late_tolerance_seconds": 91}),
+    )
+
+    report = audit_manifest(write_manifest(tmp_path, [entry]))
+
+    assert "window_tolerance_invalid" in report["snapshots"][0]["blockers"]
 
 
 def test_receipt_effective_box_projection_tamper_is_rejected(tmp_path):
