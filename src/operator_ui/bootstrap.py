@@ -299,8 +299,9 @@ def _build_r3_services(app: Flask, profile: str) -> R3Services:
     if layout is not None:
         paths=layout["paths"]; dirs=layout["dirs"]
     else:
-        paths={name:base/name for name in ("audit.sqlite3","canonical.sqlite3","jobs.sqlite3","current_index.json")}
         dirs={name:base/name for name in ("current_evidence","prediction_bundles","collector_requests","capture_evidence_a","capture_evidence_b")}
+        paths={name:base/name for name in ("audit.sqlite3","canonical.sqlite3","jobs.sqlite3")}
+        paths["current_index.json"]=dirs["current_evidence"]/"shadow_autopilot_daemon_runtime"/"manual_prediction_current_race_index.json"
     for name,path in paths.items():
         if name!="jobs.sqlite3":_regular(path)
         else:
@@ -330,7 +331,7 @@ def _build_r3_services(app: Flask, profile: str) -> R3Services:
     config=json.loads(config_path.read_text(encoding="utf-8"))
     if config.get("schema_version")!="on_demand_prediction_config_v1" or config.get("model")!=resolved_model:raise RuntimeError("fixed R3 config divergent")
     choice=ServerChoice(config_path,"manual-default",_sha(config_path),resolved_model,model_sha,manifest_sha,schema_sha,model_path,manifest_path,schema_path)
-    captures=(dirs["capture_evidence_a"],) if profile=="repository-v1" else (dirs["capture_evidence_a"],dirs["capture_evidence_b"])
+    captures=(dirs["current_evidence"],) if profile=="repository-v1" else (dirs["current_evidence"],dirs["capture_evidence_a"],dirs["capture_evidence_b"])
     worker=WorkerConfig(layout["pinned_python"] if layout is not None else Path(sys.executable),product_root,{"latest-research":choice},paths["canonical.sqlite3"],dirs["prediction_bundles"],captures,dirs["collector_requests"],paths["current_index.json"],dirs["current_evidence"],1.0,45.0,90.0,2.0)
     store=JobStore(paths["jobs.sqlite3"],separate_from=(paths["audit.sqlite3"],paths["canonical.sqlite3"]))
 

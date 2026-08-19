@@ -40,6 +40,9 @@ class WorkerConfig:
     _runtime:tuple[tuple[Path,tuple[int,int],str],...]=field(init=False,repr=False,compare=False)
     def __post_init__(self):
         if not self.capture_evidence_roots or not self.choices: raise ValueError("worker allowlists must be non-empty")
+        expected_index=self.capture_evidence_roots[0]/"shadow_autopilot_daemon_runtime"/"manual_prediction_current_race_index.json"
+        if self.current_index_path.absolute()!=expected_index.absolute(): raise ValueError("current index binding disagrees with evidence root")
+        if self.current_index_evidence_root.absolute()!=self.capture_evidence_roots[0].absolute(): raise ValueError("current index evidence root disagrees with capture root")
         for v in (self.current_index_timeout_seconds,self.fetch_timeout_seconds,self.process_timeout_seconds,self.cancellation_grace_seconds):
             if not isinstance(v,(int,float)) or isinstance(v,bool) or v<=0: raise ValueError("worker timeouts must be positive")
         executable=self.python_executable.resolve(strict=True); script=(self.repository_root/"scripts/predict_race_now.py").absolute()

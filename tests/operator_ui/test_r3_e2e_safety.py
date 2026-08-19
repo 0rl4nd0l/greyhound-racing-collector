@@ -96,7 +96,9 @@ def test_one_authenticated_submission_reaches_real_worker_once_without_false_rea
         path.write_bytes(b"ghu-035c1")
         files.append(path)
     choice = ServerChoice(files[0], "manual-default", DIGEST, "market_form_residual_v1", DIGEST, DIGEST, DIGEST, *files[1:])
-    config = WorkerConfig(Path("/usr/bin/python3"), ROOT, {"latest-research": choice}, tmp_path / "canonical.db", tmp_path / "output", (tmp_path / "evidence-a",), tmp_path / "requests", tmp_path / "index.json", tmp_path / "evidence", 1, 45.0, 90.0, 2)
+    evidence = tmp_path / "evidence-a"
+    index = evidence / "shadow_autopilot_daemon_runtime" / "manual_prediction_current_race_index.json"
+    config = WorkerConfig(Path("/usr/bin/python3"), ROOT, {"latest-research": choice}, tmp_path / "canonical.db", tmp_path / "output", (evidence,), tmp_path / "requests", index, evidence, 1, 45.0, 90.0, 2)
 
     app = Flask(__name__)
     app.config.update(TESTING=True, OPERATOR_UI_CONNECTED_MODE=True, OPERATOR_UI_SECRET_KEY="s" * 48,

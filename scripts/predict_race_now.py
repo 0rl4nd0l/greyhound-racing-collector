@@ -918,6 +918,7 @@ def _run_prediction(
     )
     if current_time.tzinfo is None or current_time.utcoffset() is None:
         raise PredictionBlocked("CURRENT_TIME_TIMEZONE_MISSING")
+    job_id = _job_id(getattr(args, "job_id", None))
     model = resolve_model(args.model)
     config, config_sha, config_raw = load_config(Path(args.config), model)
     from race_collection.synchronous_manual_capture import (
@@ -934,10 +935,10 @@ def _run_prediction(
     )
     primary_evidence_root = evidence_roots[0]
     current_index_path = (
-        DEFAULT_CAPTURE_EVIDENCE_ROOTS[0]
-        / "shadow_autopilot_daemon_runtime"
-        / "manual_prediction_current_race_index.json"
-    )
+        primary_evidence_root
+        if job_id is not None
+        else DEFAULT_CAPTURE_EVIDENCE_ROOTS[0]
+    ) / "shadow_autopilot_daemon_runtime" / "manual_prediction_current_race_index.json"
     discovery_started = dependencies.monotonic()
     try:
         races = dependencies.schedule(
@@ -991,7 +992,7 @@ def _run_prediction(
     state.update(
         bundle=bundle,
         prediction_id=str(uuid.uuid4()),
-        job_id=_job_id(getattr(args, "job_id", None)),
+        job_id=job_id,
         model=model,
         config_sha=config_sha,
         race=race,
