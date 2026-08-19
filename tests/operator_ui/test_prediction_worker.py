@@ -1,5 +1,5 @@
 from __future__ import annotations
-import hashlib,io,json,sqlite3,subprocess,threading,time
+import hashlib,io,json,os,sqlite3,subprocess,sys,threading,time,venv
 from dataclasses import replace
 from datetime import datetime,timezone
 from pathlib import Path
@@ -62,12 +62,25 @@ def test_launch_uses_only_retained_runtime_descriptors(tmp_path):
     cfg,store,job=setup(tmp_path); calls=[]
     def popen(argv,**kwargs):
         calls.append((argv,kwargs))
-        assert argv[0].startswith("/proc/self/fd/") and argv[1].startswith("/proc/self/fd/")
-        assert kwargs["executable"]==argv[0]
-        assert tuple(sorted(kwargs["pass_fds"]))==tuple(sorted((int(argv[0].rsplit("/",1)[1]),int(argv[1].rsplit("/",1)[1]))))
+        assert argv[0]==str(cfg.pinned_python) and argv[1].startswith("/proc/self/fd/")
+        assert kwargs["executable"].startswith("/proc/self/fd/")
+        assert tuple(sorted(kwargs["pass_fds"]))==tuple(sorted((int(kwargs["executable"].rsplit("/",1)[1]),int(argv[1].rsplit("/",1)[1]))))
         return Process(ready(job))
     assert run_once(store,job.job_id,cfg,now=lambda:NOW,confirm_audit=CONFIRM,popen=popen,reader=lambda **_:view()).phase is Phase.PRODUCER_COMPLETED
     assert len(calls)==1
+
+def test_descriptor_backed_python_preserves_venv_prefix_via_fixed_argv0(tmp_path):
+    runtime=tmp_path/"runtime"; venv.EnvBuilder(with_pip=False,symlinks=False).create(runtime)
+    python=runtime/("Scripts/python.exe" if sys.platform=="win32" else "bin/python")
+    def launch(argv0):
+        fd=os.open(python,os.O_RDONLY|os.O_CLOEXEC|os.O_NOFOLLOW)
+        descriptor=f"/proc/self/fd/{fd}"
+        try:
+            return subprocess.run((argv0(descriptor),"-c","import encodings,json,sys;print(json.dumps({'prefix':sys.prefix}))"),executable=descriptor,pass_fds=(fd,),stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=10,check=False)
+        finally:os.close(fd)
+    old=launch(lambda descriptor:descriptor); repaired=launch(lambda _descriptor:str(python))
+    assert repaired.returncode==0 and Path(json.loads(repaired.stdout)["prefix"]).resolve()==runtime.resolve()
+    assert old.returncode!=0 or Path(json.loads(old.stdout)["prefix"]).resolve()!=runtime.resolve()
 
 @pytest.mark.parametrize("races,reason",[([],"RACE_ID_MISSING_OR_AMBIGUOUS"),([{"race_id":RACE_ID,"jump_datetime":"bad","runner_set_sha256":H}],"RACE_JUMP_CHANGED"),([{"race_id":RACE_ID,"jump_datetime":"2026-08-01T01:00:00+00:00","runner_set_sha256":"0"*64}],"RUNNER_SET_CHANGED")])
 def test_revalidation_missing_changed(tmp_path,races,reason):

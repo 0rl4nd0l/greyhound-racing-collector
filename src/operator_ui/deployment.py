@@ -701,6 +701,8 @@ def generate_package(*, source_root: Path, pinned_python: Path, evidence_root: P
     if stat.S_IMODE(secrets_info.st_mode) != 0o600:
         raise DeploymentRejected("secrets file must have exact mode 0600")
     _separate((source, evidence, producer, operations, output))
+    if python == operations or operations in python.parents:
+        raise DeploymentRejected("pinned Python must be separate from the writable operations root")
     if any(database == root or root in database.parents for root in (source, evidence, producer, operations, output)):
         raise DeploymentRejected("canonical database must be separate from deployment roots")
     if secrets.samefile(database):

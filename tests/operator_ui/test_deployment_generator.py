@@ -424,6 +424,21 @@ def test_generator_rejects_unsafe_missing_or_overlapping_inputs_without_partial_
     assert not (values["source_root"] / "var/operator_ui/generated/repository-v1.binding.json").exists()
 
 
+def test_generator_rejects_pinned_python_inside_writable_operations_root(tmp_path, monkeypatch):
+    values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
+    python = values["operations_root"] / "python"
+    python.write_text("python")
+    python.chmod(0o700)
+    values["pinned_python"] = python
+
+    with pytest.raises(DeploymentRejected, match="separate from the writable operations root"):
+        generate_package(**values)
+
+    assert not (values["output_dir"] / "greyhound-operator-ui-r3.service").exists()
+    assert not (values["source_root"] / "var/operator_ui/generated/repository-v1.binding.json").exists()
+
+
 @pytest.mark.parametrize(
     "root_name",
     ["source_root", "evidence_root", "producer_root", "operations_root", "output_dir"],
