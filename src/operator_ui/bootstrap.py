@@ -183,7 +183,7 @@ def _repository_layout()->dict[str,Any]:
     operations=roots["operations_root"].resolve()
     if any(operations==root or operations.is_relative_to(root) or root.is_relative_to(operations) for root in read_roots) or roots["canonical_db"].resolve().is_relative_to(operations):raise RuntimeError("fixed R3 paths overlap")
     paths={"audit.sqlite3":operations/locators["audit_store"],"jobs.sqlite3":operations/locators["job_store"],"canonical.sqlite3":roots["canonical_db"],"current_index.json":roots["evidence_root"]/locators["current_index"]}
-    dirs={"current_evidence":roots["evidence_root"],"prediction_bundles":roots["producer_root"]/locators["prediction_bundles"],"collector_requests":roots["evidence_root"]/locators["collector_protocol"],"capture_evidence_a":roots["evidence_root"]}
+    dirs={"current_evidence":roots["evidence_root"],"prediction_bundles":operations/locators["prediction_bundles"],"collector_requests":roots["evidence_root"]/locators["collector_protocol"],"capture_evidence_a":roots["evidence_root"]}
     artifacts={"script":roots["source_root"]/locators["prediction_script"],"config":roots["source_root"]/locators["prediction_config"],"model":roots["source_root"]/locators["model_artifact"],"manifest":roots["source_root"]/locators["model_manifest"],"schema":roots["source_root"]/locators["model_schema"]}
     if roots["source_root"]!=_REPOSITORY_ROOT:raise RuntimeError("generated repository-v1 source identity mismatch")
     _regular(paths["current_index.json"])

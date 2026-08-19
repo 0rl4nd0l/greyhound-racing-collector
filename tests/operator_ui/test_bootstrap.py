@@ -122,8 +122,8 @@ def repository_binding_fixture(tmp_path,monkeypatch):
     copies={profile_source:repo/"configs/operator_ui/repository-v1.toml",source_root/"configs/prediction/manual-default.json":repo/"configs/prediction/manual-default.json",source_root/"scripts/predict_race_now.py":repo/"scripts/predict_race_now.py",model.model_path:repo/model.model_path.relative_to(source_root),model.manifest_path:repo/model.manifest_path.relative_to(source_root),model.schema_path:repo/model.schema_path.relative_to(source_root)}
     for source,target in copies.items():target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,target)
     evidence=tmp_path/"authoritative-evidence"; producer=tmp_path/"producer"; operations=tmp_path/"operator-ui-operations"
-    (evidence/"shadow_autopilot_daemon_runtime").mkdir(parents=True);(evidence/"manual_prediction_collector_requests_v1").mkdir();(producer/"artifacts/on_demand_prediction_runs").mkdir(parents=True);operations.mkdir()
-    for directory in (repo,evidence,producer,operations,evidence/"manual_prediction_collector_requests_v1",producer/"artifacts/on_demand_prediction_runs"):directory.chmod(0o700)
+    (evidence/"shadow_autopilot_daemon_runtime").mkdir(parents=True);(evidence/"manual_prediction_collector_requests_v1").mkdir();producer.mkdir();operations.mkdir();(operations/"artifacts/on_demand_prediction_runs").mkdir(parents=True)
+    for directory in (repo,evidence,producer,operations,evidence/"manual_prediction_collector_requests_v1",operations/"artifacts/on_demand_prediction_runs"):directory.chmod(0o700)
     (evidence/"shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json").write_bytes(b"{}")
     python=tmp_path/"pinned-python";python.write_bytes(b"runtime");python.chmod(0o700)
     canonical=tmp_path/"canonical.sqlite3";canonical.write_bytes(b"canonical-read-only");canonical.chmod(0o400)
@@ -167,15 +167,15 @@ def repository_binding_fixture(tmp_path,monkeypatch):
 
 
 def test_repository_profile_binds_authoritative_sources_and_separate_operations_without_canonical_write(tmp_path,monkeypatch):
-    repo,evidence,producer,operations,canonical=repository_binding_fixture(tmp_path,monkeypatch);before=canonical.read_bytes()
+    repo,evidence,producer,operations,canonical=repository_binding_fixture(tmp_path,monkeypatch);before=canonical.read_bytes();legacy=(producer/"legacy-producer-evidence");legacy.write_bytes(b"preserve");legacy_before=legacy.read_bytes()
     app=Flask(__name__);app.config.update(TESTING=True,OPERATOR_UI_CONNECTED_MODE=True,OPERATOR_UI_SECRET_KEY="repository-secret-"+"x"*40,OPERATOR_UI_USERNAME="operator",OPERATOR_UI_PASSWORD_HASH=generate_password_hash("correct horse"),OPERATOR_UI_LEVEL=2,OPERATOR_UI_DEPLOYED_COMMIT="21e7b02e60e82da9c4dbbb796ea435bc120e9862",OPERATOR_UI_DEPLOYED_TREE="2cfc75cd8a2af1a9e5da4986c969cb668b93af62",OPERATOR_UI_DEPLOYED_VERSION="operator-ui-v1",OPERATOR_UI_DEPLOYED_PROFILE="repository-v1")
     app.config[R3_PROFILE_KEY]="repository-v1";assert bootstrap_module.configure_r3_startup(app) is True
     assert Path(app.config["OPERATOR_UI_AUDIT_DB_PATH"]).parent==operations and Path(app.config["DATABASE_PATH"])==canonical
     install_connected_mode(app);assert bind_configured_r3(app) is True
     worker=app.extensions["operator_ui_r3_services"].launch_once._worker
-    assert worker.repository_root==repo and worker.current_index_evidence_root==evidence and worker.output_root==producer/"artifacts/on_demand_prediction_runs"
+    assert worker.repository_root==repo and worker.current_index_evidence_root==evidence and worker.output_root==operations/"artifacts/on_demand_prediction_runs"
     assert worker.canonical_db==canonical and worker.collector_request_root==evidence/"manual_prediction_collector_requests_v1"
-    assert canonical.read_bytes()==before and not (operations/"canonical.sqlite3").exists()
+    assert canonical.read_bytes()==before and legacy.read_bytes()==legacy_before and not (operations/"canonical.sqlite3").exists()
     live=app.config[bootstrap_module.CONFIG_KEY]
     source_limits={key:config.max_bytes for key,config in live._reader._sources.items()}
     assert source_limits=={

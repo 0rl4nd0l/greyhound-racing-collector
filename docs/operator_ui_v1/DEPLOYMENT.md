@@ -15,12 +15,15 @@ copy. Regenerate it from the exact reviewed source instead.
 The generator requires exact source commit/tree/version/profile identities; a
 pinned regular owner-executable Python; the checked-in repository-v1 profile
 and five fixed prediction artifacts; the authoritative canonical database,
-evidence/current-index and collector-protocol roots; the authoritative
-prediction-bundle producer root; and a separate writable Operator UI operations
-root. Missing, symlinked, unsafe, overlapping, malformed, or public inputs fail
-before package output is written. The service namespace mounts source,
-collector evidence, producer evidence, and the canonical database read-only;
-only the separate operations root is writable.
+evidence/current-index and collector-protocol root; the historical producer
+evidence root retained solely as an explicit read-only preservation boundary;
+and a separate writable Operator UI operations root containing the current
+prediction-bundle root. The current worker and bundle catalog do not consume
+the historical producer root. Missing, symlinked, unsafe, overlapping,
+malformed, or public inputs fail before package output is written. The service
+namespace mounts source, collector evidence, historical producer evidence, and
+the canonical database read-only; only the separate operations root is
+writable.
 
 An enabled package additionally requires `--live-authority` pointing to one
 server-owned `operator_ui_live_authority_v1` observation. It names the exact
