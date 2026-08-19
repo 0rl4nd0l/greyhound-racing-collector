@@ -6655,7 +6655,7 @@ def publish_current_race_index_after_refresh(
             run_id=run_id,
         )
     report_path = output_dir / CURRENT_RACE_INDEX_PUBLISH_REPORT_FILENAME
-    write_json(report_path, publication)
+    report_path.write_bytes(canonical_bytes(publication))
     if state_path is not None and publication.get("status") == "PUBLISHED":
         publish_current_race_index_lifecycle(
             state_path=state_path,

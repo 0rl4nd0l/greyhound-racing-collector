@@ -15,6 +15,7 @@ import pytest
 
 import race_collection.synchronous_manual_capture as capture
 from scripts import shadow_autopilot_daemon as daemon
+from scripts import shadow_autopilot_v1 as autopilot
 from scripts.refresh_prejump_upcoming import (
     current_index_metadata_selection,
     race_window_record,
@@ -338,15 +339,12 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
         )
     )
 
-    published = publish_current_race_index(
-        state_path=state,
-        evidence_root=evidence_root,
-        source_refresh_report_path=source,
-        run_id="fixture",
+    published = autopilot.publish_current_race_index_after_refresh(
+        state_path=state, evidence_root=evidence_root,
+        output_dir=source.parent, run_id="fixture",
     )
     index_path = current_race_index_path(state)
     original = index_path.read_bytes()
-    _write_publication_evidence(evidence_root, state, published)
     # The slower capture lifecycle is deliberately still on the preceding run.
     # Current-index admission must depend on the completed refresh publication,
     # so an in-progress or timed-out capture cannot invalidate discovery.
