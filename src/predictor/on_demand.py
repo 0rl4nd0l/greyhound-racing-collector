@@ -10,6 +10,8 @@ import re
 import shutil
 import sqlite3
 import stat
+import sys
+import tempfile
 import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
@@ -111,7 +113,7 @@ BLOCKER_STAGE_BY_CODE = {
     **{code: "VALIDATION" for code in {
         "AMBIGUOUS_RACE", "BUNDLE_SOURCE_UNSAFE", "CONFIG_INVALID_JSON", "CONFIG_NOT_CANONICAL",
         "CONFIG_SCHEMA_MISMATCH", "CURRENT_TIME_TIMEZONE_MISSING", "EXACT_RACE_IDENTITY_UNAVAILABLE",
-        "HISTORY_CUTOFF_AMBIGUOUS", "HISTORY_DATABASE_INTEGRITY_FAILED", "HISTORY_DATABASE_UNAVAILABLE", "HISTORY_IDENTITY_AMBIGUOUS",
+        "HISTORY_CUTOFF_AMBIGUOUS", "HISTORY_DATABASE_BUSY", "HISTORY_DATABASE_CHANGED", "HISTORY_DATABASE_INTEGRITY_FAILED", "HISTORY_DATABASE_UNAVAILABLE", "HISTORY_IDENTITY_AMBIGUOUS", "HISTORY_SEAL_WRITE_FAILED",
         "HISTORY_SCHEMA_AMBIGUOUS", "HISTORY_SCHEMA_MISSING", "MODEL_ARTIFACT_MISSING",
         "MODEL_CONFIG_MISMATCH", "MODEL_SCHEMA_INVALID", "MODEL_SCHEMA_MISSING", "MODEL_UNSUPPORTED", "NO_MATCH",
         "ODDS_TIMESTAMP_AMBIGUOUS", "OUTPUT_ROOT_UNSAFE", "OUTPUT_ROOT_WRITABLE_BY_OTHERS",
@@ -1199,6 +1201,161 @@ def _table_columns(connection: sqlite3.Connection, table: str) -> list[str]:
     return [str(row[1]) for row in connection.execute(f'PRAGMA table_info("{table}")')]
 
 
+def _history_sidecars_clear(source: Path) -> bool:
+    for suffix in ("-wal", "-journal"):
+        path = Path(f"{source}{suffix}")
+        try:
+            metadata = path.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError:
+            return False
+        if not stat.S_ISREG(metadata.st_mode) or path.is_symlink() or metadata.st_size:
+            return False
+    return True
+
+
+def _remove_history_work_file(path: Path | None) -> str | None:
+    if path is None:
+        return None
+    try:
+        path.unlink(missing_ok=True)
+    except OSError as exc:
+        return type(exc).__name__
+    return None
+
+
+def _verified_history_snapshot(source: Path, directory: Path) -> tuple[Path, str]:
+    """Copy one checkpointed SQLite image without writing beside the source."""
+
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise PredictionBlocked("HISTORY_SEAL_WRITE_FAILED") from exc
+    if not _history_sidecars_clear(source):
+        raise PredictionBlocked("HISTORY_DATABASE_BUSY")
+    flags = os.O_RDONLY | os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        source_fd = os.open(source, flags)
+    except OSError as exc:
+        raise PredictionBlocked("HISTORY_DATABASE_UNAVAILABLE") from exc
+    snapshot_fd = -1
+    snapshot_path: Path | None = None
+    try:
+        try:
+            before = os.fstat(source_fd)
+        except OSError as exc:
+            raise PredictionBlocked("HISTORY_DATABASE_UNAVAILABLE") from exc
+        if not stat.S_ISREG(before.st_mode):
+            raise PredictionBlocked("HISTORY_DATABASE_UNAVAILABLE")
+        try:
+            snapshot_fd, raw_path = tempfile.mkstemp(
+                prefix=".history-source-", suffix=".db", dir=directory
+            )
+            snapshot_path = Path(raw_path)
+            os.fchmod(snapshot_fd, 0o600)
+        except OSError as exc:
+            raise PredictionBlocked("HISTORY_SEAL_WRITE_FAILED") from exc
+        copied = hashlib.sha256()
+        while True:
+            try:
+                chunk = os.read(source_fd, 1024 * 1024)
+            except OSError as exc:
+                raise PredictionBlocked("HISTORY_DATABASE_UNAVAILABLE") from exc
+            if not chunk:
+                break
+            copied.update(chunk)
+            view = memoryview(chunk)
+            while view:
+                try:
+                    written = os.write(snapshot_fd, view)
+                except OSError as exc:
+                    raise PredictionBlocked("HISTORY_SEAL_WRITE_FAILED") from exc
+                if written <= 0:
+                    raise PredictionBlocked("HISTORY_SEAL_WRITE_FAILED")
+                view = view[written:]
+        try:
+            os.fsync(snapshot_fd)
+        except OSError as exc:
+            raise PredictionBlocked("HISTORY_SEAL_WRITE_FAILED") from exc
+        try:
+            os.lseek(source_fd, 0, os.SEEK_SET)
+        except OSError as exc:
+            raise PredictionBlocked("HISTORY_DATABASE_UNAVAILABLE") from exc
+        current = hashlib.sha256()
+        while True:
+            try:
+                chunk = os.read(source_fd, 1024 * 1024)
+            except OSError as exc:
+                raise PredictionBlocked("HISTORY_DATABASE_UNAVAILABLE") from exc
+            if not chunk:
+                break
+            current.update(chunk)
+        try:
+            after = os.fstat(source_fd)
+        except OSError as exc:
+            raise PredictionBlocked("HISTORY_DATABASE_CHANGED") from exc
+        stable_identity = (
+            before.st_dev,
+            before.st_ino,
+            before.st_size,
+            before.st_mtime_ns,
+            before.st_ctime_ns,
+        ) == (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+        )
+        sidecars_clear = _history_sidecars_clear(source)
+        try:
+            named = source.lstat()
+        except OSError as exc:
+            raise PredictionBlocked("HISTORY_DATABASE_CHANGED") from exc
+        if (
+            not stable_identity
+            or copied.digest() != current.digest()
+            or not sidecars_clear
+            or not stat.S_ISREG(named.st_mode)
+            or (named.st_dev, named.st_ino) != (after.st_dev, after.st_ino)
+        ):
+            raise PredictionBlocked("HISTORY_DATABASE_CHANGED")
+        return snapshot_path, copied.hexdigest()
+    except PredictionBlocked as exc:
+        cleanup_error = _remove_history_work_file(snapshot_path)
+        if cleanup_error is not None:
+            exc.details["snapshot_cleanup_error"] = cleanup_error
+        raise
+    finally:
+        active_error = sys.exc_info()[1]
+        close_errors: dict[str, str] = {}
+        if snapshot_fd >= 0:
+            try:
+                os.close(snapshot_fd)
+            except OSError as exc:
+                close_errors["snapshot_descriptor_close_error"] = type(exc).__name__
+        try:
+            os.close(source_fd)
+        except OSError as exc:
+            close_errors["source_descriptor_close_error"] = type(exc).__name__
+        if close_errors:
+            if isinstance(active_error, PredictionBlocked):
+                active_error.details.update(close_errors)
+            elif active_error is None:
+                cleanup_error = _remove_history_work_file(snapshot_path)
+                if cleanup_error is not None:
+                    close_errors["snapshot_cleanup_error"] = cleanup_error
+                code = (
+                    "HISTORY_SEAL_WRITE_FAILED"
+                    if "snapshot_descriptor_close_error" in close_errors
+                    else "HISTORY_DATABASE_UNAVAILABLE"
+                )
+                raise PredictionBlocked(code, **close_errors)
+
+
 def seal_history_database(
     *,
     source: Path,
@@ -1207,16 +1364,27 @@ def seal_history_database(
     cutoff: datetime,
     runner_names: Sequence[str],
 ) -> dict[str, Any]:
-    if not source.is_file() or target.exists():
+    if not source.is_file() or source.is_symlink() or target.exists():
         raise PredictionBlocked("HISTORY_DATABASE_UNAVAILABLE")
-    source_uri = f"file:{source.resolve()}?mode=ro"
-    source_db = sqlite3.connect(source_uri, uri=True)
-    source_db.row_factory = sqlite3.Row
-    source_db.execute("PRAGMA query_only=ON")
-    source_db.execute("BEGIN")
-    target.parent.mkdir(parents=True, exist_ok=True)
-    target_db = sqlite3.connect(target)
+    snapshot, source_sha256 = _verified_history_snapshot(source, target.parent)
+    source_db: sqlite3.Connection | None = None
+    target_db: sqlite3.Connection | None = None
+    sqlite_phase = "source"
+    completed = False
+    failure: Exception | None = None
     try:
+        source_uri = f"file:{snapshot.resolve()}?mode=ro&immutable=1"
+        source_db = sqlite3.connect(source_uri, uri=True)
+        source_db.row_factory = sqlite3.Row
+        source_db.execute("PRAGMA query_only=ON")
+        source_db.execute("BEGIN")
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            raise PredictionBlocked("HISTORY_SEAL_WRITE_FAILED") from exc
+        sqlite_phase = "target"
+        target_db = sqlite3.connect(target)
+        sqlite_phase = "source"
         if source_db.execute("PRAGMA quick_check").fetchone()[0] != "ok":
             raise PredictionBlocked("HISTORY_DATABASE_INTEGRITY_FAILED")
         schemas: dict[str, str] = {}
@@ -1227,7 +1395,9 @@ def seal_history_database(
             if row is None or not row[0]:
                 raise PredictionBlocked("HISTORY_SCHEMA_MISSING", table=table)
             schemas[table] = str(row[0])
+            sqlite_phase = "target"
             target_db.execute(schemas[table])
+            sqlite_phase = "source"
         race_columns = _table_columns(source_db, "race_metadata")
         dog_columns = _table_columns(source_db, "dog_race_data")
         if (
@@ -1335,17 +1505,74 @@ def seal_history_database(
                 [tuple(row.get(column) for column in columns) for row in rows],
             )
 
-        insert_rows("race_metadata", race_columns, safe_metadata)
         dog_rows = rows_for_safe_ids("dog_race_data")
+        sqlite_phase = "target"
+        insert_rows("race_metadata", race_columns, safe_metadata)
         insert_rows("dog_race_data", dog_columns, dog_rows)
         target_db.commit()
         target_db.execute("PRAGMA optimize")
+    except sqlite3.Error as exc:
+        code = (
+            "HISTORY_SEAL_WRITE_FAILED"
+            if sqlite_phase == "target"
+            else "HISTORY_DATABASE_INTEGRITY_FAILED"
+        )
+        failure = PredictionBlocked(code, error=type(exc).__name__)
+        failure.__cause__ = exc
+    except Exception as exc:
+        failure = exc
     finally:
-        target_db.close()
-        source_db.close()
+        if target_db is not None:
+            try:
+                target_db.close()
+            except sqlite3.Error as exc:
+                detail = {"target_connection_close_error": type(exc).__name__}
+                if failure is None:
+                    failure = PredictionBlocked(
+                        "HISTORY_SEAL_WRITE_FAILED", **detail
+                    )
+                elif isinstance(failure, PredictionBlocked):
+                    failure.details.update(detail)
+        if source_db is not None:
+            try:
+                source_db.close()
+            except sqlite3.Error as exc:
+                detail = {"source_connection_close_error": type(exc).__name__}
+                if failure is None:
+                    failure = PredictionBlocked(
+                        "HISTORY_DATABASE_INTEGRITY_FAILED",
+                        **detail,
+                    )
+                elif isinstance(failure, PredictionBlocked):
+                    failure.details.update(detail)
+        snapshot_cleanup_error = _remove_history_work_file(snapshot)
+        if snapshot_cleanup_error is not None and failure is None:
+            failure = PredictionBlocked(
+                "HISTORY_SEAL_WRITE_FAILED",
+                snapshot_cleanup_error=snapshot_cleanup_error,
+            )
+        completed = failure is None
+        cleanup_errors = {
+            "snapshot_cleanup_error": snapshot_cleanup_error,
+            "target_cleanup_error": _remove_history_work_file(target)
+            if not completed
+            else None,
+        }
+        cleanup_errors = {
+            key: value for key, value in cleanup_errors.items() if value is not None
+        }
+        if cleanup_errors:
+            if isinstance(failure, PredictionBlocked):
+                failure.details.update(cleanup_errors)
+            elif failure is None:
+                failure = PredictionBlocked(
+                    "HISTORY_SEAL_WRITE_FAILED", **cleanup_errors
+                )
+    if failure is not None:
+        raise failure
     return {
         "schema_version": "sealed_prediction_history_v1",
-        "source_sha256": sha256_file(source),
+        "source_sha256": source_sha256,
         "sealed_sha256": sha256_file(target),
         "target_race_id": target_race_id,
         "cutoff_timestamp": cutoff.isoformat(),

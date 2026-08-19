@@ -1619,6 +1619,311 @@ def test_history_seal_excludes_target_and_all_same_or_future_dates(tmp_path: Pat
     assert audit["at_or_after_cutoff_rows_materialized"] == 0
 
 
+def test_history_seal_never_opens_canonical_database_through_sqlite(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    source = tmp_path / "source.db"
+    create_db(source)
+    target = tmp_path / "sealed.db"
+    original_connect = on_demand.sqlite3.connect
+    opened: list[str] = []
+
+    def reject_canonical_open(database: Any, *values: Any, **kwargs: Any):
+        location = str(database)
+        opened.append(location)
+        if location.startswith(f"file:{source.resolve()}"):
+            raise sqlite3.OperationalError("read-only WAL sidecars unavailable")
+        return original_connect(database, *values, **kwargs)
+
+    monkeypatch.setattr(on_demand.sqlite3, "connect", reject_canonical_open)
+    audit = seal_history_database(
+        source=source,
+        target=target,
+        target_race_id=RACE_ID,
+        cutoff=NOW + timedelta(hours=1),
+        runner_names=["Alpha", "Beta"],
+    )
+
+    assert target.is_file()
+    assert audit["source_sha256"] == hashlib.sha256(source.read_bytes()).hexdigest()
+    assert any("immutable=1" in location for location in opened)
+    assert not list(tmp_path.glob(".history-source-*.db"))
+
+
+def test_history_seal_fails_closed_while_wal_has_uncheckpointed_bytes(
+    tmp_path: Path,
+):
+    source = tmp_path / "source.db"
+    create_db(source)
+    Path(f"{source}-wal").write_bytes(b"uncheckpointed")
+    target = tmp_path / "sealed.db"
+
+    with pytest.raises(PredictionBlocked) as captured:
+        seal_history_database(
+            source=source,
+            target=target,
+            target_race_id=RACE_ID,
+            cutoff=NOW + timedelta(hours=1),
+            runner_names=["Alpha", "Beta"],
+        )
+
+    assert captured.value.code == "HISTORY_DATABASE_BUSY"
+    assert not target.exists()
+    assert not list(tmp_path.glob(".history-source-*.db"))
+
+
+def test_history_seal_rejects_atomic_source_replacement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    source = tmp_path / "source.db"
+    replacement = tmp_path / "replacement.db"
+    create_db(source)
+    create_db(replacement)
+    target = tmp_path / "sealed.db"
+    original_check = on_demand._history_sidecars_clear
+    calls = 0
+
+    def replace_before_named_revalidation(path: Path) -> bool:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            os.replace(replacement, source)
+        return original_check(path)
+
+    monkeypatch.setattr(
+        on_demand, "_history_sidecars_clear", replace_before_named_revalidation
+    )
+    with pytest.raises(PredictionBlocked) as captured:
+        seal_history_database(
+            source=source,
+            target=target,
+            target_race_id=RACE_ID,
+            cutoff=NOW + timedelta(hours=1),
+            runner_names=["Alpha", "Beta"],
+        )
+
+    assert captured.value.code == "HISTORY_DATABASE_CHANGED"
+    assert not target.exists()
+    assert not list(tmp_path.glob(".history-source-*.db"))
+
+
+def test_history_seal_normalizes_copy_failure_and_removes_temporary_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    source = tmp_path / "source.db"
+    create_db(source)
+    target = tmp_path / "sealed.db"
+
+    def fail_read(*values: Any, **kwargs: Any) -> bytes:
+        del values, kwargs
+        raise OSError("simulated source read failure")
+
+    monkeypatch.setattr(on_demand.os, "read", fail_read)
+    with pytest.raises(PredictionBlocked) as captured:
+        seal_history_database(
+            source=source,
+            target=target,
+            target_race_id=RACE_ID,
+            cutoff=NOW + timedelta(hours=1),
+            runner_names=["Alpha", "Beta"],
+        )
+
+    assert captured.value.code == "HISTORY_DATABASE_UNAVAILABLE"
+    assert not target.exists()
+    assert not list(tmp_path.glob(".history-source-*.db"))
+
+
+def test_history_seal_normalizes_snapshot_sqlite_open_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    source = tmp_path / "source.db"
+    create_db(source)
+    target = tmp_path / "sealed.db"
+    original_connect = on_demand.sqlite3.connect
+
+    def fail_snapshot_open(database: Any, *values: Any, **kwargs: Any):
+        if "immutable=1" in str(database):
+            raise sqlite3.OperationalError("simulated snapshot open failure")
+        return original_connect(database, *values, **kwargs)
+
+    monkeypatch.setattr(on_demand.sqlite3, "connect", fail_snapshot_open)
+    with pytest.raises(PredictionBlocked) as captured:
+        seal_history_database(
+            source=source,
+            target=target,
+            target_race_id=RACE_ID,
+            cutoff=NOW + timedelta(hours=1),
+            runner_names=["Alpha", "Beta"],
+        )
+
+    assert captured.value.code == "HISTORY_DATABASE_INTEGRITY_FAILED"
+    assert not target.exists()
+    assert not list(tmp_path.glob(".history-source-*.db"))
+
+
+def test_history_seal_normalizes_workspace_creation_failure(tmp_path: Path):
+    source = tmp_path / "source.db"
+    create_db(source)
+    blocked_parent = tmp_path / "not-a-directory"
+    blocked_parent.write_text("occupied", encoding="utf-8")
+
+    with pytest.raises(PredictionBlocked) as captured:
+        seal_history_database(
+            source=source,
+            target=blocked_parent / "sealed.db",
+            target_race_id=RACE_ID,
+            cutoff=NOW + timedelta(hours=1),
+            runner_names=["Alpha", "Beta"],
+        )
+
+    assert captured.value.code == "HISTORY_SEAL_WRITE_FAILED"
+
+
+def test_history_seal_removes_partial_target_after_target_sqlite_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    source = tmp_path / "source.db"
+    create_db(source)
+    target = tmp_path / "sealed.db"
+    original_connect = on_demand.sqlite3.connect
+
+    class FailingTarget:
+        def __init__(self, connection: sqlite3.Connection) -> None:
+            self.connection = connection
+
+        def execute(self, sql: str, parameters: Any = ()):
+            if sql.startswith("CREATE TABLE"):
+                raise sqlite3.OperationalError("simulated target write failure")
+            return self.connection.execute(sql, parameters)
+
+        def close(self) -> None:
+            self.connection.close()
+
+        def __getattr__(self, name: str):
+            return getattr(self.connection, name)
+
+    def fail_target(database: Any, *values: Any, **kwargs: Any):
+        connection = original_connect(database, *values, **kwargs)
+        return FailingTarget(connection) if Path(str(database)) == target else connection
+
+    monkeypatch.setattr(on_demand.sqlite3, "connect", fail_target)
+    with pytest.raises(PredictionBlocked) as captured:
+        seal_history_database(
+            source=source,
+            target=target,
+            target_race_id=RACE_ID,
+            cutoff=NOW + timedelta(hours=1),
+            runner_names=["Alpha", "Beta"],
+        )
+
+    assert captured.value.code == "HISTORY_SEAL_WRITE_FAILED"
+    assert not target.exists()
+    assert not list(tmp_path.glob(".history-source-*.db"))
+
+
+def test_history_seal_cleanup_failure_does_not_mask_primary_blocker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    source = tmp_path / "source.db"
+    create_db(source)
+    target = tmp_path / "sealed.db"
+    original_unlink = Path.unlink
+
+    def fail_read(*values: Any, **kwargs: Any) -> bytes:
+        del values, kwargs
+        raise OSError("simulated source read failure")
+
+    def fail_snapshot_unlink(path: Path, *values: Any, **kwargs: Any) -> None:
+        if path.name.startswith(".history-source-"):
+            raise OSError("simulated cleanup failure")
+        original_unlink(path, *values, **kwargs)
+
+    monkeypatch.setattr(on_demand.os, "read", fail_read)
+    monkeypatch.setattr(Path, "unlink", fail_snapshot_unlink)
+    with pytest.raises(PredictionBlocked) as captured:
+        seal_history_database(
+            source=source,
+            target=target,
+            target_race_id=RACE_ID,
+            cutoff=NOW + timedelta(hours=1),
+            runner_names=["Alpha", "Beta"],
+        )
+
+    assert captured.value.code == "HISTORY_DATABASE_UNAVAILABLE"
+    assert captured.value.details["snapshot_cleanup_error"] == "OSError"
+
+
+def test_history_seal_descriptor_close_failure_fails_closed_and_cleans_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    source = tmp_path / "source.db"
+    create_db(source)
+    target = tmp_path / "sealed.db"
+    original_close = on_demand.os.close
+    calls = 0
+
+    def fail_first_close(descriptor: int) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("simulated snapshot descriptor close failure")
+        original_close(descriptor)
+
+    monkeypatch.setattr(on_demand.os, "close", fail_first_close)
+    with pytest.raises(PredictionBlocked) as captured:
+        seal_history_database(
+            source=source,
+            target=target,
+            target_race_id=RACE_ID,
+            cutoff=NOW + timedelta(hours=1),
+            runner_names=["Alpha", "Beta"],
+        )
+
+    assert captured.value.code == "HISTORY_SEAL_WRITE_FAILED"
+    assert captured.value.details["snapshot_descriptor_close_error"] == "OSError"
+    assert not target.exists()
+    assert not list(tmp_path.glob(".history-source-*.db"))
+
+
+def test_history_seal_target_connection_close_failure_removes_complete_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    source = tmp_path / "source.db"
+    create_db(source)
+    target = tmp_path / "sealed.db"
+    original_connect = on_demand.sqlite3.connect
+
+    class CloseFailTarget:
+        def __init__(self, connection: sqlite3.Connection) -> None:
+            self.connection = connection
+
+        def close(self) -> None:
+            self.connection.close()
+            raise sqlite3.OperationalError("simulated target close failure")
+
+        def __getattr__(self, name: str):
+            return getattr(self.connection, name)
+
+    def fail_target_close(database: Any, *values: Any, **kwargs: Any):
+        connection = original_connect(database, *values, **kwargs)
+        return CloseFailTarget(connection) if Path(str(database)) == target else connection
+
+    monkeypatch.setattr(on_demand.sqlite3, "connect", fail_target_close)
+    with pytest.raises(PredictionBlocked) as captured:
+        seal_history_database(
+            source=source,
+            target=target,
+            target_race_id=RACE_ID,
+            cutoff=NOW + timedelta(hours=1),
+            runner_names=["Alpha", "Beta"],
+        )
+
+    assert captured.value.code == "HISTORY_SEAL_WRITE_FAILED"
+    assert captured.value.details["target_connection_close_error"] == "OperationalError"
+    assert not target.exists()
+    assert not list(tmp_path.glob(".history-source-*.db"))
+
+
 def test_history_seal_never_selects_target_or_future_outcome_columns(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
