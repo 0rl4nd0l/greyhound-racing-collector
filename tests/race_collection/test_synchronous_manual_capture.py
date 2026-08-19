@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import os
 import signal
+import socket
+import subprocess
 import sys
 import threading
 import time
@@ -379,6 +381,30 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
     assert verified_view.races[0]["race_id"] == "Race 5 - GUNN - 2026-07-19"
     assert verified_view.races[0]["runners"][0]["source_native_runner_id"] is None
 
+    threaded_results: list[Any] = []
+
+    def read_from_request_thread() -> None:
+        try:
+            threaded_results.append(bounded_current_race_index(
+                current_time=index_now, timeout_seconds=2,
+                index_path=index_path, evidence_root=evidence_root,
+                max_age_seconds=900, return_verified_view=True,
+            ))
+        except BaseException as exc:
+            threaded_results.append(exc)
+
+    capture.initialize_current_index_reader_worker()
+    try:
+        request_thread = threading.Thread(target=read_from_request_thread)
+        request_thread.start()
+        request_thread.join(3)
+        assert not request_thread.is_alive()
+        assert len(threaded_results) == 1
+        assert isinstance(threaded_results[0], capture.VerifiedCurrentRaceIndex)
+        assert threaded_results[0].packet_bytes == original
+    finally:
+        capture.shutdown_current_index_reader_worker()
+
     boundary = index_now + timedelta(seconds=1200)
     assert bounded_current_race_index(
         current_time=boundary, timeout_seconds=1, index_path=index_path,
@@ -527,6 +553,143 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
 
     assert rejected["status"] == "REJECTED"
     assert index_path.read_bytes() == original
+
+
+@pytest.mark.parametrize(
+    ("worker_action", "expected_code", "slow_validation"),
+    (
+        ("time.sleep(60)", "DISCOVERY_TIMEOUT", False),
+        (
+            "connection.sendall((100).to_bytes(8,'big')+b'{');time.sleep(60)",
+            "DISCOVERY_TIMEOUT",
+            False,
+        ),
+        (
+            "connection.sendall((9*1024*1024).to_bytes(8,'big'))",
+            "CURRENT_INDEX_INVALID",
+            False,
+        ),
+        (
+            "_socket_send_frame(connection,{'schema_version':_CURRENT_INDEX_READER_WIRE_SCHEMA,'request_id':request['request_id'],'status':'failed','code':'CURRENT_INDEX_INVALID','details':{'reason':'reader_process_failed'}},deadline=None,maximum=_CURRENT_INDEX_READER_MAX_RESPONSE_BYTES);time.sleep(60)",
+            "CURRENT_INDEX_INVALID",
+            False,
+        ),
+        (
+            "_socket_send_frame(connection,{'schema_version':_CURRENT_INDEX_READER_WIRE_SCHEMA,'request_id':request['request_id'],'status':'ok','result':{'kind':'races','races':[]}},deadline=None,maximum=_CURRENT_INDEX_READER_MAX_RESPONSE_BYTES)",
+            "DISCOVERY_TIMEOUT",
+            True,
+        ),
+        ("raise SystemExit(0)", "CURRENT_INDEX_INVALID", False),
+    ),
+)
+def test_threaded_current_race_index_transport_is_bounded_and_fail_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    worker_action: str, expected_code: str, slow_validation: bool,
+):
+    parent, child = socket.socketpair()
+    code = f"""
+import socket,sys,time
+from race_collection.synchronous_manual_capture import (
+    _CURRENT_INDEX_READER_MAX_REQUEST_BYTES, _CURRENT_INDEX_READER_MAX_RESPONSE_BYTES,
+    _CURRENT_INDEX_READER_WIRE_SCHEMA,
+    _socket_receive_frame, _socket_send_frame,
+)
+connection=socket.socket(fileno=int(sys.argv[1]))
+_socket_send_frame(connection,{{'schema_version':_CURRENT_INDEX_READER_WIRE_SCHEMA,'status':'READY'}},deadline=None,maximum=4096)
+request=_socket_receive_frame(connection,deadline=None,maximum=_CURRENT_INDEX_READER_MAX_REQUEST_BYTES)
+{worker_action}
+"""
+    process = subprocess.Popen(
+        [sys.executable, "-c", code, str(child.fileno())],
+        cwd=capture.ROOT, pass_fds=(child.fileno(),),
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    child.close()
+    ready = capture._socket_receive_frame(
+        parent, deadline=time.monotonic() + 3, maximum=4096
+    )
+    assert ready["status"] == "READY"
+    capture._current_index_reader_client = capture._CurrentIndexReaderClient(
+        process, parent
+    )
+    validation_started = threading.Event()
+    release_validation = threading.Event()
+    if slow_validation:
+        deserialize = capture._deserialize_current_index_reader_result
+
+        def delayed_deserialize(payload: object):
+            validation_started.set()
+            release_validation.wait(2)
+            return deserialize(payload)
+
+        monkeypatch.setattr(
+            capture, "_deserialize_current_index_reader_result", delayed_deserialize
+        )
+    errors: list[BaseException] = []
+
+    def read_from_request_thread() -> None:
+        try:
+            bounded_current_race_index(
+                current_time=NOW, timeout_seconds=0.2,
+                index_path=tmp_path / "index.json", evidence_root=tmp_path,
+                max_age_seconds=900,
+            )
+        except BaseException as exc:
+            errors.append(exc)
+
+    started = time.monotonic()
+    request_thread = threading.Thread(target=read_from_request_thread)
+    request_thread.start()
+    request_thread.join(1)
+
+    assert not request_thread.is_alive()
+    assert time.monotonic() - started < 0.75
+    if slow_validation:
+        assert validation_started.is_set()
+        assert not release_validation.is_set()
+    assert len(errors) == 1
+    assert isinstance(errors[0], CaptureOneRejected)
+    assert errors[0].code == expected_code
+    if expected_code == "DISCOVERY_TIMEOUT":
+        assert errors[0].details == {"budget_seconds": 0.2}
+    reaped_deadline = time.monotonic() + 2
+    while process.poll() is None and time.monotonic() < reaped_deadline:
+        time.sleep(0.01)
+    assert process.poll() is not None
+    assert capture._current_index_reader_client is not None
+    assert capture._current_index_reader_client.invalidated.is_set()
+    release_validation.set()
+    capture.shutdown_current_index_reader_worker()
+
+
+def test_threaded_current_race_index_preserves_child_rejection(tmp_path: Path):
+    capture.initialize_current_index_reader_worker()
+    errors: list[BaseException] = []
+
+    def read_from_request_thread() -> None:
+        try:
+            bounded_current_race_index(
+                current_time=NOW, timeout_seconds=1,
+                index_path=tmp_path / "missing.json", evidence_root=tmp_path,
+                max_age_seconds=900,
+            )
+        except BaseException as exc:
+            errors.append(exc)
+
+    try:
+        request_thread = threading.Thread(target=read_from_request_thread)
+        request_thread.start()
+        request_thread.join(2)
+        assert not request_thread.is_alive()
+        assert len(errors) == 1
+        assert isinstance(errors[0], CaptureOneRejected)
+        assert errors[0].code == "CURRENT_INDEX_UNAVAILABLE"
+        assert errors[0].details == {"path": str(tmp_path / "missing.json")}
+        assert capture._current_index_reader_client is not None
+        assert capture._current_index_reader_client.process.poll() is None
+    finally:
+        capture.shutdown_current_index_reader_worker()
 
 
 def test_current_race_index_publishes_explicit_safe_subset_from_mixed_candidates(

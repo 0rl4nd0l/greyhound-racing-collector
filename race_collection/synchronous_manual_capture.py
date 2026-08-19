@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+import atexit
+import base64
 import contextlib
 import csv
 import io
 import json
 import os
+import queue
 import signal
 import socket
 import stat
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -1466,7 +1471,7 @@ def _validate_current_index_lifecycle(
         raise CaptureOneRejected("CURRENT_INDEX_REPORT_INVALID")
 
 
-def bounded_current_race_index(
+def _bounded_current_race_index_main_thread(
     *,
     current_time: datetime,
     timeout_seconds: float,
@@ -1689,6 +1694,379 @@ def bounded_current_race_index(
             snapshot.__exit__()
         signal.setitimer(signal.ITIMER_REAL, 0)
         signal.signal(signal.SIGALRM, previous_handler)
+
+
+_CURRENT_INDEX_READER_WIRE_SCHEMA = "current_index_reader_wire_v1"
+_CURRENT_INDEX_READER_MAX_REQUEST_BYTES = 64 * 1024
+_CURRENT_INDEX_READER_MAX_RESPONSE_BYTES = 8 * 1024 * 1024
+_current_index_reader_client: _CurrentIndexReaderClient | None = None
+_current_index_reader_client_guard = threading.Lock()
+_current_index_reader_atexit_registered = False
+
+
+def _socket_remaining(deadline: float | None) -> float | None:
+    if deadline is None:
+        return None
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise TimeoutError("current index reader deadline expired")
+    return remaining
+
+
+def _socket_send_frame(
+    connection: socket.socket,
+    payload: Mapping[str, Any],
+    *,
+    deadline: float | None,
+    maximum: int,
+) -> None:
+    _socket_remaining(deadline)
+    encoded = canonical_bytes(payload)
+    _socket_remaining(deadline)
+    if len(encoded) > maximum:
+        raise ValueError("current index reader frame exceeds maximum")
+    connection.settimeout(_socket_remaining(deadline))
+    connection.sendall(len(encoded).to_bytes(8, "big") + encoded)
+
+
+def _socket_receive_exact(
+    connection: socket.socket, size: int, *, deadline: float | None,
+) -> bytes:
+    output = bytearray()
+    while len(output) < size:
+        connection.settimeout(_socket_remaining(deadline))
+        chunk = connection.recv(size - len(output))
+        if not chunk:
+            raise EOFError("current index reader closed its transport")
+        output.extend(chunk)
+    return bytes(output)
+
+
+def _socket_receive_frame(
+    connection: socket.socket, *, deadline: float | None, maximum: int,
+) -> Mapping[str, Any]:
+    header = _socket_receive_exact(connection, 8, deadline=deadline)
+    size = int.from_bytes(header, "big")
+    if size <= 0 or size > maximum:
+        raise ValueError("current index reader frame size is invalid")
+    encoded = _socket_receive_exact(connection, size, deadline=deadline)
+    _socket_remaining(deadline)
+    payload = json.loads(encoded)
+    if not isinstance(payload, Mapping) or canonical_bytes(payload) != encoded:
+        raise ValueError("current index reader frame is not canonical")
+    _socket_remaining(deadline)
+    return payload
+
+
+def _serialize_current_index_reader_result(
+    result: list[Mapping[str, Any]] | VerifiedCurrentRaceIndex,
+) -> Mapping[str, Any]:
+    if isinstance(result, VerifiedCurrentRaceIndex):
+        return {
+            "kind": "verified",
+            "schema_version": result.schema_version,
+            "run_id": result.run_id,
+            "source_generated_at": result.source_generated_at,
+            "packet_sha256": result.packet_sha256,
+            "packet_bytes_base64": base64.b64encode(result.packet_bytes).decode("ascii"),
+            "races": list(result.races),
+            "source_refresh_report_path": result.source_refresh_report_path,
+            "source_refresh_report_sha256": result.source_refresh_report_sha256,
+            "publication_sha256": result.publication_sha256,
+            "state_sha256": result.state_sha256,
+            "report_sha256": result.report_sha256,
+        }
+    return {"kind": "races", "races": result}
+
+
+def _deserialize_current_index_reader_result(
+    payload: object,
+) -> list[Mapping[str, Any]] | VerifiedCurrentRaceIndex:
+    if not isinstance(payload, Mapping):
+        raise ValueError("current index reader result is invalid")
+    if payload.get("kind") == "races" and set(payload) == {"kind", "races"}:
+        races = payload["races"]
+        if not isinstance(races, list) or not all(isinstance(row, Mapping) for row in races):
+            raise ValueError("current index reader races are invalid")
+        return races
+    expected = {
+        "kind", "schema_version", "run_id", "source_generated_at",
+        "packet_sha256", "packet_bytes_base64", "races",
+        "source_refresh_report_path", "source_refresh_report_sha256",
+        "publication_sha256", "state_sha256", "report_sha256",
+    }
+    if payload.get("kind") != "verified" or set(payload) != expected:
+        raise ValueError("current index reader verified result is invalid")
+    races = payload["races"]
+    if not isinstance(races, list) or not all(isinstance(row, Mapping) for row in races):
+        raise ValueError("current index reader verified races are invalid")
+    packet_bytes = base64.b64decode(
+        str(payload["packet_bytes_base64"]), validate=True
+    )
+    if (
+        len(packet_bytes) > MAX_CURRENT_INDEX_BYTES
+        or sha256_bytes(packet_bytes) != payload["packet_sha256"]
+    ):
+        raise ValueError("current index reader packet identity is invalid")
+    strings = expected - {"kind", "packet_bytes_base64", "races"}
+    if any(not isinstance(payload[key], str) or not payload[key] for key in strings):
+        raise ValueError("current index reader identity is invalid")
+    return VerifiedCurrentRaceIndex(
+        schema_version=payload["schema_version"],
+        run_id=payload["run_id"],
+        source_generated_at=payload["source_generated_at"],
+        packet_sha256=payload["packet_sha256"],
+        packet_bytes=packet_bytes,
+        races=tuple(races),
+        source_refresh_report_path=payload["source_refresh_report_path"],
+        source_refresh_report_sha256=payload["source_refresh_report_sha256"],
+        publication_sha256=payload["publication_sha256"],
+        state_sha256=payload["state_sha256"],
+        report_sha256=payload["report_sha256"],
+    )
+
+
+class _CurrentIndexReaderClient:
+    def __init__(self, process: subprocess.Popen[bytes], connection: socket.socket) -> None:
+        self.process = process
+        self.connection = connection
+        self.invalidated = threading.Event()
+        self.closed = threading.Event()
+        self.close_guard = threading.Lock()
+        self.tasks: queue.SimpleQueue[Any] = queue.SimpleQueue()
+        self.broker = threading.Thread(
+            target=self._serve,
+            name="current-index-reader-broker",
+            daemon=True,
+        )
+        self.broker.start()
+
+    def close(self) -> None:
+        with self.close_guard:
+            if self.closed.is_set():
+                return
+            self.closed.set()
+            self.tasks.put(None)
+        try:
+            self.connection.close()
+        finally:
+            if self.process.poll() is None:
+                self.process.kill()
+                try:
+                    self.process.wait(timeout=1)
+                except subprocess.TimeoutExpired:
+                    threading.Thread(
+                        target=self.process.wait,
+                        name="current-index-reader-reaper",
+                        daemon=True,
+                    ).start()
+
+    def invalidate(self) -> None:
+        if self.invalidated.is_set():
+            return
+        self.invalidated.set()
+        threading.Thread(
+            target=self.close,
+            name="current-index-reader-invalidator",
+            daemon=True,
+        ).start()
+
+    def _serve(self) -> None:
+        while True:
+            task = self.tasks.get()
+            if task is None:
+                return
+            arguments, timeout_seconds, completed, outcome = task
+            try:
+                result = self._request(arguments, timeout_seconds=timeout_seconds)
+            except BaseException as exc:
+                outcome.append(("error", exc))
+            else:
+                outcome.append(("ok", result))
+            finally:
+                completed.set()
+
+    def request(
+        self, arguments: Mapping[str, Any], *, timeout_seconds: float,
+    ) -> list[Mapping[str, Any]] | VerifiedCurrentRaceIndex:
+        if self.invalidated.is_set() or self.closed.is_set():
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_INVALID", reason="reader_process_unavailable"
+            )
+        completed = threading.Event()
+        outcome: list[tuple[str, Any]] = []
+        self.tasks.put((arguments, timeout_seconds, completed, outcome))
+        if not completed.wait(timeout_seconds):
+            self.invalidate()
+            raise CaptureOneRejected(
+                "DISCOVERY_TIMEOUT", budget_seconds=timeout_seconds
+            )
+        if len(outcome) != 1:
+            self.invalidate()
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_INVALID", reason="reader_process_failed"
+            )
+        status, value = outcome[0]
+        if status == "error":
+            raise value
+        return value
+
+    def _request(
+        self, arguments: Mapping[str, Any], *, timeout_seconds: float,
+    ) -> list[Mapping[str, Any]] | VerifiedCurrentRaceIndex:
+        deadline = time.monotonic() + timeout_seconds
+        invalidate = False
+        try:
+            if self.invalidated.is_set() or self.process.poll() is not None:
+                invalidate = True
+                raise CaptureOneRejected(
+                    "CURRENT_INDEX_INVALID", reason="reader_process_unavailable"
+                )
+            request_id = uuid.uuid4().hex
+            child_budget = max(0.001, timeout_seconds - min(0.1, timeout_seconds / 5))
+            request = {
+                "schema_version": _CURRENT_INDEX_READER_WIRE_SCHEMA,
+                "request_id": request_id,
+                "arguments": {
+                    **arguments,
+                    "current_time": arguments["current_time"].isoformat(),
+                    "timeout_seconds": child_budget,
+                    "index_path": str(arguments["index_path"]),
+                    "evidence_root": str(arguments["evidence_root"]),
+                },
+            }
+            _socket_send_frame(
+                self.connection, request, deadline=deadline,
+                maximum=_CURRENT_INDEX_READER_MAX_REQUEST_BYTES,
+            )
+            response = _socket_receive_frame(
+                self.connection, deadline=deadline,
+                maximum=_CURRENT_INDEX_READER_MAX_RESPONSE_BYTES,
+            )
+            if (
+                response.get("schema_version") != _CURRENT_INDEX_READER_WIRE_SCHEMA
+                or response.get("request_id") != request_id
+                or set(response) not in (
+                    {"schema_version", "request_id", "status", "result"},
+                    {"schema_version", "request_id", "status", "code", "details"},
+                )
+            ):
+                raise ValueError("current index reader response identity is invalid")
+            _socket_remaining(deadline)
+            if response.get("status") == "rejected":
+                code, details = response.get("code"), response.get("details")
+                if not isinstance(code, str) or not isinstance(details, Mapping):
+                    raise ValueError("current index reader rejection is invalid")
+                _socket_remaining(deadline)
+                raise CaptureOneRejected(code, **dict(details))
+            if response.get("status") != "ok":
+                raise ValueError("current index reader response failed")
+            result = _deserialize_current_index_reader_result(response.get("result"))
+            _socket_remaining(deadline)
+            return result
+        except CaptureOneRejected:
+            raise
+        except (TimeoutError, socket.timeout) as exc:
+            invalidate = True
+            raise CaptureOneRejected(
+                "DISCOVERY_TIMEOUT", budget_seconds=timeout_seconds
+            ) from exc
+        except Exception as exc:
+            invalidate = True
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_INVALID", reason="reader_process_failed"
+            ) from exc
+        finally:
+            if invalidate:
+                self.invalidate()
+
+
+def initialize_current_index_reader_worker(*, startup_timeout_seconds: float = 5) -> None:
+    """Start the safe pre-request reader process used by connected threaded UI."""
+
+    global _current_index_reader_client, _current_index_reader_atexit_registered
+    with _current_index_reader_client_guard:
+        if (
+            _current_index_reader_client is not None
+            and _current_index_reader_client.process.poll() is None
+        ):
+            return
+        parent, child = socket.socketpair()
+        process: subprocess.Popen[bytes] | None = None
+        try:
+            process = subprocess.Popen(
+                [
+                    sys.executable, "-m", "race_collection.current_index_reader_worker",
+                    "--socket-fd", str(child.fileno()),
+                ],
+                cwd=Path(__file__).resolve().parents[1],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                pass_fds=(child.fileno(),),
+                close_fds=True,
+            )
+            child.close()
+            ready = _socket_receive_frame(
+                parent, deadline=time.monotonic() + startup_timeout_seconds,
+                maximum=4096,
+            )
+            if ready != {
+                "schema_version": _CURRENT_INDEX_READER_WIRE_SCHEMA,
+                "status": "READY",
+            }:
+                raise ValueError("current index reader readiness is invalid")
+            _current_index_reader_client = _CurrentIndexReaderClient(process, parent)
+            if not _current_index_reader_atexit_registered:
+                atexit.register(shutdown_current_index_reader_worker)
+                _current_index_reader_atexit_registered = True
+        except BaseException:
+            parent.close()
+            child.close()
+            if process is not None and process.poll() is None:
+                process.kill()
+                process.wait()
+            raise
+
+
+def shutdown_current_index_reader_worker() -> None:
+    global _current_index_reader_client
+    with _current_index_reader_client_guard:
+        client, _current_index_reader_client = _current_index_reader_client, None
+        if client is not None:
+            client.close()
+
+
+def bounded_current_race_index(
+    *,
+    current_time: datetime,
+    timeout_seconds: float,
+    index_path: Path,
+    evidence_root: Path,
+    max_age_seconds: int,
+    max_races: int = MAX_CURRENT_INDEX_RACES,
+    return_verified_view: bool = False,
+) -> list[Mapping[str, Any]] | VerifiedCurrentRaceIndex:
+    """Read the strict index within a hard deadline from any caller thread."""
+
+    arguments = {
+        "current_time": current_time,
+        "timeout_seconds": timeout_seconds,
+        "index_path": index_path,
+        "evidence_root": evidence_root,
+        "max_age_seconds": max_age_seconds,
+        "max_races": max_races,
+        "return_verified_view": return_verified_view,
+    }
+    if threading.current_thread() is threading.main_thread() or timeout_seconds <= 0:
+        return _bounded_current_race_index_main_thread(**arguments)
+
+    client = _current_index_reader_client
+    if client is None:
+        raise CaptureOneRejected(
+            "CURRENT_INDEX_INVALID", reason="reader_process_unavailable"
+        )
+    return client.request(arguments, timeout_seconds=timeout_seconds)
 
 
 def release_owned_collector_lock(lock: Any) -> None:
