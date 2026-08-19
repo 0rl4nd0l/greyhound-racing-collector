@@ -358,6 +358,7 @@ def args(tmp_path: Path, **overrides: Any) -> argparse.Namespace:
         "fetch_timeout_seconds": 1.0,
         "capture_evidence_root": [tmp_path / "evidence"],
         "collector_request_root": tmp_path / "collector-requests",
+        "job_id": None,
     }
     values.update(overrides)
     return argparse.Namespace(**values)
@@ -1242,6 +1243,43 @@ def test_prediction_discovery_uses_only_fixed_current_index_locator(tmp_path: Pa
         / "shadow_autopilot_daemon_runtime"
         / "manual_prediction_current_race_index.json"
     ]
+
+
+def test_prediction_discovery_uses_worker_bound_evidence_root_index_locator(tmp_path: Path):
+    observed: list[Path] = []
+    deps = dependencies()
+    bound_root = tmp_path / "bound-evidence"
+
+    def schedule(*values: Any) -> list[dict[str, Any]]:
+        observed.append(values[2])
+        return [race()]
+
+    deps.schedule = schedule
+    run_prediction(
+        args(
+            tmp_path,
+            job_id="job_" + "a" * 32,
+            capture_evidence_root=[bound_root],
+        ),
+        deps,
+    )
+    assert observed == [
+        bound_root
+        / "shadow_autopilot_daemon_runtime"
+        / "manual_prediction_current_race_index.json"
+    ]
+
+
+def test_invalid_worker_job_id_fails_before_discovery_or_bundle_creation(tmp_path: Path):
+    calls = {"schedule": 0}
+    deps = dependencies()
+    deps.schedule = lambda *values: calls.__setitem__("schedule", calls["schedule"] + 1)
+
+    with pytest.raises(PredictionBlocked,match="PREDICTION_BUNDLE_INVALID"):
+        run_prediction(args(tmp_path,job_id="not-a-worker-job"),deps)
+
+    assert calls["schedule"] == 0
+    assert not (tmp_path / "bundles").exists()
 
 
 def test_request_race_failure_preserves_original_pre_bundle_blocker(

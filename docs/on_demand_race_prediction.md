@@ -23,8 +23,10 @@ overrun, and post-jump requests fail closed.
 
 Race resolution reads one collector-owned
 `shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json`
-packet beneath the first `--capture-evidence-root` (or the explicit
-`--current-race-index`). A successful scheduled odds-refresh cycle atomically
+packet. Direct CLI runs use the fixed default locator. Operator UI jobs use the
+same fixed relative locator beneath the server-bound primary evidence root;
+the worker rejects any configuration whose separately validated index path or
+evidence root disagrees with that binding. A successful scheduled odds-refresh cycle atomically
 replaces this fixed packet with at most 32 selected races and seals the source
 refresh-report path and SHA-256. Publication occurs immediately after that
 bounded refresh completes, before the slower multi-race odds-capture batch, so

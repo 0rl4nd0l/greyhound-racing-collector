@@ -360,7 +360,9 @@ def test_finite_testing_fixture_profile_builds_real_repository_composition(tmp_p
     base = repo / "tests/operator_ui/fixtures/r3_runtime"; base.mkdir(parents=True); base.chmod(0o700)
     for directory in ("current_evidence","prediction_bundles","collector_requests","capture_evidence_a","capture_evidence_b"):
         (base / directory).mkdir(mode=0o700)
-    for filename in ("canonical.sqlite3","current_index.json"):(base / filename).write_bytes(b"{}")
+    (base / "canonical.sqlite3").write_bytes(b"{}")
+    index=base/"current_evidence/shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json"
+    index.parent.mkdir(parents=True); index.write_bytes(b"{}")
     monkeypatch.setattr(bootstrap_module, "_REPOSITORY_ROOT", repo)
     digest=hashlib.sha256(b"fixture-runners").hexdigest()
     race={"race_id":"race-fixture","jump_datetime":"2026-08-01T01:00:00+00:00","runner_set_sha256":digest,
@@ -412,7 +414,9 @@ def test_finite_profile_rejects_unsafe_preexisting_job_store(tmp_path, monkeypat
         target=repo/relative; target.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(source,target)
     base=repo/"tests/operator_ui/fixtures/r3_runtime"; base.mkdir(parents=True); base.chmod(0o700)
     for directory in ("current_evidence","prediction_bundles","collector_requests","capture_evidence_a","capture_evidence_b"):(base/directory).mkdir(mode=0o700)
-    for filename in ("audit.sqlite3","canonical.sqlite3","current_index.json"):(base/filename).write_bytes(b"{}")
+    for filename in ("audit.sqlite3","canonical.sqlite3"):(base/filename).write_bytes(b"{}")
+    index=base/"current_evidence/shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json"
+    index.parent.mkdir(parents=True); index.write_bytes(b"{}")
     if unsafe_kind=="symlink":(base/"jobs.sqlite3").symlink_to(base/"canonical.sqlite3")
     else:(base/"jobs.sqlite3").mkdir()
     monkeypatch.setattr(bootstrap_module,"_REPOSITORY_ROOT",repo)

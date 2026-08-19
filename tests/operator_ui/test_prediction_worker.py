@@ -20,7 +20,9 @@ def setup(tmp_path):
     choice=ServerChoice(paths[0],"manual-default",H,"market_form_residual_v1",H,H,H,*paths[1:])
     python=Path("/tmp/ghu010-validation-73f1e5d/bin/python")
     if not python.is_file(): python=Path("/usr/bin/python3")
-    cfg=WorkerConfig(python,Path(__file__).parents[2],{"latest-research":choice},tmp_path/"canonical.db",tmp_path/"output",(tmp_path/"evidence-a",tmp_path/"evidence-b"),tmp_path/"requests",tmp_path/"index.json",tmp_path/"evidence",1,45.0,90.0,2)
+    evidence_a=tmp_path/"evidence-a"
+    current_index=evidence_a/"shadow_autopilot_daemon_runtime"/"manual_prediction_current_race_index.json"
+    cfg=WorkerConfig(python,Path(__file__).parents[2],{"latest-research":choice},tmp_path/"canonical.db",tmp_path/"output",(evidence_a,tmp_path/"evidence-b"),tmp_path/"requests",current_index,evidence_a,1,45.0,90.0,2)
     value=JobStore(tmp_path/"jobs.db",separate_from=(tmp_path/"canonical.db",tmp_path/"audit.db"))
     inp=JobInput(RACE_ID,"2026-08-01T01:00:00+00:00",H,"latest-research","market_form_residual_v1",H,H,H,"manual-default",H,"auto",({"box":1,"name":"ALPHA","identity":"ALPHA"},))
     job=value.create(actor_identity="op",actor_level=2,operation="manual_prediction",idempotency_key="idempotency-key-1234",job_input=inp,now=NOW,confirm_audit=CONFIRM)
@@ -56,7 +58,17 @@ class Process:
 def test_exact_argv_and_forbidden_surface(tmp_path):
     cfg,_,job=setup(tmp_path); argv=fixed_argv(job,cfg)
     assert argv[0:6]==(str(cfg.pinned_python),str(cfg.script),"--race-id",RACE_ID,"--model","latest-research")
-    assert {"--race","--race-url","--replay-bundle","--list-configs","--current-time","--lock-path"}.isdisjoint(argv)
+    assert {"--race","--race-url","--replay-bundle","--list-configs","--current-time","--lock-path","--current-index-path"}.isdisjoint(argv)
+
+def test_worker_rejects_current_index_outside_primary_evidence_root(tmp_path):
+    cfg,_,_=setup(tmp_path)
+    with pytest.raises(ValueError,match="current index binding disagrees"):
+        replace(cfg,current_index_path=tmp_path/"other"/"index.json")
+
+def test_worker_rejects_divergent_current_index_evidence_root(tmp_path):
+    cfg,_,_=setup(tmp_path)
+    with pytest.raises(ValueError,match="current index evidence root disagrees"):
+        replace(cfg,current_index_evidence_root=tmp_path/"other-evidence")
 
 def test_launch_uses_only_retained_runtime_descriptors(tmp_path):
     cfg,store,job=setup(tmp_path); calls=[]
