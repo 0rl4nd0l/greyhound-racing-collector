@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from race_collection.domain import ArtifactChecksum
-from race_collection.forward_sealed_corpus import ForwardSealedCorpus
+from race_collection.forward_sealed_corpus import ForwardCorpusRejected, ForwardSealedCorpus
 from scripts import observe_forward_official_results as observer
 
 
@@ -95,13 +95,14 @@ def _seed(root, *, race_id="race-1", url=None):
     ForwardSealedCorpus(root, clock=lambda: _dt("09:45")).capture_prejump(**value)
 
 
-def _run(root, cycle, times, responses):
+def _run(root, cycle, times, responses, **observer_kwargs):
     session = Session(responses)
     report = observer.observe_once(
         corpus_root=root,
         cycle_id=cycle,
         clock=Clock(*times),
         session_factory=lambda: session,
+        **observer_kwargs,
     )
     return report, session
 
@@ -183,9 +184,320 @@ def test_pre_boundary_skip_malformed_retention_and_terminal_skip(tmp_path):
         [_dt("10:06")] * 4,
         [Response(b"<html>not a result</html>", url)],
     )
-    assert malformed["status"] == "COMPLETED_WITH_ERRORS"
+    assert malformed["status"] == "COMPLETED_WITH_REJECTIONS"
+    assert malformed["source_rejection_count"] == 1
+    assert malformed["source_rejected_race_ids"] == ["race-1"]
+    assert malformed["races"][0]["decision"] == "SOURCE_REJECTED"
+    assert malformed["races"][0]["error"] is None
+    assert malformed["races"][0]["source_rejection"] == (
+        "ForwardCorpusRejected: official result HTML contains no result rows"
+    )
     assert malformed["races"][0]["raw_response_hash"]
     assert len(list((tmp_path / "races").glob("*/official-requests/*/response-stage.json"))) == 1
+
+
+def test_partial_official_order_is_source_rejected_without_failing_observer(tmp_path):
+    _seed(tmp_path)
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-name?trial=false"
+    partial = T1._html().replace(b"2nd", b"-")
+
+    report, _ = _run(
+        tmp_path,
+        "partial-order",
+        [_dt("10:06")] * 4,
+        [Response(partial, url)],
+    )
+
+    assert report["status"] == "COMPLETED_WITH_REJECTIONS"
+    assert report["source_rejected_race_ids"] == ["race-1"]
+    assert report["races"][0]["after_state"] == "RESULT_PENDING"
+    assert report["races"][0]["decision"] == "SOURCE_REJECTED"
+    assert report["races"][0]["error"] is None
+    assert report["races"][0]["source_rejection"] == (
+        "ForwardCorpusRejected: official finish/status combination is inconsistent"
+    )
+
+
+def test_identical_rejection_is_deferred_and_changed_bytes_can_close(tmp_path):
+    _seed(tmp_path)
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-name?trial=false"
+    partial = T1._html().replace(b"2nd", b"-")
+
+    first, _ = _run(
+        tmp_path,
+        "rejected-first",
+        [_dt("10:06")] * 4,
+        [Response(partial, url)],
+    )
+
+    response_hash = first["races"][0]["raw_response_hash"]
+    assert first["races"][0]["normalization_attempted"] is True
+    assert first["races"][0]["rejection_deferral"] == {
+        "race_id": "race-1",
+        "response_hash": response_hash,
+        "reason": "official finish/status combination is inconsistent",
+        "rejected_at": "2026-07-29T10:06:00.000000+10:00",
+        "next_eligible_at": "2026-07-29T11:06:00.000000+10:00",
+    }
+    assert first["source_rejection_deferrals"] == [
+        first["races"][0]["rejection_deferral"]
+    ]
+
+    identical, session = _run(
+        tmp_path,
+        "rejected-identical",
+        [_dt("10:21")],
+        [Response(partial, url)],
+        previous_rejection_deferrals=first["source_rejection_deferrals"],
+    )
+
+    assert identical["status"] == "COMPLETED_WITH_REJECTIONS"
+    assert identical["races"][0]["decision"] == "SOURCE_REJECTION_DEFERRED"
+    assert identical["races"][0]["after_state"] == "RESULT_PENDING"
+    assert identical["races"][0]["normalization_attempted"] is False
+    assert identical["races"][0]["raw_response_hash"] == response_hash
+    assert identical["races"][0]["rejection_deferral"] == first["races"][0][
+        "rejection_deferral"
+    ]
+    assert identical["races"][0]["deferral_reason"] == (
+        "identical_source_response_before_next_eligibility"
+    )
+    assert len(session.calls) == 1
+    assert len(list((tmp_path / "races").glob("*/official-requests/*/response-stage.json"))) == 1
+
+    changed, _ = _run(
+        tmp_path,
+        "rejected-changed",
+        [_dt("10:22")] * 4,
+        [Response(T1._html(), url)],
+        previous_rejection_deferrals=identical["source_rejection_deferrals"],
+    )
+    assert changed["status"] == "COMPLETED"
+    assert changed["races"][0]["after_state"] == "RESULT_FIRST_OBSERVED"
+    assert changed["source_rejection_deferrals"] == []
+
+    closed, _ = _run(
+        tmp_path,
+        "valid-second",
+        [_dt("10:38")] * 5,
+        [Response(T1._html(), url)],
+        previous_rejection_deferrals=changed["source_rejection_deferrals"],
+    )
+    assert closed["status"] == "COMPLETED"
+    assert closed["races"][0]["after_state"] == "EXAMPLE_CLOSED"
+
+
+@pytest.mark.parametrize(
+    "deferrals",
+    [
+        [{"race_id": "race-1"}],
+        [
+            {
+                "race_id": "race-1",
+                "response_hash": "a" * 64,
+                "reason": "official result is unresolved",
+                "rejected_at": "2026-07-29T10:06:00.000000+10:00",
+                "next_eligible_at": "9999-07-29T11:06:00.000000+10:00",
+            }
+        ],
+    ],
+)
+def test_rejection_deferral_metadata_corruption_fails_closed(tmp_path, deferrals):
+    _seed(tmp_path)
+
+    report, session = _run(
+        tmp_path,
+        "corrupt-deferral",
+        [],
+        [],
+        previous_rejection_deferrals=deferrals,
+    )
+
+    assert report["status"] == "FAILED"
+    assert report["error"] == (
+        "ForwardCorpusRejected: source rejection deferral metadata is invalid"
+    )
+    assert session.calls == []
+
+
+@pytest.mark.parametrize(
+    ("status", "expected_exit"),
+    [
+        ("COMPLETED", 0),
+        ("COMPLETED_WITH_REJECTIONS", 0),
+        ("COMPLETED_WITH_ERRORS", 2),
+        ("FAILED", 2),
+    ],
+)
+def test_observer_cli_exit_preserves_continuable_and_fatal_statuses(
+    monkeypatch, status, expected_exit
+):
+    monkeypatch.setattr(
+        observer,
+        "parse_args",
+        lambda argv=None: observer.argparse.Namespace(
+            corpus_root=Path("/corpus"), cycle_id="cli-cycle", timeout_seconds=30.0
+        ),
+    )
+    monkeypatch.setattr(
+        observer,
+        "observe_once",
+        lambda **kwargs: {"status": status},
+    )
+
+    assert observer.main([]) == expected_exit
+
+
+def test_identical_rejection_is_reprocessed_after_bounded_deferral(tmp_path):
+    _seed(tmp_path)
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-name?trial=false"
+    partial = T1._html().replace(b"2nd", b"-")
+    first, _ = _run(
+        tmp_path,
+        "bounded-first",
+        [_dt("10:06")] * 4,
+        [Response(partial, url)],
+    )
+
+    retried, session = _run(
+        tmp_path,
+        "bounded-retry",
+        [_dt("11:07")] * 4,
+        [Response(partial, url)],
+        previous_rejection_deferrals=first["source_rejection_deferrals"],
+    )
+
+    assert retried["status"] == "COMPLETED_WITH_REJECTIONS"
+    assert retried["races"][0]["decision"] == "SOURCE_REJECTED"
+    assert retried["races"][0]["normalization_attempted"] is True
+    assert retried["races"][0]["rejection_deferral"]["next_eligible_at"] == (
+        "2026-07-29T12:07:00.000000+10:00"
+    )
+    assert len(session.calls) == 1
+    assert len(list((tmp_path / "races").glob("*/official-requests/*/response-stage.json"))) == 2
+
+
+def test_deferred_rejection_does_not_block_unrelated_race(tmp_path):
+    first_url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-one"
+    second_url = "https://www.thedogs.com.au/racing/venue/2026-07-29/2/race-two"
+    _seed(tmp_path, race_id="race-1", url=first_url)
+    _seed(tmp_path, race_id="race-2", url=second_url)
+    partial = T1._html().replace(b"2nd", b"-")
+    first, _ = _run(
+        tmp_path,
+        "multi-first",
+        [_dt("10:06")] * 8,
+        [
+            Response(partial, first_url + "?trial=false"),
+            Response(T1._html(), second_url + "?trial=false"),
+        ],
+    )
+    assert first["source_rejected_race_ids"] == ["race-1"]
+    assert first["races"][1]["after_state"] == "RESULT_FIRST_OBSERVED"
+
+    second, session = _run(
+        tmp_path,
+        "multi-second",
+        [_dt("10:22")] * 8,
+        [
+            Response(partial, first_url + "?trial=false"),
+            Response(T1._html(), second_url + "?trial=false"),
+        ],
+        previous_rejection_deferrals=first["source_rejection_deferrals"],
+    )
+
+    assert second["status"] == "COMPLETED_WITH_REJECTIONS"
+    assert second["races"][0]["decision"] == "SOURCE_REJECTION_DEFERRED"
+    assert second["races"][1]["after_state"] == "EXAMPLE_CLOSED"
+    assert len(session.calls) == 2
+    assert len(list((tmp_path / "races").glob("*/official-requests/*/response-stage.json"))) == 3
+
+
+def test_operational_race_failure_remains_an_error(tmp_path):
+    _seed(tmp_path)
+
+    report, _ = _run(tmp_path, "transport-failed", [_dt("10:06")] * 2, [])
+
+    assert report["status"] == "COMPLETED_WITH_ERRORS"
+    assert report["source_rejection_count"] == 0
+    assert report["source_rejected_race_ids"] == []
+    assert report["races"][0]["decision"] == "ERROR"
+    assert report["races"][0]["source_rejection"] is None
+    assert report["races"][0]["error"] == "StopIteration: "
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_error"),
+    [
+        ("identity", "rejected response-stage identity drift"),
+        ("raw_hash", "rejected response-stage raw-byte hash drift"),
+    ],
+)
+def test_retained_rejection_stage_drift_remains_an_error(
+    tmp_path, mutation, expected_error
+):
+    _seed(tmp_path)
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-name?trial=false"
+    malformed = b"<html>not a result</html>"
+    first, _ = _run(
+        tmp_path,
+        "retained-stage-drift",
+        [_dt("10:06")] * 4,
+        [Response(malformed, url)],
+    )
+    assert first["races"][0]["decision"] == "SOURCE_REJECTED"
+    stage_path = next(
+        (tmp_path / "races").glob("*/official-requests/*/response-stage.json")
+    )
+    stage = json.loads(stage_path.read_text())
+    if mutation == "identity":
+        stage["collector_id"] = "different-collector"
+    else:
+        replacement = ForwardSealedCorpus(tmp_path).artifacts.put(
+            b"<html>different rejected response</html>",
+            media_type="application/octet-stream",
+        )
+        stage["raw_response_checksum"] = str(replacement.checksum)
+    stage_path.write_bytes(observer.canonical_json(stage))
+
+    report, _ = _run(
+        tmp_path,
+        "retained-stage-drift",
+        [_dt("10:21")],
+        [Response(malformed, url)],
+    )
+
+    assert report["status"] == "COMPLETED_WITH_ERRORS"
+    assert report["source_rejection_count"] == 0
+    assert report["races"][0]["decision"] == "ERROR"
+    assert report["races"][0]["source_rejection"] is None
+    assert report["races"][0]["error"] == f"ForwardCorpusRejected: {expected_error}"
+
+
+def test_source_rejection_cannot_mask_missing_persistence_receipt(tmp_path):
+    _seed(tmp_path)
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-name?trial=false"
+    partial = T1._html().replace(b"2nd", b"-")
+
+    class NonPersistingCorpus(ForwardSealedCorpus):
+        def capture_result(self, **kwargs):
+            raise ForwardCorpusRejected("synthetic persistence rejection")
+
+    report, _ = _run(
+        tmp_path,
+        "source-and-persistence-rejected",
+        [_dt("10:06")],
+        [Response(partial, url)],
+        corpus_factory=NonPersistingCorpus,
+    )
+
+    assert report["status"] == "COMPLETED_WITH_ERRORS"
+    assert report["source_rejection_count"] == 0
+    assert report["races"][0]["decision"] == "ERROR"
+    assert report["races"][0]["source_rejection"] is None
+    assert report["races"][0]["error"] == (
+        "ForwardCorpusRejected: rejected response-stage receipt was not persisted"
+    )
 
 
 @pytest.mark.parametrize(
@@ -218,14 +530,14 @@ def test_final_url_rejection_empty_response_and_lock_contention(tmp_path):
         [_dt("10:06")] * 2,
         [Response(T1._html(), expected + "/other")],
     )
-    assert redirected["status"] == "COMPLETED_WITH_ERRORS"
+    assert redirected["status"] == "COMPLETED_WITH_REJECTIONS"
     empty, _ = _run(
         tmp_path,
         "empty",
         [_dt("10:06")] * 4,
         [Response(b"", expected)],
     )
-    assert empty["status"] == "COMPLETED_WITH_ERRORS"
+    assert empty["status"] == "COMPLETED_WITH_REJECTIONS"
 
     lock = tmp_path / "forward-sealed-corpus.lock"
     lock.write_text('{"owner":"other"}')
@@ -269,7 +581,7 @@ def test_redirect_is_not_followed_and_response_is_closed(tmp_path):
     )
     response = Response(b"redirect", url, status=302, headers={"Location": url + "/other"})
     report, session = _run(tmp_path, "redirect", [_dt("10:06")] * 2, [response])
-    assert report["status"] == "COMPLETED_WITH_ERRORS"
+    assert report["status"] == "COMPLETED_WITH_REJECTIONS"
     assert len(session.calls) == 1
     assert session.calls[0]["headers"] == {
         **observer.THEDOGS_PUBLIC_HEADERS,
@@ -288,14 +600,26 @@ def test_wire_exact_body_encoding_and_bound_are_enforced(tmp_path, monkeypatch):
     )
     encoded = Response(T1._html(), url, headers={"Content-Encoding": "gzip"})
     report, _ = _run(tmp_path, "encoded", [_dt("10:06")] * 2, [encoded])
-    assert report["status"] == "COMPLETED_WITH_ERRORS"
-    assert "unsupported Content-Encoding" in report["races"][0]["error"]
+    assert report["status"] == "COMPLETED_WITH_REJECTIONS"
+    assert "unsupported Content-Encoding" in report["races"][0]["source_rejection"]
     assert encoded.closed
+    repeated = Response(T1._html(), url, headers={"Content-Encoding": "gzip"})
+    deferred, _ = _run(
+        tmp_path,
+        "encoded-repeated",
+        [_dt("10:21")],
+        [repeated],
+        previous_rejection_deferrals=report["source_rejection_deferrals"],
+    )
+    assert deferred["races"][0]["decision"] == "SOURCE_REJECTION_DEFERRED"
+    assert deferred["races"][0]["normalization_attempted"] is False
+    assert not list((tmp_path / "races").glob("*/official-requests/*/response-stage.json"))
 
     monkeypatch.setattr(observer, "MAX_RESPONSE_BYTES", 8)
     oversized = Response(b"123456789", url)
     report, _ = _run(tmp_path, "oversized", [_dt("10:06")] * 2, [oversized])
     assert report["status"] == "COMPLETED_WITH_ERRORS"
+    assert report["races"][0]["source_rejection"] is None
     assert "maximum byte size" in report["races"][0]["error"]
     assert oversized.closed
 

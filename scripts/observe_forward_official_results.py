@@ -28,6 +28,7 @@ from race_collection.forward_sealed_corpus import (  # noqa: E402
     STATUS_SCHEMA,
     ForwardCorpusRejected,
     ForwardSealedCorpus,
+    _normalize_official_result,
     canonical_json,
 )
 from scripts.ingest_results_for_date import (  # noqa: E402
@@ -44,10 +45,19 @@ KNOWN_STATES = {
     *TERMINAL_STATES,
 }
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+SOURCE_REJECTION_BACKOFF = timedelta(hours=1)
 OFFICIAL_RESULT_REQUEST_HEADERS = {
     **THEDOGS_PUBLIC_HEADERS,
     "Accept-Encoding": "identity",
 }
+
+
+class SourceEnvelopeRejected(ValueError):
+    """Fetched bytes cannot enter the official-result normalization stage."""
+
+    def __init__(self, reason: str, *, response_hash: str | None = None) -> None:
+        super().__init__(reason)
+        self.response_hash = response_hash
 
 
 def _aware_now(clock: Callable[[], datetime]) -> datetime:
@@ -187,14 +197,226 @@ def _release_lock(path: Path, owned: _LockOwnership) -> bool:
 
 
 def _raw_response_body(response: Any) -> bytes:
-    encoding = response.headers.get("Content-Encoding")
-    if encoding is not None and encoding.strip().lower() not in {"", "identity"}:
-        raise ForwardCorpusRejected(f"unsupported Content-Encoding: {encoding}")
     response.raw.decode_content = False
     body = response.raw.read(MAX_RESPONSE_BYTES + 1, decode_content=False)
     if len(body) > MAX_RESPONSE_BYTES:
-        raise ForwardCorpusRejected("official response exceeds maximum byte size")
+        raise RuntimeError("official response exceeds maximum byte size")
     return body
+
+
+def _fetch_source_response(session: Any, url: str, timeout_seconds: float) -> dict[str, Any]:
+    response = session.get(
+        url,
+        headers=dict(OFFICIAL_RESULT_REQUEST_HEADERS),
+        timeout=timeout_seconds,
+        allow_redirects=False,
+        stream=True,
+    )
+    try:
+        body = _raw_response_body(response)
+        response_hash = hashlib.sha256(body).hexdigest()
+        if response.url != url:
+            raise SourceEnvelopeRejected(
+                "official response final URL changed source identity",
+                response_hash=response_hash,
+            )
+        if not 200 <= response.status_code < 300:
+            reason = (
+                "official response redirected"
+                if 300 <= response.status_code < 400
+                else "official response HTTP status is unsupported"
+            )
+            raise SourceEnvelopeRejected(reason, response_hash=response_hash)
+        encoding = response.headers.get("Content-Encoding")
+        if encoding is not None and encoding.strip().lower() not in {"", "identity"}:
+            raise SourceEnvelopeRejected(
+                f"unsupported Content-Encoding: {encoding}",
+                response_hash=response_hash,
+            )
+        content_type = response.headers.get("Content-Type")
+        if type(content_type) is not str or not content_type.strip():
+            raise SourceEnvelopeRejected(
+                "official response content type is missing",
+                response_hash=response_hash,
+            )
+        media_type, separator, parameters = content_type.partition(";")
+        if media_type.strip().casefold() != "text/html" or (
+            separator and parameters.strip().casefold().replace(" ", "") != "charset=utf-8"
+        ):
+            raise SourceEnvelopeRejected(
+                "official response content type is unsupported",
+                response_hash=response_hash,
+            )
+        return {
+            "body": body,
+            "status_code": response.status_code,
+            "content_type": content_type,
+            "final_url": response.url,
+            "source_document_last_modified": response.headers.get("Last-Modified"),
+        }
+    finally:
+        response.close()
+
+
+def _verify_retained_rejected_response(
+    corpus: ForwardSealedCorpus,
+    *,
+    race_id: str,
+    collector_id: str,
+    session_id: str,
+    run_id: str,
+    request_id: str,
+    request_url: str,
+    response_hash: str,
+) -> None:
+    """Prove normalization, not persistence or identity validation, rejected the stage."""
+    pre = corpus._load_receipt(race_id, "prejump")
+    if pre is None:
+        raise ForwardCorpusRejected("rejected response lost its pre-jump receipt")
+    request_directory = corpus._request_directory(corpus.root, race_id, request_id)
+    stage = corpus._load_request_receipt(
+        request_directory / "response-stage.json", "response-stage"
+    )
+    if stage is None:
+        raise ForwardCorpusRejected("rejected response-stage receipt was not persisted")
+    body = corpus._verify_response_stage(pre, stage)
+    expected = {
+        "race_id": race_id,
+        "collector_id": collector_id,
+        "session_id": session_id,
+        "run_id": run_id,
+        "request_id": request_id,
+        "request_url": request_url,
+    }
+    if any(stage.get(key) != value for key, value in expected.items()):
+        raise ForwardCorpusRejected("rejected response-stage identity drift")
+    if hashlib.sha256(body).hexdigest() != response_hash:
+        raise ForwardCorpusRejected("rejected response-stage raw-byte hash drift")
+
+
+def _validated_rejection_deferrals(
+    value: Sequence[Mapping[str, Any]],
+) -> dict[str, dict[str, str]]:
+    if type(value) not in {list, tuple}:
+        raise ForwardCorpusRejected("source rejection deferral metadata is invalid")
+    result: dict[str, dict[str, str]] = {}
+    for item in value:
+        if type(item) is not dict or set(item) != {
+            "race_id",
+            "response_hash",
+            "reason",
+            "rejected_at",
+            "next_eligible_at",
+        }:
+            raise ForwardCorpusRejected("source rejection deferral metadata is invalid")
+        race_id = item["race_id"]
+        response_hash = item["response_hash"]
+        reason = item["reason"]
+        if (
+            type(race_id) is not str
+            or not race_id
+            or len(race_id.encode()) > 128
+            or race_id in result
+            or type(response_hash) is not str
+            or len(response_hash) != 64
+            or any(character not in "0123456789abcdef" for character in response_hash)
+            or type(reason) is not str
+            or not reason
+        ):
+            raise ForwardCorpusRejected("source rejection deferral metadata is invalid")
+        try:
+            rejected_at = datetime.fromisoformat(item["rejected_at"])
+            next_eligible_at = datetime.fromisoformat(item["next_eligible_at"])
+        except (TypeError, ValueError) as error:
+            raise ForwardCorpusRejected(
+                "source rejection deferral metadata is invalid"
+            ) from error
+        if (
+            rejected_at.tzinfo is None
+            or rejected_at.utcoffset() is None
+            or next_eligible_at.tzinfo is None
+            or next_eligible_at.utcoffset() is None
+            or next_eligible_at - rejected_at != SOURCE_REJECTION_BACKOFF
+        ):
+            raise ForwardCorpusRejected("source rejection deferral metadata is invalid")
+        result[race_id] = dict(item)
+    return result
+
+
+def _rejection_deferral(
+    *, race_id: str, response_hash: str, reason: str, rejected_at: datetime
+) -> dict[str, str]:
+    return {
+        "race_id": race_id,
+        "response_hash": response_hash,
+        "reason": reason,
+        "rejected_at": rejected_at.isoformat(timespec="microseconds"),
+        "next_eligible_at": (rejected_at + SOURCE_REJECTION_BACKOFF).isoformat(
+            timespec="microseconds"
+        ),
+    }
+
+
+def _record_source_rejection(
+    race_report: dict[str, Any],
+    error: Exception,
+    corpus: ForwardSealedCorpus,
+    race_id: str,
+) -> None:
+    race_report["decision"] = "SOURCE_REJECTED"
+    race_report["source_rejection"] = f"{type(error).__name__}: {error}"
+    try:
+        race_report["after_state"] = _race_state(corpus.status(), race_id)
+    except Exception as status_error:
+        race_report["decision"] = "ERROR"
+        race_report["error"] = (
+            "source rejection status check failed: "
+            f"{type(status_error).__name__}: {status_error}"
+        )
+
+
+def _deferral_applies(
+    deferral: Mapping[str, str] | None,
+    *,
+    response_hash: str | None,
+    observed_at: datetime,
+) -> bool:
+    return bool(
+        response_hash
+        and deferral is not None
+        and deferral["response_hash"] == response_hash
+        and observed_at < datetime.fromisoformat(deferral["next_eligible_at"])
+    )
+
+
+def _record_deferred_rejection(
+    race_report: dict[str, Any], deferral: Mapping[str, str]
+) -> None:
+    race_report["decision"] = "SOURCE_REJECTION_DEFERRED"
+    race_report["source_rejection"] = "DeferredSourceRejection: " + deferral["reason"]
+    race_report["deferral_reason"] = "identical_source_response_before_next_eligibility"
+    race_report["rejection_deferral"] = dict(deferral)
+
+
+def _attach_new_deferral(
+    race_report: dict[str, Any],
+    active_deferrals: dict[str, dict[str, str]],
+    *,
+    race_id: str,
+    response_hash: str | None,
+    reason: str,
+    rejected_at: datetime,
+) -> None:
+    if race_report["decision"] != "SOURCE_REJECTED" or response_hash is None:
+        return
+    deferral = _rejection_deferral(
+        race_id=race_id,
+        response_hash=response_hash,
+        reason=reason,
+        rejected_at=rejected_at,
+    )
+    race_report["rejection_deferral"] = deferral
+    active_deferrals[race_id] = deferral
 
 
 def observe_once(
@@ -205,6 +427,7 @@ def observe_once(
     clock: Callable[[], datetime] | None = None,
     session_factory: Callable[[], Any] = requests.Session,
     corpus_factory: Callable[..., ForwardSealedCorpus] = ForwardSealedCorpus,
+    previous_rejection_deferrals: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     """Observe each eligible nonterminal validated race at most once."""
     if not cycle_id or len(cycle_id.encode()) > 96:
@@ -225,6 +448,10 @@ def observe_once(
         "attempted_race_ids": [],
         "races": [],
         "package_hashes": [],
+        "source_rejection_count": 0,
+        "source_rejected_race_ids": [],
+        "deferred_rejection_count": 0,
+        "source_rejection_deferrals": [],
     }
     owned: _LockOwnership | None = None
     try:
@@ -245,6 +472,10 @@ def observe_once(
         before = corpus.status()
         if before.get("schema_version") != STATUS_SCHEMA:
             raise ForwardCorpusRejected("corpus status is not the accepted prospective schema")
+        active_deferrals = _validated_rejection_deferrals(previous_rejection_deferrals)
+        race_ids = {row.get("race_id") for row in before["races"]}
+        if not set(active_deferrals) <= race_ids:
+            raise ForwardCorpusRejected("source rejection deferral race identity is unknown")
         session = session_factory()
         try:
             for index, row in enumerate(before["races"]):
@@ -257,10 +488,15 @@ def observe_once(
                     "decision": "SKIPPED",
                     "receipt_hash": None,
                     "raw_response_hash": None,
+                    "normalization_attempted": False,
+                    "source_rejection": None,
+                    "deferral_reason": None,
+                    "rejection_deferral": None,
                     "error": None,
                 }
                 report["races"].append(race_report)
                 if row["state"] in TERMINAL_STATES:
+                    active_deferrals.pop(race_id, None)
                     race_report["decision"] = "SKIPPED_TERMINAL"
                     continue
                 try:
@@ -268,7 +504,8 @@ def observe_once(
                     jump = datetime.fromisoformat(source["scheduled_jump_at"])
                     if jump.tzinfo is None or jump.utcoffset() is None:
                         raise ForwardCorpusRejected("scheduled jump is not timezone-aware")
-                    if row["state"] == "RESULT_PENDING" and _aware_now(observer_clock) < (
+                    eligibility_time = _aware_now(observer_clock)
+                    if row["state"] == "RESULT_PENDING" and eligibility_time < (
                         jump + timedelta(minutes=5)
                     ):
                         race_report["decision"] = "SKIPPED_PRE_BOUNDARY"
@@ -277,48 +514,89 @@ def observe_once(
                     request_id = _identity("request", cycle_id, str(index), race_id)
                     race_report["request_id"] = request_id
                     report["attempted_race_ids"].append(race_id)
-
-                    def transport(url: str) -> dict[str, Any]:
-                        response = session.get(
-                            url,
-                            headers=dict(OFFICIAL_RESULT_REQUEST_HEADERS),
-                            timeout=timeout_seconds,
-                            allow_redirects=False,
-                            stream=True,
-                        )
-                        try:
-                            if response.url != url:
-                                raise ForwardCorpusRejected(
-                                    "official response final URL changed source identity"
-                                )
-                            if 300 <= response.status_code < 400:
-                                raise ForwardCorpusRejected("official response redirected")
-                            body = _raw_response_body(response)
-                            race_report["raw_response_hash"] = hashlib.sha256(body).hexdigest()
-                            return {
-                                "body": body,
-                                "status_code": response.status_code,
-                                "content_type": response.headers.get("Content-Type"),
-                                "final_url": response.url,
-                                "source_document_last_modified": response.headers.get(
-                                    "Last-Modified"
-                                ),
-                            }
-                        finally:
-                            response.close()
-
-                    receipt = corpus.capture_result(
-                        race_id=race_id,
-                        collector_id=COLLECTOR_ID,
-                        session_id=report["session_id"],
-                        run_id=report["run_id"],
-                        request_id=request_id,
-                        request_url=request_url,
-                        transport=transport,
+                    prior_deferral = active_deferrals.get(race_id)
+                    source_response = _fetch_source_response(
+                        session, request_url, timeout_seconds
                     )
+                    response_hash = hashlib.sha256(source_response["body"]).hexdigest()
+                    race_report["raw_response_hash"] = response_hash
+                    if _deferral_applies(
+                        prior_deferral,
+                        response_hash=response_hash,
+                        observed_at=eligibility_time,
+                    ):
+                        _record_deferred_rejection(race_report, prior_deferral)
+                        continue
+                    normalization_rejection: ForwardCorpusRejected | None = None
+                    race_report["normalization_attempted"] = True
+                    try:
+                        _normalize_official_result(
+                            source_response["body"],
+                            race_id=race_id,
+                            frozen_runners=source["runners"],
+                        )
+                    except ForwardCorpusRejected as error:
+                        normalization_rejection = error
+                    if normalization_rejection is not None and not source_response["body"]:
+                        _record_source_rejection(
+                            race_report, normalization_rejection, corpus, race_id
+                        )
+                        _attach_new_deferral(
+                            race_report,
+                            active_deferrals,
+                            race_id=race_id,
+                            response_hash=response_hash,
+                            reason=str(normalization_rejection),
+                            rejected_at=eligibility_time,
+                        )
+                        continue
+
+                    try:
+                        receipt = corpus.capture_result(
+                            race_id=race_id,
+                            collector_id=COLLECTOR_ID,
+                            session_id=report["session_id"],
+                            run_id=report["run_id"],
+                            request_id=request_id,
+                            request_url=request_url,
+                            transport=lambda _url: source_response,
+                        )
+                    except ForwardCorpusRejected as error:
+                        if normalization_rejection is None:
+                            raise
+                        try:
+                            _verify_retained_rejected_response(
+                                corpus,
+                                race_id=race_id,
+                                collector_id=COLLECTOR_ID,
+                                session_id=report["session_id"],
+                                run_id=report["run_id"],
+                                request_id=request_id,
+                                request_url=request_url,
+                                response_hash=response_hash,
+                            )
+                        except ForwardCorpusRejected as verification_error:
+                            raise verification_error from error
+                        _record_source_rejection(
+                            race_report, normalization_rejection, corpus, race_id
+                        )
+                        _attach_new_deferral(
+                            race_report,
+                            active_deferrals,
+                            race_id=race_id,
+                            response_hash=response_hash,
+                            reason=str(normalization_rejection),
+                            rejected_at=eligibility_time,
+                        )
+                        continue
+                    if normalization_rejection is not None:
+                        raise ForwardCorpusRejected(
+                            "corpus accepted source bytes rejected by observer normalization"
+                        )
                     race_report["receipt_hash"] = hashlib.sha256(
                         canonical_json(receipt)
                     ).hexdigest()
+                    active_deferrals.pop(race_id, None)
                     race_report["after_state"] = _race_state(corpus.status(), race_id)
                     race_report["decision"] = race_report["after_state"]
                     if race_report["after_state"] == "RESULT_STABILITY_CONFIRMED":
@@ -333,7 +611,35 @@ def observe_once(
                                 "manifest_checksum": str(package.manifest_checksum),
                             }
                         )
-                except Exception as error:  # isolate malformed races
+                except SourceEnvelopeRejected as error:
+                    race_report["raw_response_hash"] = error.response_hash
+                    if _deferral_applies(
+                        prior_deferral,
+                        response_hash=error.response_hash,
+                        observed_at=eligibility_time,
+                    ):
+                        _record_deferred_rejection(race_report, prior_deferral)
+                    else:
+                        _record_source_rejection(race_report, error, corpus, race_id)
+                    _attach_new_deferral(
+                        race_report,
+                        active_deferrals,
+                        race_id=race_id,
+                        response_hash=error.response_hash,
+                        reason=str(error),
+                        rejected_at=eligibility_time,
+                    )
+                except ForwardCorpusRejected as error:
+                    race_report["decision"] = "ERROR"
+                    race_report["error"] = f"{type(error).__name__}: {error}"
+                    try:
+                        race_report["after_state"] = _race_state(corpus.status(), race_id)
+                    except Exception as status_error:
+                        race_report["error"] = (
+                            f"{race_report['error']}; status error: "
+                            f"{type(status_error).__name__}: {status_error}"
+                        )
+                except Exception as error:  # isolate operational race failures
                     race_report["decision"] = "ERROR"
                     race_report["error"] = f"{type(error).__name__}: {error}"
                     try:
@@ -348,11 +654,25 @@ def observe_once(
                 close()
         final_status = corpus.status()
         report["counts"] = _counts(final_status, 0)
-        report["status"] = (
-            "COMPLETED_WITH_ERRORS"
-            if any(row["error"] for row in report["races"])
-            else "COMPLETED"
+        source_rejected = [
+            row
+            for row in report["races"]
+            if row["decision"] in {"SOURCE_REJECTED", "SOURCE_REJECTION_DEFERRED"}
+        ]
+        report["deferred_rejection_count"] = sum(
+            row["decision"] == "SOURCE_REJECTION_DEFERRED" for row in report["races"]
         )
+        report["source_rejection_count"] = len(source_rejected)
+        report["source_rejected_race_ids"] = [row["race_id"] for row in source_rejected]
+        report["source_rejection_deferrals"] = [
+            active_deferrals[race_id] for race_id in sorted(active_deferrals)
+        ]
+        if any(row["error"] for row in report["races"]):
+            report["status"] = "COMPLETED_WITH_ERRORS"
+        elif source_rejected:
+            report["status"] = "COMPLETED_WITH_REJECTIONS"
+        else:
+            report["status"] = "COMPLETED"
     except Exception as error:
         report["status"] = "FAILED"
         report["error"] = f"{type(error).__name__}: {error}"
@@ -384,7 +704,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         timeout_seconds=args.timeout_seconds,
     )
     print(canonical_json(report).decode())
-    return 0 if report["status"] == "COMPLETED" else 2
+    return 0 if report["status"] in {"COMPLETED", "COMPLETED_WITH_REJECTIONS"} else 2
 
 
 if __name__ == "__main__":

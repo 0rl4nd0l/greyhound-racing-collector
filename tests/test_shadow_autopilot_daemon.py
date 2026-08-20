@@ -1131,18 +1131,30 @@ def test_run_once_non_deferred_validates_run_owned_service_files(
         daemon.run_once(args)
 
 
-def test_run_once_defer_observes_result_before_odds_priority_return(
+def test_run_once_defer_continues_after_source_rejection_before_odds_priority_return(
     tmp_path, monkeypatch
 ):
     evidence_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
     output_dir = evidence_root / "shadow_autopilot_daemonization_v1_observer_defer"
     odds_state_path = tmp_path / "runtime" / "odds_capture_state.json"
+    state_path = tmp_path / "runtime" / "state.json"
     lock_path = tmp_path / "runtime" / "shadow_autopilot.lock"
     corpus_root = tmp_path / "forward-corpus"
     observed = {
-        "status": "COMPLETED",
+        "status": "COMPLETED_WITH_REJECTIONS",
         "attempted_race_ids": ["race-1"],
-        "counts": {"observed": 1},
+        "counts": {"pending": 1},
+        "source_rejection_count": 1,
+        "source_rejected_race_ids": ["race-1"],
+        "source_rejection_deferrals": [
+            {
+                "race_id": "race-1",
+                "response_hash": "a" * 64,
+                "reason": "official result is unresolved",
+                "rejected_at": "2026-06-13T15:17:11.000000+10:00",
+                "next_eligible_at": "2026-06-13T16:17:11.000000+10:00",
+            }
+        ],
     }
     defer_times = []
 
@@ -1159,7 +1171,7 @@ def test_run_once_defer_observes_result_before_odds_priority_return(
     monkeypatch.setattr(
         daemon,
         "run_forward_official_result_observer",
-        lambda args, run_id: observed | {"run_id": run_id},
+        lambda args, run_id, state_path: observed | {"run_id": run_id},
     )
     monkeypatch.setattr(
         daemon,
@@ -1196,6 +1208,8 @@ def test_run_once_defer_observes_result_before_odds_priority_return(
             "--enable-autonomous-odds-capture",
             "--odds-capture-state-path",
             str(odds_state_path),
+            "--state-path",
+            str(state_path),
         ]
     )
 
@@ -1219,6 +1233,9 @@ def test_run_once_defer_observes_result_before_odds_priority_return(
     assert json.loads(
         (output_dir / "forward_official_result_observer.json").read_text()
     ) == report["forward_official_result_observer"]
+    assert json.loads(state_path.read_text())["forward_official_result_observer"] == report[
+        "forward_official_result_observer"
+    ]
 
 
 def test_run_once_observer_waits_for_natural_odds_release_then_continues(
@@ -1272,7 +1289,7 @@ def test_run_once_observer_waits_for_natural_odds_release_then_continues(
         assert lock_path.read_bytes() == lock_bytes
         lock_path.unlink()
 
-    def observe(args, run_id):
+    def observe(args, run_id, state_path):
         lock = json.loads(lock_path.read_text())
         assert lock["run_id"] == run_id
         assert lock["phase"] == "forward_official_result_observer"
@@ -1359,7 +1376,7 @@ def test_run_once_observer_failure_stops_before_odds_defer_and_full_lock(
     monkeypatch.setattr(
         daemon,
         "run_forward_official_result_observer",
-        lambda args, run_id: failed | {"run_id": run_id},
+        lambda args, run_id, state_path: failed | {"run_id": run_id},
     )
     monkeypatch.setattr(
         daemon,
@@ -1522,7 +1539,10 @@ def test_observer_completion_refreshes_wall_time_before_odds_defer(
     monkeypatch.setattr(
         daemon,
         "run_forward_official_result_observer",
-        lambda args, run_id: {"status": "COMPLETED", "attempted_race_ids": []},
+        lambda args, run_id, state_path: {
+            "status": "COMPLETED",
+            "attempted_race_ids": [],
+        },
     )
 
     def decide(_odds_state, current_time):
@@ -10467,6 +10487,27 @@ def test_forward_corpus_root_is_required_in_installed_service_identity():
 
 def test_forward_observer_opt_in_invokes_owned_cycle(monkeypatch, tmp_path):
     expected = {"status": "COMPLETED", "attempted_race_ids": ["race-1"]}
+    state_path = tmp_path / "runtime" / "state.json"
+    deferrals = [
+        {
+            "race_id": "race-1",
+            "response_hash": "b" * 64,
+            "reason": "official result is unresolved",
+            "rejected_at": "2026-07-29T10:06:00.000000+10:00",
+            "next_eligible_at": "2026-07-29T11:06:00.000000+10:00",
+        }
+    ]
+    state_path.parent.mkdir(parents=True)
+    state_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "shadow_autopilot_daemon_state_v1",
+                "forward_official_result_observer": {
+                    "source_rejection_deferrals": deferrals
+                },
+            }
+        )
+    )
     monkeypatch.setattr(
         "scripts.observe_forward_official_results.observe_once",
         lambda **kwargs: expected | {"arguments": kwargs},
@@ -10481,13 +10522,44 @@ def test_forward_observer_opt_in_invokes_owned_cycle(monkeypatch, tmp_path):
             "840",
         ]
     )
-    result = daemon.run_forward_official_result_observer(args, "daemon-cycle")
+    result = daemon.run_forward_official_result_observer(
+        args, "daemon-cycle", state_path=state_path
+    )
     assert result["status"] == "COMPLETED"
     assert result["arguments"] == {
         "corpus_root": tmp_path,
         "cycle_id": "daemon-cycle",
         "timeout_seconds": 120.0,
+        "previous_rejection_deferrals": deferrals,
     }
+
+
+def test_forward_observer_corrupt_durable_deferral_state_fails_closed(tmp_path):
+    state_path = tmp_path / "runtime" / "state.json"
+    state_path.parent.mkdir(parents=True)
+    state_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "shadow_autopilot_daemon_state_v1",
+                "forward_official_result_observer": {
+                    "source_rejection_deferrals": [{"race_id": "race-1"}]
+                },
+            }
+        )
+    )
+    args = daemon.parse_args(
+        [
+            "run-once",
+            "--enable-forward-official-result-observer",
+            "--forward-corpus-root",
+            str(tmp_path / "corpus"),
+        ]
+    )
+
+    with pytest.raises(ValueError, match="source rejection deferral metadata is invalid"):
+        daemon.run_forward_official_result_observer(
+            args, "corrupt-deferral", state_path=state_path
+        )
 
 
 def test_full_service_generator_emits_forward_opt_in_only_when_declared(tmp_path):
@@ -10548,6 +10620,30 @@ def test_forward_observer_nonclean_daemon_cli_exit_is_nonzero(monkeypatch, statu
         },
     )
     assert daemon.main([]) == 2
+
+
+def test_forward_observer_source_rejection_service_cli_exit_is_zero(monkeypatch):
+    args = daemon.parse_args(
+        [
+            "run-once",
+            "--enable-forward-official-result-observer",
+            "--forward-corpus-root",
+            "/corpus",
+        ]
+    )
+    monkeypatch.setattr(daemon, "parse_args", lambda argv=None: args)
+    monkeypatch.setattr(
+        daemon,
+        "run_once",
+        lambda _args: {
+            "final_verdict": "PARTIAL_DAEMONIZATION",
+            "forward_official_result_observer": {
+                "status": "COMPLETED_WITH_REJECTIONS",
+                "cycle_id": "current-cycle",
+            },
+        },
+    )
+    assert daemon.main([]) == 0
 
 
 def test_forward_observer_failure_replaces_durable_success(tmp_path):
