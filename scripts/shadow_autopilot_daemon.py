@@ -93,6 +93,9 @@ SERVICE_NAME = "shadow-autopilot.service"
 TIMER_NAME = "shadow-autopilot.timer"
 ODDS_CAPTURE_SERVICE_NAME = "shadow-autopilot-odds-capture.service"
 ODDS_CAPTURE_TIMER_NAME = "shadow-autopilot-odds-capture.timer"
+FORWARD_OBSERVER_CONTINUABLE_STATUSES = frozenset(
+    {"COMPLETED", "COMPLETED_WITH_REJECTIONS"}
+)
 NO_WRITE_GUARANTEES = {
     "training": False,
     "production_promotion": False,
@@ -1472,16 +1475,70 @@ def write_service_files(
     }
 
 
-def run_forward_official_result_observer(args: argparse.Namespace, run_id: str) -> dict[str, Any]:
+def _load_forward_observer_rejection_deferrals(state_path: Path) -> list[dict[str, str]]:
+    if not state_path.exists():
+        return []
+    state = load_json(state_path)
+    if state is None:
+        raise ValueError("forward observer durable state is unreadable")
+    observer = state.get("forward_official_result_observer")
+    if observer is None:
+        return []
+    if not isinstance(observer, Mapping):
+        raise ValueError("source rejection deferral metadata is invalid")
+    value = observer.get("source_rejection_deferrals", [])
+    from scripts.observe_forward_official_results import _validated_rejection_deferrals
+
+    try:
+        validated = _validated_rejection_deferrals(value)
+    except ValueError as error:
+        raise ValueError(str(error)) from error
+    return [validated[race_id] for race_id in sorted(validated)]
+
+
+def run_forward_official_result_observer(
+    args: argparse.Namespace,
+    run_id: str,
+    *,
+    state_path: Path | None = None,
+) -> dict[str, Any]:
     if not args.enable_forward_official_result_observer:
         return {"status": "DISABLED", "attempted_race_ids": []}
     from scripts.observe_forward_official_results import observe_once
 
+    previous_rejection_deferrals = _load_forward_observer_rejection_deferrals(
+        state_path or args.state_path or DEFAULT_STATE_PATH
+    )
     return observe_once(
         corpus_root=args.forward_corpus_root,
         cycle_id=run_id,
         timeout_seconds=min(float(args.timeout_seconds), 120.0),
+        previous_rejection_deferrals=previous_rejection_deferrals,
     )
+
+
+def persist_forward_observer_progress(
+    *,
+    state_path: Path,
+    run_id: str,
+    generated_at: datetime,
+    observer: Mapping[str, Any],
+) -> None:
+    """Durably carry bounded source-rejection state across early service returns."""
+    previous = load_json(state_path)
+    if state_path.exists() and previous is None:
+        raise ValueError("forward observer durable state is unreadable")
+    payload = dict(previous or {})
+    payload.update(
+        {
+            "schema_version": "shadow_autopilot_daemon_state_v1",
+            "last_run_id": run_id,
+            "updated_at": generated_at.isoformat(),
+            "forward_official_result_observer": dict(observer),
+        }
+    )
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    write_json(state_path, payload)
 
 
 def persist_forward_observer_failure(
@@ -9327,7 +9384,7 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
         if args.enable_forward_official_result_observer:
             try:
                 forward_official_result_observer = run_forward_official_result_observer(
-                    args, run_id
+                    args, run_id, state_path=state_path
                 )
             except Exception as exc:
                 forward_official_result_observer = {
@@ -9374,7 +9431,10 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             output_dir / "forward_official_result_observer.json",
             forward_official_result_observer,
         )
-        if forward_official_result_observer.get("status") != "COMPLETED":
+        if (
+            forward_official_result_observer.get("status")
+            not in FORWARD_OBSERVER_CONTINUABLE_STATUSES
+        ):
             persist_forward_observer_failure(
                 output_dir=output_dir,
                 state_path=state_path,
@@ -9403,6 +9463,12 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             write_json(output_dir / "daemon_run_report.json", result)
             write_json(output_dir / "output_manifest.json", output_manifest(output_dir))
             return result
+        persist_forward_observer_progress(
+            state_path=state_path,
+            run_id=run_id,
+            generated_at=generated_at,
+            observer=forward_official_result_observer,
+        )
 
         if args.current_time is None:
             current_time = wall_clock_now().isoformat()
@@ -13414,7 +13480,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(json.dumps(result, indent=2, sort_keys=True))
     if args.enable_forward_official_result_observer and result.get(
         "forward_official_result_observer", {}
-    ).get("status") != "COMPLETED":
+    ).get("status") not in FORWARD_OBSERVER_CONTINUABLE_STATUSES:
         return 2
     return 0 if result.get("final_verdict") != "NEEDS_MORE_AUTOMATION" else 2
 
