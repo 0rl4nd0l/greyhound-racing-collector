@@ -1475,7 +1475,8 @@ def write_service_files(
     }
 
 
-def _load_forward_observer_rejection_deferrals(state_path: Path) -> list[dict[str, str]]:
+def _load_forward_observer_rejection_deferrals(state_path: Path) -> list[dict[str, Any]]:
+    """Load only exact legacy or versioned, one-hour observer deferral state."""
     if not state_path.exists():
         return []
     state = load_json(state_path)

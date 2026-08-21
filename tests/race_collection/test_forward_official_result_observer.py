@@ -1,3 +1,4 @@
+import hashlib
 import importlib.util
 import json
 from datetime import datetime
@@ -193,6 +194,8 @@ def test_pre_boundary_skip_malformed_retention_and_terminal_skip(tmp_path):
         "ForwardCorpusRejected: official result HTML contains no result rows"
     )
     assert malformed["races"][0]["raw_response_hash"]
+    assert malformed["races"][0]["semantic_fingerprint"] is None
+    assert malformed["source_rejection_deferrals"] == []
     assert len(list((tmp_path / "races").glob("*/official-requests/*/response-stage.json"))) == 1
 
 
@@ -232,13 +235,20 @@ def test_identical_rejection_is_deferred_and_changed_bytes_can_close(tmp_path):
 
     response_hash = first["races"][0]["raw_response_hash"]
     assert first["races"][0]["normalization_attempted"] is True
-    assert first["races"][0]["rejection_deferral"] == {
-        "race_id": "race-1",
-        "response_hash": response_hash,
-        "reason": "official finish/status combination is inconsistent",
-        "rejected_at": "2026-07-29T10:06:00.000000+10:00",
-        "next_eligible_at": "2026-07-29T11:06:00.000000+10:00",
-    }
+    deferral = first["races"][0]["rejection_deferral"]
+    assert deferral["schema_version"] == observer.REJECTION_DEFERRAL_SCHEMA
+    assert deferral["race_id"] == "race-1"
+    assert deferral["source_native_race_id"] == "thedogs-2026-07-29-1"
+    assert deferral["retained_request_id"] == first["races"][0]["request_id"]
+    assert deferral["retained_raw_response_hash"] == response_hash
+    assert deferral["semantic_fingerprint"] == first["races"][0][
+        "semantic_fingerprint"
+    ]
+    assert deferral["reason"] == "official finish/status combination is inconsistent"
+    assert deferral["rejected_at"] == "2026-07-29T10:06:00.000000+10:00"
+    assert deferral["next_eligible_at"] == "2026-07-29T11:06:00.000000+10:00"
+    assert deferral["deferral_decision"] == "SOURCE_REJECTED"
+    assert deferral["pending_state"] == "RESULT_PENDING"
     assert first["source_rejection_deferrals"] == [
         first["races"][0]["rejection_deferral"]
     ]
@@ -256,11 +266,11 @@ def test_identical_rejection_is_deferred_and_changed_bytes_can_close(tmp_path):
     assert identical["races"][0]["after_state"] == "RESULT_PENDING"
     assert identical["races"][0]["normalization_attempted"] is False
     assert identical["races"][0]["raw_response_hash"] == response_hash
-    assert identical["races"][0]["rejection_deferral"] == first["races"][0][
-        "rejection_deferral"
-    ]
+    assert identical["races"][0]["rejection_deferral"] == deferral | {
+        "deferral_decision": "SOURCE_REJECTION_DEFERRED"
+    }
     assert identical["races"][0]["deferral_reason"] == (
-        "identical_source_response_before_next_eligibility"
+        "identical_result_semantics_before_next_eligibility"
     )
     assert len(session.calls) == 1
     assert len(list((tmp_path / "races").glob("*/official-requests/*/response-stage.json"))) == 1
@@ -285,6 +295,252 @@ def test_identical_rejection_is_deferred_and_changed_bytes_can_close(tmp_path):
     )
     assert closed["status"] == "COMPLETED"
     assert closed["races"][0]["after_state"] == "EXAMPLE_CLOSED"
+
+
+def test_csrf_only_change_uses_semantic_deferral_without_conflating_raw_hash(tmp_path):
+    _seed(tmp_path)
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-name?trial=false"
+    partial = T1._html().replace(b"2nd", b"-")
+    first_body = b'<meta name="csrf-token" content="first">' + partial
+    second_body = b'<meta name="csrf-token" content="second">' + partial
+
+    first, _ = _run(
+        tmp_path,
+        "semantic-first",
+        [_dt("10:06")] * 4,
+        [Response(first_body, url)],
+    )
+    deferred, _ = _run(
+        tmp_path,
+        "semantic-second",
+        [_dt("10:21")],
+        [Response(second_body, url)],
+        previous_rejection_deferrals=first["source_rejection_deferrals"],
+    )
+
+    first_race = first["races"][0]
+    deferred_race = deferred["races"][0]
+    assert first_race["raw_response_hash"] != deferred_race["raw_response_hash"]
+    assert first_race["semantic_fingerprint"] == deferred_race["semantic_fingerprint"]
+    assert first_race["fingerprint_algorithm_version"] == (
+        "thedogs-official-result-semantic-projection-sha256-v1"
+    )
+    assert deferred_race["decision"] == "SOURCE_REJECTION_DEFERRED"
+    assert deferred_race["normalization_attempted"] is False
+    assert deferred_race["rejection_deferral"]["retained_raw_response_hash"] == (
+        first_race["raw_response_hash"]
+    )
+    stages = list((tmp_path / "races").glob("*/official-requests/*/response-stage.json"))
+    assert len(stages) == 1
+    retained = json.loads(stages[0].read_text())
+    assert ForwardSealedCorpus(tmp_path).artifacts.read(
+        ArtifactChecksum(retained["raw_response_checksum"])
+    ) == first_body
+
+
+@pytest.mark.parametrize(
+    "changed_body",
+    [
+        T1._html(),
+        T1._html().replace(b"2nd", b"DNF"),
+        T1._html().replace(b"2nd", b"-").replace(b">-<", b">VOID<"),
+        T1._html().replace(b"2nd", b"-").replace(b"Dog 1 A", b"Dog 1 A csrf_deadbeef"),
+        T1._html().replace(b"2nd", b"-").replace(b"rug_1", b"rug_3"),
+    ],
+    ids=[
+        "finish",
+        "recognized-status",
+        "unrecognized-status",
+        "runner-identity-token-text",
+        "box-rug",
+    ],
+)
+def test_material_result_change_bypasses_semantic_deferral(tmp_path, changed_body):
+    _seed(tmp_path)
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-name?trial=false"
+    partial = T1._html().replace(b"2nd", b"-")
+    first, _ = _run(
+        tmp_path,
+        "material-first",
+        [_dt("10:06")] * 4,
+        [Response(partial, url)],
+    )
+
+    changed, _ = _run(
+        tmp_path,
+        "material-changed",
+        [_dt("10:21")] * 4,
+        [Response(changed_body, url)],
+        previous_rejection_deferrals=first["source_rejection_deferrals"],
+    )
+
+    assert changed["races"][0]["semantic_fingerprint"] != first["races"][0][
+        "semantic_fingerprint"
+    ]
+    assert changed["races"][0]["decision"] != "SOURCE_REJECTION_DEFERRED"
+    assert changed["races"][0]["normalization_attempted"] is True
+
+
+def test_semantic_deferral_still_verifies_retained_exact_raw_bytes(tmp_path):
+    _seed(tmp_path)
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-name?trial=false"
+    partial = T1._html().replace(b"2nd", b"-")
+    first, _ = _run(
+        tmp_path,
+        "retained-semantic-first",
+        [_dt("10:06")] * 4,
+        [Response(partial, url)],
+    )
+    deferral = dict(first["source_rejection_deferrals"][0])
+    deferral["retained_raw_response_hash"] = deferral["semantic_fingerprint"]
+
+    repeated, _ = _run(
+        tmp_path,
+        "retained-semantic-second",
+        [_dt("10:21")],
+        [Response(partial, url)],
+        previous_rejection_deferrals=[deferral],
+    )
+
+    assert repeated["status"] == "FAILED"
+    assert repeated["races"] == []
+    assert "retained rejection raw-byte hash drift" in repeated["error"]
+
+
+def test_race_and_native_runner_identity_are_part_of_semantic_fingerprint(tmp_path):
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-name?trial=false"
+    partial = T1._html().replace(b"2nd", b"-")
+    _seed(tmp_path / "base")
+    base, _ = _run(
+        tmp_path / "base", "identity-base", [_dt("10:06")] * 4, [Response(partial, url)]
+    )
+
+    _seed(tmp_path / "other-race", race_id="race-other")
+    other_race, _ = _run(
+        tmp_path / "other-race",
+        "identity-race",
+        [_dt("10:06")] * 4,
+        [Response(partial, url)],
+    )
+
+    native_value = T1.fixture(2)
+    native_value["race_id"] = "race-1"
+    native_value["sealed_evidence_bytes"] = native_value["sealed_evidence_bytes"].replace(
+        b'"race_id":"race-2"', b'"race_id":"race-1"'
+    )
+    native_value["canonical_source_url"] = url.removesuffix("?trial=false")
+    native_value["source_native_race_id"] = "thedogs-2026-07-29-1"
+    ForwardSealedCorpus(tmp_path / "other-native", clock=lambda: _dt("09:45")).capture_prejump(
+        **native_value
+    )
+    native_partial = T1._html(2).replace(b"2nd", b"-")
+    other_native, _ = _run(
+        tmp_path / "other-native",
+        "identity-native",
+        [_dt("10:06")] * 4,
+        [Response(native_partial, url)],
+    )
+
+    fingerprint = base["races"][0]["semantic_fingerprint"]
+    assert other_race["races"][0]["semantic_fingerprint"] != fingerprint
+    assert other_native["races"][0]["semantic_fingerprint"] != fingerprint
+
+
+def test_known_legacy_deferral_is_reprocessed_once_into_versioned_state(tmp_path):
+    _seed(tmp_path)
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-name?trial=false"
+    partial = T1._html().replace(b"2nd", b"-")
+    legacy = {
+        "race_id": "race-1",
+        "response_hash": hashlib.sha256(partial).hexdigest(),
+        "reason": "official finish/status combination is inconsistent",
+        "rejected_at": "2026-07-29T10:06:00.000000+10:00",
+        "next_eligible_at": "2026-07-29T11:06:00.000000+10:00",
+    }
+
+    transitioned, _ = _run(
+        tmp_path,
+        "legacy-transition",
+        [_dt("10:21")] * 4,
+        [Response(partial, url)],
+        previous_rejection_deferrals=[legacy],
+    )
+
+    race = transitioned["races"][0]
+    assert race["decision"] == "SOURCE_REJECTED"
+    assert race["normalization_attempted"] is True
+    assert race["rejection_deferral"]["schema_version"] == (
+        observer.REJECTION_DEFERRAL_SCHEMA
+    )
+    assert race["rejection_deferral"]["rejected_at"] == (
+        "2026-07-29T10:21:00.000000+10:00"
+    )
+    assert race["rejection_deferral"]["next_eligible_at"] == (
+        "2026-07-29T11:21:00.000000+10:00"
+    )
+
+
+def test_unprojectable_response_consumes_prior_deferral_instead_of_carrying_it(tmp_path):
+    _seed(tmp_path)
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-name?trial=false"
+    partial = T1._html().replace(b"2nd", b"-")
+    first, _ = _run(
+        tmp_path,
+        "unprojectable-first",
+        [_dt("10:06")] * 4,
+        [Response(partial, url)],
+    )
+
+    unprojectable, _ = _run(
+        tmp_path,
+        "unprojectable-second",
+        [_dt("10:21")] * 4,
+        [Response(b"<html>not a result</html>", url)],
+        previous_rejection_deferrals=first["source_rejection_deferrals"],
+    )
+
+    assert unprojectable["races"][0]["decision"] == "SOURCE_REJECTED"
+    assert unprojectable["races"][0]["semantic_fingerprint"] is None
+    assert unprojectable["source_rejection_deferrals"] == []
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("schema_version", "unknown-deferral-v99"),
+        ("source_native_race_id", "wrong-source-race"),
+        ("pending_state", "RESULT_FIRST_OBSERVED"),
+        ("deferral_decision", "UNKNOWN"),
+        ("fingerprint_algorithm_version", "unknown-fingerprint-v99"),
+        ("next_eligible_at", "9999-07-29T11:06:00.000000+10:00"),
+    ],
+)
+def test_versioned_deferral_corruption_and_inconsistency_are_fatal(
+    tmp_path, field, value
+):
+    _seed(tmp_path)
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-name?trial=false"
+    partial = T1._html().replace(b"2nd", b"-")
+    first, _ = _run(
+        tmp_path,
+        "versioned-corruption-first",
+        [_dt("10:06")] * 4,
+        [Response(partial, url)],
+    )
+    corrupted = dict(first["source_rejection_deferrals"][0])
+    corrupted[field] = value
+
+    report, session = _run(
+        tmp_path,
+        "versioned-corruption-second",
+        [],
+        [],
+        previous_rejection_deferrals=[corrupted],
+    )
+
+    assert report["status"] == "FAILED"
+    assert "source rejection deferral" in report["error"]
+    assert session.calls == []
 
 
 @pytest.mark.parametrize(
@@ -611,8 +867,9 @@ def test_wire_exact_body_encoding_and_bound_are_enforced(tmp_path, monkeypatch):
         [repeated],
         previous_rejection_deferrals=report["source_rejection_deferrals"],
     )
-    assert deferred["races"][0]["decision"] == "SOURCE_REJECTION_DEFERRED"
+    assert deferred["races"][0]["decision"] == "SOURCE_REJECTED"
     assert deferred["races"][0]["normalization_attempted"] is False
+    assert deferred["source_rejection_deferrals"] == []
     assert not list((tmp_path / "races").glob("*/official-requests/*/response-stage.json"))
 
     monkeypatch.setattr(observer, "MAX_RESPONSE_BYTES", 8)
