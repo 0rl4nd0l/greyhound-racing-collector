@@ -221,6 +221,69 @@ def test_partial_official_order_is_source_rejected_without_failing_observer(tmp_
     )
 
 
+def test_duplicate_result_box_is_not_eligible_for_semantic_deferral(tmp_path):
+    _seed(tmp_path)
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-name?trial=false"
+    duplicate_box = T1._html().replace(b"rug_2", b"rug_1")
+
+    report, _ = _run(
+        tmp_path,
+        "duplicate-result-box",
+        [_dt("10:06")] * 4,
+        [Response(duplicate_box, url)],
+    )
+
+    race = report["races"][0]
+    assert race["decision"] == "SOURCE_REJECTED"
+    assert race["source_rejection"] == (
+        "ForwardCorpusRejected: official result runner box/rug identity mismatch"
+    )
+    assert race["semantic_fingerprint"] is None
+    assert report["source_rejection_deferrals"] == []
+
+
+def test_missing_result_box_is_not_eligible_for_semantic_deferral(tmp_path):
+    _seed(tmp_path)
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-name?trial=false"
+    missing_box = T1._html().replace(b'<tr class="race-runner">', b"<tr>", 1)
+
+    report, _ = _run(
+        tmp_path,
+        "missing-result-box",
+        [_dt("10:06")] * 4,
+        [Response(missing_box, url)],
+    )
+
+    race = report["races"][0]
+    assert race["decision"] == "SOURCE_REJECTED"
+    assert race["source_rejection"] == (
+        "ForwardCorpusRejected: official result runner box/rug identity mismatch"
+    )
+    assert race["semantic_fingerprint"] is None
+    assert report["source_rejection_deferrals"] == []
+
+
+def test_unknown_result_box_is_not_eligible_for_semantic_deferral(tmp_path):
+    _seed(tmp_path)
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-name?trial=false"
+    unknown_box = T1._html().replace(b"rug_2", b"rug_3")
+
+    report, _ = _run(
+        tmp_path,
+        "unknown-result-box",
+        [_dt("10:06")] * 4,
+        [Response(unknown_box, url)],
+    )
+
+    race = report["races"][0]
+    assert race["decision"] == "SOURCE_REJECTED"
+    assert race["source_rejection"] == (
+        "ForwardCorpusRejected: official result runner box/rug identity mismatch"
+    )
+    assert race["semantic_fingerprint"] is None
+    assert report["source_rejection_deferrals"] == []
+
+
 def test_identical_rejection_is_deferred_and_changed_bytes_can_close(tmp_path):
     _seed(tmp_path)
     url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-name?trial=false"

@@ -331,6 +331,7 @@ def _semantic_deferral_fingerprint(
     if len(frozen_by_box) != len(frozen_runners):
         return None
     projected_rows = []
+    parsed_boxes = []
     for row, displayed_result_text in zip(parsed, displayed_result_texts, strict=True):
         if type(row) is not dict or set(row) != {
             "box_number",
@@ -350,6 +351,7 @@ def _semantic_deferral_fingerprint(
             or (status is not None and type(status) is not str)
         ):
             return None
+        parsed_boxes.append(box_number)
         frozen = frozen_by_box.get(box_number)
         projected_rows.append(
             {
@@ -364,6 +366,8 @@ def _semantic_deferral_fingerprint(
                 ),
             }
         )
+    if len(set(parsed_boxes)) != len(parsed_boxes) or set(parsed_boxes) != set(frozen_by_box):
+        return None
     projected_rows.sort(key=lambda row: canonical_json(row))
     projection = {
         "fingerprint_algorithm_version": SEMANTIC_FINGERPRINT_ALGORITHM,
