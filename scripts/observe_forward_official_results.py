@@ -318,21 +318,50 @@ def _semantic_deferral_fingerprint(
     if not parsed or len(parsed) != len(frozen_runners):
         return None
     soup = BeautifulSoup(markup, "html.parser")
-    displayed_result_texts = [
-        cell.get_text(" ", strip=True)
-        for cell in soup.select(
-            "table.race-runners--result tr.race-runner "
-            "td.race-runners__finish-position"
-        )
-    ]
-    if len(displayed_result_texts) != len(parsed):
+    result_rows = soup.select("table.race-runners--result tr.race-runner")
+    if len(result_rows) != len(parsed):
+        return None
+    displayed_result_texts = []
+    response_native_runner_ids = []
+    for result_row in result_rows:
+        position_cell = result_row.select_one("td.race-runners__finish-position")
+        name_cell = result_row.select_one("td.race-runners__name")
+        if position_cell is None or name_cell is None:
+            return None
+        displayed_result_texts.append(position_cell.get_text(" ", strip=True))
+        native_runner_ids = {
+            str(element.get("data-dog-id"))
+            for element in name_cell.select("blackbook-dog[data-dog-id]")
+            if str(element.get("data-dog-id") or "").strip()
+        }
+        for link in name_cell.select("a[href]"):
+            parsed_link = urlsplit(str(link.get("href") or ""))
+            parts = parsed_link.path.split("/")
+            if (
+                not parsed_link.scheme
+                and not parsed_link.netloc
+                and not parsed_link.query
+                and not parsed_link.fragment
+                and len(parts) == 4
+                and parts[0] == ""
+                and parts[1] == "dogs"
+                and parts[2]
+                and parts[3]
+            ):
+                native_runner_ids.add(parts[2])
+        if len(native_runner_ids) != 1:
+            return None
+        response_native_runner_ids.append(native_runner_ids.pop())
+    if len(set(response_native_runner_ids)) != len(response_native_runner_ids):
         return None
     frozen_by_box = {runner.get("box_number"): runner for runner in frozen_runners}
     if len(frozen_by_box) != len(frozen_runners):
         return None
     projected_rows = []
     parsed_boxes = []
-    for row, displayed_result_text in zip(parsed, displayed_result_texts, strict=True):
+    for row, displayed_result_text, response_native_runner_id in zip(
+        parsed, displayed_result_texts, response_native_runner_ids, strict=True
+    ):
         if type(row) is not dict or set(row) != {
             "box_number",
             "finish_position",
@@ -361,7 +390,8 @@ def _semantic_deferral_fingerprint(
                 "displayed_runner_name": dog_name,
                 "frozen_runner_name": frozen.get("name") if frozen else None,
                 "source_declared_terminal_status": status,
-                "source_native_runner_id": (
+                "response_source_native_runner_id": response_native_runner_id,
+                "frozen_source_native_runner_id": (
                     frozen.get("source_native_runner_id") if frozen else None
                 ),
             }

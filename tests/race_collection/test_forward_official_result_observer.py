@@ -21,6 +21,23 @@ def _accepted_helpers():
 
 
 T1 = _accepted_helpers()
+_fixture_html = T1._html
+
+
+def _result_html(index=1, *, whitespace=""):
+    body = _fixture_html(index, whitespace=whitespace)
+    for suffix in ("a", "b"):
+        name = f"Dog {index} {suffix.upper()}".encode()
+        link = (
+            f'<a href="/dogs/dog-{index}-{suffix}/dog-{index}-{suffix}">'.encode()
+            + name
+            + b"</a>"
+        )
+        body = body.replace(name, link)
+    return body
+
+
+T1._html = _result_html
 
 
 def _dt(value):
@@ -442,6 +459,97 @@ def test_material_result_change_bypasses_semantic_deferral(tmp_path, changed_bod
     ]
     assert changed["races"][0]["decision"] != "SOURCE_REJECTION_DEFERRED"
     assert changed["races"][0]["normalization_attempted"] is True
+
+
+def test_current_response_native_runner_identity_change_bypasses_deferral(tmp_path):
+    _seed(tmp_path)
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-name?trial=false"
+    partial = T1._html().replace(b"2nd", b"-")
+    first, _ = _run(
+        tmp_path,
+        "native-response-first",
+        [_dt("10:06")] * 4,
+        [Response(partial, url)],
+    )
+    changed_native_id = partial.replace(
+        b'/dogs/dog-1-a/dog-1-a', b'/dogs/dog-other/dog-1-a'
+    )
+
+    changed, _ = _run(
+        tmp_path,
+        "native-response-changed",
+        [_dt("10:21")] * 4,
+        [Response(changed_native_id, url)],
+        previous_rejection_deferrals=first["source_rejection_deferrals"],
+    )
+
+    assert changed["races"][0]["semantic_fingerprint"] != first["races"][0][
+        "semantic_fingerprint"
+    ]
+    assert changed["races"][0]["decision"] != "SOURCE_REJECTION_DEFERRED"
+    assert changed["races"][0]["normalization_attempted"] is True
+
+
+def test_duplicate_current_response_native_runner_identity_cannot_defer(tmp_path):
+    _seed(tmp_path)
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-name?trial=false"
+    duplicate_native_id = (
+        T1._html()
+        .replace(b"2nd", b"-")
+        .replace(b'/dogs/dog-1-b/dog-1-b', b'/dogs/dog-1-a/dog-1-b')
+    )
+
+    first, _ = _run(
+        tmp_path,
+        "duplicate-native-first",
+        [_dt("10:06")] * 4,
+        [Response(duplicate_native_id, url)],
+    )
+    repeated, _ = _run(
+        tmp_path,
+        "duplicate-native-repeated",
+        [_dt("10:21")] * 4,
+        [Response(duplicate_native_id, url)],
+        previous_rejection_deferrals=first["source_rejection_deferrals"],
+    )
+
+    assert first["races"][0]["semantic_fingerprint"] is None
+    assert first["source_rejection_deferrals"] == []
+    assert repeated["races"][0]["decision"] == "SOURCE_REJECTED"
+    assert repeated["races"][0]["normalization_attempted"] is True
+
+
+@pytest.mark.parametrize(
+    "identity_mutation",
+    [
+        lambda body: body.replace(
+            b'<a href="/dogs/dog-1-a/dog-1-a">Dog 1 A</a>', b"Dog 1 A"
+        ),
+        lambda body: body.replace(
+            b'<a href="/dogs/dog-1-a/dog-1-a">',
+            b'<blackbook-dog data-dog-id="dog-conflict"></blackbook-dog>'
+            b'<a href="/dogs/dog-1-a/dog-1-a">',
+        ),
+    ],
+    ids=["missing", "conflicting-within-row"],
+)
+def test_incomplete_current_response_native_runner_identity_cannot_defer(
+    tmp_path, identity_mutation
+):
+    _seed(tmp_path)
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-name?trial=false"
+    incomplete_identity = identity_mutation(T1._html().replace(b"2nd", b"-"))
+
+    report, _ = _run(
+        tmp_path,
+        "incomplete-native-identity",
+        [_dt("10:06")] * 4,
+        [Response(incomplete_identity, url)],
+    )
+
+    assert report["races"][0]["decision"] == "SOURCE_REJECTED"
+    assert report["races"][0]["semantic_fingerprint"] is None
+    assert report["source_rejection_deferrals"] == []
 
 
 def test_semantic_deferral_still_verifies_retained_exact_raw_bytes(tmp_path):
