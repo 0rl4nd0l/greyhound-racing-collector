@@ -18,7 +18,6 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import requests
-from bs4 import BeautifulSoup
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -310,9 +309,11 @@ def _semantic_deferral_fingerprint(
 ) -> str | None:
     """Fingerprint a complete parsed result projection, never page scaffolding."""
     try:
+        from bs4 import BeautifulSoup
+
         markup = body.decode("utf-8")
         parsed = parse_thedogs_result_html_runner_rows(markup)
-    except (UnicodeDecodeError, TypeError, ValueError):
+    except (ImportError, UnicodeDecodeError, TypeError, ValueError):
         return None
     if not parsed or len(parsed) != len(frozen_runners):
         return None
