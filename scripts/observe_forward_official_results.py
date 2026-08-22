@@ -410,7 +410,10 @@ def _semantic_deferral_fingerprint(
 
 
 def _verify_retained_deferral_response(
-    corpus: ForwardSealedCorpus, deferral: Mapping[str, Any]
+    corpus: ForwardSealedCorpus,
+    deferral: Mapping[str, Any],
+    *,
+    frozen_runners: Sequence[Mapping[str, Any]],
 ) -> None:
     pre = corpus._load_receipt(deferral["race_id"], "prejump")
     if pre is None:
@@ -435,6 +438,15 @@ def _verify_retained_deferral_response(
         raise ForwardCorpusRejected("retained rejection response-stage identity drift")
     if hashlib.sha256(body).hexdigest() != deferral["retained_raw_response_hash"]:
         raise ForwardCorpusRejected("retained rejection raw-byte hash drift")
+    semantic_fingerprint = _semantic_deferral_fingerprint(
+        body,
+        race_id=deferral["race_id"],
+        source_native_race_id=deferral["source_native_race_id"],
+        request_url=deferral["request_url"],
+        frozen_runners=frozen_runners,
+    )
+    if semantic_fingerprint != deferral["semantic_fingerprint"]:
+        raise ForwardCorpusRejected("retained rejection semantic fingerprint drift")
 
 
 def _validated_rejection_deferrals(
@@ -721,7 +733,9 @@ def observe_once(
                 raise ForwardCorpusRejected(
                     "source rejection deferral race identity is inconsistent"
                 )
-            _verify_retained_deferral_response(corpus, deferral)
+            _verify_retained_deferral_response(
+                corpus, deferral, frozen_runners=source["runners"]
+            )
         session = session_factory()
         try:
             for index, row in enumerate(before["races"]):

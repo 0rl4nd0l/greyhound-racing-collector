@@ -578,6 +578,49 @@ def test_semantic_deferral_still_verifies_retained_exact_raw_bytes(tmp_path):
     assert "retained rejection raw-byte hash drift" in repeated["error"]
 
 
+def test_forged_semantic_fingerprint_for_changed_native_identity_fails_before_fetch(
+    tmp_path,
+):
+    _seed(tmp_path / "retained")
+    url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-name?trial=false"
+    partial = T1._html().replace(b"2nd", b"-")
+    first, _ = _run(
+        tmp_path / "retained",
+        "forged-semantic-first",
+        [_dt("10:06")] * 4,
+        [Response(partial, url)],
+    )
+
+    changed_native_id = partial.replace(
+        b'/dogs/dog-1-a/dog-1-a', b'/dogs/dog-other/dog-1-a'
+    )
+    _seed(tmp_path / "changed")
+    changed, _ = _run(
+        tmp_path / "changed",
+        "forged-semantic-changed",
+        [_dt("10:06")] * 4,
+        [Response(changed_native_id, url)],
+    )
+    assert changed["races"][0]["semantic_fingerprint"] != first["races"][0][
+        "semantic_fingerprint"
+    ]
+
+    forged = dict(first["source_rejection_deferrals"][0])
+    forged["semantic_fingerprint"] = changed["races"][0]["semantic_fingerprint"]
+    repeated, session = _run(
+        tmp_path / "retained",
+        "forged-semantic-second",
+        [_dt("10:21")] * 4,
+        [Response(changed_native_id, url)],
+        previous_rejection_deferrals=[forged],
+    )
+
+    assert repeated["status"] == "FAILED"
+    assert repeated["races"] == []
+    assert "retained rejection semantic fingerprint drift" in repeated["error"]
+    assert session.calls == []
+
+
 def test_race_and_native_runner_identity_are_part_of_semantic_fingerprint(tmp_path):
     url = "https://www.thedogs.com.au/racing/venue/2026-07-29/1/race-name?trial=false"
     partial = T1._html().replace(b"2nd", b"-")
