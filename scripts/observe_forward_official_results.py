@@ -33,6 +33,7 @@ from race_collection.forward_sealed_corpus import (  # noqa: E402
 )
 from scripts.ingest_results_for_date import (  # noqa: E402
     THEDOGS_PUBLIC_HEADERS,
+    parse_thedogs_result_html_runner_rows,
     thedogs_result_urls_from_race_url,
 )
 
@@ -46,6 +47,10 @@ KNOWN_STATES = {
 }
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 SOURCE_REJECTION_BACKOFF = timedelta(hours=1)
+SEMANTIC_FINGERPRINT_ALGORITHM = (
+    "thedogs-official-result-semantic-projection-sha256-v1"
+)
+REJECTION_DEFERRAL_SCHEMA = "forward-official-result-rejection-deferral-v2"
 OFFICIAL_RESULT_REQUEST_HEADERS = {
     **THEDOGS_PUBLIC_HEADERS,
     "Accept-Encoding": "identity",
@@ -294,23 +299,193 @@ def _verify_retained_rejected_response(
         raise ForwardCorpusRejected("rejected response-stage raw-byte hash drift")
 
 
+def _semantic_deferral_fingerprint(
+    body: bytes,
+    *,
+    race_id: str,
+    source_native_race_id: str,
+    request_url: str,
+    frozen_runners: Sequence[Mapping[str, Any]],
+) -> str | None:
+    """Fingerprint a complete parsed result projection, never page scaffolding."""
+    try:
+        from bs4 import BeautifulSoup
+
+        markup = body.decode("utf-8")
+        parsed = parse_thedogs_result_html_runner_rows(markup)
+    except (ImportError, UnicodeDecodeError, TypeError, ValueError):
+        return None
+    if not parsed or len(parsed) != len(frozen_runners):
+        return None
+    soup = BeautifulSoup(markup, "html.parser")
+    result_rows = soup.select("table.race-runners--result tr.race-runner")
+    if len(result_rows) != len(parsed):
+        return None
+    displayed_result_texts = []
+    response_native_runner_ids = []
+    for result_row in result_rows:
+        position_cell = result_row.select_one("td.race-runners__finish-position")
+        name_cell = result_row.select_one("td.race-runners__name")
+        if position_cell is None or name_cell is None:
+            return None
+        displayed_result_texts.append(position_cell.get_text(" ", strip=True))
+        native_runner_ids = {
+            str(element.get("data-dog-id"))
+            for element in name_cell.select("blackbook-dog[data-dog-id]")
+            if str(element.get("data-dog-id") or "").strip()
+        }
+        for link in name_cell.select("a[href]"):
+            parsed_link = urlsplit(str(link.get("href") or ""))
+            parts = parsed_link.path.split("/")
+            if (
+                not parsed_link.scheme
+                and not parsed_link.netloc
+                and not parsed_link.query
+                and not parsed_link.fragment
+                and len(parts) == 4
+                and parts[0] == ""
+                and parts[1] == "dogs"
+                and parts[2]
+                and parts[3]
+            ):
+                native_runner_ids.add(parts[2])
+        if len(native_runner_ids) != 1:
+            return None
+        response_native_runner_ids.append(native_runner_ids.pop())
+    if len(set(response_native_runner_ids)) != len(response_native_runner_ids):
+        return None
+    frozen_by_box = {runner.get("box_number"): runner for runner in frozen_runners}
+    if len(frozen_by_box) != len(frozen_runners):
+        return None
+    projected_rows = []
+    parsed_boxes = []
+    for row, displayed_result_text, response_native_runner_id in zip(
+        parsed, displayed_result_texts, response_native_runner_ids, strict=True
+    ):
+        if type(row) is not dict or set(row) != {
+            "box_number",
+            "finish_position",
+            "dog_name",
+            "status",
+        }:
+            return None
+        box_number = row["box_number"]
+        finish_position = row["finish_position"]
+        dog_name = row["dog_name"]
+        status = row["status"]
+        if (
+            type(box_number) is not int
+            or (finish_position is not None and type(finish_position) is not int)
+            or (dog_name is not None and type(dog_name) is not str)
+            or (status is not None and type(status) is not str)
+        ):
+            return None
+        parsed_boxes.append(box_number)
+        frozen = frozen_by_box.get(box_number)
+        projected_rows.append(
+            {
+                "box_number": box_number,
+                "displayed_finish_position": finish_position,
+                "displayed_finish_or_status_text": displayed_result_text,
+                "displayed_runner_name": dog_name,
+                "frozen_runner_name": frozen.get("name") if frozen else None,
+                "source_declared_terminal_status": status,
+                "response_source_native_runner_id": response_native_runner_id,
+                "frozen_source_native_runner_id": (
+                    frozen.get("source_native_runner_id") if frozen else None
+                ),
+            }
+        )
+    if len(set(parsed_boxes)) != len(parsed_boxes) or set(parsed_boxes) != set(frozen_by_box):
+        return None
+    projected_rows.sort(key=lambda row: canonical_json(row))
+    projection = {
+        "fingerprint_algorithm_version": SEMANTIC_FINGERPRINT_ALGORITHM,
+        "race_id": race_id,
+        "request_url": request_url,
+        "source_native_race_id": source_native_race_id,
+        "runners": projected_rows,
+    }
+    return hashlib.sha256(canonical_json(projection)).hexdigest()
+
+
+def _verify_retained_deferral_response(
+    corpus: ForwardSealedCorpus,
+    deferral: Mapping[str, Any],
+    *,
+    frozen_runners: Sequence[Mapping[str, Any]],
+) -> None:
+    pre = corpus._load_receipt(deferral["race_id"], "prejump")
+    if pre is None:
+        raise ForwardCorpusRejected("retained rejection lost its pre-jump receipt")
+    request_directory = corpus._request_directory(
+        corpus.root, deferral["race_id"], deferral["retained_request_id"]
+    )
+    stage = corpus._load_request_receipt(
+        request_directory / "response-stage.json", "response-stage"
+    )
+    if stage is None:
+        raise ForwardCorpusRejected("retained rejection response-stage receipt is missing")
+    body = corpus._verify_response_stage(pre, stage)
+    if any(
+        stage.get(field) != deferral[expected]
+        for field, expected in (
+            ("race_id", "race_id"),
+            ("request_id", "retained_request_id"),
+            ("request_url", "request_url"),
+        )
+    ):
+        raise ForwardCorpusRejected("retained rejection response-stage identity drift")
+    if hashlib.sha256(body).hexdigest() != deferral["retained_raw_response_hash"]:
+        raise ForwardCorpusRejected("retained rejection raw-byte hash drift")
+    semantic_fingerprint = _semantic_deferral_fingerprint(
+        body,
+        race_id=deferral["race_id"],
+        source_native_race_id=deferral["source_native_race_id"],
+        request_url=deferral["request_url"],
+        frozen_runners=frozen_runners,
+    )
+    if semantic_fingerprint != deferral["semantic_fingerprint"]:
+        raise ForwardCorpusRejected("retained rejection semantic fingerprint drift")
+
+
 def _validated_rejection_deferrals(
     value: Sequence[Mapping[str, Any]],
-) -> dict[str, dict[str, str]]:
+) -> dict[str, dict[str, Any]]:
     if type(value) not in {list, tuple}:
         raise ForwardCorpusRejected("source rejection deferral metadata is invalid")
-    result: dict[str, dict[str, str]] = {}
+    result: dict[str, dict[str, Any]] = {}
     for item in value:
-        if type(item) is not dict or set(item) != {
+        if type(item) is not dict:
+            raise ForwardCorpusRejected("source rejection deferral metadata is invalid")
+        legacy = set(item) == {
             "race_id",
             "response_hash",
             "reason",
             "rejected_at",
             "next_eligible_at",
-        }:
+        }
+        versioned = set(item) == {
+            "schema_version",
+            "race_id",
+            "source_native_race_id",
+            "request_url",
+            "retained_request_id",
+            "retained_raw_response_hash",
+            "semantic_fingerprint",
+            "fingerprint_algorithm_version",
+            "reason",
+            "rejected_at",
+            "next_eligible_at",
+            "deferral_decision",
+            "pending_state",
+        }
+        if not legacy and not versioned:
             raise ForwardCorpusRejected("source rejection deferral metadata is invalid")
         race_id = item["race_id"]
-        response_hash = item["response_hash"]
+        response_hash = (
+            item["response_hash"] if legacy else item["retained_raw_response_hash"]
+        )
         reason = item["reason"]
         if (
             type(race_id) is not str
@@ -324,6 +499,35 @@ def _validated_rejection_deferrals(
             or not reason
         ):
             raise ForwardCorpusRejected("source rejection deferral metadata is invalid")
+        if versioned:
+            semantic_fingerprint = item["semantic_fingerprint"]
+            algorithm = item["fingerprint_algorithm_version"]
+            if (
+                item["schema_version"] != REJECTION_DEFERRAL_SCHEMA
+                or algorithm != SEMANTIC_FINGERPRINT_ALGORITHM
+                or type(semantic_fingerprint) is not str
+                or len(semantic_fingerprint) != 64
+                or any(
+                    character not in "0123456789abcdef"
+                    for character in semantic_fingerprint
+                )
+                or any(
+                    type(item[field]) is not str
+                    or not item[field]
+                    or len(item[field].encode()) > 512
+                    for field in (
+                        "source_native_race_id",
+                        "request_url",
+                        "retained_request_id",
+                    )
+                )
+                or item["deferral_decision"]
+                not in {"SOURCE_REJECTED", "SOURCE_REJECTION_DEFERRED"}
+                or item["pending_state"] != "RESULT_PENDING"
+            ):
+                raise ForwardCorpusRejected(
+                    "source rejection deferral metadata is invalid"
+                )
         try:
             rejected_at = datetime.fromisoformat(item["rejected_at"])
             next_eligible_at = datetime.fromisoformat(item["next_eligible_at"])
@@ -337,6 +541,8 @@ def _validated_rejection_deferrals(
             or next_eligible_at.tzinfo is None
             or next_eligible_at.utcoffset() is None
             or next_eligible_at - rejected_at != SOURCE_REJECTION_BACKOFF
+            or next_eligible_at
+            > datetime.now().astimezone() + SOURCE_REJECTION_BACKOFF
         ):
             raise ForwardCorpusRejected("source rejection deferral metadata is invalid")
         result[race_id] = dict(item)
@@ -344,16 +550,32 @@ def _validated_rejection_deferrals(
 
 
 def _rejection_deferral(
-    *, race_id: str, response_hash: str, reason: str, rejected_at: datetime
-) -> dict[str, str]:
+    *,
+    race_id: str,
+    source_native_race_id: str,
+    request_url: str,
+    retained_request_id: str,
+    response_hash: str,
+    semantic_fingerprint: str,
+    reason: str,
+    rejected_at: datetime,
+) -> dict[str, Any]:
     return {
+        "schema_version": REJECTION_DEFERRAL_SCHEMA,
         "race_id": race_id,
-        "response_hash": response_hash,
+        "source_native_race_id": source_native_race_id,
+        "request_url": request_url,
+        "retained_request_id": retained_request_id,
+        "retained_raw_response_hash": response_hash,
+        "semantic_fingerprint": semantic_fingerprint,
+        "fingerprint_algorithm_version": SEMANTIC_FINGERPRINT_ALGORITHM,
         "reason": reason,
         "rejected_at": rejected_at.isoformat(timespec="microseconds"),
         "next_eligible_at": (rejected_at + SOURCE_REJECTION_BACKOFF).isoformat(
             timespec="microseconds"
         ),
+        "deferral_decision": "SOURCE_REJECTED",
+        "pending_state": "RESULT_PENDING",
     }
 
 
@@ -376,42 +598,62 @@ def _record_source_rejection(
 
 
 def _deferral_applies(
-    deferral: Mapping[str, str] | None,
+    deferral: Mapping[str, Any] | None,
     *,
-    response_hash: str | None,
+    semantic_fingerprint: str | None,
     observed_at: datetime,
 ) -> bool:
+    if deferral is None or observed_at >= datetime.fromisoformat(
+        deferral["next_eligible_at"]
+    ):
+        return False
+    if "schema_version" not in deferral:
+        return False
     return bool(
-        response_hash
-        and deferral is not None
-        and deferral["response_hash"] == response_hash
-        and observed_at < datetime.fromisoformat(deferral["next_eligible_at"])
+        semantic_fingerprint
+        and deferral["semantic_fingerprint"] == semantic_fingerprint
     )
 
 
 def _record_deferred_rejection(
-    race_report: dict[str, Any], deferral: Mapping[str, str]
+    race_report: dict[str, Any],
+    deferral: Mapping[str, Any],
 ) -> None:
+    recorded = dict(deferral)
+    if "schema_version" in recorded:
+        recorded["deferral_decision"] = "SOURCE_REJECTION_DEFERRED"
     race_report["decision"] = "SOURCE_REJECTION_DEFERRED"
     race_report["source_rejection"] = "DeferredSourceRejection: " + deferral["reason"]
-    race_report["deferral_reason"] = "identical_source_response_before_next_eligibility"
-    race_report["rejection_deferral"] = dict(deferral)
+    race_report["deferral_reason"] = "identical_result_semantics_before_next_eligibility"
+    race_report["rejection_deferral"] = recorded
 
 
 def _attach_new_deferral(
     race_report: dict[str, Any],
-    active_deferrals: dict[str, dict[str, str]],
+    active_deferrals: dict[str, dict[str, Any]],
     *,
     race_id: str,
+    source_native_race_id: str,
+    request_url: str,
+    request_id: str,
     response_hash: str | None,
+    semantic_fingerprint: str | None,
     reason: str,
     rejected_at: datetime,
 ) -> None:
-    if race_report["decision"] != "SOURCE_REJECTED" or response_hash is None:
+    if (
+        race_report["decision"] != "SOURCE_REJECTED"
+        or response_hash is None
+        or semantic_fingerprint is None
+    ):
         return
     deferral = _rejection_deferral(
         race_id=race_id,
+        source_native_race_id=source_native_race_id,
+        request_url=request_url,
+        retained_request_id=request_id,
         response_hash=response_hash,
+        semantic_fingerprint=semantic_fingerprint,
         reason=reason,
         rejected_at=rejected_at,
     )
@@ -476,6 +718,24 @@ def observe_once(
         race_ids = {row.get("race_id") for row in before["races"]}
         if not set(active_deferrals) <= race_ids:
             raise ForwardCorpusRejected("source rejection deferral race identity is unknown")
+        state_by_race = {row["race_id"]: row["state"] for row in before["races"]}
+        for deferred_race_id, deferral in active_deferrals.items():
+            if "schema_version" not in deferral:
+                continue
+            source = _source_capture(corpus, deferred_race_id)
+            if (
+                state_by_race[deferred_race_id] != deferral["pending_state"]
+                or source["source_native_race_id"]
+                != deferral["source_native_race_id"]
+                or canonical_result_url(source["canonical_source_url"])
+                != deferral["request_url"]
+            ):
+                raise ForwardCorpusRejected(
+                    "source rejection deferral race identity is inconsistent"
+                )
+            _verify_retained_deferral_response(
+                corpus, deferral, frozen_runners=source["runners"]
+            )
         session = session_factory()
         try:
             for index, row in enumerate(before["races"]):
@@ -488,6 +748,8 @@ def observe_once(
                     "decision": "SKIPPED",
                     "receipt_hash": None,
                     "raw_response_hash": None,
+                    "semantic_fingerprint": None,
+                    "fingerprint_algorithm_version": None,
                     "normalization_attempted": False,
                     "source_rejection": None,
                     "deferral_reason": None,
@@ -520,13 +782,27 @@ def observe_once(
                     )
                     response_hash = hashlib.sha256(source_response["body"]).hexdigest()
                     race_report["raw_response_hash"] = response_hash
+                    semantic_fingerprint = _semantic_deferral_fingerprint(
+                        source_response["body"],
+                        race_id=race_id,
+                        source_native_race_id=source["source_native_race_id"],
+                        request_url=request_url,
+                        frozen_runners=source["runners"],
+                    )
+                    race_report["semantic_fingerprint"] = semantic_fingerprint
+                    if semantic_fingerprint is not None:
+                        race_report["fingerprint_algorithm_version"] = (
+                            SEMANTIC_FINGERPRINT_ALGORITHM
+                        )
                     if _deferral_applies(
                         prior_deferral,
-                        response_hash=response_hash,
+                        semantic_fingerprint=semantic_fingerprint,
                         observed_at=eligibility_time,
                     ):
                         _record_deferred_rejection(race_report, prior_deferral)
+                        active_deferrals[race_id] = race_report["rejection_deferral"]
                         continue
+                    active_deferrals.pop(race_id, None)
                     normalization_rejection: ForwardCorpusRejected | None = None
                     race_report["normalization_attempted"] = True
                     try:
@@ -545,7 +821,11 @@ def observe_once(
                             race_report,
                             active_deferrals,
                             race_id=race_id,
+                            source_native_race_id=source["source_native_race_id"],
+                            request_url=request_url,
+                            request_id=request_id,
                             response_hash=response_hash,
+                            semantic_fingerprint=semantic_fingerprint,
                             reason=str(normalization_rejection),
                             rejected_at=eligibility_time,
                         )
@@ -584,7 +864,11 @@ def observe_once(
                             race_report,
                             active_deferrals,
                             race_id=race_id,
+                            source_native_race_id=source["source_native_race_id"],
+                            request_url=request_url,
+                            request_id=request_id,
                             response_hash=response_hash,
+                            semantic_fingerprint=semantic_fingerprint,
                             reason=str(normalization_rejection),
                             rejected_at=eligibility_time,
                         )
@@ -615,17 +899,23 @@ def observe_once(
                     race_report["raw_response_hash"] = error.response_hash
                     if _deferral_applies(
                         prior_deferral,
-                        response_hash=error.response_hash,
+                        semantic_fingerprint=None,
                         observed_at=eligibility_time,
                     ):
                         _record_deferred_rejection(race_report, prior_deferral)
+                        active_deferrals[race_id] = race_report["rejection_deferral"]
                     else:
+                        active_deferrals.pop(race_id, None)
                         _record_source_rejection(race_report, error, corpus, race_id)
                     _attach_new_deferral(
                         race_report,
                         active_deferrals,
                         race_id=race_id,
+                        source_native_race_id=source["source_native_race_id"],
+                        request_url=request_url,
+                        request_id=request_id,
                         response_hash=error.response_hash,
+                        semantic_fingerprint=None,
                         reason=str(error),
                         rejected_at=eligibility_time,
                     )

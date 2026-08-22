@@ -10562,6 +10562,61 @@ def test_forward_observer_corrupt_durable_deferral_state_fails_closed(tmp_path):
         )
 
 
+def test_forward_observer_reloads_versioned_semantic_deferral_with_exact_hour(
+    monkeypatch, tmp_path
+):
+    state_path = tmp_path / "runtime" / "state.json"
+    state_path.parent.mkdir(parents=True)
+    deferral = {
+        "schema_version": "forward-official-result-rejection-deferral-v2",
+        "race_id": "race-1",
+        "source_native_race_id": "thedogs-2026-07-29-1",
+        "request_url": "https://www.thedogs.com.au/racing/venue/2026-07-29/1?trial=false",
+        "retained_request_id": "request-retained",
+        "retained_raw_response_hash": "a" * 64,
+        "semantic_fingerprint": "b" * 64,
+        "fingerprint_algorithm_version": (
+            "thedogs-official-result-semantic-projection-sha256-v1"
+        ),
+        "reason": "official finish/status combination is inconsistent",
+        "rejected_at": "2026-07-29T10:06:00.000000+10:00",
+        "next_eligible_at": "2026-07-29T11:06:00.000000+10:00",
+        "deferral_decision": "SOURCE_REJECTION_DEFERRED",
+        "pending_state": "RESULT_PENDING",
+    }
+    state_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "shadow_autopilot_daemon_state_v1",
+                "forward_official_result_observer": {
+                    "source_rejection_deferrals": [deferral]
+                },
+            }
+        )
+    )
+    monkeypatch.setattr(
+        "scripts.observe_forward_official_results.observe_once",
+        lambda **kwargs: {"status": "COMPLETED", "arguments": kwargs},
+    )
+    args = daemon.parse_args(
+        [
+            "run-once",
+            "--enable-forward-official-result-observer",
+            "--forward-corpus-root",
+            str(tmp_path / "corpus"),
+        ]
+    )
+
+    result = daemon.run_forward_official_result_observer(
+        args, "semantic-reload", state_path=state_path
+    )
+
+    assert result["arguments"]["previous_rejection_deferrals"] == [deferral]
+    rejected_at = datetime.fromisoformat(deferral["rejected_at"])
+    next_eligible_at = datetime.fromisoformat(deferral["next_eligible_at"])
+    assert (next_eligible_at - rejected_at).total_seconds() == 3600
+
+
 def test_full_service_generator_emits_forward_opt_in_only_when_declared(tmp_path):
     lock_path = Path("/runtime/shared-shadow-autopilot.lock")
     default = daemon.service_file_text(repo_path=tmp_path, timeout_seconds=840)
