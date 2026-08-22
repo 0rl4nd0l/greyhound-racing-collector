@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 
+from race_collection.domain import ArtifactChecksum
 from race_collection.forward_sealed_corpus import (
     ForwardCorpusRejected,
     ForwardSealedCorpus,
@@ -21,6 +22,7 @@ from race_collection.manual_prediction_collector_request import (
 from race_collection.scheduled_forward_corpus import admit_scheduled_capture
 from race_collection.synchronous_manual_capture import (
     CollectorBusy,
+    VerifiedCurrentRaceIndex,
     publish_scheduled_capture_receipts,
 )
 from src.predictor.on_demand import canonical_bytes, sha256_bytes
@@ -43,6 +45,7 @@ class ScheduledFixture:
     plan_item: dict[str, Any]
     attempt: dict[str, Any]
     receipt_publish: dict[str, Any]
+    verified_index: VerifiedCurrentRaceIndex
 
 
 def _tree(root: Path) -> dict[str, bytes]:
@@ -196,6 +199,45 @@ def _fixture(
         output_dir=output_dir,
         emitted_at=NOW + timedelta(seconds=3),
     )
+    verified_index = VerifiedCurrentRaceIndex(
+        schema_version="collector_current_race_index_v2",
+        run_id="scheduled-run-1",
+        source_generated_at=NOW.isoformat(),
+        packet_sha256=sha256_bytes(b"verified-index"),
+        packet_bytes=b"verified-index",
+        races=(
+            {
+                "race_id": RACE_ID,
+                "date": "2026-08-03",
+                "venue": "WARRNAMBOOL",
+                "race_number": 1,
+                "jump_datetime": JUMP.isoformat(),
+                "race_url": RACE_URL,
+                "source_native_race_id": "159001",
+                "runners": [
+                    {
+                        "box": 1,
+                        "display_name": "Bravo",
+                        "identity": "BRAVO",
+                        "scratch_state": "ACTIVE",
+                        "source_native_runner_id": "15900101",
+                    },
+                    {
+                        "box": 2,
+                        "display_name": "Alpha",
+                        "identity": "ALPHA",
+                        "scratch_state": "ACTIVE",
+                        "source_native_runner_id": "15900102",
+                    },
+                ],
+            },
+        ),
+        source_refresh_report_path="refresh.json",
+        source_refresh_report_sha256="2" * 64,
+        publication_sha256="3" * 64,
+        state_sha256="4" * 64,
+        report_sha256="5" * 64,
+    )
     return ScheduledFixture(
         protocol=protocol,
         evidence_root=evidence_root,
@@ -203,6 +245,7 @@ def _fixture(
         plan_item=plan_item,
         attempt=attempt,
         receipt_publish=receipt_publish,
+        verified_index=verified_index,
     )
 
 
@@ -217,8 +260,33 @@ def _admit(
         plan_item=fixture.plan_item,
         attempt=fixture.attempt,
         receipt_publish=fixture.receipt_publish,
+        verified_index=fixture.verified_index,
         emitted_at=emitted_at,
     )
+
+
+def test_scheduled_capture_without_verified_index_fails_closed_without_write(
+    tmp_path,
+):
+    fixture = _fixture(tmp_path)
+    before = _tree(fixture.corpus_root)
+
+    with pytest.raises(
+        ForwardCorpusRejected,
+        match="verified collector current-race index is required",
+    ):
+        admit_scheduled_capture(
+            protocol=fixture.protocol,
+            evidence_root=fixture.evidence_root,
+            corpus_root=fixture.corpus_root,
+            collector_run_id="legacy-scheduled-run",
+            plan_item=fixture.plan_item,
+            attempt=fixture.attempt,
+            receipt_publish=fixture.receipt_publish,
+            emitted_at=NOW + timedelta(seconds=4),
+        )
+
+    assert _tree(fixture.corpus_root) == before
 
 
 def test_fixture_scheduled_capture_admits_once_and_exact_replay_is_byte_stable(
@@ -245,6 +313,7 @@ def test_fixture_scheduled_capture_admits_once_and_exact_replay_is_byte_stable(
         corpus_root=fixture.corpus_root,
         collector_run_id="scheduled-run-2",
         plan_item=refreshed_plan,
+        verified_index=fixture.verified_index,
         emitted_at=JUMP + timedelta(seconds=1),
     )
 
@@ -254,9 +323,9 @@ def test_fixture_scheduled_capture_admits_once_and_exact_replay_is_byte_stable(
     receipts = list((fixture.corpus_root / "races").glob("*/prejump.json"))
     assert len(receipts) == 1
     receipt = json.loads(receipts[0].read_bytes())
-    assert receipt["runner_ids"] == ["Alpha", "Bravo"]
+    assert receipt["runner_ids"] == ["15900101", "15900102"]
     assert receipt["feature_schema_checksum"] == (
-        "sha256:9c9ae3c10a800d98ed07dad298eb9b31dff10cfd1d073e0cb52879af6b8010e8"
+        "sha256:215d4b3e5b7a9f10a7181469b1d9c0ba8b46b5c392deda8907ae2a52117ca14f"
     )
     assert receipt["missingness_policy_checksum"] == (
         "sha256:ae39177c5d1ed77eb7b40c09acb2d0ac92b2a258aa3beae1aae584dd8c08687f"
@@ -269,6 +338,117 @@ def test_fixture_scheduled_capture_admits_once_and_exact_replay_is_byte_stable(
     assert source_capture["canonical_source_url"] == RACE_URL.removesuffix(
         "?trial=false"
     )
+
+
+def test_scheduled_capture_binds_numeric_native_race_to_frozen_internal_race_id(
+    tmp_path,
+):
+    fixture = _fixture(tmp_path)
+    internal_race_id = "race_" + "a" * 32
+    members = [
+        {
+            "race_id": internal_race_id,
+            "racing_date": "2026-08-03",
+            "venue": "WARRNAMBOOL",
+            "race_number": 1,
+            "source_native_race_id": "159001",
+            "source_native_runner_ids": ["15900101", "15900102"],
+            "feature_cutoff_at": (NOW + timedelta(minutes=10)).isoformat(),
+            "scheduled_jump_at": JUMP.isoformat(),
+        }
+    ]
+    venues = ("SANDOWN", "RICHMOND", "ALBION PARK")
+    for index in range(2, 21):
+        day = "2026-08-03" if index <= 10 else "2026-08-04"
+        jump = datetime.fromisoformat(f"{day}T13:00:00+10:00")
+        members.append(
+            {
+                "race_id": f"race_{index:032d}",
+                "racing_date": day,
+                "venue": venues[index % len(venues)],
+                "race_number": index,
+                "source_native_race_id": str(159000 + index),
+                "source_native_runner_ids": [
+                    str(15900000 + index * 10 + 1),
+                    str(15900000 + index * 10 + 2),
+                ],
+                "feature_cutoff_at": (jump - timedelta(minutes=5)).isoformat(),
+                "scheduled_jump_at": jump.isoformat(),
+            }
+        )
+    cohort = ForwardSealedCorpus(fixture.corpus_root).freeze_prediction_cohort(
+        cohort_id="issue-159-baseline",
+        races=members,
+        frozen_at=(NOW - timedelta(minutes=1)).isoformat(),
+    )
+
+    admitted = admit_scheduled_capture(
+        protocol=fixture.protocol,
+        evidence_root=fixture.evidence_root,
+        corpus_root=fixture.corpus_root,
+        collector_run_id="scheduled-run-1",
+        plan_item=fixture.plan_item,
+        attempt=fixture.attempt,
+        receipt_publish=fixture.receipt_publish,
+        verified_index=fixture.verified_index,
+        emitted_at=NOW + timedelta(seconds=4),
+        cohort_id=cohort["cohort_id"],
+        cohort_checksum=ArtifactChecksum(cohort["checksum"]),
+    )
+
+    assert admitted["status"] == "PREJUMP_CAPTURED"
+    receipt_paths = list((fixture.corpus_root / "races").glob("*/prejump.json"))
+    assert len(receipt_paths) == 1
+    assert json.loads(receipt_paths[0].read_bytes())["race_id"] == internal_race_id
+
+
+def test_scheduled_capture_rejects_race_outside_exact_authoritative_cohort(tmp_path):
+    fixture = _fixture(tmp_path)
+    members = []
+    venues = ("SANDOWN", "RICHMOND", "ALBION PARK")
+    for index in range(1, 21):
+        day = "2026-08-03" if index <= 10 else "2026-08-04"
+        jump = datetime.fromisoformat(f"{day}T13:00:00+10:00")
+        members.append(
+            {
+                "race_id": f"race_{index:032d}",
+                "racing_date": day,
+                "venue": venues[index % len(venues)],
+                "race_number": index,
+                "source_native_race_id": str(259000 + index),
+                "source_native_runner_ids": [
+                    str(25900000 + index * 10 + offset) for offset in (1, 2)
+                ],
+                "feature_cutoff_at": (jump - timedelta(minutes=5)).isoformat(),
+                "scheduled_jump_at": jump.isoformat(),
+            }
+        )
+    cohort = ForwardSealedCorpus(fixture.corpus_root).freeze_prediction_cohort(
+        cohort_id="different-authoritative-cohort",
+        races=members,
+        frozen_at=(NOW - timedelta(minutes=1)).isoformat(),
+    )
+    before = _tree(fixture.corpus_root)
+
+    with pytest.raises(
+        ForwardCorpusRejected,
+        match="scheduled race is absent from the authoritative cohort",
+    ):
+        admit_scheduled_capture(
+            protocol=fixture.protocol,
+            evidence_root=fixture.evidence_root,
+            corpus_root=fixture.corpus_root,
+            collector_run_id="scheduled-run-1",
+            plan_item=fixture.plan_item,
+            attempt=fixture.attempt,
+            receipt_publish=fixture.receipt_publish,
+            verified_index=fixture.verified_index,
+            emitted_at=NOW + timedelta(seconds=4),
+            cohort_id=cohort["cohort_id"],
+            cohort_checksum=ArtifactChecksum(cohort["checksum"]),
+        )
+
+    assert _tree(fixture.corpus_root) == before
 
 
 def test_receipt_only_recovery_uses_sealed_plan_after_schedule_refresh(tmp_path):
@@ -291,6 +471,7 @@ def test_receipt_only_recovery_uses_sealed_plan_after_schedule_refresh(tmp_path)
         corpus_root=fixture.corpus_root,
         collector_run_id="scheduled-run-2",
         plan_item=refreshed_plan,
+        verified_index=fixture.verified_index,
         emitted_at=NOW + timedelta(minutes=10),
     )
 
@@ -304,6 +485,17 @@ def test_first_postjump_admission_rejects_without_writing_corpus_bytes(tmp_path)
 
     with pytest.raises(ForwardCorpusRejected, match="prospectively"):
         _admit(fixture, emitted_at=JUMP)
+
+    assert _tree(fixture.corpus_root) == before
+
+
+def test_scheduled_admission_rejects_runner_name_as_native_id_without_write(tmp_path):
+    fixture = _fixture(tmp_path)
+    fixture.verified_index.races[0]["runners"][1]["source_native_runner_id"] = "Alpha"
+    before = _tree(fixture.corpus_root)
+
+    with pytest.raises(ForwardCorpusRejected, match="numeric native runner IDs"):
+        _admit(fixture)
 
     assert _tree(fixture.corpus_root) == before
 
@@ -381,6 +573,7 @@ def test_manual_prediction_plan_is_not_a_second_acquisition_path(tmp_path):
             corpus_root=fixture.corpus_root,
             collector_run_id="scheduled-run-1",
             plan_item=manual,
+            verified_index=fixture.verified_index,
             emitted_at=NOW + timedelta(seconds=4),
         )
 

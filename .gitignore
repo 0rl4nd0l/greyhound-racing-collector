@@ -150,6 +150,7 @@ dmypy.json
 !package.json
 !requirements.json
 !config.json.example
+!config/forward_baseline_capture_service.schema.json
 !docs/ARCHIVE_MANIFEST.json
 archive/
 
@@ -253,6 +254,7 @@ nohup.out
 *.db*
 *.sqlite*
 *.sql
+!race_collection/migrations/0030_forward_baseline_cohort_authority.sql
 
 # Temporary and build files
 temp/

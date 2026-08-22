@@ -1,3 +1,4 @@
+import hashlib
 import json
 import sqlite3
 import threading
@@ -143,7 +144,7 @@ def test_migration_empty_repeat_and_populated_pre_phase3(tmp_path):
     store.migrate()
     store.migrate()
     with store._connect() as db:
-        assert db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 29
+        assert db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 30
         assert (
             db.execute("SELECT kind FROM operations WHERE operation_id='legacy'").fetchone()[0]
             == "fixture"
@@ -229,6 +230,203 @@ def test_prediction_replay_conflict_and_failure_isolation(setup):
     with store._connect() as db:
         assert db.execute("SELECT COUNT(*) FROM deferred_predictions").fetchone()[0] == 1
         assert db.execute("SELECT COUNT(*) FROM prediction_quarantines").fetchone()[0] == 1
+
+
+def test_frozen_twenty_race_cohort_uses_real_terminal_barrier_and_finite_records(tmp_path):
+    store = SQLiteOperationsStore(tmp_path / "operations.sqlite3")
+    store.migrate()
+    authority = ForecastingAuthority(store)
+    bundle = LegacyBundle(
+        "bundle-baseline-159",
+        "model-frozen-159",
+        checksum("6"),
+        10,
+        checksum("2"),
+        None,
+        "raw_registry_model",
+        {"frozen": True},
+    )
+    release = ModelRelease("release-baseline-159", bundle.bundle_id, "policy-159", {})
+    authority.register_bundle(operation(2000), bundle, NOW)
+    authority.register_release(operation(2001), release, NOW)
+    operation_number = 2100
+    members = []
+    cohort_races = []
+    expected_classifications = []
+    for day_offset in range(2):
+        day_id = RacingDayId(identity("day", 159 + day_offset))
+        local_day = date(2026, 7, 29 + day_offset)
+        day = RacingDay(day_id, local_day, "Australia/Melbourne", NOW)
+        store.create_racing_day(operation(operation_number), day)
+        operation_number += 1
+        authority.pin_day(operation(operation_number), day_id, release, NOW)
+        operation_number += 1
+        for race_offset in range(10):
+            index = day_offset * 10 + race_offset + 1
+            jump = datetime(2026, 7, 29 + day_offset, 3, race_offset, tzinfo=timezone.utc)
+            candidate = ProgrammeRaceCandidate(
+                "thedogs-race-card",
+                str(159000 + index),
+                ("Sandown", "Richmond", "Albion Park")[index % 3],
+                race_offset + 1,
+                jump,
+            )
+            race = store.record_expected_race(
+                operation(operation_number), day, candidate, checksum("a"), NOW
+            )
+            operation_number += 1
+            members.append(
+                {
+                    "race_id": str(race),
+                    "racing_date": local_day.isoformat(),
+                    "venue": candidate.venue,
+                    "race_number": candidate.race_number,
+                    "source_native_race_id": candidate.source_race_id,
+                    "source_native_runner_ids": [
+                        str(15900000 + index * 10 + 1),
+                        str(15900000 + index * 10 + 2),
+                    ],
+                    "feature_cutoff_at": (jump - timedelta(minutes=5)).isoformat(),
+                    "scheduled_jump_at": jump.isoformat(),
+                }
+            )
+            store.advance_race(operation(operation_number), race, RaceState.CARD_COLLECTED, NOW)
+            operation_number += 1
+            store.advance_race(
+                operation(operation_number), race, RaceState.COLLECTING_ODDS, NOW
+            )
+            operation_number += 1
+            store.record_field_evidence(
+                FieldEvidence(
+                    operation(operation_number),
+                    race,
+                    EvidenceField.VENUE,
+                    EvidenceAuthority.OFFICIAL_CARD,
+                    candidate.venue,
+                    "thedogs-race-card",
+                    checksum("a"),
+                    NOW,
+                )
+            )
+            operation_number += 1
+            store.seal_evidence(
+                operation(operation_number),
+                race_id=race,
+                raw_checksum=checksum("a"),
+                normalized_checksum=checksum("b"),
+                schema_version="race-evidence-v1",
+                normalization_version="normalizer-v1",
+                frozen_at=jump - timedelta(minutes=6),
+                freeze_authority=FreezeAuthority.SCHEDULED_MINUS_BUFFER,
+                odds_checksum=checksum("c"),
+                sealed_at=jump - timedelta(minutes=4),
+                request_intent_digest=checksum("f"),
+            )
+            operation_number += 1
+            store.advance_race(
+                operation(operation_number), race, RaceState.AWAITING_DAY_CLOSE, NOW
+            )
+            operation_number += 1
+            classification = (
+                "ACCEPTED",
+                "AUTHORIZATION_BLOCKED",
+                "INTEGRITY_FAILED",
+                "QUARANTINED",
+            )[index % 4]
+            cohort_races.append((race, classification))
+            expected_classifications.append(classification)
+        store.close_racing_day(operation(operation_number), day, NOW)
+        operation_number += 1
+
+    cohort = {
+        "schema_version": "forward-baseline-cohort-v1",
+        "cohort_id": "issue-159-baseline",
+        "frozen_at": "2026-07-29T00:00:00+00:00",
+        "race_count": 20,
+        "members": sorted(members, key=lambda member: member["race_id"]),
+    }
+    cohort_bytes = json.dumps(
+        cohort, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode()
+    store.register_forward_baseline_cohort(
+        operation(operation_number),
+        cohort_id=cohort["cohort_id"],
+        artifact_checksum=ArtifactChecksum(
+            "sha256:" + hashlib.sha256(cohort_bytes).hexdigest()
+        ),
+        frozen_at=datetime.fromisoformat(cohort["frozen_at"]),
+        members=cohort["members"],
+        registered_at=NOW,
+    )
+    operation_number += 1
+    invalid_native_identity = json.loads(cohort_bytes)
+    invalid_native_identity["members"][0]["source_native_race_id"] = "not-numeric"
+    with pytest.raises(ValueError, match="race identities"):
+        authority.baseline_cohort_terminal_records(
+            json.dumps(
+                invalid_native_identity,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode()
+        )
+    substituted_identity = json.loads(cohort_bytes)
+    substituted_identity["members"][0]["venue"] = "Substituted Venue"
+    with pytest.raises(OperationsStoreError, match="transactional authority"):
+        authority.baseline_cohort_terminal_records(
+            json.dumps(
+                substituted_identity,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode()
+        )
+    with pytest.raises(BarrierNotSatisfied, match="not terminal"):
+        authority.baseline_cohort_terminal_records(cohort_bytes)
+    with pytest.raises(BarrierNotSatisfied, match="not terminal"):
+        authority.open_baseline_results(
+            operation(operation_number), cohort_races[0][0], NOW, cohort_bytes=cohort_bytes
+        )
+
+    accepted = []
+    for race, classification in cohort_races:
+        authority.begin_prediction(operation(operation_number), race, NOW)
+        operation_number += 1
+        if classification == "ACCEPTED":
+            outcome = authority.predict(
+                operation(operation_number),
+                race,
+                f"prediction-{race}",
+                Predictor(),
+                NOW,
+            )
+            accepted.append(race)
+        else:
+            code = {
+                "AUTHORIZATION_BLOCKED": "SOURCE_AUTHORIZATION_REQUIRED",
+                "INTEGRITY_FAILED": "INTEGRITY_FAILED",
+                "QUARANTINED": "required_feature_unavailable",
+            }[classification]
+            authority.quarantine_prediction(
+                operation(operation_number), race, code, f"fixture {classification}", NOW
+            )
+            outcome = None
+        operation_number += 1
+        if outcome is not None:
+            assert outcome.status == "committed"
+
+    terminal = authority.baseline_cohort_terminal_records(cohort_bytes)
+    assert terminal["race_count"] == terminal["terminal_count"] == 20
+    assert sorted(row["classification"] for row in terminal["records"]) == sorted(
+        expected_classifications
+    )
+    assert all(
+        row["rejections"] for row in terminal["records"] if row["classification"] != "ACCEPTED"
+    )
+    assert authority.open_baseline_results(
+        operation(operation_number), accepted[0], NOW, cohort_bytes=cohort_bytes
+    )
+    assert store.race_state(accepted[0]) == RaceState.RESULT_PENDING
 
 
 @pytest.mark.parametrize("terminal", ["committed", "quarantined"])

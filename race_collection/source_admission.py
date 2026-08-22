@@ -79,6 +79,15 @@ _OFFICIAL_RACE_FIELDS = {
     "closed_at",
     "artifact_checksum",
 }
+
+
+def _official_race_envelope_is_supported(race: Mapping[str, Any]) -> bool:
+    return frozenset(race) in {
+        frozenset(_OFFICIAL_RACE_FIELDS),
+        frozenset(_OFFICIAL_RACE_FIELDS | {"feature_availability_manifest_checksum"}),
+    }
+
+
 _OFFICIAL_RESPONSE_STAGE_FIELDS = {
     "schema_version",
     "race_id",
@@ -218,7 +227,14 @@ def _normalized_manifest(manifest: Mapping[str, Any]) -> dict[str, Any]:
         if origin == FORWARD_SEALED_ORIGIN
         else _RACE_FIELDS
     )
-    if any(set(race) != expected_fields for race in races):
+    if any(
+        (
+            not _official_race_envelope_is_supported(race)
+            if origin == OFFICIAL_FIRST_ORIGIN
+            else set(race) != expected_fields
+        )
+        for race in races
+    ):
         raise SourceAdmissionRejected("source manifest race envelope is invalid")
     try:
         ordered = sorted(races, key=lambda race: _identity_key(race["race_id"], "race_id"))
@@ -688,6 +704,11 @@ def _admit_official_first(
         manifest["missingness_policy_checksum"],
         *{race[field] for race in races for field in scalar_fields},
         *{
+            race["feature_availability_manifest_checksum"]
+            for race in races
+            if "feature_availability_manifest_checksum" in race
+        },
+        *{
             checksum
             for race in races
             for field in (
@@ -722,7 +743,7 @@ def _admit_official_first(
     admitted_races = []
     try:
         for race in races:
-            if set(race) != _OFFICIAL_RACE_FIELDS:
+            if not _official_race_envelope_is_supported(race):
                 raise SourceAdmissionRejected("official-first race envelope is invalid")
             source = _object(
                 _artifact(artifacts, race["source_capture_checksum"], "source capture"),
@@ -866,11 +887,29 @@ def _admit_official_first(
                 "feature_schema_checksum": manifest["feature_schema_checksum"],
                 "missingness_policy_checksum": manifest["missingness_policy_checksum"],
                 "feature_matrix_checksum": race["feature_matrix_checksum"],
+                **(
+                    {
+                        "feature_availability_manifest_checksum": race[
+                            "feature_availability_manifest_checksum"
+                        ]
+                    }
+                    if "feature_availability_manifest_checksum" in race
+                    else {}
+                ),
             }
             if prejump != expected_prejump:
                 raise SourceAdmissionRejected("pre-jump receipt binding disagrees")
             feature_bytes = _artifact(
                 artifacts, race["feature_matrix_checksum"], "feature matrix"
+            )
+            availability_bytes = (
+                _artifact(
+                    artifacts,
+                    race["feature_availability_manifest_checksum"],
+                    "feature availability manifest",
+                )
+                if "feature_availability_manifest_checksum" in race
+                else None
             )
             inventory_fields = (
                 "response_stage_checksums",
@@ -1189,6 +1228,15 @@ def _admit_official_first(
             )
             if feature_bytes != expected_features:
                 raise SourceAdmissionRejected("official-first feature matrix disagrees")
+            if derived.availability_manifest is None:
+                if availability_bytes is not None:
+                    raise SourceAdmissionRejected(
+                        "legacy official-first evidence cannot invent an availability manifest"
+                    )
+            elif availability_bytes != _canonical(derived.availability_manifest.as_dict()):
+                raise SourceAdmissionRejected(
+                    "official-first feature availability manifest disagrees"
+                )
             example = _artifact(
                 artifacts, race["artifact_checksum"], "training example"
             )

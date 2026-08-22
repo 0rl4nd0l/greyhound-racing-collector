@@ -32,6 +32,7 @@ PREJUMP_RECEIPT_SCHEMA = "forward-prejump-receipt-v1"
 RESULT_RECEIPT_SCHEMA = "forward-result-receipt-v1"
 CLOSURE_RECEIPT_SCHEMA = "forward-race-closure-v1"
 STATUS_SCHEMA = "forward-sealed-corpus-status-v1"
+BASELINE_COHORT_SCHEMA = "forward-baseline-cohort-v1"
 OFFICIAL_RESULT_SOURCE = "thedogs-official"
 PREJUMP_SOURCE = "thedogs-race-card"
 RESPONSE_STAGE_SCHEMA = "official-result-response-stage-v1"
@@ -464,7 +465,9 @@ class ForwardSealedCorpus:
     def _publish_once(path: Path, content: bytes) -> bool:
         """Publish once without an overwrite window; exact retries are no-ops."""
         try:
-            anchor = next(parent for parent in path.parents if parent.name in {"races", "packages"})
+            anchor = next(
+                parent for parent in path.parents if parent.name in {"races", "packages", "cohorts"}
+            )
         except StopIteration as error:
             raise ForwardCorpusRejected("receipt path escapes the corpus root") from error
         root = anchor.parent
@@ -519,6 +522,209 @@ class ForwardSealedCorpus:
         except (ArtifactStoreError, ValueError) as error:
             raise ForwardCorpusRejected(f"{name} bytes are missing or have hash drift") from error
 
+    def _cohort_path(self, cohort_id: str) -> Path:
+        identity = _bounded_id(cohort_id, "cohort_id")
+        return self.root / "cohorts" / f"{hashlib.sha256(identity.encode()).hexdigest()}.json"
+
+    def freeze_prediction_cohort(
+        self,
+        *,
+        cohort_id: str,
+        races: Sequence[Mapping[str, Any]],
+        frozen_at: str,
+    ) -> dict[str, Any]:
+        """Freeze the exact bounded proof population before any member is collected."""
+        cohort_id = _bounded_id(cohort_id, "cohort_id")
+        selected_at, selected_text = _timestamp(frozen_at, "cohort frozen_at")
+        if type(races) not in {list, tuple} or len(races) != 20:
+            raise ForwardCorpusRejected("forward baseline cohort must contain exactly 20 races")
+        required = {
+            "race_id",
+            "racing_date",
+            "venue",
+            "race_number",
+            "source_native_race_id",
+            "source_native_runner_ids",
+            "feature_cutoff_at",
+            "scheduled_jump_at",
+        }
+        members = []
+        for value in races:
+            if type(value) is not dict or set(value) != required:
+                raise ForwardCorpusRejected("forward baseline cohort member schema is invalid")
+            race_id = _bounded_id(value["race_id"], "race_id")
+            racing_date = _known_text(value["racing_date"], "racing date")
+            venue = _known_text(value["venue"], "venue")
+            race_number = value["race_number"]
+            native_race = _known_text(value["source_native_race_id"], "native race id")
+            native_runners = value["source_native_runner_ids"]
+            if (
+                type(race_number) is not int
+                or race_number <= 0
+                or not native_race.isascii()
+                or not native_race.isdecimal()
+                or type(native_runners) is not list
+                or len(native_runners) < 2
+                or any(
+                    type(item) is not str or not item.isascii() or not item.isdecimal()
+                    for item in native_runners
+                )
+                or len(native_runners) != len(set(native_runners))
+            ):
+                raise ForwardCorpusRejected(
+                    "cohort requires complete numeric TheDogs native identities"
+                )
+            cutoff, cutoff_text = _timestamp(value["feature_cutoff_at"], "feature cutoff")
+            jump, jump_text = _timestamp(value["scheduled_jump_at"], "scheduled jump")
+            try:
+                day = date.fromisoformat(racing_date)
+            except ValueError as error:
+                raise ForwardCorpusRejected("racing date is invalid") from error
+            if not selected_at < cutoff < jump or day != jump.date():
+                raise ForwardCorpusRejected("cohort selection, cutoff, and jump are unordered")
+            members.append(
+                {
+                    "race_id": race_id,
+                    "racing_date": racing_date,
+                    "venue": venue,
+                    "race_number": race_number,
+                    "source_native_race_id": native_race,
+                    "source_native_runner_ids": list(native_runners),
+                    "feature_cutoff_at": cutoff_text,
+                    "scheduled_jump_at": jump_text,
+                }
+            )
+        if (
+            len({item["race_id"] for item in members}) != 20
+            or len({item["source_native_race_id"] for item in members}) != 20
+        ):
+            raise ForwardCorpusRejected("forward baseline cohort contains a duplicate race")
+        if (
+            len({item["venue"] for item in members}) < 3
+            or len({item["racing_date"] for item in members}) < 2
+        ):
+            raise ForwardCorpusRejected(
+                "forward baseline cohort requires at least three venues and two dates"
+            )
+        members.sort(key=lambda item: _identity_key(item["race_id"], "race_id"))
+        document = {
+            "schema_version": BASELINE_COHORT_SCHEMA,
+            "cohort_id": cohort_id,
+            "frozen_at": selected_text,
+            "race_count": 20,
+            "members": members,
+        }
+        content = canonical_json(document)
+        self.artifacts.put(
+            content,
+            media_type="application/json",
+            expected_checksum=_checksum(content),
+        )
+        self._publish_once(self._cohort_path(cohort_id), content)
+        return {**document, "checksum": str(_checksum(content))}
+
+    def load_prediction_cohort(self, cohort_id: str) -> bytes | None:
+        """Read and authenticate the immutable cohort projection and artifact bytes."""
+        path = self._cohort_path(cohort_id)
+        if not path.exists():
+            return None
+        if path.is_symlink():
+            raise ForwardCorpusRejected("cohort receipt must not be a symlink")
+        content = path.read_bytes()
+        cohort = _canonical_object(content, "cohort receipt")
+        if (
+            cohort.get("schema_version") != BASELINE_COHORT_SCHEMA
+            or cohort.get("cohort_id") != cohort_id
+            or cohort.get("race_count") != 20
+            or type(cohort.get("members")) is not list
+            or len(cohort["members"]) != 20
+        ):
+            raise ForwardCorpusRejected("cohort receipt schema is invalid")
+        checksum = _checksum(content)
+        if self.artifacts.read(checksum) != content:
+            raise ForwardCorpusRejected("cohort artifact and projection disagree")
+        return content
+
+    def _cohort_member(
+        self,
+        race_id: str | None = None,
+        *,
+        source_native_race_id: str | None = None,
+    ) -> tuple[dict[str, Any], dict[str, Any]] | None:
+        if (race_id is None) == (source_native_race_id is None):
+            raise ForwardCorpusRejected("exactly one cohort race identity is required")
+        field = "race_id" if race_id is not None else "source_native_race_id"
+        value = race_id if race_id is not None else source_native_race_id
+        directory = self.root / "cohorts"
+        if not directory.exists():
+            return None
+        matches = []
+        for path in sorted(directory.glob("*.json")):
+            if path.is_symlink():
+                raise ForwardCorpusRejected("cohort receipt must not be a symlink")
+            content = path.read_bytes()
+            cohort = _canonical_object(content, "cohort receipt")
+            if (
+                set(cohort)
+                != {
+                    "schema_version",
+                    "cohort_id",
+                    "frozen_at",
+                    "race_count",
+                    "members",
+                }
+                or cohort.get("schema_version") != BASELINE_COHORT_SCHEMA
+                or cohort.get("race_count") != 20
+                or type(cohort.get("members")) is not list
+                or len(cohort["members"]) != 20
+            ):
+                raise ForwardCorpusRejected("cohort receipt schema is invalid")
+            try:
+                if self.artifacts.read(_checksum(content)) != content:
+                    raise ForwardCorpusRejected("cohort artifact and projection disagree")
+            except ArtifactStoreError as error:
+                raise ForwardCorpusRejected("cohort artifact is unavailable") from error
+            matches.extend(
+                (cohort, member)
+                for member in cohort["members"]
+                if type(member) is dict and member.get(field) == value
+            )
+        if len(matches) > 1:
+            raise ForwardCorpusRejected("race belongs to multiple frozen cohorts")
+        return matches[0] if matches else None
+
+    def frozen_race_id_for_source_native_race(
+        self,
+        source_native_race_id: str,
+        *,
+        cohort_id: str | None = None,
+        expected_cohort_checksum: ArtifactChecksum | None = None,
+    ) -> str | None:
+        """Resolve a scheduled capture to its immutable internal cohort RaceId."""
+        native_id = _known_text(source_native_race_id, "source-native race identity")
+        if not native_id.isascii() or not native_id.isdecimal():
+            raise ForwardCorpusRejected("cohort lookup requires a numeric TheDogs race ID")
+        if (cohort_id is None) != (expected_cohort_checksum is None):
+            raise ForwardCorpusRejected("exact cohort authority is incomplete")
+        if cohort_id is not None:
+            content = self.load_prediction_cohort(cohort_id)
+            if content is None or _checksum(content) != expected_cohort_checksum:
+                raise ForwardCorpusRejected("scheduled cohort authority disagrees")
+            cohort = _canonical_object(content, "cohort receipt")
+            matches = [
+                member
+                for member in cohort["members"]
+                if type(member) is dict
+                and member.get("source_native_race_id") == native_id
+            ]
+            if len(matches) != 1:
+                raise ForwardCorpusRejected(
+                    "scheduled race is absent from the authoritative cohort"
+                )
+            return matches[0]["race_id"]
+        binding = self._cohort_member(source_native_race_id=native_id)
+        return binding[1]["race_id"] if binding is not None else None
+
     def capture_prejump(
         self,
         *,
@@ -562,6 +768,34 @@ class ForwardSealedCorpus:
             raise ForwardCorpusRejected("racing date is invalid") from error
         if race_day != jump_at.date():
             raise ForwardCorpusRejected("racing date and scheduled jump disagree")
+        cohort_binding = self._cohort_member(race_id)
+        cohort_directory = self.root / "cohorts"
+        if (
+            cohort_binding is None
+            and cohort_directory.exists()
+            and any(cohort_directory.glob("*.json"))
+        ):
+            raise ForwardCorpusRejected("race substitution is forbidden by the frozen cohort")
+        if cohort_binding is not None:
+            cohort, member = cohort_binding
+            cohort_frozen_at = _timestamp(cohort["frozen_at"], "cohort frozen_at")[0]
+            expected = {
+                "racing_date": racing_date,
+                "venue": meeting.get("venue"),
+                "race_number": race.get("race_number"),
+                "source_native_race_id": source_native_race_id,
+                "source_native_runner_ids": [row["source_native_runner_id"] for row in runner_rows],
+                "scheduled_jump_at": jump_text,
+            }
+            if any(member.get(key) != value for key, value in expected.items()):
+                raise ForwardCorpusRejected(
+                    "race identity, runner set, or cutoff drifted from the frozen cohort"
+                )
+            cutoff = _timestamp(member["feature_cutoff_at"], "feature cutoff")[0]
+            if not cohort_frozen_at <= observed_at <= frozen_at < cutoff:
+                raise ForwardCorpusRejected(
+                    "collector receipt must follow cohort freeze and be strictly before cutoff"
+                )
 
         evidence = _canonical_object(sealed_evidence_bytes, "sealed race evidence")
         schema = _canonical_object(feature_schema_bytes, "feature schema")
@@ -578,13 +812,29 @@ class ForwardSealedCorpus:
                 "field_provenance",
                 "freeze",
             }
-            or set(schema)
-            != {
-                "bundle_id",
-                "contract_version",
-                "evidence_schema_version",
-                "normalization_version",
-                "fields",
+            or frozenset(schema)
+            not in {
+                frozenset(
+                    {
+                        "bundle_id",
+                        "contract_version",
+                        "evidence_schema_version",
+                        "normalization_version",
+                        "fields",
+                    }
+                ),
+                frozenset(
+                    {
+                        "bundle_id",
+                        "contract_version",
+                        "evidence_schema_version",
+                        "normalization_version",
+                        "fields",
+                        "availability_manifest_version",
+                        "candidate_features",
+                        "source_contracts",
+                    }
+                ),
             }
             or set(policy) != {"bundle_id", "feature_contract_version", "imputation"}
             or schema.get("contract_version") != SUPPORTED_FEATURE_CONTRACT
@@ -599,11 +849,16 @@ class ForwardSealedCorpus:
         if type(contract_fields) is not list or not contract_fields:
             raise ForwardCorpusRejected("feature schema fields are invalid")
         for field in contract_fields:
-            if type(field) is not dict or set(field) != (
-                {"name", "source_field", "semantics", "encoded_value"}
+            expected = (
+                {"name", "source_field", "semantics", "family", "encoded_value"}
                 if field.get("semantics") == "inapplicable"
-                else {"name", "source_field", "semantics"}
-            ):
+                else {"name", "source_field", "semantics", "family"}
+            )
+            legacy = expected - {"family"}
+            if type(field) is not dict or frozenset(field) not in {
+                frozenset(expected),
+                frozenset(legacy),
+            }:
                 raise ForwardCorpusRejected("feature schema field envelope is unsupported")
         freeze = evidence.get("freeze")
         try:
@@ -621,6 +876,10 @@ class ForwardSealedCorpus:
         fields = evidence.get("fields")
         if type(fields) is not dict:
             raise ForwardCorpusRejected("sealed evidence fields are incomplete")
+        if cohort_binding is not None and type(fields.get("feature_availability")) is not dict:
+            raise ForwardCorpusRejected(
+                "bounded baseline evidence requires a complete feature availability manifest"
+            )
         runner_ids = [row["source_native_runner_id"] for row in runner_rows]
         if fields.get("runner_set") != runner_ids:
             raise ForwardCorpusRejected(
@@ -690,6 +949,23 @@ class ForwardSealedCorpus:
             raise ForwardCorpusRejected(
                 "feature matrix and source-native runner identities disagree"
             )
+        if cohort_binding is not None and derived.availability_manifest is None:
+            raise ForwardCorpusRejected(
+                "bounded baseline evidence requires a complete feature availability manifest"
+            )
+        if derived.availability_manifest is not None:
+            for entry in derived.availability_manifest.entries:
+                if entry.status.value != "READY_NOW":
+                    continue
+                if (
+                    entry.source_name != source_name
+                    or entry.source_native_race_id != source_native_race_id
+                    or list(entry.source_native_runner_ids) != runner_ids
+                    or entry.raw_checksum != raw_source
+                ):
+                    raise ForwardCorpusRejected(
+                        "READY_NOW manifest identity disagrees with the sealed source"
+                    )
         matrix_bytes = canonical_json(
             {
                 "runner_ids": list(derived.matrix.runner_ids),
@@ -700,6 +976,19 @@ class ForwardSealedCorpus:
         feature_matrix = _checksum(matrix_bytes)
         if feature_matrix != derived.matrix.checksum:
             raise ForwardCorpusRejected("derived feature matrix checksum disagrees")
+        manifest_bytes = (
+            canonical_json(derived.availability_manifest.as_dict())
+            if derived.availability_manifest is not None
+            else None
+        )
+        feature_availability_manifest = (
+            _checksum(manifest_bytes) if manifest_bytes is not None else None
+        )
+        if (
+            derived.availability_manifest is not None
+            and feature_availability_manifest != derived.availability_manifest.checksum
+        ):
+            raise ForwardCorpusRejected("feature availability manifest checksum disagrees")
 
         source_capture_bytes = canonical_json(
             {
@@ -738,6 +1027,15 @@ class ForwardSealedCorpus:
             "feature_schema_checksum": str(feature_schema),
             "missingness_policy_checksum": str(missingness_policy),
             "feature_matrix_checksum": str(feature_matrix),
+            **(
+                {
+                    "feature_availability_manifest_checksum": str(
+                        feature_availability_manifest
+                    )
+                }
+                if feature_availability_manifest is not None
+                else {}
+            ),
         }
         existing_receipt = self._load_receipt(race_id, "prejump")
         if existing_receipt is not None and existing_receipt != receipt:
@@ -781,6 +1079,12 @@ class ForwardSealedCorpus:
             media_type="application/json",
             expected_checksum=feature_matrix,
         )
+        if manifest_bytes is not None and feature_availability_manifest is not None:
+            self.artifacts.put(
+                manifest_bytes,
+                media_type="application/json",
+                expected_checksum=feature_availability_manifest,
+            )
         self.artifacts.put(
             source_capture_bytes,
             media_type="application/json",
@@ -844,6 +1148,11 @@ class ForwardSealedCorpus:
             "feature_matrix_checksum",
         ):
             self._read_artifact(pre[field], field)
+        if "feature_availability_manifest_checksum" in pre:
+            self._read_artifact(
+                pre["feature_availability_manifest_checksum"],
+                "feature availability manifest",
+            )
         if type(raw_result_bytes) is not bytes or not raw_result_bytes:
             raise ForwardCorpusRejected("immutable official-result source bytes are required")
         source_name = _known_text(source_name, "official result source")
@@ -1138,6 +1447,11 @@ class ForwardSealedCorpus:
                     "feature_matrix_checksum",
                 ):
                     self._read_artifact(pre[field], field)
+                if "feature_availability_manifest_checksum" in pre:
+                    self._read_artifact(
+                        pre["feature_availability_manifest_checksum"],
+                        "feature availability manifest",
+                    )
                 result = self._load_receipt(pre["race_id"], "result")
                 closure = self._load_receipt(pre["race_id"], "closure")
                 blocked = self._result_observations(pre["race_id"])
@@ -1196,10 +1510,10 @@ class ForwardSealedCorpus:
             if any(entry.is_symlink() or not entry.is_file() for entry in entries):
                 raise ForwardCorpusRejected("official request artifact is invalid")
             entry_names = {entry.name for entry in entries}
-            if (
-                "response-stage.json" not in entry_names
-                or not entry_names <= {"response-stage.json", "observation.json"}
-            ):
+            if "response-stage.json" not in entry_names or not entry_names <= {
+                "response-stage.json",
+                "observation.json",
+            }:
                 raise ForwardCorpusRejected("official request artifact inventory is invalid")
             stage = self._load_request_receipt(
                 request_directory / "response-stage.json", "response-stage"
@@ -1210,9 +1524,12 @@ class ForwardSealedCorpus:
             if stage is None:
                 raise ForwardCorpusRejected("official response-stage receipt is missing")
             self._verify_response_stage(pre, stage)
-            if request_directory.name != hashlib.sha256(
-                _bounded_id(stage.get("request_id"), "request_id").encode()
-            ).hexdigest():
+            if (
+                request_directory.name
+                != hashlib.sha256(
+                    _bounded_id(stage.get("request_id"), "request_id").encode()
+                ).hexdigest()
+            ):
                 raise ForwardCorpusRejected("response-stage request directory binding disagrees")
             if observation is not None:
                 self._verify_observation(pre, observation)
@@ -1229,16 +1546,12 @@ class ForwardSealedCorpus:
         observations: Sequence[Mapping[str, Any]],
     ) -> tuple[list[str], list[str], list[str]]:
         history = self._official_response_history(pre)
-        completed = [
-            observation for _stage, observation in history if observation is not None
-        ]
+        completed = [observation for _stage, observation in history if observation is not None]
         if list(observations) != completed:
             raise ForwardCorpusRejected(
                 "official completed observation inventory is incomplete or reordered"
             )
-        response_stages = [
-            str(_checksum(canonical_json(stage))) for stage, _observation in history
-        ]
+        response_stages = [str(_checksum(canonical_json(stage))) for stage, _observation in history]
         raw_responses = [stage["raw_response_checksum"] for stage, _observation in history]
         observation_receipts = [
             str(_checksum(canonical_json(observation))) for observation in completed
@@ -1263,24 +1576,28 @@ class ForwardSealedCorpus:
         pre: Mapping[str, Any],
         stage: Mapping[str, Any],
     ) -> bytes:
-        if set(stage) != {
-            "schema_version",
-            "race_id",
-            "collector_id",
-            "session_id",
-            "run_id",
-            "request_id",
-            "source_name",
-            "request_url",
-            "final_url",
-            "http_status",
-            "content_type",
-            "source_document_last_modified",
-            "request_started_at",
-            "response_received_at",
-            "observed_at",
-            "raw_response_checksum",
-        } or stage.get("schema_version") != RESPONSE_STAGE_SCHEMA:
+        if (
+            set(stage)
+            != {
+                "schema_version",
+                "race_id",
+                "collector_id",
+                "session_id",
+                "run_id",
+                "request_id",
+                "source_name",
+                "request_url",
+                "final_url",
+                "http_status",
+                "content_type",
+                "source_document_last_modified",
+                "request_started_at",
+                "response_received_at",
+                "observed_at",
+                "raw_response_checksum",
+            }
+            or stage.get("schema_version") != RESPONSE_STAGE_SCHEMA
+        ):
             raise ForwardCorpusRejected("official response-stage envelope is invalid")
         if stage.get("race_id") != pre.get("race_id"):
             raise ForwardCorpusRejected("official response-stage race identity mismatch")
@@ -1422,9 +1739,7 @@ class ForwardSealedCorpus:
         observation_path = request_directory / "observation.json"
         response_stage_path = request_directory / "response-stage.json"
         if observation_path.exists():
-            observation = _canonical_object(
-                observation_path.read_bytes(), "observation receipt"
-            )
+            observation = _canonical_object(observation_path.read_bytes(), "observation receipt")
             immutable = {
                 "collector_id": collector_id,
                 "session_id": session_id,
@@ -1434,7 +1749,9 @@ class ForwardSealedCorpus:
                 "source_name": source_name,
             }
             if any(observation.get(key) != value for key, value in immutable.items()):
-                raise ForwardCorpusRejected("request identity replay conflicts with immutable input")
+                raise ForwardCorpusRejected(
+                    "request identity replay conflicts with immutable input"
+                )
             self._verify_observation(pre, observation)
             stage = self._load_request_receipt(response_stage_path, "response-stage")
             self._verify_observation_stage_binding(pre, observation, stage)
@@ -1456,19 +1773,23 @@ class ForwardSealedCorpus:
             if type(response) is not dict:
                 raise ForwardCorpusRejected("official transport response must be a mapping")
             allowed = {
-                "body", "status_code", "content_type", "final_url",
+                "body",
+                "status_code",
+                "content_type",
+                "final_url",
                 "source_document_last_modified",
             }
             if set(response) - allowed or not {
-                "body", "status_code", "content_type", "final_url"
+                "body",
+                "status_code",
+                "content_type",
+                "final_url",
             } <= set(response):
                 raise ForwardCorpusRejected("official transport response envelope is invalid")
             body = response["body"]
             if type(body) is not bytes or not body:
                 raise ForwardCorpusRejected("immutable official-result response bytes are required")
-            raw_checksum = self.artifacts.put(
-                body, media_type="application/octet-stream"
-            ).checksum
+            raw_checksum = self.artifacts.put(body, media_type="application/octet-stream").checksum
             stage = {
                 "schema_version": RESPONSE_STAGE_SCHEMA,
                 "race_id": race_id,
@@ -1496,8 +1817,12 @@ class ForwardSealedCorpus:
             self.artifacts.put(stage_bytes, media_type="application/json")
             self._publish_once(response_stage_path, stage_bytes)
         immutable = {
-            "collector_id": collector_id, "session_id": session_id, "run_id": run_id,
-            "request_id": request_id, "request_url": request_url, "source_name": source_name,
+            "collector_id": collector_id,
+            "session_id": session_id,
+            "run_id": run_id,
+            "request_id": request_id,
+            "request_url": request_url,
+            "source_name": source_name,
         }
         if any(stage.get(key) != value for key, value in immutable.items()):
             raise ForwardCorpusRejected("request identity replay conflicts with immutable input")
@@ -1516,9 +1841,7 @@ class ForwardSealedCorpus:
             raise ForwardCorpusRejected("new post-closure observation is forbidden")
         if self._load_receipt(race_id, "conflict") is not None:
             raise ForwardCorpusRejected("result identity already changed before closure")
-        normalized_checksum = self.artifacts.put(
-            normalized, media_type="application/json"
-        ).checksum
+        normalized_checksum = self.artifacts.put(normalized, media_type="application/json").checksum
         parser_hash, schema_hash, implementation_hash = _normalization_identity()
         observation = {
             "schema_version": OBSERVATION_SCHEMA_V2,
@@ -1632,9 +1955,7 @@ class ForwardSealedCorpus:
             "confirmed_at": pair[1]["observed_at"],
         }
         self.artifacts.put(canonical_json(receipt), media_type="application/json")
-        self._publish_once(
-            self._receipt_path(pre["race_id"], "stability"), canonical_json(receipt)
-        )
+        self._publish_once(self._receipt_path(pre["race_id"], "stability"), canonical_json(receipt))
 
     def _recover_conflict(self, pre: Mapping[str, Any]) -> None:
         observations = self._official_receipts(pre["race_id"])
@@ -1649,9 +1970,7 @@ class ForwardSealedCorpus:
             ),
             "state": "RESULT_CHANGED_BEFORE_CLOSURE",
         }
-        self._publish_once(
-            self._receipt_path(pre["race_id"], "conflict"), canonical_json(conflict)
-        )
+        self._publish_once(self._receipt_path(pre["race_id"], "conflict"), canonical_json(conflict))
 
     @staticmethod
     def _observation_identity(observation: Mapping[str, Any]) -> tuple[Any, ...]:
@@ -1680,16 +1999,22 @@ class ForwardSealedCorpus:
             raise ForwardCorpusRejected("official conflict receipt is not terminal")
         stability = self._load_receipt(pre["race_id"], "stability")
         if stability is not None:
-            if set(stability) != {
-                "schema_version", "race_id", "first_observation_checksum",
-                "second_observation_checksum", "normalized_result_checksum", "confirmed_at",
-            } or stability.get("schema_version") != "official-result-stability-v1":
+            if (
+                set(stability)
+                != {
+                    "schema_version",
+                    "race_id",
+                    "first_observation_checksum",
+                    "second_observation_checksum",
+                    "normalized_result_checksum",
+                    "confirmed_at",
+                }
+                or stability.get("schema_version") != "official-result-stability-v1"
+            ):
                 raise ForwardCorpusRejected("official stability receipt envelope is invalid")
             if stability.get("race_id") != pre["race_id"]:
                 raise ForwardCorpusRejected("official stability receipt race identity is invalid")
-            by_checksum = {
-                str(_checksum(canonical_json(item))): item for item in observations
-            }
+            by_checksum = {str(_checksum(canonical_json(item))): item for item in observations}
             try:
                 first = by_checksum[stability["first_observation_checksum"]]
                 second = by_checksum[stability["second_observation_checksum"]]
@@ -1706,10 +2031,8 @@ class ForwardSealedCorpus:
                 self._observation_identity(first) != self._observation_identity(second)
                 or first_at < jump_at + timedelta(minutes=5)
                 or second_at - first_at < timedelta(minutes=15)
-                or stability["normalized_result_checksum"]
-                != first["normalized_result_checksum"]
-                or _timestamp(stability["confirmed_at"], "stability confirmation")[0]
-                != second_at
+                or stability["normalized_result_checksum"] != first["normalized_result_checksum"]
+                or _timestamp(stability["confirmed_at"], "stability confirmation")[0] != second_at
             ):
                 raise ForwardCorpusRejected("official stability receipt binding is invalid")
         return observations, stability, conflict, conflict_present
@@ -1729,9 +2052,7 @@ class ForwardSealedCorpus:
             raise ForwardCorpusRejected("result changed before closure")
         if stability is None:
             raise ForwardCorpusRejected("result stability must be confirmed before closure")
-        by_checksum = {
-            str(_checksum(canonical_json(item))): item for item in observations
-        }
+        by_checksum = {str(_checksum(canonical_json(item))): item for item in observations}
         try:
             first = by_checksum[stability["first_observation_checksum"]]
             second = by_checksum[stability["second_observation_checksum"]]
@@ -1740,9 +2061,10 @@ class ForwardSealedCorpus:
         self._verify_observation(pre, first)
         self._verify_observation(pre, second)
         closed_at = self._trusted_now("closure")
-        if _timestamp(closed_at, "closure")[0] < _timestamp(
-            stability["confirmed_at"], "stability confirmation"
-        )[0]:
+        if (
+            _timestamp(closed_at, "closure")[0]
+            < _timestamp(stability["confirmed_at"], "stability confirmation")[0]
+        ):
             raise ForwardCorpusRejected("closure predates stability")
         entry = self._race_entry(pre, stability, first, second, observations, closed_at)
         example_bytes = canonical_json(
@@ -1752,9 +2074,7 @@ class ForwardSealedCorpus:
                 **entry,
             }
         )
-        example_checksum = self.artifacts.put(
-            example_bytes, media_type="application/json"
-        ).checksum
+        example_checksum = self.artifacts.put(example_bytes, media_type="application/json").checksum
         entry["artifact_checksum"] = str(example_checksum)
         closure = {
             "schema_version": CLOSURE_RECEIPT_SCHEMA,
@@ -1780,8 +2100,8 @@ class ForwardSealedCorpus:
         closed_at: str,
     ) -> dict[str, Any]:
         race_id = pre["race_id"]
-        response_stages, raw_responses, observation_receipts = (
-            self._observation_inventory(pre, observations)
+        response_stages, raw_responses, observation_receipts = self._observation_inventory(
+            pre, observations
         )
         return {
             "training_example_id": "official-first-"
@@ -1793,6 +2113,15 @@ class ForwardSealedCorpus:
             "source_capture_checksum": pre["source_capture_checksum"],
             "raw_source_checksum": pre["raw_source_checksum"],
             "feature_matrix_checksum": pre["feature_matrix_checksum"],
+            **(
+                {
+                    "feature_availability_manifest_checksum": pre[
+                        "feature_availability_manifest_checksum"
+                    ]
+                }
+                if "feature_availability_manifest_checksum" in pre
+                else {}
+            ),
             "runner_ids": pre["runner_ids"],
             "source_observed_at": pre["source_observed_at"],
             "feature_observed_at": pre["feature_frozen_at"],
@@ -1864,6 +2193,11 @@ class ForwardSealedCorpus:
             manifest["missingness_policy_checksum"],
             *{race[field] for race in races for field in scalar_fields},
             *{
+                race["feature_availability_manifest_checksum"]
+                for race in races
+                if "feature_availability_manifest_checksum" in race
+            },
+            *{
                 checksum
                 for race in races
                 for field in (
@@ -1895,14 +2229,21 @@ class ForwardSealedCorpus:
         observations, stability, _conflict, conflict_present = self._validated_state(pre)
         if stability is None or conflict_present:
             raise ForwardCorpusRejected("closure references invalid terminal state")
-        if set(closure) != {
-            "schema_version", "race_id", "target_bundle_id", "feature_schema_checksum",
-            "missingness_policy_checksum", "closed_at", "race",
-        } or closure.get("schema_version") != CLOSURE_RECEIPT_SCHEMA:
+        if (
+            set(closure)
+            != {
+                "schema_version",
+                "race_id",
+                "target_bundle_id",
+                "feature_schema_checksum",
+                "missingness_policy_checksum",
+                "closed_at",
+                "race",
+            }
+            or closure.get("schema_version") != CLOSURE_RECEIPT_SCHEMA
+        ):
             raise ForwardCorpusRejected("closure receipt envelope is invalid")
-        by_checksum = {
-            str(_checksum(canonical_json(item))): item for item in observations
-        }
+        by_checksum = {str(_checksum(canonical_json(item))): item for item in observations}
         race = closure.get("race")
         if type(race) is not dict:
             raise ForwardCorpusRejected("closure race envelope is invalid")
@@ -1918,16 +2259,14 @@ class ForwardSealedCorpus:
         )
         artifact_checksum = race.get("artifact_checksum")
         artifact = self._read_artifact(artifact_checksum, "training example")
-        if (
-            {key: value for key, value in race.items() if key != "artifact_checksum"} != expected
-            or artifact
-            != canonical_json(
-                {
-                    "schema_version": "historical-training-example-v1",
-                    "origin": FORWARD_CORPUS_ORIGIN,
-                    **expected,
-                }
-            )
+        if {
+            key: value for key, value in race.items() if key != "artifact_checksum"
+        } != expected or artifact != canonical_json(
+            {
+                "schema_version": "historical-training-example-v1",
+                "origin": FORWARD_CORPUS_ORIGIN,
+                **expected,
+            }
         ):
             raise ForwardCorpusRejected("closure or training example binding drift")
 
@@ -1950,6 +2289,11 @@ class ForwardSealedCorpus:
                     "feature_matrix_checksum",
                 ):
                     self._read_artifact(pre[field], field)
+                if "feature_availability_manifest_checksum" in pre:
+                    self._read_artifact(
+                        pre["feature_availability_manifest_checksum"],
+                        "feature availability manifest",
+                    )
                 observations = self._official_receipts(pre["race_id"])
                 observations, stability, conflict, conflict_present = self._validated_state(pre)
                 closure = self._load_receipt(pre["race_id"], "closure")

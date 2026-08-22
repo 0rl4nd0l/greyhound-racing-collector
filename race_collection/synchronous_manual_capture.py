@@ -835,6 +835,17 @@ def _normalize_current_index_rows(
             "race_url": race_url,
             "venue": venue,
         }
+        if "source_native_race_id" in raw:
+            native_race_id = raw.get("source_native_race_id")
+            if (
+                type(native_race_id) is not str
+                or not native_race_id.isascii()
+                or not native_race_id.isdecimal()
+            ):
+                raise CaptureOneRejected(
+                    "CURRENT_INDEX_INVALID", reason="source_native_race_id_invalid"
+                )
+            row["source_native_race_id"] = native_race_id
         alias_set = set(aliases)
         canonical_aliases = sorted(stable_race_id_variants(row))
         if (
@@ -932,15 +943,16 @@ def _v2_runner_rows(
         value = item.get("source_native_runner_id", item.get("runner_id"))
         if value is None:
             return None
-        if (
-            isinstance(value, bool)
-            or not isinstance(value, (str, int))
-            or not str(value).strip()
-        ):
+        if isinstance(value, bool) or not isinstance(value, (str, int)):
             raise CaptureOneRejected(
                 "CURRENT_INDEX_SOURCE_INVALID", reason="runner_id_invalid"
             )
-        return str(value).strip()
+        text = str(value).strip()
+        if not text.isascii() or not text.isdecimal():
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_SOURCE_INVALID", reason="runner_id_invalid"
+            )
+        return text
     canonical_active_projection = []
     for item in detailed_participants:
         if not isinstance(item, Mapping):

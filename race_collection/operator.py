@@ -101,9 +101,9 @@ def _verify_schema_identity(store: SQLiteOperationsStore) -> None:
         ]
     except (OSError, sqlite3.Error) as error:
         raise OperatorRejected("operations database schema authority is unavailable") from error
-    if recorded != expected or [version for version, _ in recorded] != list(range(1, 30)):
+    if recorded != expected or [version for version, _ in recorded] != list(range(1, 31)):
         raise OperatorRejected(
-            "operations database must have the exact checked-in schema 1-29 identity"
+            "operations database must have the exact checked-in schema 1-30 identity"
         )
 
 
@@ -383,7 +383,7 @@ def _dispatch(args: argparse.Namespace) -> tuple[Mapping[str, Any], int]:
         store = _store(args, allow_new=True)
         store.migrate()
         _verify_schema_identity(store)
-        return {"command": "migrate", "schema_version": 29, "status": "ok"}, 0
+        return {"command": "migrate", "schema_version": 30, "status": "ok"}, 0
 
     if args.command == "generate-user-service":
         manifest = _release(args.release_document)

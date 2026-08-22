@@ -311,14 +311,21 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
     source.parent.mkdir(parents=True)
     index_now = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
     race_url = "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
+    coverage = _runner_coverage(evidence_root, race_url, index_now)
+    sidecar_path = Path(coverage["races"][0]["sidecar_path"])
+    sidecar = json.loads(sidecar_path.read_bytes())
+    for index, runner in enumerate(
+        sidecar["runner_completeness_after_canonical_alignment"]["participants"],
+        start=1,
+    ):
+        runner["source_native_runner_id"] = str(159000 + index)
+    sidecar_path.write_bytes(canonical_bytes(sidecar))
     source.write_bytes(
         canonical_bytes(
             {
                 "status": "SUCCESS",
                 "generated_at": index_now.isoformat(),
-                "sidecar_metadata_coverage": _runner_coverage(
-                    evidence_root, race_url, index_now
-                ),
+                "sidecar_metadata_coverage": coverage,
                 "selected_count": 1,
                 "selected_races": [
                     {
@@ -330,6 +337,7 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
                             "Race 5 - GUNNEDAH - 2026-07-19",
                         ],
                         "race_number": 5,
+                        "source_native_race_id": "15900",
                         "race_time": "13:00",
                         "race_url": (
                             race_url
@@ -379,7 +387,10 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
     assert verified_view.packet_bytes == original
     assert verified_view.packet_sha256 == sha256_bytes(original)
     assert verified_view.races[0]["race_id"] == "Race 5 - GUNN - 2026-07-19"
-    assert verified_view.races[0]["runners"][0]["source_native_runner_id"] is None
+    assert verified_view.races[0]["source_native_race_id"] == "15900"
+    assert [
+        runner["source_native_runner_id"] for runner in verified_view.races[0]["runners"]
+    ] == ["159001", "159002"]
 
     threaded_results: list[Any] = []
 
@@ -1006,11 +1017,11 @@ def test_v2_runner_seal_rejects_native_id_collisions(
     detailed = sidecar["runner_completeness_after_canonical_alignment"]["participants"]
     shadow = sidecar["prejump_shadow_metadata"]["runner_box_name_list"]
     if case == "duplicate":
-        detailed[0]["source_native_runner_id"] = "native-1"
-        detailed[1]["source_native_runner_id"] = "native-1"
+        detailed[0]["source_native_runner_id"] = "15901"
+        detailed[1]["source_native_runner_id"] = "15901"
     else:
-        detailed[0]["source_native_runner_id"] = "native-detailed"
-        shadow[0]["source_native_runner_id"] = "native-shadow"
+        detailed[0]["source_native_runner_id"] = "15901"
+        shadow[0]["source_native_runner_id"] = "15902"
     sidecar_path.write_bytes(canonical_bytes(sidecar))
 
     with pytest.raises(CaptureOneRejected) as rejected:
