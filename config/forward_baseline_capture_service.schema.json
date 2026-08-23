@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "forward-baseline-capture-service-config-v1",
+  "title": "Forward baseline capture service configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "cohort_id",
+    "operations_database",
+    "corpus_root",
+    "evidence_root",
+    "current_race_index_path",
+    "current_index_max_age_seconds",
+    "current_index_timeout_seconds",
+    "feature_cutoff_seconds",
+    "timezone"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "forward-baseline-capture-service-config-v1"
+    },
+    "cohort_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "operations_database": {
+      "type": "string",
+      "minLength": 1
+    },
+    "corpus_root": {
+      "type": "string",
+      "minLength": 1
+    },
+    "evidence_root": {
+      "type": "string",
+      "minLength": 1
+    },
+    "current_race_index_path": {
+      "type": "string",
+      "minLength": 1
+    },
+    "current_index_max_age_seconds": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "current_index_timeout_seconds": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "feature_cutoff_seconds": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "timezone": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
+}

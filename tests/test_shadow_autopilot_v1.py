@@ -575,6 +575,7 @@ def test_autonomous_live_odds_capture_command_requires_explicit_execute_flags():
         collector_receipt_root=Path("collector-requests"),
         collector_run_id="scheduled-run-1",
         forward_corpus_root=Path("forward-corpus"),
+        forward_baseline_config=Path("forward-baseline.json"),
     )
 
     assert receipt_enabled[
@@ -586,6 +587,9 @@ def test_autonomous_live_odds_capture_command_requires_explicit_execute_flags():
     assert receipt_enabled[
         receipt_enabled.index("--forward-corpus-root") + 1
     ] == "forward-corpus"
+    assert receipt_enabled[
+        receipt_enabled.index("--forward-baseline-config") + 1
+    ] == "forward-baseline.json"
     with pytest.raises(ValueError, match="collector_receipt_authority_missing"):
         autopilot.autonomous_live_odds_capture_command(
             input_dirs=[Path("upcoming_a")],
@@ -612,7 +616,26 @@ def test_autonomous_live_odds_capture_command_requires_explicit_execute_flags():
             execute=True,
             allow_auto_scrape_odds=True,
             forward_corpus_root=Path("forward-corpus"),
+            forward_baseline_config=Path("forward-baseline.json"),
         )
+
+    with pytest.raises(ValueError, match="forward_baseline_config_missing"):
+        autopilot.autonomous_live_odds_capture_command(
+            input_dirs=[Path("upcoming_a")],
+            evidence_root=Path("artifacts/full_evidence_orchestration_20260525"),
+            capture_dir=Path("autonomous_live_odds_capture_x"),
+            db_path=Path("greyhound_racing_data.db"),
+            current_time="2026-06-10T14:00:00+10:00",
+            limit=16,
+            execute=True,
+            allow_auto_scrape_odds=True,
+            collector_receipt_root=Path("collector-requests"),
+            collector_run_id="scheduled-run-1",
+            forward_corpus_root=Path("forward-corpus"),
+        )
+
+    with pytest.raises(SystemExit):
+        autopilot.parse_args(["--forward-corpus-root", "forward-corpus"])
 
 
 def test_manual_request_command_is_bound_to_claimed_collector_run():

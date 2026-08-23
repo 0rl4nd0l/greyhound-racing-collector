@@ -365,7 +365,7 @@ def test_migration_empty_and_repeat_paths(tmp_path):
     store.migrate()
     store.migrate()
     with store._connect() as db:
-        assert db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 29
+        assert db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 30
         assert db.execute("SELECT COUNT(*) FROM phase6_promotion_records").fetchone()[0] == 0
 
 

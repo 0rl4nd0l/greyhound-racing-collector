@@ -113,6 +113,28 @@ class OperationsStore(Protocol):
 
     def create_racing_day(self, operation_id: OperationId, day: RacingDay) -> bool: ...
 
+    def register_forward_baseline_cohort(
+        self,
+        operation_id: OperationId,
+        *,
+        cohort_id: str,
+        artifact_checksum: ArtifactChecksum,
+        frozen_at: datetime,
+        frozen_at_text: str | None = None,
+        members: Sequence[Mapping[str, Any]],
+        registered_at: datetime,
+    ) -> bool: ...
+
+    def forward_baseline_cohort(self, cohort_id: str) -> Mapping[str, Any] | None: ...
+
+    def forward_baseline_cohort_for_race(
+        self, race_id: RaceId
+    ) -> Mapping[str, Any] | None: ...
+
+    def forward_baseline_cohort_lifecycle(
+        self, cohort_id: str
+    ) -> Mapping[str, Any] | None: ...
+
     def discover_race(
         self, operation_id: OperationId, race_id: RaceId, day: RacingDay, at: datetime
     ) -> bool: ...
@@ -271,6 +293,7 @@ class SQLiteOperationsStore:
             (27, "0027_phase7_atomic_result_rejection.sql"),
             (28, "0028_phase7_probation_seal_authority.sql"),
             (29, "0029_phase7_bounded_timing_authority.sql"),
+            (30, "0030_forward_baseline_cohort_authority.sql"),
         )
         return tuple(
             (version, name, migration_root.joinpath(name).read_bytes()) for version, name in names
@@ -404,6 +427,164 @@ class SQLiteOperationsStore:
             )
         return True
 
+    def register_forward_baseline_cohort(
+        self,
+        operation_id: OperationId,
+        *,
+        cohort_id: str,
+        artifact_checksum: ArtifactChecksum,
+        frozen_at: datetime,
+        frozen_at_text: str | None = None,
+        members: Sequence[Mapping[str, Any]],
+        registered_at: datetime,
+    ) -> bool:
+        """Bind one immutable cohort artifact and its exact population transactionally."""
+        iso_timestamp(frozen_at)
+        frozen_text = frozen_at.isoformat() if frozen_at_text is None else frozen_at_text
+        try:
+            frozen_text_matches = datetime.fromisoformat(frozen_text) == frozen_at
+        except (TypeError, ValueError):
+            frozen_text_matches = False
+        if not frozen_text_matches:
+            raise ValueError("forward baseline frozen timestamp binding is invalid")
+        registered_text = iso_timestamp(registered_at)
+        if type(cohort_id) is not str or not cohort_id.strip() or len(members) != 20:
+            raise ValueError("forward baseline cohort binding is invalid")
+        canonical_members = tuple(
+            json.dumps(member, sort_keys=True, separators=(",", ":"), allow_nan=False)
+            for member in members
+        )
+        payload = {
+            "cohort_id": cohort_id,
+            "artifact_checksum": str(artifact_checksum),
+            "frozen_at": frozen_text,
+            "members": [json.loads(member) for member in canonical_members],
+            "registered_at": registered_text,
+        }
+        with self._operation(
+            operation_id, "register_forward_baseline_cohort", payload
+        ) as (db, replay):
+            if replay:
+                return False
+            db.execute(
+                "INSERT INTO forward_baseline_cohorts VALUES(?,?,?,?,?,?)",
+                (
+                    cohort_id,
+                    str(artifact_checksum),
+                    frozen_text,
+                    20,
+                    registered_text,
+                    str(operation_id),
+                ),
+            )
+            for ordinal, (member, canonical_member) in enumerate(
+                zip(members, canonical_members, strict=True)
+            ):
+                db.execute(
+                    "INSERT INTO forward_baseline_cohort_members VALUES(?,?,?,?,?)",
+                    (
+                        cohort_id,
+                        ordinal,
+                        member["race_id"],
+                        member["source_native_race_id"],
+                        canonical_member,
+                    ),
+                )
+        return True
+
+    def forward_baseline_cohort(self, cohort_id: str) -> Mapping[str, Any] | None:
+        """Read the authoritative cohort checksum and population projection."""
+        with self._connect() as db:
+            cohort = db.execute(
+                "SELECT * FROM forward_baseline_cohorts WHERE cohort_id=?", (cohort_id,)
+            ).fetchone()
+            if cohort is None:
+                return None
+            members = db.execute(
+                "SELECT member_json FROM forward_baseline_cohort_members "
+                "WHERE cohort_id=? ORDER BY member_ordinal",
+                (cohort_id,),
+            ).fetchall()
+        if len(members) != 20:
+            raise OperationsStoreError("forward baseline cohort population is incomplete")
+        return {
+            "cohort_id": cohort["cohort_id"],
+            "artifact_checksum": cohort["artifact_checksum"],
+            "frozen_at": cohort["frozen_at"],
+            "race_count": cohort["race_count"],
+            "members": [json.loads(row["member_json"]) for row in members],
+        }
+
+    def forward_baseline_cohort_for_race(
+        self, race_id: RaceId
+    ) -> Mapping[str, Any] | None:
+        """Resolve a frozen cohort through its durable unique race membership."""
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT cohort_id FROM forward_baseline_cohort_members WHERE race_id=?",
+                (str(race_id),),
+            ).fetchone()
+        return None if row is None else self.forward_baseline_cohort(row["cohort_id"])
+
+    def forward_baseline_cohort_lifecycle(
+        self, cohort_id: str
+    ) -> Mapping[str, Any] | None:
+        """Read cohort authority and its lifecycle projection from one DB snapshot."""
+        with self._connect() as db:
+            db.execute("BEGIN")
+            cohort = db.execute(
+                "SELECT * FROM forward_baseline_cohorts WHERE cohort_id=?", (cohort_id,)
+            ).fetchone()
+            if cohort is None:
+                return None
+            member_rows = db.execute(
+                "SELECT member_json FROM forward_baseline_cohort_members "
+                "WHERE cohort_id=? ORDER BY member_ordinal",
+                (cohort_id,),
+            ).fetchall()
+            if len(member_rows) != 20:
+                raise OperationsStoreError(
+                    "forward baseline cohort population is incomplete"
+                )
+            members = [json.loads(row["member_json"]) for row in member_rows]
+            races: dict[str, Mapping[str, Any]] = {}
+            for member in members:
+                race_id = member["race_id"]
+                lifecycle = db.execute(
+                    "SELECT r.state,d.local_date,e.source_race_id,e.venue,e.race_number,"
+                    "e.scheduled_jump,s.frozen_at,p.prediction_id,p.artifact_checksum,"
+                    "p.computed_at,q.prediction_id quarantine_prediction_id,"
+                    "q.code prediction_code,"
+                    "q.details prediction_details,q.quarantined_at "
+                    "FROM races r JOIN racing_days d USING(racing_day_id) "
+                    "JOIN expected_races e USING(race_id) "
+                    "LEFT JOIN sealed_evidence s USING(race_id) "
+                    "LEFT JOIN deferred_predictions p USING(race_id) "
+                    "LEFT JOIN prediction_quarantines q USING(race_id) "
+                    "WHERE r.race_id=?",
+                    (race_id,),
+                ).fetchone()
+                collection_rejections = db.execute(
+                    "SELECT stage,code,details,created_at FROM collection_quarantines "
+                    "WHERE race_id=? ORDER BY quarantine_id",
+                    (race_id,),
+                ).fetchall()
+                races[race_id] = {
+                    "lifecycle": dict(lifecycle) if lifecycle is not None else None,
+                    "collection_rejections": [dict(row) for row in collection_rejections],
+                }
+            db.commit()
+        return {
+            "cohort": {
+                "cohort_id": cohort["cohort_id"],
+                "artifact_checksum": cohort["artifact_checksum"],
+                "frozen_at": cohort["frozen_at"],
+                "race_count": cohort["race_count"],
+                "members": members,
+            },
+            "races": races,
+        }
+
     def discover_race(
         self, operation_id: OperationId, race_id: RaceId, day: RacingDay, at: datetime
     ) -> bool:
@@ -511,6 +692,33 @@ class SQLiteOperationsStore:
                 if closed is None or closed["closed_at"] is None:
                     raise BarrierNotSatisfied("racing day must close before prediction")
             if target == RaceState.RESULT_PENDING:
+                if current != RaceState.PREDICTION_COMMITTED:
+                    baseline = db.execute(
+                        "SELECT cohort_id FROM forward_baseline_cohort_members "
+                        "WHERE race_id=? AND ("
+                        "EXISTS(SELECT 1 FROM collection_quarantines WHERE race_id=?) "
+                        "OR EXISTS(SELECT 1 FROM prediction_quarantines WHERE race_id=?))",
+                        (str(race_id), str(race_id), str(race_id)),
+                    ).fetchone()
+                    if baseline is None:
+                        raise BarrierNotSatisfied(
+                            "only a terminal baseline quarantine may bypass prediction commit"
+                        )
+                    cohort_incomplete = db.execute(
+                        "SELECT COUNT(*) FROM forward_baseline_cohort_members m "
+                        "WHERE m.cohort_id=? "
+                        "AND NOT EXISTS(SELECT 1 FROM deferred_predictions p "
+                        "WHERE p.race_id=m.race_id) "
+                        "AND NOT EXISTS(SELECT 1 FROM prediction_quarantines p "
+                        "WHERE p.race_id=m.race_id) "
+                        "AND NOT EXISTS(SELECT 1 FROM collection_quarantines q "
+                        "WHERE q.race_id=m.race_id)",
+                        (baseline["cohort_id"],),
+                    ).fetchone()[0]
+                    if cohort_incomplete:
+                        raise BarrierNotSatisfied(
+                            "baseline cohort must terminate before result collection"
+                        )
                 incomplete = db.execute(
                     "SELECT COUNT(*) AS count FROM expected_races e "
                     "JOIN races r ON r.race_id=e.race_id WHERE r.racing_day_id = ? "

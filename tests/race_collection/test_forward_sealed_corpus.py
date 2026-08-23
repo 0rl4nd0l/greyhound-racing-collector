@@ -8,6 +8,8 @@ import pytest
 
 from race_collection import forward_sealed_corpus as corpus_module
 from race_collection import source_admission as admission_module
+from race_collection.artifacts import ChecksumMismatch, LocalArtifactStore
+from race_collection.domain import ArtifactChecksum
 from race_collection.forward_sealed_corpus import (
     ForwardCorpusRejected,
     ForwardSealedCorpus,
@@ -227,6 +229,118 @@ def fixture(index=1):
     }
 
 
+def baseline_cohort():
+    members = []
+    for index in range(1, 21):
+        day = "2026-07-29" if index <= 10 else "2026-07-30"
+        venue = ("Sandown", "Richmond", "Albion Park")[(index - 1) % 3]
+        members.append(
+            {
+                "race_id": f"baseline-race-{index:02d}",
+                "racing_date": day,
+                "venue": venue,
+                "race_number": index,
+                "source_native_race_id": str(159000 + index),
+                "source_native_runner_ids": [
+                    str(15900000 + index * 10 + offset) for offset in (1, 2)
+                ],
+                "feature_cutoff_at": f"{day}T09:30:00+10:00",
+                "scheduled_jump_at": f"{day}T10:00:00+10:00",
+            }
+        )
+    return members
+
+
+def test_bounded_prediction_cohort_is_exact_immutable_and_has_no_substitution(tmp_path):
+    corpus = ForwardSealedCorpus(tmp_path)
+    members = baseline_cohort()
+
+    first = corpus.freeze_prediction_cohort(
+        cohort_id="issue-159-baseline", races=members, frozen_at="2026-07-29T08:00:00+10:00"
+    )
+    second = corpus.freeze_prediction_cohort(
+        cohort_id="issue-159-baseline",
+        races=list(reversed(members)),
+        frozen_at="2026-07-29T08:00:00+10:00",
+    )
+
+    assert first == second
+    assert first["race_count"] == 20
+    assert len({row["venue"] for row in first["members"]}) == 3
+    assert len({row["racing_date"] for row in first["members"]}) == 2
+    changed = copy.deepcopy(members)
+    changed[0]["source_native_runner_ids"][-1] = "99999999"
+    with pytest.raises(ForwardCorpusRejected, match="append-only receipt conflict"):
+        corpus.freeze_prediction_cohort(
+            cohort_id="issue-159-baseline",
+            races=changed,
+            frozen_at="2026-07-29T08:00:00+10:00",
+        )
+
+
+@pytest.mark.parametrize("mutation", ["nineteen", "two_venues", "name_id", "late_freeze"])
+def test_bounded_prediction_cohort_rejects_invalid_population(tmp_path, mutation):
+    members = baseline_cohort()
+    frozen_at = "2026-07-29T08:00:00+10:00"
+    if mutation == "nineteen":
+        members.pop()
+    elif mutation == "two_venues":
+        for member in members:
+            member["venue"] = "Sandown" if member["race_number"] % 2 else "Richmond"
+    elif mutation == "name_id":
+        members[0]["source_native_runner_ids"][0] = "Dog Name"
+    else:
+        frozen_at = "2026-07-29T09:30:00+10:00"
+
+    with pytest.raises(ForwardCorpusRejected):
+        ForwardSealedCorpus(tmp_path).freeze_prediction_cohort(
+            cohort_id="issue-159-baseline", races=members, frozen_at=frozen_at
+        )
+
+
+def test_frozen_cohort_forbids_race_substitution_and_cutoff_equal_receipt(tmp_path):
+    members = baseline_cohort()
+    corpus = ForwardSealedCorpus(tmp_path)
+    corpus.freeze_prediction_cohort(
+        cohort_id="issue-159-baseline",
+        races=members,
+        frozen_at="2026-07-29T08:00:00+10:00",
+    )
+    with pytest.raises(ForwardCorpusRejected, match="substitution"):
+        corpus.capture_prejump(**fixture())
+
+    values = fixture()
+    member = members[0]
+    values.update(
+        race_id=member["race_id"],
+        source_native_race_id=member["source_native_race_id"],
+        runners=[
+            {
+                "source_native_runner_id": runner_id,
+                "name": f"Dog {offset}",
+                "box_number": offset,
+            }
+            for offset, runner_id in enumerate(member["source_native_runner_ids"], 1)
+        ],
+        source_observed_at=member["feature_cutoff_at"],
+    )
+    evidence = json.loads(values["sealed_evidence_bytes"])
+    evidence["race_id"] = member["race_id"]
+    evidence["fields"]["runner_set"] = member["source_native_runner_ids"]
+    evidence["fields"]["runner_identity"] = dict.fromkeys(
+        member["source_native_runner_ids"], "authoritative"
+    )
+    evidence["fields"]["runner_features"] = {
+        member["source_native_runner_ids"][0]: {"speed": 9},
+        member["source_native_runner_ids"][1]: {"speed": 6},
+    }
+    for item in evidence["field_provenance"]:
+        item["value"] = evidence["fields"][item["field"]]
+    values["sealed_evidence_bytes"] = canonical_json(evidence)
+    with pytest.raises(ForwardCorpusRejected, match="strictly before cutoff"):
+        corpus.capture_prejump(**values)
+
+
 def _capture(corpus, request_id, transport):
     return corpus.capture_result(
         race_id="race-1",
@@ -237,6 +351,120 @@ def _capture(corpus, request_id, transport):
         request_url="https://www.thedogs.com.au/racing/test/results",
         transport=transport,
     )
+
+
+def test_forward_corpus_reuses_manifest_aware_feature_contract(tmp_path):
+    request = fixture()
+    schema = json.loads(request["feature_schema_bytes"])
+    schema["fields"][0]["family"] = "race_card"
+    schema["availability_manifest_version"] = "feature-availability-manifest-v1"
+    schema["source_contracts"] = {
+        "thedogs-race-card": {
+            "schema_versions": ["thedogs-race-card-v1"],
+            "provider_publication_time_exposed": False,
+        }
+    }
+    schema["candidate_features"] = [
+        {
+            "name": "steward_state",
+            "family": "steward_veterinary",
+            "semantics": "optional",
+        }
+    ]
+    request["feature_schema_bytes"] = canonical_json(schema)
+    evidence = json.loads(request["sealed_evidence_bytes"])
+    runner_ids = evidence["fields"]["runner_set"]
+    evidence["fields"]["feature_availability"] = {
+        "speed": {
+            "status": "READY_NOW",
+            "source_name": "thedogs-race-card",
+            "source_schema_version": "thedogs-race-card-v1",
+            "source_native_race_id": request["source_native_race_id"],
+            "source_native_runner_ids": runner_ids,
+            "provider_published_at": None,
+            "collector_received_at": "2026-07-29T09:20:00+10:00",
+            "completeness": "COMPLETE",
+            "whole_race_coverage": True,
+            "derivation_version": "race-card-feature-derivation-v1",
+            "blocking_reasons": [],
+        },
+        "steward_state": {
+            "status": "FORWARD_CAPTURE",
+            "source_name": None,
+            "source_schema_version": None,
+            "source_native_race_id": None,
+            "source_native_runner_ids": [],
+            "provider_published_at": None,
+            "collector_received_at": None,
+            "completeness": "UNKNOWN",
+            "whole_race_coverage": False,
+            "derivation_version": "steward-state-derivation-v1",
+            "blocking_reasons": [
+                "SOURCE_AUTHORIZATION_REQUIRED",
+                "SOURCE_UNAVAILABLE",
+                "INCOMPLETE_COVERAGE",
+                "NORMALIZED_EVIDENCE_MISSING",
+            ],
+        },
+    }
+    request["sealed_evidence_bytes"] = canonical_json(evidence)
+    retained = LocalArtifactStore(tmp_path / "retained")
+    retained_inputs = {
+        name: retained.put(content, media_type="application/octet-stream")
+        for name, content in {
+            "raw_source_bytes": request["raw_source_bytes"],
+            "sealed_evidence_bytes": request["sealed_evidence_bytes"],
+            "feature_schema_bytes": request["feature_schema_bytes"],
+            "missingness_policy_bytes": request["missingness_policy_bytes"],
+        }.items()
+    }
+
+    def replay_into(target):
+        verified = dict(request)
+        verified.update(
+            {
+                name: retained.read(artifact.checksum)
+                for name, artifact in retained_inputs.items()
+            }
+        )
+        return target.capture_prejump(**verified)
+
+    corpus = ForwardSealedCorpus(
+        tmp_path / "corpus",
+        clock=Clock(
+            _dt("09:40"),
+            _dt("10:06"),
+            _dt("10:06"),
+            _dt("10:06"),
+            _dt("10:21"),
+            _dt("10:21"),
+            _dt("10:21"),
+            _dt("10:22"),
+        ),
+    )
+
+    receipt = replay_into(corpus)
+
+    manifest_checksum = ArtifactChecksum(receipt["feature_availability_manifest_checksum"])
+    manifest = json.loads(corpus.artifacts.read(manifest_checksum))
+    assert manifest["race_id"] == request["race_id"]
+    assert [entry["feature"] for entry in manifest["entries"]] == [
+        "speed",
+        "steward_state",
+    ]
+    _capture(corpus, "request-1", Transport(_html()))
+    _capture(corpus, "request-2", Transport(_html()))
+    package = close(corpus)
+    admitted = json.loads(
+        admit_historical_source(package.package_bytes, artifacts=package.artifacts)
+    )
+    assert admitted["race_ids"] == [request["race_id"]]
+    raw_artifact = retained_inputs["raw_source_bytes"]
+    retained.path_for(raw_artifact.checksum).write_bytes(b"hash drift")
+    rejected = ForwardSealedCorpus(tmp_path / "rejected", clock=lambda: _dt("09:40"))
+    with pytest.raises(ChecksumMismatch):
+        replay_into(rejected)
+    assert not [path for path in rejected.root.rglob("*") if path.is_file()]
 
 
 def _stable_corpus(path, second_body=None):
@@ -266,7 +494,9 @@ def close(corpus):
 def test_synthetic_end_to_end_closes_and_passes_source_admission(tmp_path):
     corpus = _stable_corpus(tmp_path)
     package = close(corpus)
-    admitted = json.loads(admit_historical_source(package.package_bytes, artifacts=package.artifacts))
+    admitted = json.loads(
+        admit_historical_source(package.package_bytes, artifacts=package.artifacts)
+    )
     assert admitted["corpus_origin"] == "official-result-first-observation-v1"
     assert corpus.status()["races"][0]["state"] == "EXAMPLE_CLOSED"
     assert "published_at" not in package.package_bytes.decode()
@@ -286,7 +516,9 @@ def test_first_receipt_must_be_published_before_jump_but_exact_retry_remains_ide
         late.capture_prejump(**fixture())
     assert not [path for path in late_root.rglob("*") if path.is_file()]
     corpus = ForwardSealedCorpus(tmp_path / "ok", clock=lambda: _dt("09:45"))
-    assert corpus.capture_prejump(**fixture()) == corpus.capture_prejump(**fixture())
+    receipt = corpus.capture_prejump(**fixture())
+    assert receipt == corpus.capture_prejump(**fixture())
+    assert "feature_availability_manifest_checksum" not in receipt
     before = {
         path.relative_to(corpus.root): path.read_bytes()
         for path in corpus.root.rglob("*")
@@ -334,10 +566,7 @@ def test_result_strips_only_established_terminal_nbt_non_name_badge(tmp_path):
     )
     assert normalized["runners"][1]["name"] == "Dog 1 B"
     assert receipt["schema_version"] == corpus_module.OBSERVATION_SCHEMA_V2
-    assert (
-        receipt["normalization_version"]
-        == corpus_module.CURRENT_NORMALIZATION_VERSION
-    )
+    assert receipt["normalization_version"] == corpus_module.CURRENT_NORMALIZATION_VERSION
     assert corpus.artifacts.read(
         corpus.artifacts.checksum(_html().replace(b"Dog 1 B", b"Dog 1 B NBT"))
     ) == _html().replace(b"Dog 1 B", b"Dog 1 B NBT")
@@ -375,9 +604,7 @@ def test_parent_observation_verifies_closes_and_is_admissible_after_upgrade(tmp_
     )
     corpus.capture_prejump(**fixture())
     _capture(corpus, "request-1", Transport(_html()))
-    first_path = corpus._request_directory(tmp_path, "race-1", "request-1") / (
-        "observation.json"
-    )
+    first_path = corpus._request_directory(tmp_path, "race-1", "request-1") / ("observation.json")
     parent = json.loads(first_path.read_bytes())
     raw_checksum = parent["raw_response_checksum"]
     normalized_checksum = parent["normalized_result_checksum"]
@@ -400,9 +627,7 @@ def test_parent_observation_verifies_closes_and_is_admissible_after_upgrade(tmp_
         admit_historical_source(package.package_bytes, artifacts=package.artifacts)
     )
     assert admitted["admission_decision"] == "TRAINING_ADMISSIBLE"
-    assert corpus.artifacts.read(
-        corpus.artifacts.checksum(_html())
-    ) == _html()
+    assert corpus.artifacts.read(corpus.artifacts.checksum(_html())) == _html()
 
 
 def test_result_history_uses_exact_race_id_request_root(tmp_path):
@@ -497,9 +722,15 @@ def test_closed_result_rejects_raw_hash_drift_and_later_blocked_observation(tmp_
         tmp_path,
         clock=Clock(
             _dt("09:45"),
-            _dt("10:05"), _dt("10:05"), _dt("10:05"),
-            _dt("10:06"), _dt("10:06"), _dt("10:06"),
-            _dt("10:21"), _dt("10:21"), _dt("10:21"),
+            _dt("10:05"),
+            _dt("10:05"),
+            _dt("10:05"),
+            _dt("10:06"),
+            _dt("10:06"),
+            _dt("10:06"),
+            _dt("10:21"),
+            _dt("10:21"),
+            _dt("10:21"),
             _dt("10:22"),
         ),
     )
@@ -521,10 +752,14 @@ def test_closed_result_rejects_raw_hash_drift_and_later_blocked_observation(tmp_
 
 
 def test_partial_write_recovery_reuses_objects_and_completes_receipt(tmp_path, monkeypatch):
-    corpus = ForwardSealedCorpus(tmp_path, clock=Clock(_dt("09:45"), _dt("10:06"), _dt("10:06"), _dt("10:06")))
+    corpus = ForwardSealedCorpus(
+        tmp_path, clock=Clock(_dt("09:45"), _dt("10:06"), _dt("10:06"), _dt("10:06"))
+    )
     corpus.capture_prejump(**fixture())
     original = corpus._publish_once
-    monkeypatch.setattr(corpus, "_publish_once", lambda *_args: (_ for _ in ()).throw(OSError("crash")))
+    monkeypatch.setattr(
+        corpus, "_publish_once", lambda *_args: (_ for _ in ()).throw(OSError("crash"))
+    )
     with pytest.raises(OSError):
         _capture(corpus, "request-1", Transport(_html()))
     monkeypatch.setattr(corpus, "_publish_once", original)
@@ -569,7 +804,15 @@ def test_status_detects_stored_artifact_hash_drift(tmp_path):
 def test_changed_result_is_retained_and_terminal(tmp_path):
     corpus = ForwardSealedCorpus(
         tmp_path,
-        clock=Clock(_dt("09:45"), _dt("10:06"), _dt("10:06"), _dt("10:06"), _dt("10:21"), _dt("10:21"), _dt("10:21")),
+        clock=Clock(
+            _dt("09:45"),
+            _dt("10:06"),
+            _dt("10:06"),
+            _dt("10:06"),
+            _dt("10:21"),
+            _dt("10:21"),
+            _dt("10:21"),
+        ),
     )
     corpus.capture_prejump(**fixture())
     with pytest.raises(ForwardCorpusRejected, match="no result"):
@@ -652,9 +895,7 @@ def test_admission_reparses_raw_instead_of_trusting_normalized_bytes(tmp_path):
 
 
 @pytest.mark.parametrize("receipt_name", ["response-stage.json", "observation.json"])
-def test_request_stage_crash_replay_uses_zero_transport_calls(
-    tmp_path, monkeypatch, receipt_name
-):
+def test_request_stage_crash_replay_uses_zero_transport_calls(tmp_path, monkeypatch, receipt_name):
     corpus = ForwardSealedCorpus(
         tmp_path,
         clock=Clock(_dt("09:45"), _dt("10:06"), _dt("10:06"), _dt("10:06")),
@@ -682,7 +923,9 @@ def test_request_stage_crash_replay_uses_zero_transport_calls(
     assert replay_transport.calls == 0
 
 
-@pytest.mark.parametrize("receipt_name,changed", [("stability.json", False), ("conflict.json", True)])
+@pytest.mark.parametrize(
+    "receipt_name,changed", [("stability.json", False), ("conflict.json", True)]
+)
 def test_terminal_receipt_crash_replay_uses_zero_transport_calls(
     tmp_path, monkeypatch, receipt_name, changed
 ):
@@ -690,8 +933,12 @@ def test_terminal_receipt_crash_replay_uses_zero_transport_calls(
         tmp_path,
         clock=Clock(
             _dt("09:45"),
-            _dt("10:06"), _dt("10:06"), _dt("10:06"),
-            _dt("10:21"), _dt("10:21"), _dt("10:21"),
+            _dt("10:06"),
+            _dt("10:06"),
+            _dt("10:06"),
+            _dt("10:21"),
+            _dt("10:21"),
+            _dt("10:21"),
         ),
     )
     corpus.capture_prejump(**fixture())
@@ -743,8 +990,12 @@ def test_changed_observation_without_conflict_receipt_fails_closed_everywhere(
         tmp_path,
         clock=Clock(
             _dt("09:45"),
-            _dt("10:06"), _dt("10:06"), _dt("10:06"),
-            _dt("10:21"), _dt("10:21"), _dt("10:21"),
+            _dt("10:06"),
+            _dt("10:06"),
+            _dt("10:06"),
+            _dt("10:21"),
+            _dt("10:21"),
+            _dt("10:21"),
         ),
     )
     corpus.capture_prejump(**fixture())
@@ -765,15 +1016,17 @@ def test_changed_observation_without_conflict_receipt_fails_closed_everywhere(
         corpus.build_package()
 
 
-def test_interrupted_conflict_is_recovered_before_distinct_request_transport(
-    tmp_path, monkeypatch
-):
+def test_interrupted_conflict_is_recovered_before_distinct_request_transport(tmp_path, monkeypatch):
     corpus = ForwardSealedCorpus(
         tmp_path,
         clock=Clock(
             _dt("09:45"),
-            _dt("10:06"), _dt("10:06"), _dt("10:06"),
-            _dt("10:21"), _dt("10:21"), _dt("10:21"),
+            _dt("10:06"),
+            _dt("10:06"),
+            _dt("10:06"),
+            _dt("10:21"),
+            _dt("10:21"),
+            _dt("10:21"),
         ),
     )
     corpus.capture_prejump(**fixture())
@@ -804,10 +1057,18 @@ def test_three_observations_and_response_stages_are_completely_inventoried(tmp_p
         tmp_path,
         clock=Clock(
             _dt("09:45"),
-            _dt("10:05"), _dt("10:05"), _dt("10:05"),
-            _dt("10:06"), _dt("10:06"), _dt("10:06"),
-            _dt("10:21"), _dt("10:21"), _dt("10:21"),
-            _dt("10:36"), _dt("10:36"), _dt("10:36"),
+            _dt("10:05"),
+            _dt("10:05"),
+            _dt("10:05"),
+            _dt("10:06"),
+            _dt("10:06"),
+            _dt("10:06"),
+            _dt("10:21"),
+            _dt("10:21"),
+            _dt("10:21"),
+            _dt("10:36"),
+            _dt("10:36"),
+            _dt("10:36"),
             _dt("10:37"),
         ),
     )
@@ -840,23 +1101,31 @@ def test_safe_url_variation_stabilizes_while_exact_urls_remain_bound(tmp_path):
         tmp_path,
         clock=Clock(
             _dt("09:45"),
-            _dt("10:06"), _dt("10:06"), _dt("10:06"),
-            _dt("10:21"), _dt("10:21"), _dt("10:21"),
+            _dt("10:06"),
+            _dt("10:06"),
+            _dt("10:06"),
+            _dt("10:21"),
+            _dt("10:21"),
+            _dt("10:21"),
             _dt("10:22"),
         ),
     )
     corpus.capture_prejump(**fixture())
     first = corpus.capture_result(
-        race_id="race-1", collector_id="collector-1", session_id="session-1",
-        run_id="run-1", request_id="request-1",
+        race_id="race-1",
+        collector_id="collector-1",
+        session_id="session-1",
+        run_id="run-1",
+        request_id="request-1",
         request_url="https://www.thedogs.com.au/racing/test/results",
-        transport=Transport(
-            _html(), final_url="https://www.thedogs.com.au/racing/test/results"
-        ),
+        transport=Transport(_html(), final_url="https://www.thedogs.com.au/racing/test/results"),
     )
     second = corpus.capture_result(
-        race_id="race-1", collector_id="collector-1", session_id="session-1",
-        run_id="run-1", request_id="request-2",
+        race_id="race-1",
+        collector_id="collector-1",
+        session_id="session-1",
+        run_id="run-1",
+        request_id="request-2",
         request_url="https://thedogs.com.au/racing/test/results/redirected",
         transport=Transport(
             _html(), final_url="https://www.thedogs.com.au/racing/test/results/canonical"
@@ -909,10 +1178,18 @@ def test_complete_history_inventory_mutations_fail_local_and_pure_reconstruction
         tmp_path,
         clock=Clock(
             _dt("09:45"),
-            _dt("10:05"), _dt("10:05"), _dt("10:05"),
-            _dt("10:06"), _dt("10:06"), _dt("10:06"),
-            _dt("10:21"), _dt("10:21"), _dt("10:21"),
-            _dt("10:36"), _dt("10:36"), _dt("10:36"),
+            _dt("10:05"),
+            _dt("10:05"),
+            _dt("10:05"),
+            _dt("10:06"),
+            _dt("10:06"),
+            _dt("10:06"),
+            _dt("10:21"),
+            _dt("10:21"),
+            _dt("10:21"),
+            _dt("10:36"),
+            _dt("10:36"),
+            _dt("10:36"),
             _dt("10:37"),
         ),
     )
@@ -987,9 +1264,7 @@ def test_complete_history_inventory_mutations_fail_local_and_pure_reconstruction
     false_observation = json.loads(package.artifacts[old_observation_checksum])
     false_observation["request_id"] = "request-0"
     false_observation_bytes = canonical_json(false_observation)
-    false_observation_checksum = (
-        "sha256:" + hashlib.sha256(false_observation_bytes).hexdigest()
-    )
+    false_observation_checksum = "sha256:" + hashlib.sha256(false_observation_bytes).hexdigest()
     false_race["observation_checksums"][0] = false_observation_checksum
     for field in ("first_observation_checksum", "second_observation_checksum"):
         if false_race[field] == old_observation_checksum:
@@ -1069,26 +1344,37 @@ def test_complete_history_inventory_mutations_fail_local_and_pure_reconstruction
     [
         ("envelope", lambda value: value.__setitem__("extra", True)),
         ("source-name", lambda value: value.__setitem__("source_name", "TheDogs")),
-        ("source-url", lambda value: value.__setitem__("canonical_source_url", "https://evil.test")),
+        (
+            "source-url",
+            lambda value: value.__setitem__("canonical_source_url", "https://evil.test"),
+        ),
         ("race-identity", lambda value: value.__setitem__("source_native_race_id", "other")),
         ("racing-date", lambda value: value.__setitem__("racing_date", "2026-07-30")),
-        ("timestamps", lambda value: value.__setitem__("feature_frozen_at", value["scheduled_jump_at"])),
+        (
+            "timestamps",
+            lambda value: value.__setitem__("feature_frozen_at", value["scheduled_jump_at"]),
+        ),
         ("authority", lambda value: value.__setitem__("identity_authority", "reconstructed")),
         ("reconstruction", lambda value: value.__setitem__("reconstructed", True)),
-        ("runner-id", lambda value: value["runners"][1].__setitem__(
-            "source_native_runner_id", value["runners"][0]["source_native_runner_id"]
-        )),
-        ("runner-box", lambda value: value["runners"][1].__setitem__(
-            "box_number", value["runners"][0]["box_number"]
-        )),
-        ("runner-name", lambda value: value["runners"][1].__setitem__(
-            "name", value["runners"][0]["name"]
-        )),
+        (
+            "runner-id",
+            lambda value: value["runners"][1].__setitem__(
+                "source_native_runner_id", value["runners"][0]["source_native_runner_id"]
+            ),
+        ),
+        (
+            "runner-box",
+            lambda value: value["runners"][1].__setitem__(
+                "box_number", value["runners"][0]["box_number"]
+            ),
+        ),
+        (
+            "runner-name",
+            lambda value: value["runners"][1].__setitem__("name", value["runners"][0]["name"]),
+        ),
     ],
 )
-def test_source_capture_family_mutations_fail_pure_admission(
-    tmp_path, family, mutate
-):
+def test_source_capture_family_mutations_fail_pure_admission(tmp_path, family, mutate):
     package = close(_stable_corpus(tmp_path))
     race = json.loads(package.package_bytes)["manifest"]["races"][0]
     checksum = race["source_capture_checksum"]
@@ -1134,8 +1420,12 @@ def test_mutated_terminal_receipts_fail_local_reconstruction(tmp_path, receipt):
             tmp_path,
             clock=Clock(
                 _dt("09:45"),
-                _dt("10:06"), _dt("10:06"), _dt("10:06"),
-                _dt("10:21"), _dt("10:21"), _dt("10:21"),
+                _dt("10:06"),
+                _dt("10:06"),
+                _dt("10:06"),
+                _dt("10:21"),
+                _dt("10:21"),
+                _dt("10:21"),
             ),
         )
         corpus.capture_prejump(**fixture())

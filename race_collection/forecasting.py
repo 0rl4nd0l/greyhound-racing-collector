@@ -9,7 +9,8 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
+from enum import Enum
 from typing import Any, Literal, Mapping, Protocol
 
 from .domain import (
@@ -137,6 +138,13 @@ class PredictionOutcome:
     replayed: bool = False
 
 
+class BaselineTerminalClassification(str, Enum):
+    ACCEPTED = "ACCEPTED"
+    QUARANTINED = "QUARANTINED"
+    AUTHORIZATION_BLOCKED = "AUTHORIZATION_BLOCKED"
+    INTEGRITY_FAILED = "INTEGRITY_FAILED"
+
+
 class DeferredPredictor(Protocol):
     def predict(self, request: PredictionRequest) -> ArtifactChecksum: ...
 
@@ -146,6 +154,249 @@ class ForecastingAuthority:
 
     def __init__(self, store: SQLiteOperationsStore):
         self.store = store
+
+    def baseline_cohort_terminal_records(self, cohort_bytes: bytes) -> Mapping[str, Any]:
+        """Project the frozen 20-race cohort from existing lifecycle terminal rows only."""
+        if type(cohort_bytes) is not bytes:
+            raise ValueError("cohort must be canonical JSON bytes")
+        try:
+            cohort = json.loads(cohort_bytes)
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ValueError("cohort must be canonical JSON bytes") from error
+        if (
+            type(cohort) is not dict
+            or _json(cohort).encode() != cohort_bytes
+            or set(cohort)
+            != {
+                "schema_version",
+                "cohort_id",
+                "frozen_at",
+                "race_count",
+                "members",
+            }
+            or cohort.get("schema_version") != "forward-baseline-cohort-v1"
+            or cohort.get("race_count") != 20
+            or type(cohort.get("members")) is not list
+            or len(cohort["members"]) != 20
+        ):
+            raise ValueError("baseline cohort schema or size is invalid")
+        member_fields = {
+            "race_id",
+            "racing_date",
+            "venue",
+            "race_number",
+            "source_native_race_id",
+            "source_native_runner_ids",
+            "feature_cutoff_at",
+            "scheduled_jump_at",
+        }
+        if any(
+            type(member) is not dict or set(member) != member_fields for member in cohort["members"]
+        ):
+            raise ValueError("baseline cohort race identities are invalid")
+        race_ids = [member["race_id"] for member in cohort["members"]]
+        try:
+            cohort_frozen_at = datetime.fromisoformat(cohort["frozen_at"])
+            require_aware(cohort_frozen_at, "cohort frozen_at")
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError("baseline cohort race identities are invalid") from error
+        for member in cohort["members"]:
+            try:
+                racing_date = date.fromisoformat(member["racing_date"])
+                cutoff = datetime.fromisoformat(member["feature_cutoff_at"])
+                jump = datetime.fromisoformat(member["scheduled_jump_at"])
+                require_aware(cutoff, "feature cutoff")
+                require_aware(jump, "scheduled jump")
+            except (KeyError, TypeError, ValueError) as error:
+                raise ValueError("baseline cohort race identities are invalid") from error
+            native_race_id = member.get("source_native_race_id")
+            native_runner_ids = member.get("source_native_runner_ids")
+            if (
+                type(native_race_id) is not str
+                or not native_race_id.isascii()
+                or not native_race_id.isdecimal()
+                or type(native_runner_ids) is not list
+                or len(native_runner_ids) < 2
+                or any(
+                    type(runner_id) is not str
+                    or not runner_id.isascii()
+                    or not runner_id.isdecimal()
+                    for runner_id in native_runner_ids
+                )
+                or len(set(native_runner_ids)) != len(native_runner_ids)
+                or type(member.get("venue")) is not str
+                or not member["venue"].strip()
+                or type(member.get("race_number")) is not int
+                or member["race_number"] <= 0
+                or racing_date != jump.date()
+                or not cohort_frozen_at < cutoff < jump
+            ):
+                raise ValueError("baseline cohort race identities are invalid")
+        if (
+            any(type(race_id) is not str or not race_id for race_id in race_ids)
+            or len(set(race_ids)) != 20
+            or len({member["source_native_race_id"] for member in cohort["members"]}) != 20
+            or cohort["members"] != sorted(cohort["members"], key=lambda member: member["race_id"])
+            or len({member["venue"] for member in cohort["members"]}) < 3
+            or len({member["racing_date"] for member in cohort["members"]}) < 2
+        ):
+            raise ValueError("baseline cohort race identities are invalid")
+        cohort_checksum = "sha256:" + hashlib.sha256(cohort_bytes).hexdigest()
+        snapshot = self.store.forward_baseline_cohort_lifecycle(cohort["cohort_id"])
+        durable = snapshot["cohort"] if snapshot is not None else None
+        if (
+            durable is None
+            or durable["artifact_checksum"] != cohort_checksum
+            or datetime.fromisoformat(durable["frozen_at"]) != cohort_frozen_at
+            or durable["race_count"] != 20
+            or durable["members"] != cohort["members"]
+        ):
+            raise OperationsStoreError(
+                "baseline cohort disagrees with durable transactional authority"
+            )
+        records = []
+        incomplete = []
+        authorization_codes = {
+            "source_authorization_required",
+            "SOURCE_AUTHORIZATION_REQUIRED",
+            "SourceAuthorizationRequired",
+        }
+        integrity_codes = {
+            "INTEGRITY_FAILED",
+            "IntegrityFailed",
+            "FeatureQuarantine",
+        }
+        members_by_race = {member["race_id"]: member for member in cohort["members"]}
+        for race_id in sorted(race_ids):
+            projection = snapshot["races"].get(race_id)
+            row = projection["lifecycle"] if projection is not None else None
+            if row is None:
+                raise OperationsStoreError("frozen cohort race is absent from lifecycle state")
+            member = members_by_race[race_id]
+            if (
+                row["local_date"] != member["racing_date"]
+                or row["source_race_id"] != member["source_native_race_id"]
+                or row["venue"] != member["venue"]
+                or row["race_number"] != member["race_number"]
+                or datetime.fromisoformat(row["scheduled_jump"])
+                != datetime.fromisoformat(member["scheduled_jump_at"])
+                or (
+                    row["frozen_at"] is not None
+                    and not cohort_frozen_at
+                    <= datetime.fromisoformat(row["frozen_at"])
+                    < datetime.fromisoformat(member["feature_cutoff_at"])
+                )
+            ):
+                raise OperationsStoreError(
+                    "frozen cohort race does not match lifecycle identity"
+                )
+            rejections = [
+                {
+                    "stage": rejection["stage"],
+                    "code": rejection["code"],
+                    "details": rejection["details"],
+                    "at": rejection["created_at"],
+                }
+                for rejection in projection["collection_rejections"]
+            ]
+            if row["prediction_id"] is not None:
+                classification = BaselineTerminalClassification.ACCEPTED
+                code = None
+                details = None
+                terminal_at = row["computed_at"]
+                prediction_id = row["prediction_id"]
+                artifact_checksum = row["artifact_checksum"]
+            elif row["quarantine_prediction_id"] is not None:
+                classification = (
+                    BaselineTerminalClassification.AUTHORIZATION_BLOCKED
+                    if row["prediction_code"] in authorization_codes
+                    else (
+                        BaselineTerminalClassification.INTEGRITY_FAILED
+                        if row["prediction_code"] in integrity_codes
+                        else BaselineTerminalClassification.QUARANTINED
+                    )
+                )
+                code = row["prediction_code"]
+                details = row["prediction_details"]
+                terminal_at = row["quarantined_at"]
+                prediction_id = row["quarantine_prediction_id"]
+                artifact_checksum = None
+                rejections.append(
+                    {
+                        "stage": "prediction",
+                        "code": code,
+                        "details": details,
+                        "at": terminal_at,
+                    }
+                )
+            elif rejections:
+                rejection = rejections[-1]
+                classification = (
+                    BaselineTerminalClassification.AUTHORIZATION_BLOCKED
+                    if rejection["code"] in authorization_codes
+                    else (
+                        BaselineTerminalClassification.INTEGRITY_FAILED
+                        if rejection["code"] in integrity_codes
+                        else BaselineTerminalClassification.QUARANTINED
+                    )
+                )
+                code = rejection["code"]
+                details = rejection["details"]
+                terminal_at = rejection["at"]
+                prediction_id = None
+                artifact_checksum = None
+            else:
+                incomplete.append(race_id)
+                continue
+            records.append(
+                {
+                    "race_id": race_id,
+                    "classification": classification.value,
+                    "lifecycle_state": row["state"],
+                    "prediction_id": prediction_id,
+                    "prediction_artifact_checksum": artifact_checksum,
+                    "rejection_code": code,
+                    "rejection_details": details,
+                    "rejections": rejections,
+                    "terminal_at": terminal_at,
+                }
+            )
+        if incomplete:
+            raise BarrierNotSatisfied(
+                "baseline cohort is not terminal: " + ",".join(sorted(incomplete))
+            )
+        return {
+            "schema_version": "forward-baseline-terminal-records-v1",
+            "cohort_id": cohort["cohort_id"],
+            "cohort_checksum": "sha256:" + hashlib.sha256(cohort_bytes).hexdigest(),
+            "race_count": 20,
+            "terminal_count": len(records),
+            "records": records,
+        }
+
+    def open_baseline_results(
+        self,
+        operation_id: OperationId,
+        race_id: RaceId,
+        at: datetime,
+        *,
+        cohort_bytes: bytes,
+    ) -> bool:
+        """Open results only through both the 20-race and ordinary day barriers."""
+        terminal = self.baseline_cohort_terminal_records(cohort_bytes)
+        member = next(
+            (record for record in terminal["records"] if record["race_id"] == str(race_id)),
+            None,
+        )
+        if member is None:
+            raise BarrierNotSatisfied("result race is not in the frozen baseline cohort")
+        return self._open_result_collection(
+            operation_id,
+            race_id,
+            at,
+            member=member,
+            cohort_checksum=terminal["cohort_checksum"],
+        )
 
     def register_bundle(
         self, operation_id: OperationId, bundle: LegacyBundle, at: datetime
@@ -532,8 +783,11 @@ class ForecastingAuthority:
             artifact = predictor.predict(request)
             if not isinstance(artifact, ArtifactChecksum):
                 raise OperationsStoreError("predictor must return an ArtifactChecksum")
+            authenticate_request = getattr(predictor, "authenticate_request", None)
             authenticate = getattr(predictor, "authenticate", None)
-            if callable(authenticate):
+            if callable(authenticate_request):
+                authenticate_request(artifact, at, request)
+            elif callable(authenticate):
                 authenticate(artifact, at)
             status, code, details = "committed", None, None
         except Exception as error:
@@ -700,8 +954,52 @@ class ForecastingAuthority:
         return True
 
     def open_results(self, operation_id: OperationId, race_id: RaceId, at: datetime) -> bool:
+        cohort = self.store.forward_baseline_cohort_for_race(race_id)
+        if cohort is not None:
+            cohort_bytes = _json(
+                {
+                    "schema_version": "forward-baseline-cohort-v1",
+                    "cohort_id": cohort["cohort_id"],
+                    "frozen_at": cohort["frozen_at"],
+                    "race_count": cohort["race_count"],
+                    "members": cohort["members"],
+                }
+            ).encode()
+            terminal = self.baseline_cohort_terminal_records(cohort_bytes)
+            member = next(
+                (
+                    record
+                    for record in terminal["records"]
+                    if record["race_id"] == str(race_id)
+                ),
+                None,
+            )
+            if member is None:
+                raise BarrierNotSatisfied("result race is not in the frozen baseline cohort")
+            return self._open_result_collection(
+                operation_id,
+                race_id,
+                at,
+                member=member,
+                cohort_checksum=terminal["cohort_checksum"],
+            )
+        return self._open_result_collection(operation_id, race_id, at)
+
+    def _open_result_collection(
+        self,
+        operation_id: OperationId,
+        race_id: RaceId,
+        at: datetime,
+        *,
+        member: Mapping[str, Any] | None = None,
+        cohort_checksum: str | None = None,
+    ) -> bool:
         require_aware(at, "at")
-        payload = {"race": str(race_id), "at": iso_timestamp(at)}
+        payload = {
+            "race": str(race_id),
+            "at": iso_timestamp(at),
+            **({"cohort_checksum": cohort_checksum} if cohort_checksum is not None else {}),
+        }
         with self.store._operation(operation_id, "open_result_collection", payload) as (
             db,
             replay,
@@ -711,7 +1009,12 @@ class ForecastingAuthority:
             row = db.execute(
                 "SELECT racing_day_id,state FROM races WHERE race_id=?", (str(race_id),)
             ).fetchone()
-            if row is None or row["state"] != RaceState.PREDICTION_COMMITTED.value:
+            expected = (
+                RaceState(member["lifecycle_state"])
+                if member is not None
+                else RaceState.PREDICTION_COMMITTED
+            )
+            if row is None or row["state"] != expected.value:
                 raise BarrierNotSatisfied("results require a committed prediction")
             incomplete = db.execute(
                 "SELECT COUNT(*) FROM expected_races e JOIN races r USING(race_id) WHERE r.racing_day_id=? AND NOT EXISTS(SELECT 1 FROM collection_quarantines q WHERE q.race_id=r.race_id) AND r.state NOT IN ('prediction_committed','prediction_quarantined','result_pending','result_collected','result_quarantined','training_example_ready','evaluation_ineligible')",
@@ -725,7 +1028,7 @@ class ForecastingAuthority:
                 race_id,
                 RaceState.RESULT_PENDING,
                 at,
-                RaceState.PREDICTION_COMMITTED,
+                expected,
             )
         return True
 

@@ -1236,6 +1236,16 @@ def systemd_exec_argument(value: str) -> str:
     return '"' + value.replace("%", "%%").replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def require_forward_baseline_binding(
+    forward_corpus_root: Path | None,
+    forward_baseline_config: Path | None,
+) -> None:
+    if (forward_corpus_root is None) != (forward_baseline_config is None):
+        raise ValueError(
+            "forward_corpus_root and forward_baseline_config must be supplied together"
+        )
+
+
 def service_file_text(
     *,
     repo_path: Path,
@@ -1248,8 +1258,10 @@ def service_file_text(
     state_path: Path | None = None,
     odds_capture_state_path: Path | None = None,
     forward_corpus_root: Path | None = None,
+    forward_baseline_config: Path | None = None,
     pause_path: Path | None = DEFAULT_HEAVY_SCHEDULING_PAUSE_PATH,
 ) -> str:
+    require_forward_baseline_binding(forward_corpus_root, forward_baseline_config)
     script_path = repo_path / "scripts/shadow_autopilot_daemon.py"
     service_python = python_path or Path("/usr/bin/python3")
     evidence_root_segment = " ".join(optional_path_cli_args("--evidence-root", evidence_root))
@@ -1265,8 +1277,10 @@ def service_file_text(
                 "--enable-forward-official-result-observer",
                 "--forward-corpus-root",
                 systemd_exec_argument(str(forward_corpus_root)),
+                "--forward-baseline-config",
+                systemd_exec_argument(str(forward_baseline_config)),
             ]
-            if forward_corpus_root is not None
+            if forward_corpus_root is not None and forward_baseline_config is not None
             else []
         ),
     ]
@@ -1343,8 +1357,10 @@ def odds_capture_service_file_text(
     lock_path: Path | None = None,
     state_path: Path | None = None,
     forward_corpus_root: Path | None = None,
+    forward_baseline_config: Path | None = None,
     refresh_limit: int = DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT,
 ) -> str:
+    require_forward_baseline_binding(forward_corpus_root, forward_baseline_config)
     script_path = repo_path / "scripts/shadow_autopilot_daemon.py"
     service_python = python_path or Path("/usr/bin/python3")
     evidence_root_segment = " ".join(optional_path_cli_args("--evidence-root", evidence_root))
@@ -1357,8 +1373,10 @@ def odds_capture_service_file_text(
             [
                 "--forward-corpus-root",
                 systemd_exec_argument(str(forward_corpus_root)),
+                "--forward-baseline-config",
+                systemd_exec_argument(str(forward_baseline_config)),
             ]
-            if forward_corpus_root is not None
+            if forward_corpus_root is not None and forward_baseline_config is not None
             else []
         ),
     ]
@@ -1429,6 +1447,7 @@ def write_service_files(
     state_path: Path | None = None,
     odds_capture_state_path: Path | None = None,
     forward_corpus_root: Path | None = None,
+    forward_baseline_config: Path | None = None,
     pause_path: Path | None = DEFAULT_HEAVY_SCHEDULING_PAUSE_PATH,
 ) -> dict[str, Any]:
     service_dir.mkdir(parents=True, exist_ok=True)
@@ -1447,6 +1466,7 @@ def write_service_files(
             state_path=state_path,
             odds_capture_state_path=odds_capture_state_path,
             forward_corpus_root=forward_corpus_root,
+            forward_baseline_config=forward_baseline_config,
             pause_path=pause_path,
         ),
     )
@@ -1470,6 +1490,11 @@ def write_service_files(
         ),
         "forward_corpus_root": (
             str(forward_corpus_root) if forward_corpus_root is not None else None
+        ),
+        "forward_baseline_config": (
+            str(forward_baseline_config)
+            if forward_baseline_config is not None
+            else None
         ),
         "pause_path": str(pause_path) if pause_path is not None else None,
     }
@@ -1588,6 +1613,7 @@ def write_odds_capture_service_files(
     lock_path: Path | None = None,
     state_path: Path | None = None,
     forward_corpus_root: Path | None = None,
+    forward_baseline_config: Path | None = None,
     refresh_limit: int = DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT,
 ) -> dict[str, Any]:
     service_dir.mkdir(parents=True, exist_ok=True)
@@ -1604,6 +1630,7 @@ def write_odds_capture_service_files(
             lock_path=lock_path,
             state_path=state_path,
             forward_corpus_root=forward_corpus_root,
+            forward_baseline_config=forward_baseline_config,
             refresh_limit=refresh_limit,
         ),
     )
@@ -1624,6 +1651,11 @@ def write_odds_capture_service_files(
         "state_path": str(state_path) if state_path is not None else None,
         "forward_corpus_root": (
             str(forward_corpus_root) if forward_corpus_root is not None else None
+        ),
+        "forward_baseline_config": (
+            str(forward_baseline_config)
+            if forward_baseline_config is not None
+            else None
         ),
         "refresh_limit": refresh_limit,
     }
@@ -1850,6 +1882,11 @@ def expected_service_exec_fragments_for_run(args: argparse.Namespace) -> list[st
     fragments.extend(
         optional_path_cli_args("--forward-corpus-root", args.forward_corpus_root)
     )
+    fragments.extend(
+        optional_path_cli_args(
+            "--forward-baseline-config", args.forward_baseline_config
+        )
+    )
     return fragments
 
 
@@ -1868,6 +1905,7 @@ def odds_capture_only_autopilot_command(
     timeout_seconds: int,
     state_path: Path | None = None,
     forward_corpus_root: Path | None = None,
+    forward_baseline_config: Path | None = None,
     refresh_command_mode: str = "auto",
     require_safe_refresh_metadata: bool = True,
 ) -> list[str]:
@@ -1914,7 +1952,18 @@ def odds_capture_only_autopilot_command(
     if state_path is not None:
         command.extend(["--current-race-index-state-path", str(state_path)])
     if forward_corpus_root is not None:
-        command.extend(["--forward-corpus-root", str(forward_corpus_root)])
+        if forward_baseline_config is None:
+            raise ValueError("forward_baseline_config_missing")
+        command.extend(
+            [
+                "--forward-corpus-root",
+                str(forward_corpus_root),
+                "--forward-baseline-config",
+                str(forward_baseline_config),
+            ]
+        )
+    elif forward_baseline_config is not None:
+        raise ValueError("forward_corpus_root_missing")
     return command
 
 
@@ -3742,6 +3791,7 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
             timeout_seconds=args.timeout_seconds,
             state_path=args.state_path,
             forward_corpus_root=args.forward_corpus_root,
+            forward_baseline_config=args.forward_baseline_config,
             refresh_command_mode=args.refresh_command_mode,
             require_safe_refresh_metadata=args.require_safe_refresh_metadata,
         )
@@ -9373,6 +9423,9 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             forward_corpus_root=args.forward_corpus_root
             if args.enable_forward_official_result_observer
             else None,
+            forward_baseline_config=args.forward_baseline_config
+            if args.enable_forward_official_result_observer
+            else None,
             pause_path=lock_path.parent / "pause-heavy-scheduling",
         )
         service_path = run_service_dir / SERVICE_NAME
@@ -9644,7 +9697,12 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             autopilot_command.append("--enable-autonomous-result-capture")
         if args.forward_corpus_root is not None:
             autopilot_command.extend(
-                ["--forward-corpus-root", str(args.forward_corpus_root)]
+                [
+                    "--forward-corpus-root",
+                    str(args.forward_corpus_root),
+                    "--forward-baseline-config",
+                    str(args.forward_baseline_config),
+                ]
             )
         steps.append(
             run_command(
@@ -13253,6 +13311,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
     )
     run_parser.add_argument("--forward-corpus-root", type=Path)
+    run_parser.add_argument("--forward-baseline-config", type=Path)
     run_parser.add_argument(
         "--result-backlog-limit",
         type=int,
@@ -13329,6 +13388,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     odds_parser.add_argument("--lock-stale-seconds", type=int, default=DEFAULT_LOCK_STALE_SECONDS)
     odds_parser.add_argument("--state-path", type=Path, default=DEFAULT_ODDS_CAPTURE_ONLY_STATE_PATH)
     odds_parser.add_argument("--forward-corpus-root", type=Path)
+    odds_parser.add_argument("--forward-baseline-config", type=Path)
 
     capture_one_parser = subparsers.add_parser(
         "capture-one",
@@ -13369,6 +13429,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     service_parser.add_argument("--state-path", type=Path)
     service_parser.add_argument("--odds-capture-state-path", type=Path)
     service_parser.add_argument("--forward-corpus-root", type=Path)
+    service_parser.add_argument("--forward-baseline-config", type=Path)
     service_parser.add_argument(
         "--pause-path",
         type=Path,
@@ -13393,6 +13454,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     odds_service_parser.add_argument("--lock-path", type=Path)
     odds_service_parser.add_argument("--state-path", type=Path)
     odds_service_parser.add_argument("--forward-corpus-root", type=Path)
+    odds_service_parser.add_argument("--forward-baseline-config", type=Path)
     odds_service_parser.add_argument(
         "--refresh-limit",
         type=int,
@@ -13407,6 +13469,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         parser.error(
             "--forward-corpus-root is required with "
             "--enable-forward-official-result-observer"
+        )
+    if bool(getattr(args, "forward_corpus_root", None)) != bool(
+        getattr(args, "forward_baseline_config", None)
+    ):
+        parser.error(
+            "--forward-corpus-root and --forward-baseline-config must be supplied together"
         )
     return args
 
@@ -13458,6 +13526,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             state_path=args.state_path,
             odds_capture_state_path=args.odds_capture_state_path,
             forward_corpus_root=args.forward_corpus_root,
+            forward_baseline_config=args.forward_baseline_config,
             pause_path=args.pause_path,
         )
         print(json.dumps(result, indent=2, sort_keys=True))
@@ -13473,6 +13542,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             lock_path=args.lock_path,
             state_path=args.state_path,
             forward_corpus_root=args.forward_corpus_root,
+            forward_baseline_config=args.forward_baseline_config,
             refresh_limit=args.refresh_limit,
         )
         print(json.dumps(result, indent=2, sort_keys=True))

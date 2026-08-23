@@ -800,6 +800,98 @@ def test_main_writes_report_runtime_identity(tmp_path, monkeypatch):
     assert report["next_pending_capture_window_count"] == 2
 
 
+def test_main_routes_forward_corpus_through_durable_baseline_service(
+    tmp_path, monkeypatch
+):
+    input_dir = tmp_path / "upcoming"
+    _write_capture_input(input_dir)
+    evidence_root = tmp_path / "evidence"
+    evidence_root.mkdir()
+    output_dir = evidence_root / "autonomous_live_odds_capture_baseline_unit"
+    corpus_root = tmp_path / "forward-corpus"
+    index_path = evidence_root / "current-race-index.json"
+    config_path = tmp_path / "forward-baseline.json"
+    observed = []
+
+    class BaselineService:
+        configuration = type("Configuration", (), {"corpus_root": corpus_root})()
+
+        def capture_scheduled(self, **values):
+            observed.append(values)
+            return {"status": "PREJUMP_CAPTURED"}
+
+    binding = type(
+        "Binding",
+        (),
+        {
+            "service": BaselineService(),
+            "evidence_root": evidence_root,
+            "current_index_path": index_path,
+            "current_index_timeout_seconds": 2.0,
+            "current_index_max_age_seconds": 900,
+        },
+    )()
+    verified = object()
+    release_root = tmp_path / "release-repo"
+    release_root.mkdir()
+    monkeypatch.setattr(capture, "ROOT", release_root)
+    monkeypatch.setattr(capture, "build_capture_plan", lambda *_args, **_kwargs: {"races": []})
+
+    def execute(_plan, **values):
+        admission = values["forward_corpus_admitter"](
+            plan_item={"race_id": "race-159"},
+            attempt={"status": "APPENDED"},
+            receipt_publish={"status": "PUBLISHED"},
+            emitted_at=datetime.fromisoformat("2026-06-10T14:40:00+10:00"),
+        )
+        assert admission == {"status": "PREJUMP_CAPTURED"}
+        return {
+            "attempts": [],
+            "capture_window_coverage": {},
+            "final_status": "NO_ELIGIBLE_WINDOWS",
+        }
+
+    monkeypatch.setattr(capture, "execute_capture_plan", execute)
+
+    assert (
+        capture.main(
+            [
+                "--input-dir",
+                str(input_dir),
+                "--evidence-root",
+                str(evidence_root),
+                "--output-dir",
+                str(output_dir),
+                "--db",
+                str(tmp_path / "odds.db"),
+                "--current-time",
+                "2026-06-10T14:40:00+10:00",
+                "--execute",
+                "--allow-auto-scrape-odds",
+                "--collector-receipt-root",
+                str(tmp_path / "receipts"),
+                "--collector-run-id",
+                "collector-159",
+                "--forward-corpus-root",
+                str(corpus_root),
+                "--forward-baseline-config",
+                str(config_path),
+            ],
+            forward_baseline_loader=lambda path: binding if path == config_path else None,
+            current_index_reader=lambda **values: (
+                verified
+                if values["index_path"] == index_path
+                and values["return_verified_view"] is True
+                else None
+            ),
+        )
+        == 0
+    )
+    assert observed[0]["verified_index"] is verified
+    assert observed[0]["collector_run_id"] == "collector-159"
+    assert observed[0]["evidence_root"] == evidence_root
+
+
 def test_execute_capture_plan_skips_existing_superset_capture_without_retry(
     tmp_path,
 ):

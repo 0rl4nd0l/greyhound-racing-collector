@@ -1205,6 +1205,8 @@ def test_run_once_defer_continues_after_source_rejection_before_odds_priority_re
             "--enable-forward-official-result-observer",
             "--forward-corpus-root",
             str(corpus_root),
+            "--forward-baseline-config",
+            str(tmp_path / "forward-baseline.json"),
             "--enable-autonomous-odds-capture",
             "--odds-capture-state-path",
             str(odds_state_path),
@@ -1328,6 +1330,8 @@ def test_run_once_observer_waits_for_natural_odds_release_then_continues(
             "--enable-forward-official-result-observer",
             "--forward-corpus-root",
             str(tmp_path / "forward-corpus"),
+            "--forward-baseline-config",
+            str(tmp_path / "forward-baseline.json"),
             "--enable-autonomous-odds-capture",
             "--odds-capture-state-path",
             str(odds_state_path),
@@ -1409,6 +1413,8 @@ def test_run_once_observer_failure_stops_before_odds_defer_and_full_lock(
             "--enable-forward-official-result-observer",
             "--forward-corpus-root",
             str(tmp_path / "forward-corpus"),
+            "--forward-baseline-config",
+            str(tmp_path / "forward-baseline.json"),
             "--enable-autonomous-odds-capture",
         ]
     )
@@ -1495,6 +1501,8 @@ def test_live_shared_lock_defers_before_observer_service_or_corpus_mutation(
             "--enable-forward-official-result-observer",
             "--forward-corpus-root",
             str(corpus_root),
+            "--forward-baseline-config",
+            str(tmp_path / "forward-baseline.json"),
         ]
     )
 
@@ -1571,6 +1579,8 @@ def test_observer_completion_refreshes_wall_time_before_odds_defer(
             "--enable-forward-official-result-observer",
             "--forward-corpus-root",
             str(tmp_path / "forward-corpus"),
+            "--forward-baseline-config",
+            str(tmp_path / "forward-baseline.json"),
             "--enable-autonomous-odds-capture",
             "--odds-capture-state-path",
             str(odds_state_path),
@@ -1912,6 +1922,7 @@ def test_odds_capture_only_autopilot_command_is_narrow_and_append_only():
         timeout_seconds=600,
         state_path=Path("/runtime/odds_capture_state.json"),
         forward_corpus_root=Path("/evidence/forward-corpus"),
+        forward_baseline_config=Path("/evidence/forward-baseline.json"),
     )
 
     assert "scripts/shadow_autopilot_v1.py" in command[1]
@@ -1934,6 +1945,9 @@ def test_odds_capture_only_autopilot_command_is_narrow_and_append_only():
     )
     assert command[command.index("--forward-corpus-root") + 1] == (
         "/evidence/forward-corpus"
+    )
+    assert command[command.index("--forward-baseline-config") + 1] == (
+        "/evidence/forward-baseline.json"
     )
     assert "--enable-autonomous-result-capture" not in command
 
@@ -5088,6 +5102,7 @@ def test_odds_capture_service_and_timer_define_minutely_locked_lane():
         lock_path=Path("/runtime/shared-shadow-autopilot.lock"),
         state_path=Path("/runtime/odds_capture_state.json"),
         forward_corpus_root=Path("/runtime/forward-corpus"),
+        forward_baseline_config=Path("/runtime/forward-baseline.json"),
         refresh_limit=8,
     )
     timer = daemon.odds_capture_timer_file_text()
@@ -5104,6 +5119,7 @@ def test_odds_capture_service_and_timer_define_minutely_locked_lane():
     assert "--lock-path /runtime/shared-shadow-autopilot.lock" in service
     assert "--state-path /runtime/odds_capture_state.json" in service
     assert '--forward-corpus-root "/runtime/forward-corpus"' in service
+    assert '--forward-baseline-config "/runtime/forward-baseline.json"' in service
     assert "--odds-capture-refresh-limit 8" in service
     assert "--require-safe-refresh-metadata" in service
     assert "--skip-primary-refresh" in service
@@ -5128,6 +5144,7 @@ def test_write_odds_capture_service_files_preserves_db_and_lock(tmp_path):
         lock_path=Path("/runtime/shared-shadow-autopilot.lock"),
         state_path=Path("/runtime/odds_capture_state.json"),
         forward_corpus_root=Path("/runtime/forward-corpus"),
+        forward_baseline_config=Path("/runtime/forward-baseline.json"),
         refresh_limit=8,
     )
 
@@ -5145,6 +5162,7 @@ def test_write_odds_capture_service_files_preserves_db_and_lock(tmp_path):
     assert result["db_path"] == "/data/greyhound_racing_data.db"
     assert result["lock_path"] == "/runtime/shared-shadow-autopilot.lock"
     assert result["forward_corpus_root"] == "/runtime/forward-corpus"
+    assert result["forward_baseline_config"] == "/runtime/forward-baseline.json"
     assert "ExecStart=/runtime/.venv/bin/python" in service
     assert (
         "--evidence-root /runtime/artifacts/full_evidence_orchestration_20260525"
@@ -10475,6 +10493,8 @@ def test_forward_corpus_root_is_required_in_installed_service_identity():
             "--enable-forward-official-result-observer",
             "--forward-corpus-root",
             "/runtime/forward-corpus",
+            "--forward-baseline-config",
+            "/runtime/forward-baseline.json",
         ]
     )
 
@@ -10482,6 +10502,9 @@ def test_forward_corpus_root_is_required_in_installed_service_identity():
 
     assert fragments[fragments.index("--forward-corpus-root") + 1] == (
         "/runtime/forward-corpus"
+    )
+    assert fragments[fragments.index("--forward-baseline-config") + 1] == (
+        "/runtime/forward-baseline.json"
     )
 
 
@@ -10518,6 +10541,8 @@ def test_forward_observer_opt_in_invokes_owned_cycle(monkeypatch, tmp_path):
             "--enable-forward-official-result-observer",
             "--forward-corpus-root",
             str(tmp_path),
+            "--forward-baseline-config",
+            str(tmp_path / "forward-baseline.json"),
             "--timeout-seconds",
             "840",
         ]
@@ -10553,6 +10578,8 @@ def test_forward_observer_corrupt_durable_deferral_state_fails_closed(tmp_path):
             "--enable-forward-official-result-observer",
             "--forward-corpus-root",
             str(tmp_path / "corpus"),
+            "--forward-baseline-config",
+            str(tmp_path / "forward-baseline.json"),
         ]
     )
 
@@ -10604,6 +10631,8 @@ def test_forward_observer_reloads_versioned_semantic_deferral_with_exact_hour(
             "--enable-forward-official-result-observer",
             "--forward-corpus-root",
             str(tmp_path / "corpus"),
+            "--forward-baseline-config",
+            str(tmp_path / "forward-baseline.json"),
         ]
     )
 
@@ -10625,6 +10654,7 @@ def test_full_service_generator_emits_forward_opt_in_only_when_declared(tmp_path
         timeout_seconds=840,
         lock_path=lock_path,
         forward_corpus_root=Path("/runtime/forward-corpus"),
+        forward_baseline_config=Path("/runtime/forward-baseline.json"),
     )
     assert "--enable-forward-official-result-observer" not in default
     assert "--forward-corpus-root" not in default
@@ -10632,6 +10662,7 @@ def test_full_service_generator_emits_forward_opt_in_only_when_declared(tmp_path
         "--enable-forward-official-result-observer "
         '--forward-corpus-root "/runtime/forward-corpus"'
     ) in enabled
+    assert '--forward-baseline-config "/runtime/forward-baseline.json"' in enabled
     assert "--lock-path /runtime/shared-shadow-autopilot.lock" in enabled
     generated = daemon.write_service_files(
         service_dir=tmp_path / "systemd",
@@ -10639,8 +10670,10 @@ def test_full_service_generator_emits_forward_opt_in_only_when_declared(tmp_path
         timeout_seconds=840,
         lock_path=lock_path,
         forward_corpus_root=Path("/runtime/forward-corpus"),
+        forward_baseline_config=Path("/runtime/forward-baseline.json"),
     )
     assert generated["forward_corpus_root"] == "/runtime/forward-corpus"
+    assert generated["forward_baseline_config"] == "/runtime/forward-baseline.json"
     assert generated["lock_path"] == "/runtime/shared-shadow-autopilot.lock"
     assert '--forward-corpus-root "/runtime/forward-corpus"' in (
         tmp_path / "systemd" / daemon.SERVICE_NAME
@@ -10660,6 +10693,8 @@ def test_forward_observer_nonclean_daemon_cli_exit_is_nonzero(monkeypatch, statu
             "--enable-forward-official-result-observer",
             "--forward-corpus-root",
             "/corpus",
+            "--forward-baseline-config",
+            "/baseline.json",
         ]
     )
     monkeypatch.setattr(daemon, "parse_args", lambda argv=None: args)
@@ -10684,6 +10719,8 @@ def test_forward_observer_source_rejection_service_cli_exit_is_zero(monkeypatch)
             "--enable-forward-official-result-observer",
             "--forward-corpus-root",
             "/corpus",
+            "--forward-baseline-config",
+            "/baseline.json",
         ]
     )
     monkeypatch.setattr(daemon, "parse_args", lambda argv=None: args)
@@ -10746,6 +10783,7 @@ def test_full_service_generator_systemd_escapes_corpus_root(tmp_path, path, enco
         repo_path=tmp_path,
         timeout_seconds=840,
         forward_corpus_root=Path(path),
+        forward_baseline_config=Path("/runtime/forward-baseline.json"),
     )
     assert f"--forward-corpus-root {encoded}" in service
 
@@ -10767,4 +10805,5 @@ def test_full_service_generator_rejects_control_corpus_root(tmp_path, path):
             repo_path=tmp_path,
             timeout_seconds=840,
             forward_corpus_root=Path(path),
+            forward_baseline_config=Path("/runtime/forward-baseline.json"),
         )

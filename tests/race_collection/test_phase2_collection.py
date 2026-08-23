@@ -249,10 +249,11 @@ def test_migrations_are_forward_only_and_repeatable(setup):
             (24,),
             (25,),
             (26,),
-            (27,),
-            (28,),
-            (29,),
-        ]
+                (27,),
+                (28,),
+                (29,),
+                (30,),
+            ]
         recorded = db.execute("SELECT checksum FROM schema_migrations WHERE version=10").fetchone()[
             0
         ]

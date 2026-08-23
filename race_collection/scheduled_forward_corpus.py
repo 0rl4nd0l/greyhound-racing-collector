@@ -25,6 +25,7 @@ from race_collection.manual_prediction_collector_request import (
     canonical_bytes as protocol_canonical_bytes,
 )
 from race_collection.synchronous_manual_capture import (
+    VerifiedCurrentRaceIndex,
     acquire_collector_lock_no_steal,
     release_owned_collector_lock,
 )
@@ -34,15 +35,36 @@ from utils.runner_completeness import normalise_runner_name, parse_runner_rows_f
 ADMISSION_SCHEMA = "scheduled-forward-corpus-admission-v1"
 FEATURE_BUNDLE_ID = "official-result-first-observation-v1-natural-canary"
 MAX_EXACT_RECEIPT_AGE_SECONDS = 7 * 24 * 60 * 60
+CANDIDATE_FEATURES = (
+    ("recent_workload", "runner_history"),
+    ("prior_official_weight", "runner_history"),
+    ("pir_running_position", "runner_history"),
+    ("typed_trial_state", "trials"),
+    ("steward_veterinary_state", "steward_veterinary"),
+    ("lifecycle_age", "lifecycle"),
+    ("sportsbet_win_market", "market"),
+)
 
 FEATURE_SCHEMA_BYTES = canonical_json(
     {
         "bundle_id": FEATURE_BUNDLE_ID,
         "contract_version": "sealed-race-features-v1",
         "evidence_schema_version": "race-evidence-v1",
+        "availability_manifest_version": "feature-availability-manifest-v1",
+        "source_contracts": {
+            PREJUMP_SOURCE: {
+                "schema_versions": ["collector-canonical-runner-alignment-v1"],
+                "provider_publication_time_exposed": False,
+            }
+        },
+        "candidate_features": [
+            {"name": name, "family": family, "semantics": "optional"}
+            for name, family in CANDIDATE_FEATURES
+        ],
         "fields": [
             {
                 "name": "box_number",
+                "family": "race_card",
                 "semantics": "forecast-required",
                 "source_field": "runner_features",
             }
@@ -153,6 +175,7 @@ def _runner_rows(
     plan_item: Mapping[str, Any],
     sidecar: Mapping[str, Any],
     raw_path: Path,
+    verified_race: Mapping[str, Any],
 ) -> list[dict[str, Any]]:
     validation = _mapping(plan_item.get("runner_set_validation"), "runner validation")
     if validation.get("status") != "PASS":
@@ -215,14 +238,73 @@ def _runner_rows(
         raise ForwardCorpusRejected(
             "raw source and scheduled runner identities disagree"
         )
-    return [
-        {
-            "source_native_runner_id": row["dog_name"],
-            "name": row["dog_name"],
-            "box_number": row["box_number"],
-        }
-        for row in normalized
+    verified = verified_race.get("runners")
+    if type(verified) is not list or len(verified) != len(normalized):
+        raise ForwardCorpusRejected("verified current-index runner set disagrees")
+    verified_rows: list[dict[str, Any]] = []
+    verified_native_ids: set[str] = set()
+    verified_boxes: set[int] = set()
+    for value in verified:
+        row = _mapping(value, "verified current-index runner")
+        box = row.get("box")
+        name = row.get("display_name")
+        native_id = row.get("source_native_runner_id")
+        if (
+            type(box) is not int
+            or type(name) is not str
+            or not name.strip()
+            or row.get("scratch_state") != "ACTIVE"
+            or type(native_id) is not str
+            or not native_id.isascii()
+            or not native_id.isdecimal()
+        ):
+            raise ForwardCorpusRejected(
+                "verified current-index requires numeric native runner IDs"
+            )
+        if native_id in verified_native_ids or box in verified_boxes:
+            raise ForwardCorpusRejected("verified current-index runner set is ambiguous")
+        verified_native_ids.add(native_id)
+        verified_boxes.add(box)
+        verified_rows.append(
+            {
+                "source_native_runner_id": native_id,
+                "name": name.strip(),
+                "box_number": box,
+            }
+        )
+    return verified_rows
+
+
+def _verified_race(
+    verified_index: VerifiedCurrentRaceIndex | None,
+    plan_item: Mapping[str, Any],
+) -> Mapping[str, Any]:
+    if (
+        not isinstance(verified_index, VerifiedCurrentRaceIndex)
+        or verified_index.schema_version != "collector_current_race_index_v2"
+    ):
+        raise ForwardCorpusRejected("verified collector current-race index is required")
+    matches = [
+        race
+        for race in verified_index.races
+        if isinstance(race, Mapping) and race.get("race_id") == plan_item.get("race_id")
     ]
+    if len(matches) != 1:
+        raise ForwardCorpusRejected("scheduled race is absent from verified current index")
+    race = matches[0]
+    native_race_id = race.get("source_native_race_id")
+    if (
+        race.get("date") != plan_item.get("race_date")
+        or race.get("venue") != plan_item.get("venue")
+        or race.get("race_number") != plan_item.get("race_number")
+        or race.get("jump_datetime") != plan_item.get("jump_datetime")
+        or race.get("race_url") != plan_item.get("thedogs_source_url")
+        or type(native_race_id) is not str
+        or not native_race_id.isascii()
+        or not native_race_id.isdecimal()
+    ):
+        raise ForwardCorpusRejected("verified current-index race identity disagrees")
+    return race
 
 
 def _scheduled_handoff(
@@ -342,7 +424,10 @@ def admit_scheduled_capture(
     corpus_root: Path,
     collector_run_id: str,
     plan_item: Mapping[str, Any],
+    verified_index: VerifiedCurrentRaceIndex | None = None,
     emitted_at: datetime,
+    cohort_id: str | None = None,
+    cohort_checksum: ArtifactChecksum | None = None,
     attempt: Mapping[str, Any] | None = None,
     receipt_publish: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -359,6 +444,7 @@ def admit_scheduled_capture(
         raise ForwardCorpusRejected("scheduled receipt protocol root is ambiguous")
     root = _validated_root(corpus_root, evidence)
     collector_run_id = _text(collector_run_id, "scheduled collector run identity")
+    verified_race = _verified_race(verified_index, plan_item)
     handoff, sealed_plan_item = _scheduled_handoff(
         protocol=protocol,
         plan_item=plan_item,
@@ -386,7 +472,7 @@ def admit_scheduled_capture(
         != _sha256(sidecar.get("content_sha256"), "accepted form hash")
     ):
         raise ForwardCorpusRejected("scheduled normalized source binding is invalid")
-    raw_path, raw_source = _safe_raw_export(
+    raw_path, _retained_scheduled_source = _safe_raw_export(
         sidecar,
         evidence_root=evidence,
         sidecar_path=sidecar_path,
@@ -423,6 +509,14 @@ def admit_scheduled_capture(
         raise ForwardCorpusRejected("scheduled source URL drift")
     canonical_url = _canonical_source_url(source_url)
     race_id = _text(plan_item.get("race_id"), "scheduled race identity")
+    corpus = ForwardSealedCorpus(root, clock=lambda: emitted_at)
+    frozen_race_id = corpus.frozen_race_id_for_source_native_race(
+        verified_race["source_native_race_id"],
+        cohort_id=cohort_id,
+        expected_cohort_checksum=cohort_checksum,
+    )
+    if frozen_race_id is not None:
+        race_id = frozen_race_id
     racing_date = _text(plan_item.get("race_date"), "racing date")
     jump_text = _text(plan_item.get("jump_datetime"), "scheduled jump")
     observed_text = _text(
@@ -443,7 +537,14 @@ def admit_scheduled_capture(
         or shadow.get("venue") != plan_item.get("venue")
     ):
         raise ForwardCorpusRejected("scheduled race identity disagrees with sidecar")
-    runners = _runner_rows(plan_item, sidecar, raw_path)
+    runners = _runner_rows(plan_item, sidecar, raw_path, verified_race)
+    raw_source = verified_index.packet_bytes
+    if (
+        type(raw_source) is not bytes
+        or not raw_source
+        or sha256_bytes(raw_source) != verified_index.packet_sha256
+    ):
+        raise ForwardCorpusRejected("verified current-index packet bytes have hash drift")
     runner_ids = sorted(
         (row["source_native_runner_id"] for row in runners),
         key=lambda value: unicodedata.normalize(
@@ -459,6 +560,46 @@ def admit_scheduled_capture(
         "runner_set": runner_ids,
         "runner_identity": {runner_id: "authoritative" for runner_id in runner_ids},
         "runner_features": runner_features,
+        "feature_availability": {
+            "box_number": {
+                "status": "READY_NOW",
+                "source_name": PREJUMP_SOURCE,
+                "source_schema_version": "collector-canonical-runner-alignment-v1",
+                "source_native_race_id": verified_race["source_native_race_id"],
+                "source_native_runner_ids": runner_ids,
+                "provider_published_at": None,
+                "collector_received_at": observed_text,
+                "completeness": "COMPLETE",
+                "whole_race_coverage": True,
+                "derivation_version": "scheduled-forward-box-number-v1",
+                "blocking_reasons": [],
+            },
+            **{
+                name: {
+                    "status": "FORWARD_CAPTURE",
+                    "source_name": None,
+                    "source_schema_version": None,
+                    "source_native_race_id": None,
+                    "source_native_runner_ids": [],
+                    "provider_published_at": None,
+                    "collector_received_at": None,
+                    "completeness": "UNKNOWN",
+                    "whole_race_coverage": False,
+                    "derivation_version": f"{name}-unavailable-v1",
+                    "blocking_reasons": [
+                        "SOURCE_UNAVAILABLE",
+                        "INCOMPLETE_COVERAGE",
+                        "NORMALIZED_EVIDENCE_MISSING",
+                        *(
+                            ["SOURCE_AUTHORIZATION_REQUIRED"]
+                            if name != "sportsbet_win_market"
+                            else []
+                        ),
+                    ],
+                }
+                for name, _family in CANDIDATE_FEATURES
+            },
+        },
     }
     sealed_evidence = canonical_json(
         {
@@ -499,7 +640,6 @@ def admit_scheduled_capture(
         acquisition_policy="scheduled_forward_corpus_no_steal_v1",
     )
     try:
-        corpus = ForwardSealedCorpus(root, clock=lambda: emitted_at)
         existing = corpus._load_receipt(race_id, "prejump")
         receipt = corpus.capture_prejump(
             race_id=race_id,
@@ -510,7 +650,7 @@ def admit_scheduled_capture(
             missingness_policy_bytes=MISSINGNESS_POLICY_BYTES,
             source_name=PREJUMP_SOURCE,
             canonical_source_url=canonical_url,
-            source_native_race_id=canonical_url,
+            source_native_race_id=verified_race["source_native_race_id"],
             runners=runners,
             meeting_metadata={
                 "meeting_code": plan_item.get("venue"),

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from dataclasses import dataclass
@@ -12,7 +13,7 @@ import numpy as np
 
 from .artifacts import ArtifactStore
 from .domain import ArtifactChecksum, OperationId, require_aware
-from .features import derive_features
+from .features import RESULT_DERIVED_INPUT_NAMES, derive_features
 from .forecasting import PredictionRequest
 from .model_bundle import (
     SUPPORTED_FORECAST_CONTRACT,
@@ -281,6 +282,8 @@ class CanonicalForecastService:
                 expected_schema_checksum=schema_component.checksum,
                 missingness_policy_bytes=self.artifacts.read(missing_component.checksum),
                 expected_missingness_checksum=missing_component.checksum,
+                expected_feature_cutoff_at=durable_frozen_at,
+                raw_evidence_reader=self.artifacts.read,
             )
             contract = champion.bundle.forecast_contract_version
             ordered = None
@@ -342,6 +345,25 @@ class CanonicalForecastService:
             return {
                 "success": True,
                 "forecast_contract_version": champion.bundle.forecast_contract_version,
+                **(
+                    {
+                        "feature_contract": {
+                            "version": derived.contract.version,
+                            "schema_checksum": str(derived.contract.schema_checksum),
+                            "missingness_policy_checksum": str(
+                                derived.contract.missingness_policy_checksum
+                            ),
+                        },
+                        "feature_availability_manifest_checksum": str(
+                            derived.availability_manifest.checksum
+                        ),
+                        "feature_availability_manifest": (
+                            derived.availability_manifest.as_dict()
+                        ),
+                    }
+                    if derived.availability_manifest is not None
+                    else {}
+                ),
                 "feature_matrix_checksum": str(derived.matrix.checksum),
                 "evidence_checksum": str(request.evidence_checksum),
                 "predictions": [
@@ -413,6 +435,30 @@ class CanonicalDeferredPredictor:
             ForecastRequest(request.evidence_checksum, request.seal_id, str(request.race_id)),
             computed_at=computed_at,
         )
+        entries = result.get("feature_availability_manifest", {}).get("entries")
+        if type(entries) is not list or any(
+            type(entry) is not dict
+            or (
+                entry.get("semantics") in {"identity-critical", "forecast-required"}
+                and entry.get("status") != "READY_NOW"
+            )
+            for entry in entries
+        ):
+            raise ForecastUnavailable(
+                "deferred prediction requires READY_NOW identity-critical and required inputs"
+            )
+        result = {
+            **result,
+            "deferred_identity": {
+                "race_id": str(request.race_id),
+                "racing_day_id": str(request.racing_day_id),
+                "seal_id": request.seal_id,
+                "sealed_evidence_checksum": str(request.evidence_checksum),
+                "model_bundle_id": request.bundle.bundle_id,
+                "model_release_id": request.release.release_id,
+                "promotion_policy_id": request.policy_id,
+            },
+        }
         artifact = self.artifacts.put(
             json.dumps(result, sort_keys=True, separators=(",", ":"), allow_nan=False).encode(),
             media_type="application/vnd.canonical-race-forecast+json",
@@ -422,9 +468,129 @@ class CanonicalDeferredPredictor:
     def authenticate(self, checksum: ArtifactChecksum, expected_computed_at: datetime) -> None:
         """Authenticate the returned document against Phase-3's commit time."""
         document = json.loads(self.artifacts.read(checksum))
+        self._reject_result_data(document)
         actual = document.get("provenance", {}).get("prediction_computed_at")
         if actual != iso_timestamp(expected_computed_at):
             raise ForecastUnavailable("prediction artifact computation time disagrees")
+
+    def authenticate_request(
+        self,
+        checksum: ArtifactChecksum,
+        expected_computed_at: datetime,
+        request: PredictionRequest,
+    ) -> None:
+        """Bind the sealed prediction bytes to the exact lifecycle authority snapshot."""
+        self.authenticate(checksum, expected_computed_at)
+        document = json.loads(self.artifacts.read(checksum))
+        base_fields = {
+            "success",
+            "forecast_contract_version",
+            "feature_contract",
+            "feature_availability_manifest_checksum",
+            "feature_availability_manifest",
+            "feature_matrix_checksum",
+            "evidence_checksum",
+            "predictions",
+            "provenance",
+            "deferred_identity",
+        }
+        ordered_fields = {
+            "ordered_finish_probabilities",
+            "exacta_probabilities",
+            "trifecta_probabilities",
+            "most_likely_orders",
+        }
+        expected_fields = (
+            base_fields | ordered_fields
+            if document.get("forecast_contract_version") == ORDERED_FINISH_CONTRACT
+            else base_fields
+        )
+        if set(document) != expected_fields or document.get("success") is not True:
+            raise ForecastUnavailable("prediction artifact schema is invalid")
+        identity = document.get("deferred_identity")
+        expected = {
+            "race_id": str(request.race_id),
+            "racing_day_id": str(request.racing_day_id),
+            "seal_id": request.seal_id,
+            "sealed_evidence_checksum": str(request.evidence_checksum),
+            "model_bundle_id": request.bundle.bundle_id,
+            "model_release_id": request.release.release_id,
+            "promotion_policy_id": request.policy_id,
+        }
+        if type(identity) is not dict or set(identity) != set(expected) or identity != expected:
+            raise ForecastUnavailable("prediction artifact authority identity disagrees")
+        provenance = document.get("provenance")
+        if type(provenance) is not dict or set(provenance) != set(
+            PredictionProvenance.__dataclass_fields__
+        ):
+            raise ForecastUnavailable("prediction provenance envelope is incomplete")
+        if provenance.get("champion_model_id") != request.bundle.model_id:
+            raise ForecastUnavailable("prediction model identity disagrees")
+        if document.get("evidence_checksum") != str(request.evidence_checksum):
+            raise ForecastUnavailable("prediction evidence identity disagrees")
+        contract = document.get("feature_contract")
+        if type(contract) is not dict or set(contract) != {
+            "version",
+            "schema_checksum",
+            "missingness_policy_checksum",
+        }:
+            raise ForecastUnavailable("prediction feature contract provenance is incomplete")
+        ArtifactChecksum(contract["schema_checksum"])
+        ArtifactChecksum(contract["missingness_policy_checksum"])
+        manifest = document.get("feature_availability_manifest")
+        entry_fields = {
+            "feature",
+            "family",
+            "semantics",
+            "status",
+            "source_name",
+            "source_schema_version",
+            "source_native_race_id",
+            "source_native_runner_ids",
+            "raw_checksum",
+            "normalized_checksum",
+            "provider_published_at",
+            "collector_received_at",
+            "feature_frozen_at",
+            "completeness",
+            "whole_race_coverage",
+            "derivation_version",
+            "blocking_reasons",
+        }
+        if (
+            type(manifest) is not dict
+            or set(manifest) != {"version", "race_id", "evidence_checksum", "entries"}
+            or manifest.get("race_id") != str(request.race_id)
+            or manifest.get("evidence_checksum") != str(request.evidence_checksum)
+            or type(manifest.get("entries")) is not list
+            or any(
+                type(entry) is not dict or set(entry) != entry_fields
+                for entry in manifest["entries"]
+            )
+        ):
+            raise ForecastUnavailable("prediction feature availability manifest is invalid")
+        manifest_checksum = ArtifactChecksum(document["feature_availability_manifest_checksum"])
+        manifest_bytes = json.dumps(
+            manifest, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode()
+        if (
+            ArtifactChecksum("sha256:" + hashlib.sha256(manifest_bytes).hexdigest())
+            != manifest_checksum
+        ):
+            raise ForecastUnavailable("prediction feature availability manifest checksum disagrees")
+        ArtifactChecksum(document["feature_matrix_checksum"])
+
+    @staticmethod
+    def _reject_result_data(value: Any) -> None:
+        forbidden = RESULT_DERIVED_INPUT_NAMES
+        if type(value) is dict:
+            for key, nested in value.items():
+                if type(key) is str and key.casefold() in forbidden:
+                    raise ForecastUnavailable("prediction artifact contains result data")
+                CanonicalDeferredPredictor._reject_result_data(nested)
+        elif type(value) is list:
+            for nested in value:
+                CanonicalDeferredPredictor._reject_result_data(nested)
 
 
 def canonical_endpoint(

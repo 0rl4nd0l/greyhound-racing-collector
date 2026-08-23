@@ -12,13 +12,22 @@ import sys
 import time
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from types import ModuleType
-from typing import Callable, Protocol, Sequence
+from typing import Any, Callable, Mapping, Protocol, Sequence
 
 from .artifacts import ArtifactStoreError, LocalArtifactStore
-from .domain import ArtifactChecksum, OperationId
+from .domain import (
+    ArtifactChecksum,
+    OperationId,
+    ProgrammeRaceCandidate,
+    RaceId,
+    RacingDay,
+    RacingDayId,
+)
+from .forecasting import ForecastingAuthority
+from .forward_sealed_corpus import ForwardCorpusRejected, ForwardSealedCorpus, canonical_json
 from .operational import (
     ApplicationCommand,
     ClosedCommandDispatcher,
@@ -31,11 +40,615 @@ from .operational import (
     _checksum,
     verify_release_authority,
 )
-from .operations import SQLiteOperationsStore
+from .operations import BarrierNotSatisfied, OperationsStoreError, SQLiteOperationsStore
 
 
 class ServiceUnavailable(RuntimeError):
     """The release cannot form one complete, trusted runtime composition."""
+
+
+@dataclass(frozen=True, slots=True)
+class ForwardBaselineCaptureConfiguration:
+    """Fixed production policy for one bounded forward-baseline cohort."""
+
+    cohort_id: str
+    corpus_root: Path
+    current_index_max_age: timedelta
+    feature_cutoff: timedelta
+    timezone: str
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.cohort_id, str)
+            or not self.cohort_id.strip()
+            or not isinstance(self.corpus_root, Path)
+            or self.current_index_max_age <= timedelta(0)
+            or self.feature_cutoff <= timedelta(0)
+            or not isinstance(self.timezone, str)
+            or not self.timezone.strip()
+        ):
+            raise ValueError("forward baseline capture configuration is invalid")
+
+
+@dataclass(frozen=True, slots=True)
+class _ForwardCohortCandidate:
+    race_id: str
+    racing_date: str
+    venue: str
+    race_number: int
+    jump: datetime
+    source_native_race_id: str
+    source_native_runner_ids: tuple[str, ...]
+
+
+class ForwardBaselineCaptureService:
+    """Preflight and schedule one immutable 20-race forward-baseline cohort."""
+
+    REPORT_SCHEMA = "forward-baseline-capture-service-report-v1"
+
+    def __init__(
+        self,
+        store: SQLiteOperationsStore,
+        configuration: ForwardBaselineCaptureConfiguration,
+    ) -> None:
+        self.store = store
+        self.configuration = configuration
+        self.forecasting = ForecastingAuthority(store)
+
+    def open_results(
+        self,
+        operation_id: OperationId,
+        race_id: RaceId,
+        at: datetime,
+        *,
+        cohort_bytes: bytes,
+    ) -> bool:
+        """Delegate result access through the frozen cohort's 20-terminal barrier."""
+        return self.forecasting.open_baseline_results(
+            operation_id,
+            race_id,
+            at,
+            cohort_bytes=cohort_bytes,
+        )
+
+    def capture_scheduled(
+        self,
+        *,
+        protocol: Any,
+        evidence_root: Path,
+        collector_run_id: str,
+        plan_item: Mapping[str, Any],
+        verified_index: Any,
+        emitted_at: datetime,
+        attempt: Mapping[str, Any] | None = None,
+        receipt_publish: Mapping[str, Any] | None = None,
+        scheduled_admitter: Callable[..., Mapping[str, Any]] | None = None,
+    ) -> Mapping[str, Any]:
+        """Own scheduled corpus admission after durable cohort authority exists."""
+        from .synchronous_manual_capture import VerifiedCurrentRaceIndex
+
+        if (
+            not isinstance(verified_index, VerifiedCurrentRaceIndex)
+            or verified_index.schema_version != "collector_current_race_index_v2"
+            or type(verified_index.packet_bytes) is not bytes
+            or hashlib.sha256(verified_index.packet_bytes).hexdigest()
+            != verified_index.packet_sha256
+            or emitted_at.tzinfo is None
+            or emitted_at.utcoffset() is None
+        ):
+            raise ServiceUnavailable("verified collector current-race index is required")
+        try:
+            source_generated_at = datetime.fromisoformat(
+                verified_index.source_generated_at
+            )
+        except (TypeError, ValueError) as error:
+            raise ServiceUnavailable("verified current-index timestamp is invalid") from error
+        if (
+            source_generated_at.tzinfo is None
+            or source_generated_at.utcoffset() is None
+            or not timedelta(0)
+            <= emitted_at.astimezone(timezone.utc)
+            - source_generated_at.astimezone(timezone.utc)
+            <= self.configuration.current_index_max_age
+        ):
+            raise ServiceUnavailable("verified current-race index is not READY_NOW")
+        durable = self.store.forward_baseline_cohort(self.configuration.cohort_id)
+        if durable is None:
+            raise ServiceUnavailable("forward baseline cohort authority is unavailable")
+        corpus = ForwardSealedCorpus(self.configuration.corpus_root)
+        try:
+            cohort_bytes = corpus.load_prediction_cohort(self.configuration.cohort_id)
+            cohort = json.loads(cohort_bytes) if cohort_bytes is not None else None
+            cohort_checksum = LocalArtifactStore.checksum(cohort_bytes or b"")
+        except (ArtifactStoreError, ForwardCorpusRejected, json.JSONDecodeError) as error:
+            raise ServiceUnavailable("forward baseline cohort authority is invalid") from error
+        if (
+            cohort is None
+            or str(cohort_checksum) != durable["artifact_checksum"]
+            or cohort.get("frozen_at") != durable["frozen_at"]
+            or cohort.get("race_count") != durable["race_count"]
+            or cohort.get("members") != durable["members"]
+        ):
+            raise ServiceUnavailable("forward baseline cohort authority disagrees")
+        if scheduled_admitter is None:
+            from .scheduled_forward_corpus import admit_scheduled_capture
+
+            scheduled_admitter = admit_scheduled_capture
+        return scheduled_admitter(
+            protocol=protocol,
+            evidence_root=evidence_root,
+            corpus_root=self.configuration.corpus_root,
+            collector_run_id=collector_run_id,
+            plan_item=plan_item,
+            verified_index=verified_index,
+            emitted_at=emitted_at,
+            cohort_id=self.configuration.cohort_id,
+            cohort_checksum=cohort_checksum,
+            attempt=attempt,
+            receipt_publish=receipt_publish,
+        )
+
+    def run(self, verified_index: Any, *, now: datetime) -> Mapping[str, Any]:
+        """Return readiness before any corpus or lifecycle mutation."""
+        from .synchronous_manual_capture import VerifiedCurrentRaceIndex
+
+        if (
+            not isinstance(verified_index, VerifiedCurrentRaceIndex)
+            or verified_index.schema_version != "collector_current_race_index_v2"
+            or type(verified_index.packet_bytes) is not bytes
+            or hashlib.sha256(verified_index.packet_bytes).hexdigest()
+            != verified_index.packet_sha256
+            or now.tzinfo is None
+            or now.utcoffset() is None
+        ):
+            raise ServiceUnavailable("verified collector current-race index is required")
+        try:
+            frozen_at = datetime.fromisoformat(verified_index.source_generated_at)
+        except (TypeError, ValueError) as error:
+            raise ServiceUnavailable("verified current-index timestamp is invalid") from error
+        if (
+            frozen_at.tzinfo is None
+            or frozen_at.utcoffset() is None
+            or not timedelta(0)
+            <= now.astimezone(timezone.utc) - frozen_at.astimezone(timezone.utc)
+            <= self.configuration.current_index_max_age
+        ):
+            return {
+                "schema_version": self.REPORT_SCHEMA,
+                "status": "INTEGRITY_FAILED",
+                "reason": "CURRENT_RACE_INDEX_NOT_READY_NOW",
+            }
+        races = tuple(verified_index.races)
+        venues = {
+            race.get("venue")
+            for race in races
+            if isinstance(race, Mapping) and isinstance(race.get("venue"), str)
+        }
+        dates = {
+            race.get("date")
+            for race in races
+            if isinstance(race, Mapping) and isinstance(race.get("date"), str)
+        }
+        if len(races) < 20 or len(venues) < 3 or len(dates) < 2:
+            return {
+                "schema_version": self.REPORT_SCHEMA,
+                "status": "AWAITING_COHORT_CANDIDATES",
+                "candidate_race_count": len(races),
+                "candidate_venue_count": len(venues),
+                "candidate_race_date_count": len(dates),
+                "required_race_count": 20,
+                "required_venue_count": 3,
+                "required_race_date_count": 2,
+            }
+        selected = self._select_cohort(races)
+        prepared: list[_ForwardCohortCandidate] = []
+        for race in selected:
+            runners = race.get("runners") if isinstance(race, Mapping) else None
+            native_ids = (
+                [runner.get("source_native_runner_id") for runner in runners]
+                if isinstance(runners, list)
+                and all(isinstance(runner, Mapping) for runner in runners)
+                else []
+            )
+            if (
+                len(native_ids) < 2
+                or any(
+                    type(native_id) is not str
+                    or not native_id.isascii()
+                    or not native_id.isdecimal()
+                    for native_id in native_ids
+                )
+                or len(native_ids) != len(set(native_ids))
+            ):
+                return {
+                    "schema_version": self.REPORT_SCHEMA,
+                    "status": "INTEGRITY_FAILED",
+                    "reason": "NUMERIC_SOURCE_NATIVE_RUNNER_IDS_REQUIRED",
+                    "race_id": race.get("race_id") if isinstance(race, Mapping) else None,
+                }
+        for race, native_ids in zip(
+            selected,
+            (
+                tuple(
+                    runner["source_native_runner_id"]
+                    for runner in race["runners"]
+                )
+                for race in selected
+            ),
+            strict=True,
+        ):
+            try:
+                race_id = race["race_id"]
+                racing_date = race["date"]
+                venue = race["venue"]
+                race_number = race["race_number"]
+                native_race_id = race["source_native_race_id"]
+                jump = datetime.fromisoformat(race["jump_datetime"])
+                parsed_date = date.fromisoformat(racing_date)
+                valid = (
+                    type(race_id) is str
+                    and bool(race_id.strip())
+                    and type(racing_date) is str
+                    and type(venue) is str
+                    and bool(venue.strip())
+                    and type(race_number) is int
+                    and race_number > 0
+                    and jump.tzinfo is not None
+                    and jump.utcoffset() is not None
+                    and jump.date() == parsed_date
+                    and frozen_at
+                    < jump - self.configuration.feature_cutoff
+                    < jump
+                )
+            except (KeyError, TypeError, ValueError):
+                valid = False
+            if not valid:
+                return {
+                    "schema_version": self.REPORT_SCHEMA,
+                    "status": "INTEGRITY_FAILED",
+                    "reason": "COHORT_CANDIDATE_INVALID",
+                    "race_id": race.get("race_id") if isinstance(race, Mapping) else None,
+                }
+            if (
+                type(native_race_id) is not str
+                or not native_race_id.isascii()
+                or not native_race_id.isdecimal()
+            ):
+                return {
+                    "schema_version": self.REPORT_SCHEMA,
+                    "status": "INTEGRITY_FAILED",
+                    "reason": "NUMERIC_SOURCE_NATIVE_RACE_IDS_REQUIRED",
+                    "race_id": race_id,
+                }
+            prepared.append(
+                _ForwardCohortCandidate(
+                    race_id,
+                    racing_date,
+                    venue,
+                    race_number,
+                    jump,
+                    native_race_id,
+                    native_ids,
+                )
+            )
+        native_race_ids = [race.source_native_race_id for race in prepared]
+        if len(native_race_ids) != len(set(native_race_ids)):
+            return {
+                "schema_version": self.REPORT_SCHEMA,
+                "status": "INTEGRITY_FAILED",
+                "reason": "NUMERIC_SOURCE_NATIVE_RACE_IDS_REQUIRED",
+                "race_id": None,
+            }
+        corpus = ForwardSealedCorpus(
+            self.configuration.corpus_root,
+            clock=lambda: now,
+        )
+        try:
+            cohort_bytes = corpus.load_prediction_cohort(self.configuration.cohort_id)
+        except (ArtifactStoreError, ForwardCorpusRejected):
+            return self._integrity("FROZEN_COHORT_BINDING_MISMATCH")
+        if cohort_bytes is not None:
+            try:
+                existing = json.loads(cohort_bytes)
+                existing_frozen_at = datetime.fromisoformat(existing["frozen_at"])
+                members = existing["members"]
+                existing_projection = sorted(
+                    (
+                        member["racing_date"],
+                        member["venue"],
+                        member["race_number"],
+                        member["source_native_race_id"],
+                        tuple(member["source_native_runner_ids"]),
+                        datetime.fromisoformat(member["feature_cutoff_at"]),
+                        datetime.fromisoformat(member["scheduled_jump_at"]),
+                    )
+                    for member in members
+                )
+                prepared_projection = sorted(
+                    (
+                        race.racing_date,
+                        race.venue,
+                        race.race_number,
+                        race.source_native_race_id,
+                        race.source_native_runner_ids,
+                        race.jump - self.configuration.feature_cutoff,
+                        race.jump,
+                    )
+                    for race in prepared
+                )
+                binding_matches = (
+                    type(existing) is dict
+                    and canonical_json(existing) == cohort_bytes
+                    and existing.get("schema_version") == "forward-baseline-cohort-v1"
+                    and existing.get("cohort_id") == self.configuration.cohort_id
+                    and existing.get("race_count") == 20
+                    and type(members) is list
+                    and len(members) == 20
+                    and existing_frozen_at <= frozen_at
+                    and existing_projection == prepared_projection
+                )
+            except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+                binding_matches = False
+            if not binding_matches:
+                return self._integrity("FROZEN_COHORT_BINDING_MISMATCH")
+            self._register_cohort(cohort_bytes)
+            return self._cohort_report(cohort_bytes)
+        programme_checksum = ArtifactChecksum(f"sha256:{verified_index.packet_sha256}")
+        days: dict[str, RacingDay] = {}
+        for racing_date in sorted({race.racing_date for race in prepared}):
+            day = RacingDay(
+                RacingDayId(self._identity("day", f"{self.configuration.cohort_id}:{racing_date}")),
+                date.fromisoformat(racing_date),
+                self.configuration.timezone,
+                frozen_at,
+            )
+            self.store.create_racing_day(
+                OperationId(
+                    self._identity("op", f"{self.configuration.cohort_id}:day:{racing_date}")
+                ),
+                day,
+            )
+            days[racing_date] = day
+        members = []
+        for race in prepared:
+            jump = race.jump
+            cutoff = jump - self.configuration.feature_cutoff
+            native_race_id = race.source_native_race_id
+            race_id = self.store.record_expected_race(
+                OperationId(
+                    self._identity(
+                        "op", f"{self.configuration.cohort_id}:race:{native_race_id}"
+                    )
+                ),
+                days[race.racing_date],
+                ProgrammeRaceCandidate(
+                    "collector-current-race-index-v2",
+                    native_race_id,
+                    race.venue,
+                    race.race_number,
+                    jump,
+                ),
+                programme_checksum,
+                frozen_at,
+            )
+            members.append(
+                {
+                    "race_id": str(race_id),
+                    "racing_date": race.racing_date,
+                    "venue": race.venue,
+                    "race_number": race.race_number,
+                    "source_native_race_id": native_race_id,
+                    "source_native_runner_ids": list(race.source_native_runner_ids),
+                    "feature_cutoff_at": cutoff.isoformat(),
+                    "scheduled_jump_at": jump.isoformat(),
+                }
+            )
+        cohort = corpus.freeze_prediction_cohort(
+            cohort_id=self.configuration.cohort_id,
+            races=members,
+            frozen_at=frozen_at.isoformat(),
+        )
+        cohort_bytes = canonical_json(
+            {key: value for key, value in cohort.items() if key != "checksum"}
+        )
+        self._register_cohort(cohort_bytes)
+        return self._cohort_report(cohort_bytes)
+
+    def _register_cohort(self, cohort_bytes: bytes) -> None:
+        cohort = json.loads(cohort_bytes)
+        frozen_at = datetime.fromisoformat(cohort["frozen_at"])
+        self.store.register_forward_baseline_cohort(
+            OperationId(
+                self._identity("op", f"{self.configuration.cohort_id}:cohort-authority")
+            ),
+            cohort_id=self.configuration.cohort_id,
+            artifact_checksum=ArtifactChecksum(
+                "sha256:" + hashlib.sha256(cohort_bytes).hexdigest()
+            ),
+            frozen_at=frozen_at,
+            frozen_at_text=cohort["frozen_at"],
+            members=cohort["members"],
+            registered_at=frozen_at,
+        )
+
+    def _cohort_report(self, cohort_bytes: bytes) -> Mapping[str, Any]:
+        cohort = json.loads(cohort_bytes)
+        report = {
+            "schema_version": self.REPORT_SCHEMA,
+            "status": "COHORT_FROZEN_AWAITING_SCHEDULED_CAPTURE",
+            "cohort_id": cohort["cohort_id"],
+            "cohort_checksum": "sha256:" + hashlib.sha256(cohort_bytes).hexdigest(),
+            "race_count": 20,
+            "terminal_count": 0,
+        }
+        try:
+            terminal = self.forecasting.baseline_cohort_terminal_records(cohort_bytes)
+        except BarrierNotSatisfied:
+            return report
+        except OperationsStoreError:
+            return self._integrity("FROZEN_COHORT_LIFECYCLE_MISMATCH")
+        return {
+            **report,
+            "status": "COHORT_TERMINAL",
+            "terminal_count": terminal["terminal_count"],
+            "terminal_records": terminal["records"],
+        }
+
+    def _integrity(self, reason: str) -> Mapping[str, Any]:
+        return {
+            "schema_version": self.REPORT_SCHEMA,
+            "status": "INTEGRITY_FAILED",
+            "reason": reason,
+        }
+
+    @staticmethod
+    def _identity(prefix: str, value: str) -> str:
+        return f"{prefix}_{hashlib.sha256(value.encode()).hexdigest()[:32]}"
+
+    @staticmethod
+    def _select_cohort(races: Sequence[Mapping[str, Any]]) -> tuple[Mapping[str, Any], ...]:
+        ordered = sorted(
+            races,
+            key=lambda race: (
+                race.get("jump_datetime", ""),
+                race.get("venue", ""),
+                race.get("race_number", 0),
+                race.get("race_id", ""),
+            ),
+        )
+        selected: list[Mapping[str, Any]] = []
+        for field, required in (("date", 2), ("venue", 3)):
+            seen = {race[field] for race in selected}
+            for race in ordered:
+                if len(seen) >= required:
+                    break
+                if race[field] not in seen:
+                    selected.append(race)
+                    seen.add(race[field])
+        for race in ordered:
+            if len(selected) == 20:
+                break
+            if race not in selected:
+                selected.append(race)
+        return tuple(selected)
+
+
+@dataclass(frozen=True, slots=True)
+class ForwardBaselineCaptureBinding:
+    """Validated runtime paths bound to one cohort-aware capture module."""
+
+    service: ForwardBaselineCaptureService
+    evidence_root: Path
+    current_index_path: Path
+    current_index_max_age_seconds: int
+    current_index_timeout_seconds: float
+
+
+def load_forward_baseline_capture_binding(
+    config_path: Path,
+) -> ForwardBaselineCaptureBinding:
+    """Load one closed configuration for preflight and scheduled admission callers."""
+    try:
+        content = config_path.read_bytes()
+        document = json.loads(content)
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise ServiceUnavailable("forward baseline configuration is unavailable") from error
+    expected = {
+        "schema_version",
+        "cohort_id",
+        "operations_database",
+        "corpus_root",
+        "evidence_root",
+        "current_race_index_path",
+        "current_index_max_age_seconds",
+        "current_index_timeout_seconds",
+        "feature_cutoff_seconds",
+        "timezone",
+    }
+    if (
+        type(document) is not dict
+        or set(document) != expected
+        or document.get("schema_version")
+        != "forward-baseline-capture-service-config-v1"
+        or content != json.dumps(
+            document,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode()
+    ):
+        raise ServiceUnavailable("forward baseline configuration is malformed")
+    try:
+        database = Path(document["operations_database"])
+        corpus_root = Path(document["corpus_root"])
+        evidence_root = Path(document["evidence_root"])
+        index_path = Path(document["current_race_index_path"])
+        max_age = document["current_index_max_age_seconds"]
+        timeout = document["current_index_timeout_seconds"]
+        cutoff = document["feature_cutoff_seconds"]
+        if (
+            any(
+                not path.is_absolute()
+                for path in (database, corpus_root, evidence_root, index_path)
+            )
+            or not database.is_file()
+            or database.is_symlink()
+            or not evidence_root.is_dir()
+            or evidence_root.is_symlink()
+            or not index_path.is_relative_to(evidence_root)
+            or isinstance(max_age, bool)
+            or type(max_age) is not int
+            or max_age <= 0
+            or isinstance(timeout, bool)
+            or not isinstance(timeout, (int, float))
+            or timeout <= 0
+            or isinstance(cutoff, bool)
+            or type(cutoff) is not int
+            or cutoff <= 0
+        ):
+            raise ValueError
+        configuration = ForwardBaselineCaptureConfiguration(
+            cohort_id=document["cohort_id"],
+            corpus_root=corpus_root,
+            current_index_max_age=timedelta(seconds=max_age),
+            feature_cutoff=timedelta(seconds=cutoff),
+            timezone=document["timezone"],
+        )
+    except (TypeError, ValueError) as error:
+        raise ServiceUnavailable("forward baseline configuration is malformed") from error
+    return ForwardBaselineCaptureBinding(
+        service=ForwardBaselineCaptureService(
+            SQLiteOperationsStore(database), configuration
+        ),
+        evidence_root=evidence_root,
+        current_index_path=index_path,
+        current_index_max_age_seconds=max_age,
+        current_index_timeout_seconds=float(timeout),
+    )
+
+
+def run_forward_baseline_capture(
+    config_path: Path,
+    *,
+    now: datetime | None = None,
+    current_index_reader: Callable[..., Any] | None = None,
+) -> Mapping[str, Any]:
+    """Checked-in production entrypoint for one bounded capture preflight/schedule pass."""
+    binding = load_forward_baseline_capture_binding(config_path)
+    if current_index_reader is None:
+        from .synchronous_manual_capture import bounded_current_race_index
+
+        current_index_reader = bounded_current_race_index
+    observed_at = now or datetime.now(timezone.utc)
+    verified = current_index_reader(
+        current_time=observed_at,
+        timeout_seconds=binding.current_index_timeout_seconds,
+        index_path=binding.current_index_path,
+        evidence_root=binding.evidence_root,
+        max_age_seconds=binding.current_index_max_age_seconds,
+        return_verified_view=True,
+    )
+    return binding.service.run(verified, now=observed_at)
 
 
 @dataclass(frozen=True, slots=True)
@@ -594,7 +1207,9 @@ def _parser() -> argparse.ArgumentParser:
         prog="race-collection-service",
         description="Run the single authoritative Race Collection Service.",
     )
-    parser.add_argument("--config", required=True, type=Path)
+    configuration = parser.add_mutually_exclusive_group(required=True)
+    configuration.add_argument("--config", type=Path)
+    configuration.add_argument("--forward-baseline-config", type=Path)
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--once", action="store_true", help="run at most one due Racing Day cycle")
     modes.add_argument("--continuous", action="store_true", help="wait for and run due cycles")
@@ -609,10 +1224,30 @@ def main(
     *,
     composition_loader: Callable[..., ServiceComposition] = compose,
     token_factory: Callable[[], str] = lambda: uuid.uuid4().hex,
+    forward_baseline_runner: Callable[[Path], Mapping[str, Any]] = (
+        run_forward_baseline_capture
+    ),
 ) -> int:
     args = _parser().parse_args(argv)
     if args.lease_seconds < 1 or args.poll_seconds <= 0:
         _parser().error("lease and poll intervals must be positive")
+    if args.forward_baseline_config is not None:
+        if args.once or args.continuous:
+            _parser().error("forward baseline capture does not accept service cycle modes")
+        try:
+            report = forward_baseline_runner(args.forward_baseline_config)
+            print(
+                json.dumps(
+                    report,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    allow_nan=False,
+                )
+            )
+            return 65 if report.get("status") == "INTEGRITY_FAILED" else 0
+        except Exception:
+            print("race-collection-service unavailable", file=sys.stderr)
+            return 69
     token = token_factory()
     composition: ServiceComposition | None = None
     failed = False
