@@ -528,8 +528,9 @@ class SQLiteOperationsStore:
                 race_id = member["race_id"]
                 lifecycle = db.execute(
                     "SELECT r.state,d.local_date,e.source_race_id,e.venue,e.race_number,"
-                    "e.scheduled_jump,s.frozen_at,p.prediction_id,p.artifact_checksum,p.computed_at,"
-                    "q.prediction_id quarantine_prediction_id,q.code prediction_code,"
+                    "e.scheduled_jump,s.frozen_at,p.prediction_id,p.artifact_checksum,"
+                    "p.computed_at,q.prediction_id quarantine_prediction_id,"
+                    "q.code prediction_code,"
                     "q.details prediction_details,q.quarantined_at "
                     "FROM races r JOIN racing_days d USING(racing_day_id) "
                     "JOIN expected_races e USING(race_id) "

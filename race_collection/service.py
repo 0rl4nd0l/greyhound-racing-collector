@@ -578,7 +578,10 @@ def run_forward_baseline_capture(
         timeout = document["current_index_timeout_seconds"]
         cutoff = document["feature_cutoff_seconds"]
         if (
-            any(not path.is_absolute() for path in (database, corpus_root, evidence_root, index_path))
+            any(
+                not path.is_absolute()
+                for path in (database, corpus_root, evidence_root, index_path)
+            )
             or not database.is_file()
             or database.is_symlink()
             or not evidence_root.is_dir()
