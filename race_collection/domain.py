@@ -228,16 +228,30 @@ class RaceLifecycle:
     """The complete legal transition graph for one race."""
 
     _LEGAL: ClassVar[dict[RaceState, frozenset[RaceState]]] = {
-        RaceState.DISCOVERED: frozenset({RaceState.CARD_COLLECTED}),
-        RaceState.CARD_COLLECTED: frozenset({RaceState.COLLECTING_ODDS}),
-        RaceState.COLLECTING_ODDS: frozenset({RaceState.EVIDENCE_SEALED}),
-        RaceState.EVIDENCE_SEALED: frozenset({RaceState.AWAITING_DAY_CLOSE}),
-        RaceState.AWAITING_DAY_CLOSE: frozenset({RaceState.PREDICTION_PENDING}),
+        RaceState.DISCOVERED: frozenset(
+            {RaceState.CARD_COLLECTED, RaceState.RESULT_PENDING}
+        ),
+        RaceState.CARD_COLLECTED: frozenset(
+            {RaceState.COLLECTING_ODDS, RaceState.RESULT_PENDING}
+        ),
+        RaceState.COLLECTING_ODDS: frozenset(
+            {RaceState.EVIDENCE_SEALED, RaceState.RESULT_PENDING}
+        ),
+        RaceState.EVIDENCE_SEALED: frozenset(
+            {RaceState.AWAITING_DAY_CLOSE, RaceState.RESULT_PENDING}
+        ),
+        RaceState.AWAITING_DAY_CLOSE: frozenset(
+            {RaceState.PREDICTION_PENDING, RaceState.RESULT_PENDING}
+        ),
         RaceState.PREDICTION_PENDING: frozenset(
-            {RaceState.PREDICTION_COMMITTED, RaceState.PREDICTION_QUARANTINED}
+            {
+                RaceState.PREDICTION_COMMITTED,
+                RaceState.PREDICTION_QUARANTINED,
+                RaceState.RESULT_PENDING,
+            }
         ),
         RaceState.PREDICTION_COMMITTED: frozenset({RaceState.RESULT_PENDING}),
-        RaceState.PREDICTION_QUARANTINED: frozenset(),
+        RaceState.PREDICTION_QUARANTINED: frozenset({RaceState.RESULT_PENDING}),
         RaceState.RESULT_PENDING: frozenset(
             {RaceState.RESULT_COLLECTED, RaceState.RESULT_QUARANTINED}
         ),

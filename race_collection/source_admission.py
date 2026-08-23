@@ -1216,6 +1216,10 @@ def _admit_official_first(
                     expected_missingness_checksum=ArtifactChecksum(
                         manifest["missingness_policy_checksum"]
                     ),
+                    expected_feature_cutoff_at=feature_at,
+                    raw_evidence_reader=lambda checksum: _artifact(
+                        artifacts, str(checksum), "raw feature evidence"
+                    ),
                 )
             except (FeatureQuarantine, ValueError) as error:
                 raise SourceAdmissionRejected(str(error)) from error
@@ -1497,6 +1501,10 @@ def admit_historical_source(
                 missingness_policy_bytes=missingness_bytes,
                 expected_missingness_checksum=ArtifactChecksum(
                     manifest["missingness_policy_checksum"]
+                ),
+                expected_feature_cutoff_at=feature_at,
+                raw_evidence_reader=lambda checksum: _artifact(
+                    artifacts, str(checksum), "raw feature evidence"
                 ),
             )
         except (FeatureQuarantine, ValueError) as error:

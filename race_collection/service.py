@@ -466,6 +466,7 @@ class ForwardBaselineCaptureService:
                 "sha256:" + hashlib.sha256(cohort_bytes).hexdigest()
             ),
             frozen_at=frozen_at,
+            frozen_at_text=cohort["frozen_at"],
             members=cohort["members"],
             registered_at=frozen_at,
         )
@@ -532,13 +533,21 @@ class ForwardBaselineCaptureService:
         return tuple(selected)
 
 
-def run_forward_baseline_capture(
+@dataclass(frozen=True, slots=True)
+class ForwardBaselineCaptureBinding:
+    """Validated runtime paths bound to one cohort-aware capture module."""
+
+    service: ForwardBaselineCaptureService
+    evidence_root: Path
+    current_index_path: Path
+    current_index_max_age_seconds: int
+    current_index_timeout_seconds: float
+
+
+def load_forward_baseline_capture_binding(
     config_path: Path,
-    *,
-    now: datetime | None = None,
-    current_index_reader: Callable[..., Any] | None = None,
-) -> Mapping[str, Any]:
-    """Checked-in production entrypoint for one bounded capture preflight/schedule pass."""
+) -> ForwardBaselineCaptureBinding:
+    """Load one closed configuration for preflight and scheduled admission callers."""
     try:
         content = config_path.read_bytes()
         document = json.loads(content)
@@ -607,6 +616,25 @@ def run_forward_baseline_capture(
         )
     except (TypeError, ValueError) as error:
         raise ServiceUnavailable("forward baseline configuration is malformed") from error
+    return ForwardBaselineCaptureBinding(
+        service=ForwardBaselineCaptureService(
+            SQLiteOperationsStore(database), configuration
+        ),
+        evidence_root=evidence_root,
+        current_index_path=index_path,
+        current_index_max_age_seconds=max_age,
+        current_index_timeout_seconds=float(timeout),
+    )
+
+
+def run_forward_baseline_capture(
+    config_path: Path,
+    *,
+    now: datetime | None = None,
+    current_index_reader: Callable[..., Any] | None = None,
+) -> Mapping[str, Any]:
+    """Checked-in production entrypoint for one bounded capture preflight/schedule pass."""
+    binding = load_forward_baseline_capture_binding(config_path)
     if current_index_reader is None:
         from .synchronous_manual_capture import bounded_current_race_index
 
@@ -614,15 +642,13 @@ def run_forward_baseline_capture(
     observed_at = now or datetime.now(timezone.utc)
     verified = current_index_reader(
         current_time=observed_at,
-        timeout_seconds=float(timeout),
-        index_path=index_path,
-        evidence_root=evidence_root,
-        max_age_seconds=max_age,
+        timeout_seconds=binding.current_index_timeout_seconds,
+        index_path=binding.current_index_path,
+        evidence_root=binding.evidence_root,
+        max_age_seconds=binding.current_index_max_age_seconds,
         return_verified_view=True,
     )
-    return ForwardBaselineCaptureService(
-        SQLiteOperationsStore(database), configuration
-    ).run(verified, now=observed_at)
+    return binding.service.run(verified, now=observed_at)
 
 
 @dataclass(frozen=True, slots=True)

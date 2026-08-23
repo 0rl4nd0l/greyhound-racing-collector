@@ -309,6 +309,8 @@ class TrainingCorpusAuthority:
             expected_schema_checksum=schema_checksum,
             missingness_policy_bytes=missingness_bytes,
             expected_missingness_checksum=missingness_checksum,
+            expected_feature_cutoff_at=freeze_at,
+            raw_evidence_reader=self.artifacts.read,
         )
         order = validate_evaluation_outcome(
             outcome,
@@ -487,13 +489,23 @@ def prepare_training_example(
     }
     if any(document.get(key) != value for key, value in expected.items()):
         raise CorpusRejected("immutable training example identity disagrees")
+    evidence_bytes = artifacts.read(example.evidence_checksum)
+    evidence_document = json.loads(evidence_bytes)
+    freeze = evidence_document.get("freeze")
+    expected_feature_cutoff_at = (
+        datetime.fromisoformat(freeze["at"])
+        if type(freeze) is dict and type(freeze.get("at")) is str
+        else None
+    )
     derived = derive_features(
-        artifacts.read(example.evidence_checksum),
+        evidence_bytes,
         expected_evidence_checksum=example.evidence_checksum,
         schema_bytes=schema_bytes,
         expected_schema_checksum=schema_checksum,
         missingness_policy_bytes=missingness_bytes,
         expected_missingness_checksum=missingness_checksum,
+        expected_feature_cutoff_at=expected_feature_cutoff_at,
+        raw_evidence_reader=artifacts.read,
     )
     if (
         derived.matrix.checksum != example.feature_matrix_checksum

@@ -403,6 +403,7 @@ def test_forward_corpus_reuses_manifest_aware_feature_contract(tmp_path):
                 "SOURCE_AUTHORIZATION_REQUIRED",
                 "SOURCE_UNAVAILABLE",
                 "INCOMPLETE_COVERAGE",
+                "NORMALIZED_EVIDENCE_MISSING",
             ],
         },
     }

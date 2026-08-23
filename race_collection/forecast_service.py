@@ -13,7 +13,7 @@ import numpy as np
 
 from .artifacts import ArtifactStore
 from .domain import ArtifactChecksum, OperationId, require_aware
-from .features import derive_features
+from .features import RESULT_DERIVED_INPUT_NAMES, derive_features
 from .forecasting import PredictionRequest
 from .model_bundle import (
     SUPPORTED_FORECAST_CONTRACT,
@@ -282,6 +282,8 @@ class CanonicalForecastService:
                 expected_schema_checksum=schema_component.checksum,
                 missingness_policy_bytes=self.artifacts.read(missing_component.checksum),
                 expected_missingness_checksum=missing_component.checksum,
+                expected_feature_cutoff_at=evidence_frozen_at,
+                raw_evidence_reader=self.artifacts.read,
             )
             contract = champion.bundle.forecast_contract_version
             ordered = None
@@ -580,20 +582,7 @@ class CanonicalDeferredPredictor:
 
     @staticmethod
     def _reject_result_data(value: Any) -> None:
-        forbidden = {
-            "finish_order",
-            "finish_position",
-            "official_order",
-            "outcome",
-            "place",
-            "placing",
-            "position",
-            "post_jump_odds",
-            "post_jump_price",
-            "result",
-            "result_order",
-            "winner",
-        }
+        forbidden = RESULT_DERIVED_INPUT_NAMES
         if type(value) is dict:
             for key, nested in value.items():
                 if type(key) is str and key.casefold() in forbidden:

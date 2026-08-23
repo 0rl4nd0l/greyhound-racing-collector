@@ -389,7 +389,21 @@ def test_frozen_twenty_race_cohort_uses_real_terminal_barrier_and_finite_records
         )
 
     accepted = []
+    collection_quarantined = []
+    prediction_quarantined = []
     for race, classification in cohort_races:
+        if classification == "AUTHORIZATION_BLOCKED":
+            store.record_collection_quarantine(
+                operation(operation_number),
+                race,
+                stage="collection",
+                code="SOURCE_AUTHORIZATION_REQUIRED",
+                details="fixture AUTHORIZATION_BLOCKED",
+                at=NOW,
+            )
+            collection_quarantined.append(race)
+            operation_number += 1
+            continue
         authority.begin_prediction(operation(operation_number), race, NOW)
         operation_number += 1
         if classification == "ACCEPTED":
@@ -402,8 +416,8 @@ def test_frozen_twenty_race_cohort_uses_real_terminal_barrier_and_finite_records
             )
             accepted.append(race)
         else:
+            prediction_quarantined.append(race)
             code = {
-                "AUTHORIZATION_BLOCKED": "SOURCE_AUTHORIZATION_REQUIRED",
                 "INTEGRITY_FAILED": "INTEGRITY_FAILED",
                 "QUARANTINED": "required_feature_unavailable",
             }[classification]
@@ -414,6 +428,12 @@ def test_frozen_twenty_race_cohort_uses_real_terminal_barrier_and_finite_records
         operation_number += 1
         if outcome is not None:
             assert outcome.status == "committed"
+            if len(accepted) == 1:
+                with pytest.raises(BarrierNotSatisfied, match="cohort is not terminal"):
+                    authority.open_results(
+                        operation(operation_number), accepted[0], NOW
+                    )
+                operation_number += 1
 
     terminal = authority.baseline_cohort_terminal_records(cohort_bytes)
     assert terminal["race_count"] == terminal["terminal_count"] == 20
@@ -427,6 +447,22 @@ def test_frozen_twenty_race_cohort_uses_real_terminal_barrier_and_finite_records
         operation(operation_number), accepted[0], NOW, cohort_bytes=cohort_bytes
     )
     assert store.race_state(accepted[0]) == RaceState.RESULT_PENDING
+    operation_number += 1
+    assert authority.open_baseline_results(
+        operation(operation_number),
+        prediction_quarantined[0],
+        NOW,
+        cohort_bytes=cohort_bytes,
+    )
+    assert store.race_state(prediction_quarantined[0]) == RaceState.RESULT_PENDING
+    operation_number += 1
+    assert authority.open_baseline_results(
+        operation(operation_number),
+        collection_quarantined[0],
+        NOW,
+        cohort_bytes=cohort_bytes,
+    )
+    assert store.race_state(collection_quarantined[0]) == RaceState.RESULT_PENDING
 
 
 @pytest.mark.parametrize("terminal", ["committed", "quarantined"])

@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from .domain import ArtifactChecksum, EvidenceField
 from .model_bundle import SUPPORTED_FEATURE_CONTRACT
@@ -20,6 +20,27 @@ class FeatureQuarantine(ValueError):
 
 
 FEATURE_AVAILABILITY_MANIFEST_VERSION = "feature-availability-manifest-v1"
+
+RESULT_DERIVED_INPUT_NAMES = frozenset(
+    {
+        "finish_order",
+        "finish_position",
+        "official_finishing_order",
+        "official_order",
+        "outcome",
+        "outcome_derived",
+        "place",
+        "placing",
+        "position",
+        "post_jump_odds",
+        "post_jump_price",
+        "post_jump_prices",
+        "post_race_weather",
+        "result",
+        "result_order",
+        "winner",
+    }
+)
 
 
 class FeatureAvailabilityStatus(str, Enum):
@@ -187,6 +208,19 @@ def _artifact_checksum(value: Any, name: str) -> ArtifactChecksum | None:
         raise FeatureQuarantine(f"{name} must be a SHA-256 checksum") from error
 
 
+def _reject_result_derived_input(value: Any) -> None:
+    if type(value) is dict:
+        for key, nested in value.items():
+            if type(key) is str and key.casefold() in RESULT_DERIVED_INPUT_NAMES:
+                raise FeatureQuarantine(
+                    "Feature Contract contains result or post-jump input"
+                )
+            _reject_result_derived_input(nested)
+    elif type(value) is list:
+        for nested in value:
+            _reject_result_derived_input(nested)
+
+
 def _availability_manifest(
     *,
     evidence: Mapping[str, Any],
@@ -194,6 +228,8 @@ def _availability_manifest(
     fields: list[Mapping[str, Any]],
     runner_ids: tuple[str, ...],
     evidence_checksum: ArtifactChecksum,
+    expected_feature_cutoff_at: datetime | None,
+    raw_evidence_reader: Callable[[ArtifactChecksum], bytes] | None,
 ) -> FeatureAvailabilityManifest | None:
     version = schema.get("availability_manifest_version")
     declared = evidence.get("fields", {}).get("feature_availability")
@@ -225,6 +261,13 @@ def _availability_manifest(
     if type(freeze) is not dict:
         raise FeatureQuarantine("sealed evidence freeze envelope is missing")
     frozen_at, frozen_text = _timestamp(freeze.get("at"), "feature freeze")
+    if (
+        expected_feature_cutoff_at is None
+        or expected_feature_cutoff_at.tzinfo is None
+        or expected_feature_cutoff_at.utcoffset() is None
+        or frozen_at != expected_feature_cutoff_at
+    ):
+        raise FeatureQuarantine("feature cutoff disagrees with immutable authority")
     race_id = _text(evidence.get("race_id"), "sealed race identity")
     candidates = schema.get("candidate_features", [])
     source_contracts = schema.get("source_contracts")
@@ -293,6 +336,16 @@ def _availability_manifest(
             prior = raw_bindings.setdefault(binding["source"], checksum)
             if prior != checksum:
                 raise FeatureQuarantine("runner feature raw source binding conflicts")
+    verified_raw_bindings: dict[str, ArtifactChecksum] = {}
+    if raw_evidence_reader is not None:
+        for source_name, checksum in raw_bindings.items():
+            try:
+                raw_content = raw_evidence_reader(checksum)
+            except (KeyError, OSError, ValueError):
+                continue
+            if type(raw_content) is not bytes or _checksum(raw_content) != checksum:
+                raise FeatureQuarantine("raw evidence checksum mismatch")
+            verified_raw_bindings[source_name] = checksum
 
     active_names = {item["name"] for item in fields}
     policy_blockers = {
@@ -309,6 +362,7 @@ def _availability_manifest(
         FeatureBlockingReason.PROVIDER_PUBLICATION_TIME_MISSING,
         FeatureBlockingReason.SOURCE_SCHEMA_UNSUPPORTED,
         FeatureBlockingReason.RAW_EVIDENCE_MISSING,
+        FeatureBlockingReason.NORMALIZED_EVIDENCE_MISSING,
         FeatureBlockingReason.PROVIDER_TIME_AFTER_RECEIPT,
     }
     for item in declared_features:
@@ -355,7 +409,9 @@ def _availability_manifest(
         source_race = _optional_text(
             metadata["source_native_race_id"], f"{name} source-native race identity"
         )
-        raw_checksum = raw_bindings.get(source_name) if source_name is not None else None
+        raw_checksum = (
+            verified_raw_bindings.get(source_name) if source_name is not None else None
+        )
         source_contract = source_contracts.get(source_name) if source_name is not None else None
         publication_exposed = (
             source_contract["provider_publication_time_exposed"]
@@ -386,6 +442,9 @@ def _availability_manifest(
                 objective.add(FeatureBlockingReason.PROVIDER_TIME_AFTER_RECEIPT)
         if completeness != "COMPLETE" or not whole_race:
             objective.add(FeatureBlockingReason.INCOMPLETE_COVERAGE)
+        normalized_checksum = evidence_checksum if name in active_names else None
+        if normalized_checksum is None:
+            objective.add(FeatureBlockingReason.NORMALIZED_EVIDENCE_MISSING)
         stated = set(reasons)
         if not objective.issubset(stated) or any(
             reason not in objective and reason not in policy_blockers for reason in stated
@@ -427,7 +486,7 @@ def _availability_manifest(
                 source_native_race_id=source_race,
                 source_native_runner_ids=native_runner_ids,
                 raw_checksum=raw_checksum,
-                normalized_checksum=evidence_checksum,
+                normalized_checksum=normalized_checksum,
                 provider_published_at=provider_text,
                 collector_received_at=receipt_text,
                 feature_frozen_at=frozen_text,
@@ -462,6 +521,8 @@ def derive_features(
     expected_schema_checksum: ArtifactChecksum,
     missingness_policy_bytes: bytes,
     expected_missingness_checksum: ArtifactChecksum,
+    expected_feature_cutoff_at: datetime | None = None,
+    raw_evidence_reader: Callable[[ArtifactChecksum], bytes] | None = None,
 ) -> DerivationResult:
     """Derive without IO, mutation, repair, defaults, or mutable source access."""
     if _checksum(sealed_evidence) != expected_evidence_checksum:
@@ -478,6 +539,8 @@ def derive_features(
         raise FeatureQuarantine("derivation input is not valid JSON") from error
     if not all(type(value) is dict for value in (evidence, schema, policy)):
         raise FeatureQuarantine("derivation inputs must be JSON objects")
+    _reject_result_derived_input(evidence)
+    _reject_result_derived_input(schema)
     if schema.get("contract_version") != SUPPORTED_FEATURE_CONTRACT:
         raise FeatureQuarantine("feature contract version mismatch")
     if evidence.get("schema_version") != schema.get("evidence_schema_version"):
@@ -553,6 +616,8 @@ def derive_features(
         fields=fields,
         runner_ids=tuple(runners),
         evidence_checksum=expected_evidence_checksum,
+        expected_feature_cutoff_at=expected_feature_cutoff_at,
+        raw_evidence_reader=raw_evidence_reader,
     )
     availability = (
         {entry.feature: entry for entry in manifest.entries} if manifest is not None else {}

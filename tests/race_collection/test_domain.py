@@ -21,16 +21,30 @@ def ident(prefix: str, digit: str = "1") -> str:
 
 def test_every_declared_legal_lifecycle_transition_is_accepted():
     legal = {
-        RaceState.DISCOVERED: {RaceState.CARD_COLLECTED},
-        RaceState.CARD_COLLECTED: {RaceState.COLLECTING_ODDS},
-        RaceState.COLLECTING_ODDS: {RaceState.EVIDENCE_SEALED},
-        RaceState.EVIDENCE_SEALED: {RaceState.AWAITING_DAY_CLOSE},
-        RaceState.AWAITING_DAY_CLOSE: {RaceState.PREDICTION_PENDING},
+        RaceState.DISCOVERED: {RaceState.CARD_COLLECTED, RaceState.RESULT_PENDING},
+        RaceState.CARD_COLLECTED: {
+            RaceState.COLLECTING_ODDS,
+            RaceState.RESULT_PENDING,
+        },
+        RaceState.COLLECTING_ODDS: {
+            RaceState.EVIDENCE_SEALED,
+            RaceState.RESULT_PENDING,
+        },
+        RaceState.EVIDENCE_SEALED: {
+            RaceState.AWAITING_DAY_CLOSE,
+            RaceState.RESULT_PENDING,
+        },
+        RaceState.AWAITING_DAY_CLOSE: {
+            RaceState.PREDICTION_PENDING,
+            RaceState.RESULT_PENDING,
+        },
         RaceState.PREDICTION_PENDING: {
             RaceState.PREDICTION_COMMITTED,
             RaceState.PREDICTION_QUARANTINED,
+            RaceState.RESULT_PENDING,
         },
         RaceState.PREDICTION_COMMITTED: {RaceState.RESULT_PENDING},
+        RaceState.PREDICTION_QUARANTINED: {RaceState.RESULT_PENDING},
         RaceState.RESULT_PENDING: {RaceState.RESULT_COLLECTED, RaceState.RESULT_QUARANTINED},
         RaceState.RESULT_COLLECTED: {
             RaceState.TRAINING_EXAMPLE_READY,
@@ -50,10 +64,11 @@ def test_every_other_lifecycle_transition_is_rejected():
                     RaceLifecycle.validate(current, target)
 
 
-def test_result_cannot_precede_committed_prediction():
-    with pytest.raises(IllegalLifecycleTransition):
-        RaceLifecycle.validate(RaceState.PREDICTION_PENDING, RaceState.RESULT_PENDING)
-    assert RaceLifecycle.legal_targets(RaceState.PREDICTION_QUARANTINED) == frozenset()
+def test_result_can_follow_a_cohort_terminal_quarantine():
+    RaceLifecycle.validate(RaceState.PREDICTION_PENDING, RaceState.RESULT_PENDING)
+    assert RaceLifecycle.legal_targets(RaceState.PREDICTION_QUARANTINED) == frozenset(
+        {RaceState.RESULT_PENDING}
+    )
 
 
 def test_racing_day_keeps_official_date_timezone_and_aware_instant():

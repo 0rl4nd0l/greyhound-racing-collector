@@ -247,7 +247,7 @@ class ForecastingAuthority:
         if (
             durable is None
             or durable["artifact_checksum"] != cohort_checksum
-            or durable["frozen_at"] != iso_timestamp(cohort_frozen_at)
+            or datetime.fromisoformat(durable["frozen_at"]) != cohort_frozen_at
             or durable["race_count"] != 20
             or durable["members"] != cohort["members"]
         ):
@@ -329,6 +329,22 @@ class ForecastingAuthority:
                         "at": terminal_at,
                     }
                 )
+            elif rejections:
+                rejection = rejections[-1]
+                classification = (
+                    BaselineTerminalClassification.AUTHORIZATION_BLOCKED
+                    if rejection["code"] in authorization_codes
+                    else (
+                        BaselineTerminalClassification.INTEGRITY_FAILED
+                        if rejection["code"] in integrity_codes
+                        else BaselineTerminalClassification.QUARANTINED
+                    )
+                )
+                code = rejection["code"]
+                details = rejection["details"]
+                terminal_at = rejection["at"]
+                prediction_id = None
+                artifact_checksum = None
             else:
                 incomplete.append(race_id)
                 continue
@@ -374,9 +390,13 @@ class ForecastingAuthority:
         )
         if member is None:
             raise BarrierNotSatisfied("result race is not in the frozen baseline cohort")
-        if member["classification"] != BaselineTerminalClassification.ACCEPTED.value:
-            raise BarrierNotSatisfied("results require an accepted sealed prediction")
-        return self.open_results(operation_id, race_id, at)
+        return self._open_result_collection(
+            operation_id,
+            race_id,
+            at,
+            member=member,
+            cohort_checksum=terminal["cohort_checksum"],
+        )
 
     def register_bundle(
         self, operation_id: OperationId, bundle: LegacyBundle, at: datetime
@@ -934,8 +954,52 @@ class ForecastingAuthority:
         return True
 
     def open_results(self, operation_id: OperationId, race_id: RaceId, at: datetime) -> bool:
+        cohort = self.store.forward_baseline_cohort_for_race(race_id)
+        if cohort is not None:
+            cohort_bytes = _json(
+                {
+                    "schema_version": "forward-baseline-cohort-v1",
+                    "cohort_id": cohort["cohort_id"],
+                    "frozen_at": cohort["frozen_at"],
+                    "race_count": cohort["race_count"],
+                    "members": cohort["members"],
+                }
+            ).encode()
+            terminal = self.baseline_cohort_terminal_records(cohort_bytes)
+            member = next(
+                (
+                    record
+                    for record in terminal["records"]
+                    if record["race_id"] == str(race_id)
+                ),
+                None,
+            )
+            if member is None:
+                raise BarrierNotSatisfied("result race is not in the frozen baseline cohort")
+            return self._open_result_collection(
+                operation_id,
+                race_id,
+                at,
+                member=member,
+                cohort_checksum=terminal["cohort_checksum"],
+            )
+        return self._open_result_collection(operation_id, race_id, at)
+
+    def _open_result_collection(
+        self,
+        operation_id: OperationId,
+        race_id: RaceId,
+        at: datetime,
+        *,
+        member: Mapping[str, Any] | None = None,
+        cohort_checksum: str | None = None,
+    ) -> bool:
         require_aware(at, "at")
-        payload = {"race": str(race_id), "at": iso_timestamp(at)}
+        payload = {
+            "race": str(race_id),
+            "at": iso_timestamp(at),
+            **({"cohort_checksum": cohort_checksum} if cohort_checksum is not None else {}),
+        }
         with self.store._operation(operation_id, "open_result_collection", payload) as (
             db,
             replay,
@@ -945,7 +1009,12 @@ class ForecastingAuthority:
             row = db.execute(
                 "SELECT racing_day_id,state FROM races WHERE race_id=?", (str(race_id),)
             ).fetchone()
-            if row is None or row["state"] != RaceState.PREDICTION_COMMITTED.value:
+            expected = (
+                RaceState(member["lifecycle_state"])
+                if member is not None
+                else RaceState.PREDICTION_COMMITTED
+            )
+            if row is None or row["state"] != expected.value:
                 raise BarrierNotSatisfied("results require a committed prediction")
             incomplete = db.execute(
                 "SELECT COUNT(*) FROM expected_races e JOIN races r USING(race_id) WHERE r.racing_day_id=? AND NOT EXISTS(SELECT 1 FROM collection_quarantines q WHERE q.race_id=r.race_id) AND r.state NOT IN ('prediction_committed','prediction_quarantined','result_pending','result_collected','result_quarantined','training_example_ready','evaluation_ineligible')",
@@ -959,7 +1028,7 @@ class ForecastingAuthority:
                 race_id,
                 RaceState.RESULT_PENDING,
                 at,
-                RaceState.PREDICTION_COMMITTED,
+                expected,
             )
         return True
 

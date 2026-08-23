@@ -22,7 +22,7 @@ from scripts.ingest_results_for_date import (
 
 from .artifacts import ArtifactStoreError, LocalArtifactStore
 from .domain import ArtifactChecksum, require_aware
-from .features import FeatureQuarantine, derive_features
+from .features import RESULT_DERIVED_INPUT_NAMES, FeatureQuarantine, derive_features
 from .model_bundle import SUPPORTED_FEATURE_CONTRACT
 
 FORWARD_CORPUS_ORIGIN = "official-result-first-observation-v1"
@@ -69,15 +69,7 @@ _OBSERVATION_FIELDS_V1 = {
 }
 _OBSERVATION_FIELDS_V2 = _OBSERVATION_FIELDS_V1 | {"normalization_version"}
 
-_RESULT_DERIVED_KEYS = {
-    "finish_order",
-    "finish_position",
-    "place",
-    "position",
-    "result",
-    "result_order",
-    "winner",
-}
+_RESULT_DERIVED_KEYS = RESULT_DERIVED_INPUT_NAMES
 
 
 class ForwardCorpusRejected(ValueError):
@@ -942,6 +934,10 @@ class ForwardSealedCorpus:
                 expected_schema_checksum=feature_schema,
                 missingness_policy_bytes=missingness_policy_bytes,
                 expected_missingness_checksum=missingness_policy,
+                expected_feature_cutoff_at=evidence_freeze,
+                raw_evidence_reader=lambda checksum: {
+                    raw_source: raw_source_bytes
+                }[checksum],
             )
         except (FeatureQuarantine, ValueError) as error:
             raise ForwardCorpusRejected(str(error)) from error

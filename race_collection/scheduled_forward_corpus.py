@@ -589,6 +589,7 @@ def admit_scheduled_capture(
                     "blocking_reasons": [
                         "SOURCE_UNAVAILABLE",
                         "INCOMPLETE_COVERAGE",
+                        "NORMALIZED_EVIDENCE_MISSING",
                         *(
                             ["SOURCE_AUTHORIZATION_REQUIRED"]
                             if name != "sportsbet_win_market"

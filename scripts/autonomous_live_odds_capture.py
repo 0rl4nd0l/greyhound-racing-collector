@@ -3024,10 +3024,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--collector-receipt-root", type=Path)
     parser.add_argument("--collector-run-id")
     parser.add_argument("--forward-corpus-root", type=Path)
+    parser.add_argument("--forward-baseline-config", type=Path)
     return parser.parse_args(argv)
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def main(
+    argv: Sequence[str] | None = None,
+    *,
+    forward_baseline_loader: Callable[[Path], Any] | None = None,
+    current_index_reader: Callable[..., Any] | None = None,
+) -> int:
     args = parse_args(argv)
     current_time = parse_current_time(args.current_time)
     evidence_root = args.evidence_root
@@ -3085,20 +3091,47 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     forward_corpus_admitter = None
     if args.forward_corpus_root is not None:
-        if receipt_protocol is None or not args.collector_run_id:
+        if (
+            receipt_protocol is None
+            or not args.collector_run_id
+            or args.forward_baseline_config is None
+        ):
             raise ValueError("forward_corpus_scheduled_receipt_authority_missing")
-        from race_collection.scheduled_forward_corpus import (
-            admit_scheduled_capture,
+        if forward_baseline_loader is None:
+            from race_collection.service import load_forward_baseline_capture_binding
+
+            forward_baseline_loader = load_forward_baseline_capture_binding
+        binding = forward_baseline_loader(args.forward_baseline_config)
+        if (
+            binding.service.configuration.corpus_root != args.forward_corpus_root
+            or binding.evidence_root != evidence_root
+        ):
+            raise ValueError("forward_baseline_runtime_binding_mismatch")
+        if current_index_reader is None:
+            from race_collection.synchronous_manual_capture import (
+                bounded_current_race_index,
+            )
+
+            current_index_reader = bounded_current_race_index
+        verified_current_index = current_index_reader(
+            current_time=current_time,
+            timeout_seconds=binding.current_index_timeout_seconds,
+            index_path=binding.current_index_path,
+            evidence_root=binding.evidence_root,
+            max_age_seconds=binding.current_index_max_age_seconds,
+            return_verified_view=True,
         )
 
         def forward_corpus_admitter(**values: Any) -> Mapping[str, Any]:
-            return admit_scheduled_capture(
+            return binding.service.capture_scheduled(
                 protocol=receipt_protocol,
                 evidence_root=evidence_root,
-                corpus_root=args.forward_corpus_root,
                 collector_run_id=args.collector_run_id,
+                verified_index=verified_current_index,
                 **values,
             )
+    elif args.forward_baseline_config is not None:
+        raise ValueError("forward_baseline_config_requires_forward_corpus")
 
     report = execute_capture_plan(
         plan,

@@ -485,6 +485,8 @@ def test_derivation_emits_deterministic_ready_now_availability_manifest(canonica
     }
     schema_bytes = canonical(schema)
     evidence = json.loads(evidence_bytes())
+    raw_bytes = b"official-card-raw-bytes"
+    raw_checksum = LocalArtifactStore.checksum(raw_bytes)
     evidence["fields"]["runner_features"]["dog-a"]["days_since_run"] = 7
     evidence["field_provenance"] = [
         {
@@ -493,7 +495,7 @@ def test_derivation_emits_deterministic_ready_now_availability_manifest(canonica
             "critical": True,
             "value": evidence["fields"]["runner_features"],
             "source": "official-card",
-            "artifact_checksum": "sha256:" + "a" * 64,
+            "artifact_checksum": str(raw_checksum),
         }
     ]
     evidence["fields"]["feature_availability"] = {
@@ -519,6 +521,8 @@ def test_derivation_emits_deterministic_ready_now_availability_manifest(canonica
         expected_schema_checksum=LocalArtifactStore.checksum(schema_bytes),
         missingness_policy_bytes=values["missingness_policy"],
         expected_missingness_checksum=bundle.component("missingness_policy").checksum,
+        expected_feature_cutoff_at=NOW,
+        raw_evidence_reader=lambda checksum: {raw_checksum: raw_bytes}[checksum],
     )
 
     first = derive_features(content, **kwargs)
@@ -606,6 +610,8 @@ def test_development_only_optional_value_is_preserved_but_not_admitted(canonical
         expected_schema_checksum=schema_artifact.checksum,
         missingness_policy_bytes=retained.read(policy_artifact.checksum),
         expected_missingness_checksum=policy_artifact.checksum,
+        expected_feature_cutoff_at=NOW,
+        raw_evidence_reader=retained.read,
     )
     replay = derive_features(
         retained.read(evidence_artifact.checksum),
@@ -614,6 +620,8 @@ def test_development_only_optional_value_is_preserved_but_not_admitted(canonical
         expected_schema_checksum=schema_artifact.checksum,
         missingness_policy_bytes=retained.read(policy_artifact.checksum),
         expected_missingness_checksum=policy_artifact.checksum,
+        expected_feature_cutoff_at=NOW,
+        raw_evidence_reader=retained.read,
     )
 
     assert replay == result
@@ -647,6 +655,8 @@ def test_manifest_classifies_declared_non_model_candidate_without_matrix_column(
     ]
     schema_bytes = canonical(schema)
     evidence = json.loads(evidence_bytes())
+    raw_bytes = b"official-card-raw-bytes"
+    raw_checksum = LocalArtifactStore.checksum(raw_bytes)
     evidence["fields"]["runner_features"]["dog-a"]["days_since_run"] = 7
     evidence["field_provenance"] = [
         {
@@ -655,7 +665,7 @@ def test_manifest_classifies_declared_non_model_candidate_without_matrix_column(
             "critical": True,
             "value": evidence["fields"]["runner_features"],
             "source": "official-card",
-            "artifact_checksum": "sha256:" + "a" * 64,
+            "artifact_checksum": str(raw_checksum),
         }
     ]
     ready = {
@@ -688,6 +698,7 @@ def test_manifest_classifies_declared_non_model_candidate_without_matrix_column(
                 "SOURCE_AUTHORIZATION_REQUIRED",
                 "SOURCE_UNAVAILABLE",
                 "INCOMPLETE_COVERAGE",
+                "NORMALIZED_EVIDENCE_MISSING",
             ],
         },
     }
@@ -700,6 +711,8 @@ def test_manifest_classifies_declared_non_model_candidate_without_matrix_column(
         expected_schema_checksum=LocalArtifactStore.checksum(schema_bytes),
         missingness_policy_bytes=values["missingness_policy"],
         expected_missingness_checksum=bundle.component("missingness_policy").checksum,
+        expected_feature_cutoff_at=NOW,
+        raw_evidence_reader=lambda checksum: {raw_checksum: raw_bytes}[checksum],
     )
 
     assert result.matrix.columns == ("speed", "form", "days_since_run", "novice")
@@ -707,7 +720,79 @@ def test_manifest_classifies_declared_non_model_candidate_without_matrix_column(
     assert candidate.feature == "steward_state"
     assert candidate.status is FeatureAvailabilityStatus.FORWARD_CAPTURE
     assert candidate.raw_checksum is None
-    assert candidate.normalized_checksum == LocalArtifactStore.checksum(content)
+    assert candidate.normalized_checksum is None
+
+
+def test_manifest_replay_rejects_self_attested_late_cutoff_and_mismatched_raw_bytes(
+    canonical_setup,
+):
+    _, _, bundle, _, schema, values, _ = canonical_setup
+    schema = json.loads(json.dumps(schema))
+    for field in schema["fields"]:
+        field["family"] = "race_card"
+    schema["availability_manifest_version"] = "feature-availability-manifest-v1"
+    schema["source_contracts"] = {
+        "official-card": {
+            "schema_versions": ["official-card-v1"],
+            "provider_publication_time_exposed": True,
+        }
+    }
+    schema_bytes = canonical(schema)
+    raw_bytes = b"official-card-raw-bytes"
+    raw_checksum = LocalArtifactStore.checksum(raw_bytes)
+    evidence = json.loads(evidence_bytes())
+    evidence["freeze"]["at"] = "2026-07-23T02:00:00+00:00"
+    evidence["field_provenance"] = [
+        {
+            "field": "runner_features",
+            "authority": "official_card",
+            "critical": True,
+            "value": evidence["fields"]["runner_features"],
+            "source": "official-card",
+            "artifact_checksum": str(raw_checksum),
+        }
+    ]
+    evidence["fields"]["feature_availability"] = {
+        name: {
+            "status": "READY_NOW",
+            "source_name": "official-card",
+            "source_schema_version": "official-card-v1",
+            "source_native_race_id": "native-race-1",
+            "source_native_runner_ids": ["dog-a", "dog-b"],
+            "provider_published_at": "2026-07-23T01:40:00+00:00",
+            "collector_received_at": "2026-07-23T01:50:00+00:00",
+            "completeness": "COMPLETE",
+            "whole_race_coverage": True,
+            "derivation_version": "race-card-feature-derivation-v1",
+            "blocking_reasons": [],
+        }
+        for name in ("speed", "form", "days_since_run", "novice")
+    }
+    content = canonical(evidence)
+    kwargs = {
+        "expected_evidence_checksum": LocalArtifactStore.checksum(content),
+        "schema_bytes": schema_bytes,
+        "expected_schema_checksum": LocalArtifactStore.checksum(schema_bytes),
+        "missingness_policy_bytes": values["missingness_policy"],
+        "expected_missingness_checksum": bundle.component("missingness_policy").checksum,
+        "expected_feature_cutoff_at": NOW,
+    }
+
+    with pytest.raises(FeatureQuarantine, match="cutoff"):
+        derive_features(
+            content,
+            raw_evidence_reader=lambda checksum: {raw_checksum: raw_bytes}[checksum],
+            **kwargs,
+        )
+    evidence["freeze"]["at"] = NOW.isoformat()
+    content = canonical(evidence)
+    with pytest.raises(FeatureQuarantine, match="raw evidence checksum"):
+        derive_features(
+            content,
+            expected_evidence_checksum=LocalArtifactStore.checksum(content),
+            raw_evidence_reader=lambda checksum: b"forged-raw-bytes",
+            **{key: value for key, value in kwargs.items() if key != "expected_evidence_checksum"},
+        )
 
 
 def test_parallel_top_level_evidence_envelope_is_rejected(canonical_setup):
@@ -750,6 +835,27 @@ def test_feature_derivation_rejects_result_information_anywhere(canonical_setup,
             expected_evidence_checksum=LocalArtifactStore.checksum(content),
             schema_bytes=values["feature_schema"],
             expected_schema_checksum=bundle.component("feature_schema").checksum,
+            missingness_policy_bytes=values["missingness_policy"],
+            expected_missingness_checksum=bundle.component("missingness_policy").checksum,
+        )
+
+
+def test_feature_contract_cannot_admit_post_jump_or_outcome_derived_input(canonical_setup):
+    _, _, bundle, _, schema, values, _ = canonical_setup
+    changed = json.loads(json.dumps(schema))
+    changed["fields"][0]["name"] = "post_jump_price"
+    schema_bytes = canonical(changed)
+    evidence = json.loads(evidence_bytes())
+    for runner in evidence["fields"]["runner_features"].values():
+        runner["post_jump_price"] = runner.pop("speed")
+    content = canonical(evidence)
+
+    with pytest.raises(FeatureQuarantine, match="result or post-jump"):
+        derive_features(
+            content,
+            expected_evidence_checksum=LocalArtifactStore.checksum(content),
+            schema_bytes=schema_bytes,
+            expected_schema_checksum=LocalArtifactStore.checksum(schema_bytes),
             missingness_policy_bytes=values["missingness_policy"],
             expected_missingness_checksum=bundle.component("missingness_policy").checksum,
         )
@@ -802,6 +908,9 @@ def test_manifest_aware_deferred_forecast_binds_contract_and_manifest(canonical_
     }
     schema_bytes = canonical(schema)
     schema_artifact = artifacts.put(schema_bytes, media_type="application/json")
+    raw_artifact = artifacts.put(
+        b"manifest-aware-official-card", media_type="application/octet-stream"
+    )
     evidence = json.loads(evidence_bytes())
     evidence["fields"]["runner_features"]["dog-a"]["days_since_run"] = 7
     evidence["field_provenance"] = [
@@ -811,7 +920,7 @@ def test_manifest_aware_deferred_forecast_binds_contract_and_manifest(canonical_
             "critical": True,
             "value": evidence["fields"]["runner_features"],
             "source": "official-card",
-            "artifact_checksum": "sha256:" + "a" * 64,
+            "artifact_checksum": str(raw_artifact.checksum),
         }
     ]
     evidence["fields"]["feature_availability"] = {
@@ -959,16 +1068,25 @@ def test_manifest_aware_race_commits_through_deferred_prediction_lifecycle(canon
                 "completeness": "UNKNOWN",
                 "whole_race_coverage": False,
                 "derivation_version": f"{name}-unavailable-v1",
-                "blocking_reasons": [
-                    "SOURCE_UNAVAILABLE",
-                    "INCOMPLETE_COVERAGE",
-                    *(["SOURCE_AUTHORIZATION_REQUIRED"] if name != "sportsbet_win_market" else []),
-                ],
+                    "blocking_reasons": [
+                        "SOURCE_UNAVAILABLE",
+                        "INCOMPLETE_COVERAGE",
+                        "NORMALIZED_EVIDENCE_MISSING",
+                        *(
+                            ["SOURCE_AUTHORIZATION_REQUIRED"]
+                            if name != "sportsbet_win_market"
+                            else []
+                        ),
+                    ],
             }
             for name, _family in CANDIDATE_FEATURES
         },
     }
-    raw_checksum = "sha256:" + "a" * 64
+    raw_checksum = str(
+        artifacts.put(
+            b"manifest-aware-lifecycle-card", media_type="application/octet-stream"
+        ).checksum
+    )
     evidence = {
         "schema_version": "race-evidence-v1",
         "normalization_version": "collector-canonical-runner-alignment-v1",
