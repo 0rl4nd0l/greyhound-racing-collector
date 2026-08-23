@@ -215,7 +215,7 @@ class ForwardBaselineCaptureService:
         ):
             return {
                 "schema_version": self.REPORT_SCHEMA,
-                "status": "INTEGRITY_FAILED",
+                "status": "AWAITING_COHORT_CANDIDATES",
                 "reason": "CURRENT_RACE_INDEX_NOT_READY_NOW",
             }
         races = tuple(verified_index.races)

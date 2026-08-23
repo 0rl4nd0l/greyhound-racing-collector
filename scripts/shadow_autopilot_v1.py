@@ -43,6 +43,7 @@ from race_collection.manual_prediction_collector_request import (  # noqa: E402
 )
 from race_collection.synchronous_manual_capture import (  # noqa: E402
     CURRENT_RACE_INDEX_PUBLISH_REPORT_FILENAME,
+    current_race_index_path as collector_current_race_index_path,
     publish_current_race_index,
     publish_current_race_index_lifecycle,
 )
@@ -629,6 +630,7 @@ def autonomous_live_odds_capture_command(
     collector_receipt_root: Path | None = None,
     collector_run_id: str | None = None,
     forward_corpus_root: Path | None = None,
+    forward_current_race_index_path: Path | None = None,
     forward_baseline_config: Path | None = None,
     command_prefix: Sequence[str] | None = None,
 ) -> list[str]:
@@ -670,18 +672,30 @@ def autonomous_live_odds_capture_command(
     if forward_corpus_root is not None:
         if collector_receipt_root is None or collector_run_id is None:
             raise ValueError("forward_corpus_scheduled_receipt_authority_missing")
-        if forward_baseline_config is None:
-            raise ValueError("forward_baseline_config_missing")
+        if (
+            forward_baseline_config is None
+            and forward_current_race_index_path is None
+        ):
+            raise ValueError("forward_corpus_current_index_authority_missing")
         command.extend(
             [
                 "--forward-corpus-root",
                 str(forward_corpus_root),
-                "--forward-baseline-config",
-                str(forward_baseline_config),
             ]
         )
-    elif forward_baseline_config is not None:
-        raise ValueError("forward_corpus_root_missing")
+    if forward_current_race_index_path is not None:
+        command.extend(
+            [
+                "--forward-current-race-index-path",
+                str(forward_current_race_index_path),
+            ]
+        )
+    if forward_baseline_config is not None:
+        if forward_corpus_root is None:
+            raise ValueError("forward_corpus_root_missing")
+        command.extend(
+            ["--forward-baseline-config", str(forward_baseline_config)]
+        )
     if manual_request_id is not None:
         if manual_request_root is None or collector_run_id is None:
             raise ValueError("manual_request_collector_authority_missing")
@@ -6913,6 +6927,15 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
                 else None
             ),
             forward_corpus_root=args.forward_corpus_root,
+            forward_current_race_index_path=(
+                collector_current_race_index_path(
+                    args.current_race_index_state_path
+                )
+                if args.forward_corpus_root is not None
+                and args.forward_baseline_config is None
+                and args.current_race_index_state_path is not None
+                else None
+            ),
             forward_baseline_config=args.forward_baseline_config,
         )
         autonomous_odds_step = step_command(
@@ -8623,9 +8646,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_RESULT_BACKLOG_LOOKBACK_DAYS,
     )
     args = parser.parse_args(argv)
-    if (args.forward_corpus_root is None) != (args.forward_baseline_config is None):
+    if args.forward_baseline_config is not None and args.forward_corpus_root is None:
         parser.error(
-            "--forward-corpus-root and --forward-baseline-config must be supplied together"
+            "--forward-baseline-config requires --forward-corpus-root"
         )
     return args
 

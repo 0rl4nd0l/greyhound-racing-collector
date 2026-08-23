@@ -1,5 +1,6 @@
 import os
 import json
+import shlex
 import sqlite3
 import subprocess
 import sys
@@ -272,6 +273,13 @@ def test_run_once_exception_writes_terminal_daemon_report(tmp_path, monkeypatch)
         assert command[command.index("--collector-lock-path") + 1] == str(
             launch_dir / "shared-runtime" / "shadow_autopilot.lock"
         )
+        assert command[command.index("--current-race-index-state-path") + 1] == str(
+            Path("runtime/odds-capture-state.json")
+        )
+        assert command[command.index("--forward-corpus-root") + 1] == str(
+            Path("forward-corpus")
+        )
+        assert "--forward-baseline-config" not in command
         raise RuntimeError("synthetic daemon failure")
 
     monkeypatch.setattr(daemon, "run_command", failing_run_command)
@@ -294,6 +302,10 @@ def test_run_once_exception_writes_terminal_daemon_report(tmp_path, monkeypatch)
             str(shadow_model),
             "--lock-path",
             "shared-runtime/shadow_autopilot.lock",
+            "--odds-capture-state-path",
+            "runtime/odds-capture-state.json",
+            "--forward-corpus-root",
+            "forward-corpus",
         ]
     )
 
@@ -1966,6 +1978,25 @@ def test_odds_capture_only_autopilot_command_is_narrow_and_append_only():
         require_safe_refresh_metadata=False,
     )
     assert "--require-safe-refresh-metadata" not in permissive_command
+
+    existing_command = daemon.odds_capture_only_autopilot_command(
+        run_id="odds_only_autopilot",
+        evidence_root=Path("/evidence"),
+        lock_path=Path("/runtime/shared.lock"),
+        current_time="2026-06-12T09:48:00+10:00",
+        db_path=Path("/data/greyhound_racing_data.db"),
+        days_ahead=1,
+        refresh_limit=8,
+        odds_capture_min_minutes=0.0,
+        odds_capture_max_minutes=60.0,
+        odds_capture_refresh_limit=8,
+        timeout_seconds=600,
+        forward_corpus_root=Path("/evidence/forward-corpus"),
+    )
+    assert existing_command[
+        existing_command.index("--forward-corpus-root") + 1
+    ] == "/evidence/forward-corpus"
+    assert "--forward-baseline-config" not in existing_command
 
 
 def test_gated_challenger_commands_use_report_only_packet_builders():
@@ -10683,6 +10714,54 @@ def test_full_service_generator_emits_forward_opt_in_only_when_declared(tmp_path
         timeout_seconds=600,
     )
     assert "--forward-corpus-root" not in odds
+    existing_odds = daemon.odds_capture_service_file_text(
+        repo_path=tmp_path,
+        timeout_seconds=600,
+        forward_corpus_root=Path("/runtime/forward-corpus"),
+    )
+    assert '--forward-corpus-root "/runtime/forward-corpus"' in existing_odds
+    assert "--forward-baseline-config" not in existing_odds
+    with pytest.raises(ValueError, match="requires forward_corpus_root"):
+        daemon.service_file_text(
+            repo_path=tmp_path,
+            timeout_seconds=840,
+            forward_baseline_config=Path("/runtime/forward-baseline.json"),
+        )
+
+
+def test_existing_forward_corpus_service_command_runs_without_baseline_capture(
+    monkeypatch, tmp_path
+):
+    service = daemon.service_file_text(
+        repo_path=tmp_path,
+        python_path=Path(sys.executable),
+        timeout_seconds=840,
+        forward_corpus_root=Path("/runtime/forward-corpus"),
+    )
+    exec_start = next(
+        line.removeprefix("ExecStart=")
+        for line in service.splitlines()
+        if line.startswith("ExecStart=")
+    )
+    command = shlex.split(exec_start)
+    observed = {}
+
+    def run_cycle(args):
+        observed["forward_corpus_root"] = args.forward_corpus_root
+        observed["forward_baseline_config"] = args.forward_baseline_config
+        return {
+            "final_verdict": "PARTIAL_DAEMONIZATION",
+            "forward_official_result_observer": {"status": "COMPLETED"},
+        }
+
+    monkeypatch.setattr(daemon, "run_once", run_cycle)
+
+    assert daemon.main(command[2:]) == 0
+    assert observed == {
+        "forward_corpus_root": Path("/runtime/forward-corpus"),
+        "forward_baseline_config": None,
+    }
+    assert "--forward-baseline-config" not in command
 
 
 @pytest.mark.parametrize("status", ["LOCK_BUSY", "COMPLETED_WITH_ERRORS", "FAILED"])
