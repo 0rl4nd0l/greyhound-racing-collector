@@ -20,27 +20,46 @@ class FeatureQuarantine(ValueError):
 
 
 FEATURE_AVAILABILITY_MANIFEST_VERSION = "feature-availability-manifest-v1"
-
-RESULT_DERIVED_INPUT_NAMES = frozenset(
+RESULT_FREE_FEATURE_NAMES = frozenset(
     {
-        "finish_order",
-        "finish_position",
-        "official_finishing_order",
-        "official_order",
-        "outcome",
-        "outcome_derived",
-        "place",
-        "placing",
-        "position",
-        "post_jump_odds",
-        "post_jump_price",
-        "post_jump_prices",
-        "post_race_weather",
-        "result",
-        "result_order",
-        "winner",
+        "speed",
+        "form",
+        "days_since_run",
+        "novice",
+        "box_number",
+        "canonical_race_identity",
+        "canonical_runner_identity",
+        "race_card_context",
+        "form_context",
+        "speed_context",
+        "venue",
+        "distance",
+        "recent_workload",
+        "prior_official_weight",
+        "pir_running_position",
+        "typed_trial_state",
+        "steward_state",
+        "steward_veterinary_state",
+        "lifecycle_age",
+        "sportsbet_win_market",
     }
 )
+
+READY_FEATURE_EVIDENCE_FIELDS = {
+    "canonical_race_identity": EvidenceField.RACE_IDENTITY.value,
+    "canonical_runner_identity": EvidenceField.RUNNER_IDENTITY.value,
+    "venue": EvidenceField.VENUE.value,
+    "distance": EvidenceField.DISTANCE.value,
+}
+
+RESULT_FREE_SOURCE_METADATA_SHAPES = {
+    "meeting metadata": (frozenset({"venue"}), frozenset({"meeting_code", "venue"})),
+    "race metadata": (
+        frozenset({"race_number"}),
+        frozenset({"race_number", "distance_metres"}),
+        frozenset({"race_number", "distance_metres", "race_time"}),
+    ),
+}
 
 
 class FeatureAvailabilityStatus(str, Enum):
@@ -208,17 +227,507 @@ def _artifact_checksum(value: Any, name: str) -> ArtifactChecksum | None:
         raise FeatureQuarantine(f"{name} must be a SHA-256 checksum") from error
 
 
-def _reject_result_derived_input(value: Any) -> None:
-    if type(value) is dict:
-        for key, nested in value.items():
-            if type(key) is str and key.casefold() in RESULT_DERIVED_INPUT_NAMES:
-                raise FeatureQuarantine(
-                    "Feature Contract contains result or post-jump input"
+def _result_free_schema_error() -> FeatureQuarantine:
+    return FeatureQuarantine("result-free evidence schema is invalid")
+
+
+def required_ready_evidence_fields(fields: Mapping[str, Any]) -> frozenset[str]:
+    """Return exact evidence fields required by READY_NOW manifest declarations."""
+    availability = fields.get("feature_availability")
+    if type(availability) is not dict:
+        return frozenset()
+    return frozenset(
+        evidence_field
+        for feature, evidence_field in READY_FEATURE_EVIDENCE_FIELDS.items()
+        if type(availability.get(feature)) is dict
+        and availability[feature].get("status") == FeatureAvailabilityStatus.READY_NOW.value
+    )
+
+
+def validate_result_free_source_metadata(value: Any, name: str) -> None:
+    """Own the exact positive schema shared by capture and source admission."""
+    shapes = RESULT_FREE_SOURCE_METADATA_SHAPES.get(name)
+    if shapes is None or type(value) is not dict or frozenset(value) not in shapes:
+        raise ValueError(f"{name} is outside the result-free positive schema")
+    if name == "meeting metadata":
+        if type(value["venue"]) is not str or not value["venue"].strip():
+            raise ValueError("meeting venue must be known nonblank text")
+        if "meeting_code" in value and (
+            type(value["meeting_code"]) is not str or not value["meeting_code"].strip()
+        ):
+            raise ValueError("meeting code must be known nonblank text")
+        return
+    if type(value["race_number"]) is not int or value["race_number"] <= 0:
+        raise ValueError("race number is invalid")
+    if "distance_metres" in value and (
+        type(value["distance_metres"]) is not int or value["distance_metres"] <= 0
+    ):
+        raise ValueError("race distance is invalid")
+    if "race_time" in value and (
+        type(value["race_time"]) is not str or not value["race_time"].strip()
+    ):
+        raise ValueError("race time must be known nonblank text")
+
+
+def validate_feature_availability_manifest_document(value: Any) -> tuple[str, ...]:
+    """Validate the exact immutable availability-manifest projection schema."""
+    entry_fields = {
+        "feature",
+        "family",
+        "semantics",
+        "status",
+        "source_name",
+        "source_schema_version",
+        "source_native_race_id",
+        "source_native_runner_ids",
+        "raw_checksum",
+        "normalized_checksum",
+        "provider_published_at",
+        "collector_received_at",
+        "feature_frozen_at",
+        "completeness",
+        "whole_race_coverage",
+        "derivation_version",
+        "blocking_reasons",
+    }
+    if (
+        type(value) is not dict
+        or set(value) != {"version", "race_id", "evidence_checksum", "entries"}
+        or value.get("version") != FEATURE_AVAILABILITY_MANIFEST_VERSION
+        or type(value.get("entries")) is not list
+        or not value["entries"]
+    ):
+        raise ValueError("feature availability manifest schema is invalid")
+    _text(value["race_id"], "manifest race identity")
+    if _artifact_checksum(value["evidence_checksum"], "manifest evidence checksum") is None:
+        raise ValueError("feature availability manifest schema is invalid")
+    names: list[str] = []
+    for entry in value["entries"]:
+        if type(entry) is not dict or set(entry) != entry_fields:
+            raise ValueError("feature availability manifest entry schema is invalid")
+        feature = entry["feature"]
+        if feature not in RESULT_FREE_FEATURE_NAMES:
+            raise ValueError("feature availability manifest entry schema is invalid")
+        _text(entry["family"], "manifest feature family")
+        if entry["semantics"] not in {
+            "identity-critical",
+            "forecast-required",
+            "optional",
+            "inapplicable",
+        }:
+            raise ValueError("feature availability manifest entry schema is invalid")
+        try:
+            status = FeatureAvailabilityStatus(entry["status"])
+            reasons = tuple(FeatureBlockingReason(reason) for reason in entry["blocking_reasons"])
+        except (TypeError, ValueError) as error:
+            raise ValueError("feature availability manifest entry schema is invalid") from error
+        runner_ids = entry["source_native_runner_ids"]
+        if (
+            type(runner_ids) is not list
+            or any(type(runner_id) is not str or not runner_id.strip() for runner_id in runner_ids)
+            or len(set(runner_ids)) != len(runner_ids)
+            or type(entry["blocking_reasons"]) is not list
+            or len(set(reasons)) != len(reasons)
+        ):
+            raise ValueError("feature availability manifest entry schema is invalid")
+        source_name = _optional_text(entry["source_name"], "manifest source name")
+        source_schema = _optional_text(
+            entry["source_schema_version"], "manifest source schema"
+        )
+        source_race = _optional_text(
+            entry["source_native_race_id"], "manifest source-native race identity"
+        )
+        raw_checksum = _artifact_checksum(entry["raw_checksum"], "manifest raw checksum")
+        normalized_checksum = _artifact_checksum(
+            entry["normalized_checksum"], "manifest normalized checksum"
+        )
+        _optional_timestamp(entry["provider_published_at"], "manifest provider publication")
+        _, receipt = _optional_timestamp(
+            entry["collector_received_at"], "manifest collector receipt"
+        )
+        _timestamp(entry["feature_frozen_at"], "manifest feature freeze")
+        _text(entry["derivation_version"], "manifest derivation version")
+        if (
+            entry["completeness"] not in {"COMPLETE", "INCOMPLETE", "UNKNOWN"}
+            or type(entry["whole_race_coverage"]) is not bool
+            or (
+                status is FeatureAvailabilityStatus.READY_NOW
+                and (
+                    source_name is None
+                    or source_schema is None
+                    or source_race is None
+                    or not runner_ids
+                    or raw_checksum is None
+                    or normalized_checksum is None
+                    or receipt is None
+                    or entry["completeness"] != "COMPLETE"
+                    or entry["whole_race_coverage"] is not True
+                    or reasons
                 )
-            _reject_result_derived_input(nested)
-    elif type(value) is list:
-        for nested in value:
-            _reject_result_derived_input(nested)
+            )
+            or (status is not FeatureAvailabilityStatus.READY_NOW and not reasons)
+        ):
+            raise ValueError("feature availability manifest entry schema is invalid")
+        names.append(feature)
+    if len(set(names)) != len(names):
+        raise ValueError("feature availability manifest entries are duplicated")
+    return tuple(names)
+
+
+def _result_free_provenance_binding(
+    item: Any, fields: Mapping[str, Any]
+) -> tuple[str, str, ArtifactChecksum]:
+    if type(item) is not dict or set(item) != {
+        "field",
+        "authority",
+        "critical",
+        "value",
+        "source",
+        "artifact_checksum",
+    }:
+        raise ValueError("result-free evidence provenance binding is invalid")
+    try:
+        field = EvidenceField(item["field"])
+        checksum = ArtifactChecksum(item["artifact_checksum"])
+    except (TypeError, ValueError) as error:
+        raise ValueError("result-free evidence provenance binding is invalid") from error
+    if (
+        field is EvidenceField.RESULT_ORDER
+        or field.value not in fields
+        or type(item["critical"]) is not bool
+        or item["critical"] is not field.critical
+        or item["value"] != fields[field.value]
+    ):
+        raise ValueError("result-free evidence provenance binding is invalid")
+    _text(item["authority"], "result-free evidence authority")
+    source = _text(item["source"], "result-free evidence source")
+    return field.value, source, checksum
+
+
+def validate_result_free_provenance_bindings(
+    fields: Mapping[str, Any],
+    provenance: Any,
+    *,
+    raw_checksum: ArtifactChecksum,
+    source_name: str,
+) -> None:
+    """Validate the one raw-source binding contract used by both admission paths."""
+    required = {
+        "runner_set",
+        "runner_identity",
+        "runner_features",
+        *required_ready_evidence_fields(fields),
+    }
+    if type(provenance) is not list or not provenance:
+        raise ValueError("result-free evidence provenance is incomplete")
+    bound: set[str] = set()
+    seen: set[tuple[str, str]] = set()
+    for item in provenance:
+        field_name, source, checksum = _result_free_provenance_binding(item, fields)
+        identity = (field_name, source)
+        if identity in seen:
+            raise ValueError("result-free evidence provenance binding is duplicated")
+        seen.add(identity)
+        if field_name in required and source == source_name and checksum == raw_checksum:
+            bound.add(field_name)
+    if bound != required:
+        raise ValueError(
+            "result-free evidence provenance is not bound to the preserved raw source bytes"
+        )
+
+
+def _positive_evidence_value(field_name: str, value: Any, runners: tuple[str, ...]) -> None:
+    text_fields = {
+        EvidenceField.IDENTITY.value,
+        EvidenceField.RACE_IDENTITY.value,
+        EvidenceField.VENUE.value,
+        EvidenceField.GRADE.value,
+    }
+    timestamp_fields = {
+        EvidenceField.SCHEDULED_JUMP.value,
+        EvidenceField.ACTUAL_JUMP.value,
+        EvidenceField.JUMP_TIME.value,
+    }
+    integer_fields = {
+        EvidenceField.RACE_NUMBER.value,
+        EvidenceField.FIELD_SIZE.value,
+    }
+    if field_name in text_fields:
+        _text(value, field_name)
+    elif field_name in timestamp_fields:
+        _timestamp(value, field_name)
+    elif field_name in integer_fields:
+        if type(value) is not int or value <= 0:
+            raise _result_free_schema_error()
+    elif field_name == EvidenceField.DISTANCE.value:
+        if (
+            type(value) not in (int, float)
+            or isinstance(value, bool)
+            or not math.isfinite(value)
+            or value <= 0
+        ):
+            raise _result_free_schema_error()
+    elif field_name == EvidenceField.RUNNER_SET.value:
+        if type(value) is not list or tuple(value) != runners:
+            raise _result_free_schema_error()
+    elif field_name == EvidenceField.RUNNER_IDENTITY.value:
+        if (
+            type(value) is not dict
+            or set(value) != set(runners)
+            or any(value[runner] != "authoritative" for runner in runners)
+        ):
+            raise _result_free_schema_error()
+    elif field_name == EvidenceField.RUNNER_FEATURES.value:
+        if type(value) is not dict or set(value) != set(runners):
+            raise _result_free_schema_error()
+        for runner_values in value.values():
+            if type(runner_values) is not dict or any(
+                type(name) is not str
+                or not name
+                or not (
+                    (
+                        type(item) in (int, float)
+                        and not isinstance(item, bool)
+                        and math.isfinite(item)
+                    )
+                    or item == {"missing": True}
+                    or item == {"inapplicable": True}
+                )
+                for name, item in runner_values.items()
+            ):
+                raise _result_free_schema_error()
+    elif field_name in {EvidenceField.BOX.value}:
+        if (
+            type(value) is not dict
+            or set(value) != set(runners)
+            or any(type(item) is not int or item <= 0 for item in value.values())
+        ):
+            raise _result_free_schema_error()
+    else:
+        raise _result_free_schema_error()
+
+
+def _validate_result_free_evidence(evidence: Mapping[str, Any]) -> None:
+    historical_keys = {
+        "schema_version",
+        "normalization_version",
+        "race_id",
+        "historical_capture",
+        "fields",
+    }
+    if set(evidence) == historical_keys:
+        capture = evidence.get("historical_capture")
+        if type(capture) is not dict or set(capture) != {
+            "source",
+            "source_record_id",
+            "observed_at",
+            "scheduled_jump_at",
+            "identity_authority",
+            "reconstructed",
+        }:
+            raise _result_free_schema_error()
+        _text(capture["source"], "historical source")
+        _text(capture["source_record_id"], "historical source record")
+        _timestamp(capture["observed_at"], "historical observation")
+        _timestamp(capture["scheduled_jump_at"], "historical scheduled jump")
+        if (
+            capture["identity_authority"] != "source-native"
+            or capture["reconstructed"] is not False
+        ):
+            raise _result_free_schema_error()
+        fields = evidence.get("fields")
+        if type(fields) is not dict or set(fields) != {
+            "runner_set",
+            "runner_identity",
+            "runner_features",
+        }:
+            raise _result_free_schema_error()
+        raw_runners = fields.get("runner_set")
+        if (
+            type(raw_runners) is not list
+            or not raw_runners
+            or any(type(value) is not str or not value for value in raw_runners)
+            or len(set(raw_runners)) != len(raw_runners)
+        ):
+            raise _result_free_schema_error()
+        runners = tuple(raw_runners)
+        for field_name, value in fields.items():
+            _positive_evidence_value(field_name, value, runners)
+        return
+    if set(evidence) != {
+        "schema_version",
+        "normalization_version",
+        "race_id",
+        "fields",
+        "field_provenance",
+        "freeze",
+    }:
+        raise _result_free_schema_error()
+    fields = evidence.get("fields")
+    if type(fields) is not dict:
+        raise _result_free_schema_error()
+    result_free_fields = {
+        field.value for field in EvidenceField if field is not EvidenceField.RESULT_ORDER
+    }
+    if not {"runner_set", "runner_identity", "runner_features"}.issubset(fields) or not set(
+        fields
+    ).issubset(result_free_fields | {"feature_availability"}):
+        raise _result_free_schema_error()
+    raw_runners = fields.get("runner_set")
+    if (
+        type(raw_runners) is not list
+        or not raw_runners
+        or any(type(value) is not str or not value for value in raw_runners)
+        or len(set(raw_runners)) != len(raw_runners)
+    ):
+        raise _result_free_schema_error()
+    runners = tuple(raw_runners)
+    for field_name, value in fields.items():
+        if field_name != "feature_availability":
+            _positive_evidence_value(field_name, value, runners)
+    freeze = evidence.get("freeze")
+    if type(freeze) is not dict or set(freeze) != {"at", "authority", "odds_checksum"}:
+        raise _result_free_schema_error()
+    _timestamp(freeze["at"], "feature freeze")
+    _text(freeze["authority"], "feature freeze authority")
+    if _artifact_checksum(freeze["odds_checksum"], "feature freeze checksum") is None:
+        raise _result_free_schema_error()
+    provenance = evidence.get("field_provenance")
+    if type(provenance) is not list:
+        raise _result_free_schema_error()
+    seen: set[tuple[str, str]] = set()
+    for binding in provenance:
+        try:
+            field_name, source, _checksum_value = _result_free_provenance_binding(
+                binding, fields
+            )
+        except ValueError as error:
+            raise _result_free_schema_error() from error
+        identity = (field_name, source)
+        if identity in seen:
+            raise _result_free_schema_error()
+        seen.add(identity)
+    bound_fields = {field_name for field_name, _source in seen}
+    if not required_ready_evidence_fields(fields).issubset(bound_fields):
+        raise FeatureQuarantine("READY_NOW evidence provenance is incomplete")
+
+
+def _validate_feature_contract_schema(schema: Mapping[str, Any]) -> None:
+    base_keys = {
+        "bundle_id",
+        "contract_version",
+        "evidence_schema_version",
+        "normalization_version",
+        "fields",
+    }
+    manifest_core_keys = base_keys | {
+        "availability_manifest_version",
+        "source_contracts",
+    }
+    manifest_candidate_keys = manifest_core_keys | {"candidate_features"}
+    if set(schema) not in (base_keys, manifest_core_keys, manifest_candidate_keys):
+        raise FeatureQuarantine("result-free Feature Contract schema is invalid")
+    if any(
+        type(schema.get(key)) is not str or not schema[key].strip()
+        for key in (
+            "bundle_id",
+            "contract_version",
+            "evidence_schema_version",
+            "normalization_version",
+        )
+    ):
+        raise FeatureQuarantine("result-free Feature Contract schema is invalid")
+    if "availability_manifest_version" in schema and (
+        schema["availability_manifest_version"] != FEATURE_AVAILABILITY_MANIFEST_VERSION
+    ):
+        raise FeatureQuarantine("result-free Feature Contract schema is invalid")
+    source_contracts = schema.get("source_contracts", {})
+    if type(source_contracts) is not dict or any(
+        type(source_name) is not str
+        or not source_name.strip()
+        or type(contract) is not dict
+        or set(contract) != {"schema_versions", "provider_publication_time_exposed"}
+        or type(contract["schema_versions"]) is not list
+        or not contract["schema_versions"]
+        or any(
+            type(version) is not str or not version.strip()
+            for version in contract["schema_versions"]
+        )
+        or len(set(contract["schema_versions"])) != len(contract["schema_versions"])
+        or type(contract["provider_publication_time_exposed"]) is not bool
+        for source_name, contract in source_contracts.items()
+    ):
+        raise FeatureQuarantine("result-free Feature Contract schema is invalid")
+    fields = schema.get("fields")
+    if type(fields) is not list or not fields:
+        raise FeatureQuarantine("result-free Feature Contract schema is invalid")
+    for item in fields:
+        if type(item) is not dict:
+            raise FeatureQuarantine("result-free Feature Contract schema is invalid")
+        required = {"name", "source_field", "semantics"}
+        allowed = required | {"family"}
+        if item.get("semantics") == "inapplicable":
+            allowed.add("encoded_value")
+        if not required.issubset(item) or not set(item).issubset(allowed):
+            raise FeatureQuarantine("result-free Feature Contract schema is invalid")
+        if item.get("name") not in RESULT_FREE_FEATURE_NAMES:
+            raise FeatureQuarantine("result-free Feature Contract schema is invalid")
+        if (
+            type(item.get("source_field")) is not str
+            or not item["source_field"].strip()
+            or item.get("semantics")
+            not in {"identity-critical", "forecast-required", "optional", "inapplicable"}
+            or (
+                "family" in item
+                and (type(item["family"]) is not str or not item["family"].strip())
+            )
+        ):
+            raise FeatureQuarantine("result-free Feature Contract schema is invalid")
+        if "encoded_value" in item and (
+            type(item["encoded_value"]) not in (int, float)
+            or isinstance(item["encoded_value"], bool)
+            or not math.isfinite(item["encoded_value"])
+        ):
+            raise FeatureQuarantine("result-free Feature Contract schema is invalid")
+    if len({item["name"] for item in fields}) != len(fields):
+        raise FeatureQuarantine("result-free Feature Contract schema is invalid")
+    candidates = schema.get("candidate_features", [])
+    if type(candidates) is not list or any(
+        type(item) is not dict
+        or set(item) != {"name", "family", "semantics"}
+        or item.get("name") not in RESULT_FREE_FEATURE_NAMES
+        or type(item.get("family")) is not str
+        or not item["family"].strip()
+        or item.get("semantics") not in {"optional", "inapplicable"}
+        for item in candidates
+    ):
+        raise FeatureQuarantine("result-free Feature Contract schema is invalid")
+    declared_names = [item["name"] for item in fields] + [item["name"] for item in candidates]
+    if len(set(declared_names)) != len(declared_names):
+        raise FeatureQuarantine("result-free Feature Contract schema is invalid")
+
+
+def _validate_missingness_policy(policy: Mapping[str, Any]) -> None:
+    if set(policy) != {"bundle_id", "feature_contract_version", "imputation"}:
+        raise FeatureQuarantine("result-free missingness policy schema is invalid")
+    imputation = policy.get("imputation")
+    if (
+        type(policy.get("bundle_id")) is not str
+        or not policy["bundle_id"].strip()
+        or type(policy.get("feature_contract_version")) is not str
+        or not policy["feature_contract_version"].strip()
+        or type(imputation) is not dict
+        or any(
+            type(name) is not str
+            or not name.strip()
+            or name not in RESULT_FREE_FEATURE_NAMES
+            or type(value) not in (int, float)
+            or isinstance(value, bool)
+            or not math.isfinite(value)
+            for name, value in imputation.items()
+        )
+    ):
+        raise FeatureQuarantine("result-free missingness policy schema is invalid")
 
 
 def _availability_manifest(
@@ -320,32 +829,32 @@ def _availability_manifest(
     provenance = evidence.get("field_provenance")
     if type(provenance) is not list:
         raise FeatureQuarantine("sealed evidence provenance must be a list")
-    raw_bindings: dict[str, ArtifactChecksum] = {}
+    raw_bindings: dict[tuple[str, str], ArtifactChecksum] = {}
     for binding in provenance:
         if (
             type(binding) is dict
-            and binding.get("field") == EvidenceField.RUNNER_FEATURES.value
-            and binding.get("value") == normalized_fields.get("runner_features")
+            and type(binding.get("field")) is str
             and type(binding.get("source")) is str
         ):
             checksum = _artifact_checksum(
-                binding.get("artifact_checksum"), "runner feature raw checksum"
+                binding.get("artifact_checksum"), "result-free raw checksum"
             )
             if checksum is None:
                 continue
-            prior = raw_bindings.setdefault(binding["source"], checksum)
+            binding_key = (binding["field"], binding["source"])
+            prior = raw_bindings.setdefault(binding_key, checksum)
             if prior != checksum:
-                raise FeatureQuarantine("runner feature raw source binding conflicts")
-    verified_raw_bindings: dict[str, ArtifactChecksum] = {}
+                raise FeatureQuarantine("result-free raw source binding conflicts")
+    verified_raw_bindings: dict[tuple[str, str], ArtifactChecksum] = {}
     if raw_evidence_reader is not None:
-        for source_name, checksum in raw_bindings.items():
+        for binding_key, checksum in raw_bindings.items():
             try:
                 raw_content = raw_evidence_reader(checksum)
             except (KeyError, OSError, ValueError):
                 continue
             if type(raw_content) is not bytes or _checksum(raw_content) != checksum:
                 raise FeatureQuarantine("raw evidence checksum mismatch")
-            verified_raw_bindings[source_name] = checksum
+            verified_raw_bindings[binding_key] = checksum
 
     active_names = {item["name"] for item in fields}
     policy_blockers = {
@@ -365,6 +874,8 @@ def _availability_manifest(
         FeatureBlockingReason.NORMALIZED_EVIDENCE_MISSING,
         FeatureBlockingReason.PROVIDER_TIME_AFTER_RECEIPT,
     }
+    feature_evidence_fields = {item["name"]: item["source_field"] for item in fields}
+    feature_evidence_fields.update(READY_FEATURE_EVIDENCE_FIELDS)
     for item in declared_features:
         name = item["name"]
         semantics = item["semantics"]
@@ -410,7 +921,9 @@ def _availability_manifest(
             metadata["source_native_race_id"], f"{name} source-native race identity"
         )
         raw_checksum = (
-            verified_raw_bindings.get(source_name) if source_name is not None else None
+            verified_raw_bindings.get((feature_evidence_fields.get(name), source_name))
+            if source_name is not None
+            else None
         )
         source_contract = source_contracts.get(source_name) if source_name is not None else None
         publication_exposed = (
@@ -442,7 +955,12 @@ def _availability_manifest(
                 objective.add(FeatureBlockingReason.PROVIDER_TIME_AFTER_RECEIPT)
         if completeness != "COMPLETE" or not whole_race:
             objective.add(FeatureBlockingReason.INCOMPLETE_COVERAGE)
-        normalized_checksum = evidence_checksum if name in active_names else None
+        normalized_checksum = (
+            evidence_checksum
+            if name in active_names
+            or READY_FEATURE_EVIDENCE_FIELDS.get(name) in normalized_fields
+            else None
+        )
         if normalized_checksum is None:
             objective.add(FeatureBlockingReason.NORMALIZED_EVIDENCE_MISSING)
         stated = set(reasons)
@@ -451,7 +969,7 @@ def _availability_manifest(
         ):
             raise FeatureQuarantine(f"{name} blockers disagree with sealed evidence")
         if status is FeatureAvailabilityStatus.READY_NOW:
-            valid_status = name in active_names and not stated
+            valid_status = normalized_checksum is not None and not stated
         elif status is FeatureAvailabilityStatus.DEVELOPMENT_ONLY:
             valid_status = bool(stated) and stated.issubset(development_blockers)
         elif status is FeatureAvailabilityStatus.FORWARD_CAPTURE:
@@ -504,6 +1022,7 @@ def _availability_manifest(
         "evidence_checksum": str(evidence_checksum),
         "entries": [entry.as_dict() for entry in entries],
     }
+    validate_feature_availability_manifest_document(document)
     return FeatureAvailabilityManifest(
         FEATURE_AVAILABILITY_MANIFEST_VERSION,
         race_id,
@@ -539,8 +1058,9 @@ def derive_features(
         raise FeatureQuarantine("derivation input is not valid JSON") from error
     if not all(type(value) is dict for value in (evidence, schema, policy)):
         raise FeatureQuarantine("derivation inputs must be JSON objects")
-    _reject_result_derived_input(evidence)
-    _reject_result_derived_input(schema)
+    _validate_result_free_evidence(evidence)
+    _validate_feature_contract_schema(schema)
+    _validate_missingness_policy(policy)
     if schema.get("contract_version") != SUPPORTED_FEATURE_CONTRACT:
         raise FeatureQuarantine("feature contract version mismatch")
     if evidence.get("schema_version") != schema.get("evidence_schema_version"):

@@ -144,7 +144,7 @@ def test_migration_empty_repeat_and_populated_pre_phase3(tmp_path):
     store.migrate()
     store.migrate()
     with store._connect() as db:
-        assert db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 30
+        assert db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 31
         assert (
             db.execute("SELECT kind FROM operations WHERE operation_id='legacy'").fetchone()[0]
             == "fixture"
@@ -281,6 +281,7 @@ def test_frozen_twenty_race_cohort_uses_real_terminal_barrier_and_finite_records
                     "racing_date": local_day.isoformat(),
                     "venue": candidate.venue,
                     "race_number": candidate.race_number,
+                    "distance_metres": 515,
                     "source_native_race_id": candidate.source_race_id,
                     "source_native_runner_ids": [
                         str(15900000 + index * 10 + 1),
@@ -434,6 +435,54 @@ def test_frozen_twenty_race_cohort_uses_real_terminal_barrier_and_finite_records
                         operation(operation_number), accepted[0], NOW
                     )
                 operation_number += 1
+
+    store.record_collection_quarantine(
+        operation(operation_number),
+        accepted[0],
+        stage="collection",
+        code="ALREADY_PREDICTED",
+        details="fixture terminal exclusivity",
+        at=NOW,
+    )
+    operation_number += 1
+    with pytest.raises(OperationsStoreError, match="already has a prediction terminal"):
+        store.record_forward_baseline_prediction_quarantine(
+            operation(operation_number),
+            accepted[0],
+            code="ALREADY_PREDICTED",
+            details="fixture terminal exclusivity",
+            at=NOW,
+        )
+    operation_number += 1
+
+    with pytest.raises(BarrierNotSatisfied, match="not terminal"):
+        authority.baseline_cohort_terminal_records(cohort_bytes)
+    with pytest.raises(BarrierNotSatisfied, match="terminal baseline quarantine"):
+        store.advance_race(
+            operation(operation_number),
+            collection_quarantined[0],
+            RaceState.RESULT_PENDING,
+            NOW,
+        )
+    operation_number += 1
+    with pytest.raises(OperationsStoreError, match="cannot predate collection rejection"):
+        authority.quarantine_baseline_prediction(
+            operation(operation_number),
+            collection_quarantined[0],
+            "SOURCE_AUTHORIZATION_REQUIRED",
+            "fixture AUTHORIZATION_BLOCKED",
+            NOW - timedelta(seconds=1),
+        )
+    operation_number += 1
+    for race in collection_quarantined:
+        authority.quarantine_baseline_prediction(
+            operation(operation_number),
+            race,
+            "SOURCE_AUTHORIZATION_REQUIRED",
+            "fixture AUTHORIZATION_BLOCKED",
+            NOW,
+        )
+        operation_number += 1
 
     terminal = authority.baseline_cohort_terminal_records(cohort_bytes)
     assert terminal["race_count"] == terminal["terminal_count"] == 20

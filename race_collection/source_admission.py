@@ -11,7 +11,12 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from .domain import ArtifactChecksum, require_aware
-from .features import FeatureQuarantine, derive_features
+from .features import (
+    FeatureQuarantine,
+    derive_features,
+    validate_result_free_provenance_bindings,
+    validate_result_free_source_metadata,
+)
 from .model_bundle import SUPPORTED_FEATURE_CONTRACT
 
 SOURCE_MANIFEST_SCHEMA = "historical-source-manifest-v1"
@@ -105,13 +110,6 @@ _OFFICIAL_RESPONSE_STAGE_FIELDS = {
     "response_received_at",
     "observed_at",
     "raw_response_checksum",
-}
-_RESULT_DERIVED_KEYS = {
-    "finish_order",
-    "place",
-    "result",
-    "result_order",
-    "winner",
 }
 
 
@@ -263,15 +261,11 @@ def _artifact(
     return content
 
 
-def _reject_result_derived(value: Any) -> None:
-    if type(value) is dict:
-        for key, nested in value.items():
-            if type(key) is str and key.casefold() in _RESULT_DERIVED_KEYS:
-                raise SourceAdmissionRejected("historical source contains a post-result feature")
-            _reject_result_derived(nested)
-    elif type(value) is list:
-        for nested in value:
-            _reject_result_derived(nested)
+def _result_free_source_metadata(value: Any, name: str) -> None:
+    try:
+        validate_result_free_source_metadata(value, name)
+    except ValueError as error:
+        raise SourceAdmissionRejected(str(error)) from error
 
 
 def _require_unique_normalized(values: list[Any], name: str) -> tuple[str, ...]:
@@ -341,7 +335,6 @@ def _validate_source(
         or any(identities[runner] != "authoritative" for runner in source_runners)
     ):
         raise SourceAdmissionRejected("historical source runner identities are ambiguous")
-    _reject_result_derived(fields)
     expected_features = {field["name"] for field in schema["fields"]}
     if any(
         type(features[runner]) is not dict or set(features[runner]) != expected_features
@@ -468,8 +461,8 @@ def _validate_forward_source(
         or capture.get("reconstructed") is not False
     ):
         raise SourceAdmissionRejected("forward source metadata or identity is ambiguous")
-    _reject_result_derived(capture["meeting_metadata"])
-    _reject_result_derived(capture["race_metadata"])
+    _result_free_source_metadata(capture["meeting_metadata"], "meeting metadata")
+    _result_free_source_metadata(capture["race_metadata"], "race metadata")
 
     runners = capture.get("runners")
     if type(runners) is not list or len(runners) < 2:
@@ -510,40 +503,15 @@ def _validate_forward_source(
         race["feature_observed_at"], "feature observed_at"
     ):
         raise SourceAdmissionRejected("forward feature-freeze provenance is incomplete")
-    required_bindings = {"runner_set", "runner_identity", "runner_features"}
-    bound_fields = set()
-    for item in provenance:
-        if type(item) is not dict or set(item) != {
-            "field",
-            "authority",
-            "critical",
-            "value",
-            "source",
-            "artifact_checksum",
-        }:
-            raise SourceAdmissionRejected("forward feature source binding is invalid")
-        try:
-            ArtifactChecksum(item["artifact_checksum"])
-        except ValueError as error:
-            raise SourceAdmissionRejected(
-                "forward feature source binding checksum is invalid"
-            ) from error
-        _known_text(item.get("field"), "forward feature source binding field")
-        _known_text(item.get("authority"), "forward feature source binding authority")
-        _known_text(item.get("source"), "forward feature source binding source")
-        if type(item.get("critical")) is not bool:
-            raise SourceAdmissionRejected("forward feature source binding criticality is invalid")
-        if (
-            item.get("field") in required_bindings
-            and item.get("artifact_checksum") == race["raw_source_checksum"]
-            and item.get("source") == capture["source_name"]
-            and item.get("value") == fields.get(item["field"])
-        ):
-            bound_fields.add(item["field"])
-    if bound_fields != required_bindings:
-        raise SourceAdmissionRejected(
-            "forward features are not bound to preserved raw source bytes"
+    try:
+        validate_result_free_provenance_bindings(
+            fields,
+            provenance,
+            raw_checksum=ArtifactChecksum(race["raw_source_checksum"]),
+            source_name=capture["source_name"],
         )
+    except (KeyError, ValueError) as error:
+        raise SourceAdmissionRejected(str(error)) from error
     source_runners = fields.get("runner_set")
     identities = fields.get("runner_identity")
     features = fields.get("runner_features")
@@ -562,7 +530,6 @@ def _validate_forward_source(
         for runner in runner_ids
     ):
         raise SourceAdmissionRejected("forward sealed feature envelope disagrees")
-    _reject_result_derived(source)
     return source_url, source_native_race_id, runner_names
 
 
@@ -781,8 +748,8 @@ def _admit_official_first(
                 raise SourceAdmissionRejected("official-first sealed source binding disagrees")
             _canonical_source_url(source["canonical_source_url"], "forward source URL")
             _known_text(source["source_native_race_id"], "source-native race identity")
-            _reject_result_derived(source["meeting_metadata"])
-            _reject_result_derived(source["race_metadata"])
+            _result_free_source_metadata(source["meeting_metadata"], "meeting metadata")
+            _result_free_source_metadata(source["race_metadata"], "race metadata")
             source_at = _aware_timestamp(source["source_observed_at"], "source observed")
             feature_at = _aware_timestamp(source["feature_frozen_at"], "feature frozen")
             jump_at = _aware_timestamp(source["scheduled_jump_at"], "scheduled jump")

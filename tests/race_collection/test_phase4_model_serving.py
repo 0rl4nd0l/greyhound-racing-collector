@@ -56,10 +56,12 @@ from race_collection.model_bundle import (
 from race_collection.operations import ConflictingOperation, SQLiteOperationsStore
 from race_collection.scheduled_forward_corpus import (
     CANDIDATE_FEATURES,
+    EXCLUDED_BASELINE_FEATURES,
     FEATURE_BUNDLE_ID,
     FEATURE_SCHEMA_BYTES,
     MISSINGNESS_POLICY_BYTES,
     PREJUMP_SOURCE,
+    READY_CONTEXT_FEATURES,
 )
 
 NOW = datetime(2026, 7, 23, 1, 2, 3, tzinfo=timezone.utc)
@@ -840,6 +842,46 @@ def test_feature_derivation_rejects_result_information_anywhere(canonical_setup,
         )
 
 
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda evidence: evidence["fields"].__setitem__("official_result", {"dog-a": "winner"}),
+        lambda evidence: evidence["field_provenance"].append(
+            {
+                "field": "runner_set",
+                "authority": "fixture",
+                "critical": True,
+                "value": evidence["fields"]["runner_set"],
+                "source": "fixture",
+                "artifact_checksum": "sha256:" + "a" * 64,
+                "unknown_nested": {"official_result": {"dog-a": "winner"}},
+            }
+        ),
+        lambda evidence: evidence["freeze"].__setitem__(
+            "unknown_nested", {"official_result": {"dog-a": "winner"}}
+        ),
+        lambda evidence: evidence["fields"]["runner_identity"].__setitem__(
+            "dog-a", {"authority": "authoritative", "official_result": "winner"}
+        ),
+    ],
+)
+def test_feature_derivation_rejects_every_unknown_nested_evidence_field(canonical_setup, mutation):
+    _, _, bundle, _, _, values, _ = canonical_setup
+    evidence = json.loads(evidence_bytes())
+    mutation(evidence)
+    content = canonical(evidence)
+
+    with pytest.raises(FeatureQuarantine, match="result-free evidence schema"):
+        derive_features(
+            content,
+            expected_evidence_checksum=LocalArtifactStore.checksum(content),
+            schema_bytes=values["feature_schema"],
+            expected_schema_checksum=bundle.component("feature_schema").checksum,
+            missingness_policy_bytes=values["missingness_policy"],
+            expected_missingness_checksum=bundle.component("missingness_policy").checksum,
+        )
+
+
 def test_feature_contract_cannot_admit_post_jump_or_outcome_derived_input(canonical_setup):
     _, _, bundle, _, schema, values, _ = canonical_setup
     changed = json.loads(json.dumps(schema))
@@ -850,7 +892,7 @@ def test_feature_contract_cannot_admit_post_jump_or_outcome_derived_input(canoni
         runner["post_jump_price"] = runner.pop("speed")
     content = canonical(evidence)
 
-    with pytest.raises(FeatureQuarantine, match="result or post-jump"):
+    with pytest.raises(FeatureQuarantine, match="result-free Feature Contract schema"):
         derive_features(
             content,
             expected_evidence_checksum=LocalArtifactStore.checksum(content),
@@ -858,6 +900,44 @@ def test_feature_contract_cannot_admit_post_jump_or_outcome_derived_input(canoni
             expected_schema_checksum=LocalArtifactStore.checksum(schema_bytes),
             missingness_policy_bytes=values["missingness_policy"],
             expected_missingness_checksum=bundle.component("missingness_policy").checksum,
+        )
+
+
+@pytest.mark.parametrize(
+    ("target", "value"),
+    [
+        ("bundle_id", {"official_result": {"winner": "dog-a"}}),
+        ("field_family", {"official_result": "winner"}),
+        ("missingness_bundle", {"official_result": {"winner": "dog-a"}}),
+        ("imputation", {"official_result": "winner"}),
+    ],
+)
+def test_feature_contract_and_missingness_reject_unknown_nested_values(
+    canonical_setup, target, value
+):
+    _, _, bundle, _, schema, values, _ = canonical_setup
+    changed = json.loads(json.dumps(schema))
+    policy = json.loads(values["missingness_policy"])
+    if target == "bundle_id":
+        changed["bundle_id"] = value
+    elif target == "field_family":
+        changed["fields"][0]["family"] = value
+    elif target == "missingness_bundle":
+        policy["bundle_id"] = value
+    else:
+        policy["imputation"]["days_since_run"] = value
+    schema_bytes = canonical(changed)
+    policy_bytes = canonical(policy)
+    evidence = evidence_bytes()
+
+    with pytest.raises(FeatureQuarantine, match="result-free"):
+        derive_features(
+            evidence,
+            expected_evidence_checksum=LocalArtifactStore.checksum(evidence),
+            schema_bytes=schema_bytes,
+            expected_schema_checksum=LocalArtifactStore.checksum(schema_bytes),
+            missingness_policy_bytes=policy_bytes,
+            expected_missingness_checksum=LocalArtifactStore.checksum(policy_bytes),
         )
 
 
@@ -1057,7 +1137,7 @@ def test_manifest_aware_race_commits_through_deferred_prediction_lifecycle(canon
     race_id = store.record_expected_race(
         operation(103),
         racing_day,
-        ProgrammeRaceCandidate("official", "native-race-1", "Ballarat", 1, NOW),
+        ProgrammeRaceCandidate("official", "159001", "Ballarat", 1, NOW),
         ArtifactChecksum("sha256:" + "a" * 64),
         NOW,
     )
@@ -1074,18 +1154,24 @@ def test_manifest_aware_race_commits_through_deferred_prediction_lifecycle(canon
     )
     bundle_authority.register_assignment(operation(104), assignment, NOW)
     bundle_authority.bind_day_assignment(operation(105), str(day_id), assignment, NOW)
-    runner_ids = ["dog-a", "dog-b"]
+    runner_ids = ["15900101", "15900102"]
     fields = {
         "runner_set": runner_ids,
         "runner_identity": dict.fromkeys(runner_ids, "authoritative"),
-        "runner_features": {"dog-a": {"box_number": 1}, "dog-b": {"box_number": 2}},
+        "runner_features": {
+            "15900101": {"box_number": 1},
+            "15900102": {"box_number": 2},
+        },
+        "race_identity": "159001",
+        "venue": "Ballarat",
+        "distance": 450,
     }
     fields["feature_availability"] = {
         "box_number": {
             "status": "READY_NOW",
             "source_name": PREJUMP_SOURCE,
             "source_schema_version": "collector-canonical-runner-alignment-v1",
-            "source_native_race_id": "native-race-1",
+            "source_native_race_id": "159001",
             "source_native_runner_ids": runner_ids,
             "provider_published_at": None,
             "collector_received_at": (NOW - timedelta(minutes=1)).isoformat(),
@@ -1096,7 +1182,27 @@ def test_manifest_aware_race_commits_through_deferred_prediction_lifecycle(canon
         },
         **{
             name: {
-                "status": "FORWARD_CAPTURE",
+                "status": "READY_NOW",
+                "source_name": PREJUMP_SOURCE,
+                "source_schema_version": "collector-canonical-runner-alignment-v1",
+                "source_native_race_id": "159001",
+                "source_native_runner_ids": runner_ids,
+                "provider_published_at": None,
+                "collector_received_at": (NOW - timedelta(minutes=1)).isoformat(),
+                "completeness": "COMPLETE",
+                "whole_race_coverage": True,
+                "derivation_version": f"scheduled-forward-{name}-v1",
+                "blocking_reasons": [],
+            }
+            for name, _family, _field in READY_CONTEXT_FEATURES
+        },
+        **{
+            name: {
+                "status": (
+                    "EXCLUDED"
+                    if (name, _family) in EXCLUDED_BASELINE_FEATURES
+                    else "FORWARD_CAPTURE"
+                ),
                 "source_name": None,
                 "source_schema_version": None,
                 "source_native_race_id": None,
@@ -1106,24 +1212,28 @@ def test_manifest_aware_race_commits_through_deferred_prediction_lifecycle(canon
                 "completeness": "UNKNOWN",
                 "whole_race_coverage": False,
                 "derivation_version": f"{name}-unavailable-v1",
-                    "blocking_reasons": [
-                        "SOURCE_UNAVAILABLE",
-                        "INCOMPLETE_COVERAGE",
-                        "NORMALIZED_EVIDENCE_MISSING",
-                        *(
+                "blocking_reasons": [
+                    "SOURCE_UNAVAILABLE",
+                    "INCOMPLETE_COVERAGE",
+                    "NORMALIZED_EVIDENCE_MISSING",
+                    *(
+                        ["NOT_REQUESTED_BY_BASELINE"]
+                        if (name, _family) in EXCLUDED_BASELINE_FEATURES
+                        else (
                             ["SOURCE_AUTHORIZATION_REQUIRED"]
                             if name != "sportsbet_win_market"
                             else []
-                        ),
-                    ],
+                        )
+                    ),
+                ],
             }
             for name, _family in CANDIDATE_FEATURES
+            if name not in {item[0] for item in READY_CONTEXT_FEATURES}
         },
     }
+    raw_bytes = b"manifest-aware-lifecycle-card"
     raw_checksum = str(
-        artifacts.put(
-            b"manifest-aware-lifecycle-card", media_type="application/octet-stream"
-        ).checksum
+        artifacts.put(raw_bytes, media_type="application/octet-stream").checksum
     )
     evidence = {
         "schema_version": "race-evidence-v1",
@@ -1134,12 +1244,19 @@ def test_manifest_aware_race_commits_through_deferred_prediction_lifecycle(canon
             {
                 "field": field,
                 "authority": "canonical-thedogs-final-runner-set",
-                "critical": True,
+                "critical": EvidenceField(field).critical,
                 "value": fields[field],
                 "source": PREJUMP_SOURCE,
                 "artifact_checksum": raw_checksum,
             }
-            for field in ("runner_set", "runner_identity", "runner_features")
+            for field in (
+                "runner_set",
+                "runner_identity",
+                "runner_features",
+                "race_identity",
+                "venue",
+                "distance",
+            )
         ],
         "freeze": {
             "at": NOW.isoformat(),
@@ -1147,6 +1264,26 @@ def test_manifest_aware_race_commits_through_deferred_prediction_lifecycle(canon
             "odds_checksum": "sha256:" + "c" * 64,
         },
     }
+    incomplete_provenance = json.loads(json.dumps(evidence))
+    incomplete_provenance["field_provenance"] = [
+        binding
+        for binding in incomplete_provenance["field_provenance"]
+        if binding["field"] != "distance"
+    ]
+    incomplete_bytes = canonical(incomplete_provenance)
+    with pytest.raises(FeatureQuarantine, match="provenance"):
+        derive_features(
+            incomplete_bytes,
+            expected_evidence_checksum=LocalArtifactStore.checksum(incomplete_bytes),
+            schema_bytes=FEATURE_SCHEMA_BYTES,
+            expected_schema_checksum=LocalArtifactStore.checksum(FEATURE_SCHEMA_BYTES),
+            missingness_policy_bytes=MISSINGNESS_POLICY_BYTES,
+            expected_missingness_checksum=LocalArtifactStore.checksum(
+                MISSINGNESS_POLICY_BYTES
+            ),
+            expected_feature_cutoff_at=NOW,
+            raw_evidence_reader=lambda _checksum: raw_bytes,
+        )
     evidence_artifact = artifacts.put(canonical(evidence), media_type="application/json")
     store.advance_race(operation(106), race_id, RaceState.CARD_COLLECTED, NOW)
     store.advance_race(operation(107), race_id, RaceState.COLLECTING_ODDS, NOW)
@@ -1190,6 +1327,73 @@ def test_manifest_aware_race_commits_through_deferred_prediction_lifecycle(canon
     assert outcome.status == "committed", outcome
     document = json.loads(artifacts.read(outcome.artifact_checksum))
     assert document["feature_availability_manifest"]["race_id"] == str(race_id)
+    document["predictions"][0]["unknown_nested"] = {
+        "official_result": {"winner": runner_ids[0]}
+    }
+    attacker_resealed = artifacts.put(canonical(document), media_type="application/json")
+    request = PredictionRequest(
+        race_id,
+        day_id,
+        document["deferred_identity"]["seal_id"],
+        evidence_artifact.checksum,
+        legacy,
+        release,
+        "policy-v1",
+    )
+    with pytest.raises(ForecastUnavailable, match="prediction artifact schema"):
+        predictor.authenticate_request(attacker_resealed.checksum, NOW, request)
+    document = json.loads(artifacts.read(outcome.artifact_checksum))
+    document["feature_availability_manifest"]["entries"][0]["blocking_reasons"] = [
+        {"official_result": {"winner": runner_ids[0]}}
+    ]
+    document["feature_availability_manifest_checksum"] = str(
+        LocalArtifactStore.checksum(canonical(document["feature_availability_manifest"]))
+    )
+    attacker_resealed = artifacts.put(canonical(document), media_type="application/json")
+    with pytest.raises(ForecastUnavailable, match="availability manifest"):
+        predictor.authenticate_request(attacker_resealed.checksum, NOW, request)
+    document = json.loads(artifacts.read(outcome.artifact_checksum))
+    document["feature_availability_manifest"]["entries"] = []
+    document["feature_availability_manifest_checksum"] = str(
+        LocalArtifactStore.checksum(canonical(document["feature_availability_manifest"]))
+    )
+    attacker_resealed = artifacts.put(canonical(document), media_type="application/json")
+    with pytest.raises(ForecastUnavailable, match="availability manifest"):
+        predictor.authenticate_request(attacker_resealed.checksum, NOW, request)
+    for field in ("forecast_contract_version", "feature_contract_version"):
+        document = json.loads(artifacts.read(outcome.artifact_checksum))
+        if field == "forecast_contract_version":
+            document[field] = {"official_result": {"winner": runner_ids[0]}}
+        else:
+            document["feature_contract"]["version"] = {
+                "official_result": {"winner": runner_ids[0]}
+            }
+        attacker_resealed = artifacts.put(canonical(document), media_type="application/json")
+        with pytest.raises(ForecastUnavailable, match="contract"):
+            predictor.authenticate_request(attacker_resealed.checksum, NOW, request)
+    document = json.loads(artifacts.read(outcome.artifact_checksum))
+    document["provenance"]["artifact_checksum"] = "sha256:" + "9" * 64
+    attacker_resealed = artifacts.put(canonical(document), media_type="application/json")
+    with pytest.raises(ForecastUnavailable, match="provenance"):
+        predictor.authenticate_request(attacker_resealed.checksum, NOW, request)
+    document = json.loads(artifacts.read(outcome.artifact_checksum))
+    document["feature_availability_manifest"]["entries"][0]["semantics"] = "optional"
+    document["feature_availability_manifest_checksum"] = str(
+        LocalArtifactStore.checksum(canonical(document["feature_availability_manifest"]))
+    )
+    attacker_resealed = artifacts.put(canonical(document), media_type="application/json")
+    with pytest.raises(ForecastUnavailable, match="manifest membership"):
+        predictor.authenticate_request(attacker_resealed.checksum, NOW, request)
+    document = json.loads(artifacts.read(outcome.artifact_checksum))
+    document["feature_availability_manifest"]["entries"][0]["raw_checksum"] = (
+        "sha256:" + "8" * 64
+    )
+    document["feature_availability_manifest_checksum"] = str(
+        LocalArtifactStore.checksum(canonical(document["feature_availability_manifest"]))
+    )
+    attacker_resealed = artifacts.put(canonical(document), media_type="application/json")
+    with pytest.raises(ForecastUnavailable, match="sealed evidence"):
+        predictor.authenticate_request(attacker_resealed.checksum, NOW, request)
     with store._connect() as db:
         assert (
             db.execute(

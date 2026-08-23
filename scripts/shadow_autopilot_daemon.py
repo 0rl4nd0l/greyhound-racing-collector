@@ -13470,8 +13470,19 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "--forward-corpus-root is required with "
             "--enable-forward-official-result-observer"
         )
-    if bool(getattr(args, "forward_corpus_root", None)) != bool(
-        getattr(args, "forward_baseline_config", None)
+    corpus_root = getattr(args, "forward_corpus_root", None)
+    baseline_config = getattr(args, "forward_baseline_config", None)
+    baseline_capture_requested = args.command in {
+        "run-odds-capture-once",
+        "write-service-files",
+        "write-odds-capture-service-files",
+    } or bool(getattr(args, "enable_autonomous_odds_capture", False))
+    if baseline_config is not None and corpus_root is None:
+        parser.error("--forward-baseline-config requires --forward-corpus-root")
+    if (
+        corpus_root is not None
+        and baseline_capture_requested
+        and baseline_config is None
     ):
         parser.error(
             "--forward-corpus-root and --forward-baseline-config must be supplied together"

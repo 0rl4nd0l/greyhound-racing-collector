@@ -248,7 +248,7 @@ def test_result_leakage_and_post_result_feature_timestamp_fail_closed():
         "source_checksum",
         lambda value: value["fields"]["runner_features"]["dog-0-a"].__setitem__("result_order", 1),
     )
-    with pytest.raises(SourceAdmissionRejected, match="post-result feature"):
+    with pytest.raises(SourceAdmissionRejected, match="feature envelope disagrees"):
         admit_historical_source(canonical(envelope), artifacts=artifacts)
 
     late, late_artifacts = source_package(race_ids=("race-a",))

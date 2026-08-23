@@ -835,6 +835,13 @@ def _normalize_current_index_rows(
             "race_url": race_url,
             "venue": venue,
         }
+        if "distance_metres" in raw:
+            distance_metres = raw.get("distance_metres")
+            if type(distance_metres) is not int or distance_metres <= 0:
+                raise CaptureOneRejected(
+                    "CURRENT_INDEX_INVALID", reason="distance_metres_invalid"
+                )
+            row["distance_metres"] = distance_metres
         if "source_native_race_id" in raw:
             native_race_id = raw.get("source_native_race_id")
             if (

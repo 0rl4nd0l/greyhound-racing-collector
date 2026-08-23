@@ -76,6 +76,7 @@ class _ForwardCohortCandidate:
     racing_date: str
     venue: str
     race_number: int
+    distance_metres: int
     jump: datetime
     source_native_race_id: str
     source_native_runner_ids: tuple[str, ...]
@@ -282,6 +283,7 @@ class ForwardBaselineCaptureService:
                 racing_date = race["date"]
                 venue = race["venue"]
                 race_number = race["race_number"]
+                distance_metres = race["distance_metres"]
                 native_race_id = race["source_native_race_id"]
                 jump = datetime.fromisoformat(race["jump_datetime"])
                 parsed_date = date.fromisoformat(racing_date)
@@ -293,6 +295,8 @@ class ForwardBaselineCaptureService:
                     and bool(venue.strip())
                     and type(race_number) is int
                     and race_number > 0
+                    and type(distance_metres) is int
+                    and distance_metres > 0
                     and jump.tzinfo is not None
                     and jump.utcoffset() is not None
                     and jump.date() == parsed_date
@@ -326,6 +330,7 @@ class ForwardBaselineCaptureService:
                     racing_date,
                     venue,
                     race_number,
+                    distance_metres,
                     jump,
                     native_race_id,
                     native_ids,
@@ -357,6 +362,7 @@ class ForwardBaselineCaptureService:
                         member["racing_date"],
                         member["venue"],
                         member["race_number"],
+                        member["distance_metres"],
                         member["source_native_race_id"],
                         tuple(member["source_native_runner_ids"]),
                         datetime.fromisoformat(member["feature_cutoff_at"]),
@@ -369,6 +375,7 @@ class ForwardBaselineCaptureService:
                         race.racing_date,
                         race.venue,
                         race.race_number,
+                        race.distance_metres,
                         race.source_native_race_id,
                         race.source_native_runner_ids,
                         race.jump - self.configuration.feature_cutoff,
@@ -437,6 +444,7 @@ class ForwardBaselineCaptureService:
                     "racing_date": race.racing_date,
                     "venue": race.venue,
                     "race_number": race.race_number,
+                    "distance_metres": race.distance_metres,
                     "source_native_race_id": native_race_id,
                     "source_native_runner_ids": list(race.source_native_runner_ids),
                     "feature_cutoff_at": cutoff.isoformat(),

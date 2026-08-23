@@ -240,6 +240,7 @@ def baseline_cohort():
                 "racing_date": day,
                 "venue": venue,
                 "race_number": index,
+                "distance_metres": 515,
                 "source_native_race_id": str(159000 + index),
                 "source_native_runner_ids": [
                     str(15900000 + index * 10 + offset) for offset in (1, 2)
@@ -507,6 +508,13 @@ def test_prepjump_stage_rejects_late_capture_and_result_leakage(tmp_path):
     value["feature_frozen_at"] = value["scheduled_jump_at"]
     with pytest.raises(ForwardCorpusRejected, match="pre-jump"):
         ForwardSealedCorpus(tmp_path, clock=lambda: _dt("09:45")).capture_prejump(**value)
+    value = fixture()
+    value["meeting_metadata"] = {
+        "venue": "Sandown",
+        "unknown_nested": {"official_result": {"winner": "dog-a"}},
+    }
+    with pytest.raises(ForwardCorpusRejected, match="result-free positive schema"):
+        ForwardSealedCorpus(tmp_path, clock=lambda: _dt("09:45")).capture_prejump(**value)
 
 
 def test_first_receipt_must_be_published_before_jump_but_exact_retry_remains_idempotent(tmp_path):
@@ -525,7 +533,7 @@ def test_first_receipt_must_be_published_before_jump_but_exact_retry_remains_ide
         if path.is_file()
     }
     conflicting = fixture()
-    conflicting["meeting_metadata"] = {"meeting_code": "changed"}
+    conflicting["meeting_metadata"] = {"venue": "changed"}
     with pytest.raises(ForwardCorpusRejected, match="append-only receipt conflict"):
         corpus.capture_prejump(**conflicting)
     assert {

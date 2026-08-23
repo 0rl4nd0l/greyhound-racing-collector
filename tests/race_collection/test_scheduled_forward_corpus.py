@@ -211,6 +211,7 @@ def _fixture(
                 "date": "2026-08-03",
                 "venue": "WARRNAMBOOL",
                 "race_number": 1,
+                "distance_metres": 525,
                 "jump_datetime": JUMP.isoformat(),
                 "race_url": RACE_URL,
                 "source_native_race_id": "159001",
@@ -325,7 +326,7 @@ def test_fixture_scheduled_capture_admits_once_and_exact_replay_is_byte_stable(
     receipt = json.loads(receipts[0].read_bytes())
     assert receipt["runner_ids"] == ["15900101", "15900102"]
     assert receipt["feature_schema_checksum"] == (
-        "sha256:215d4b3e5b7a9f10a7181469b1d9c0ba8b46b5c392deda8907ae2a52117ca14f"
+        "sha256:7ef2cd29c5e15cf9d50e5e5013fa11753b7c69c06593f3156588ccfaa59ea218"
     )
     assert receipt["missingness_policy_checksum"] == (
         "sha256:ae39177c5d1ed77eb7b40c09acb2d0ac92b2a258aa3beae1aae584dd8c08687f"
@@ -338,6 +339,29 @@ def test_fixture_scheduled_capture_admits_once_and_exact_replay_is_byte_stable(
     assert source_capture["canonical_source_url"] == RACE_URL.removesuffix(
         "?trial=false"
     )
+    corpus = ForwardSealedCorpus(fixture.corpus_root)
+    manifest = json.loads(
+        corpus._read_artifact(
+            receipt["feature_availability_manifest_checksum"],
+            "feature availability manifest",
+        )
+    )
+    entries = {entry["feature"]: entry for entry in manifest["entries"]}
+    for feature in (
+        "canonical_race_identity",
+        "canonical_runner_identity",
+        "venue",
+        "distance",
+    ):
+        assert entries[feature] == {
+            **entries[feature],
+            "status": "READY_NOW",
+            "source_native_race_id": "159001",
+            "source_native_runner_ids": ["15900101", "15900102"],
+            "completeness": "COMPLETE",
+            "whole_race_coverage": True,
+            "blocking_reasons": [],
+        }
 
 
 def test_scheduled_capture_binds_numeric_native_race_to_frozen_internal_race_id(
@@ -351,6 +375,7 @@ def test_scheduled_capture_binds_numeric_native_race_to_frozen_internal_race_id(
             "racing_date": "2026-08-03",
             "venue": "WARRNAMBOOL",
             "race_number": 1,
+            "distance_metres": 525,
             "source_native_race_id": "159001",
             "source_native_runner_ids": ["15900101", "15900102"],
             "feature_cutoff_at": (NOW + timedelta(minutes=10)).isoformat(),
@@ -367,6 +392,7 @@ def test_scheduled_capture_binds_numeric_native_race_to_frozen_internal_race_id(
                 "racing_date": day,
                 "venue": venues[index % len(venues)],
                 "race_number": index,
+                "distance_metres": 525,
                 "source_native_race_id": str(159000 + index),
                 "source_native_runner_ids": [
                     str(15900000 + index * 10 + 1),
@@ -415,6 +441,7 @@ def test_scheduled_capture_rejects_race_outside_exact_authoritative_cohort(tmp_p
                 "racing_date": day,
                 "venue": venues[index % len(venues)],
                 "race_number": index,
+                "distance_metres": 525,
                 "source_native_race_id": str(259000 + index),
                 "source_native_runner_ids": [
                     str(25900000 + index * 10 + offset) for offset in (1, 2)

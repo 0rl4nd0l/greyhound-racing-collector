@@ -185,6 +185,7 @@ class ForecastingAuthority:
             "racing_date",
             "venue",
             "race_number",
+            "distance_metres",
             "source_native_race_id",
             "source_native_runner_ids",
             "feature_cutoff_at",
@@ -212,7 +213,9 @@ class ForecastingAuthority:
             native_race_id = member.get("source_native_race_id")
             native_runner_ids = member.get("source_native_runner_ids")
             if (
-                type(native_race_id) is not str
+                type(member.get("distance_metres")) is not int
+                or member["distance_metres"] <= 0
+                or type(native_race_id) is not str
                 or not native_race_id.isascii()
                 or not native_race_id.isdecimal()
                 or type(native_runner_ids) is not list
@@ -296,9 +299,20 @@ class ForecastingAuthority:
                     "code": rejection["code"],
                     "details": rejection["details"],
                     "at": rejection["created_at"],
+                    "operation_kind": rejection["operation_kind"],
                 }
                 for rejection in projection["collection_rejections"]
             ]
+            terminal_count = sum(
+                value is not None
+                for value in (
+                    row["prediction_id"],
+                    row["quarantine_prediction_id"],
+                    row["baseline_prediction_quarantine_id"],
+                )
+            )
+            if terminal_count > 1:
+                raise OperationsStoreError("baseline race has conflicting prediction terminals")
             if row["prediction_id"] is not None:
                 classification = BaselineTerminalClassification.ACCEPTED
                 code = None
@@ -327,10 +341,18 @@ class ForecastingAuthority:
                         "code": code,
                         "details": details,
                         "at": terminal_at,
+                        "operation_kind": "quarantine_deferred_prediction",
                     }
                 )
-            elif rejections:
-                rejection = rejections[-1]
+            elif row["baseline_prediction_quarantine_id"] is not None:
+                rejection = {
+                    "stage": "prediction",
+                    "code": row["baseline_prediction_code"],
+                    "details": row["baseline_prediction_details"],
+                    "at": row["baseline_prediction_quarantined_at"],
+                    "operation_kind": "quarantine_forward_baseline_prediction",
+                }
+                rejections.append(rejection)
                 classification = (
                     BaselineTerminalClassification.AUTHORIZATION_BLOCKED
                     if rejection["code"] in authorization_codes
@@ -952,6 +974,53 @@ class ForecastingAuthority:
                 RaceState.PREDICTION_PENDING,
             )
         return True
+
+    def quarantine_baseline_prediction(
+        self,
+        operation_id: OperationId,
+        race_id: RaceId,
+        code: str,
+        details: str,
+        at: datetime,
+    ) -> bool:
+        """Turn a frozen cohort collection failure into an explicit prediction quarantine."""
+        require_aware(at, "at")
+        _text(code, "code")
+        _text(details, "details")
+        cohort = self.store.forward_baseline_cohort_for_race(race_id)
+        if cohort is None:
+            raise OperationsStoreError("race is not in a frozen forward baseline cohort")
+        snapshot = self.store.forward_baseline_cohort_lifecycle(cohort["cohort_id"])
+        projection = None if snapshot is None else snapshot["races"].get(str(race_id))
+        if projection is None or projection["lifecycle"] is None:
+            raise OperationsStoreError("frozen cohort race is absent from lifecycle state")
+        lifecycle = projection["lifecycle"]
+        if (
+            lifecycle["prediction_id"] is not None
+            or lifecycle["quarantine_prediction_id"] is not None
+        ):
+            raise OperationsStoreError("baseline prediction already has a terminal record")
+        collection_rejections = [
+            rejection
+            for rejection in projection["collection_rejections"]
+            if rejection["stage"] != "prediction"
+        ]
+        if not collection_rejections:
+            raise OperationsStoreError(
+                "baseline prediction quarantine requires a collection rejection"
+            )
+        rejection = collection_rejections[-1]
+        if rejection["code"] != code or rejection["details"] != details:
+            raise OperationsStoreError(
+                "baseline prediction quarantine must preserve the collection rejection"
+            )
+        return self.store.record_forward_baseline_prediction_quarantine(
+            operation_id,
+            race_id,
+            code=code,
+            details=details,
+            at=at,
+        )
 
     def open_results(self, operation_id: OperationId, race_id: RaceId, at: datetime) -> bool:
         cohort = self.store.forward_baseline_cohort_for_race(race_id)

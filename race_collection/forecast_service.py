@@ -13,7 +13,10 @@ import numpy as np
 
 from .artifacts import ArtifactStore
 from .domain import ArtifactChecksum, OperationId, require_aware
-from .features import RESULT_DERIVED_INPUT_NAMES, derive_features
+from .features import (
+    derive_features,
+    validate_feature_availability_manifest_document,
+)
 from .forecasting import PredictionRequest
 from .model_bundle import (
     SUPPORTED_FORECAST_CONTRACT,
@@ -22,11 +25,110 @@ from .model_bundle import (
     PredictionProvenance,
 )
 from .operations import iso_timestamp
-from .ordered_finish import ORDERED_FINISH_CONTRACT, forecast_ordered_finish
+from .ordered_finish import (
+    ORDERED_FINISH_CONTRACT,
+    OrderedFinishError,
+    forecast_ordered_finish,
+    ordered_finish_from_probabilities,
+)
 
 
 class ForecastUnavailable(RuntimeError):
     pass
+
+
+def _probability(value: Any) -> bool:
+    return (
+        type(value) in (int, float)
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+        and 0 <= value <= 1
+    )
+
+
+def _validate_prediction_output_schema(document: Mapping[str, Any]) -> None:
+    ordered = document.get("forecast_contract_version") == ORDERED_FINISH_CONTRACT
+    prediction_fields = {"dog_id", "win_probability", "rank"} | (
+        {"top_2_probability", "top_3_probability"} if ordered else set()
+    )
+    predictions = document.get("predictions")
+    if (
+        type(predictions) is not list
+        or not predictions
+        or any(type(row) is not dict or set(row) != prediction_fields for row in predictions)
+        or any(
+            type(row["dog_id"]) is not str
+            or not row["dog_id"]
+            or type(row["rank"]) is not int
+            or row["rank"] <= 0
+            or not _probability(row["win_probability"])
+            or (ordered and not _probability(row["top_2_probability"]))
+            or (ordered and not _probability(row["top_3_probability"]))
+            for row in predictions
+        )
+    ):
+        raise ForecastUnavailable("prediction artifact schema is invalid")
+    runner_ids = tuple(row["dog_id"] for row in predictions)
+    ranks = tuple(row["rank"] for row in predictions)
+    if len(set(runner_ids)) != len(runner_ids) or set(ranks) != set(
+        range(1, len(predictions) + 1)
+    ):
+        raise ForecastUnavailable("prediction artifact schema is invalid")
+    if not ordered:
+        return
+    ordered_shapes = {
+        "ordered_finish_probabilities": len(runner_ids),
+        "exacta_probabilities": 2,
+        "trifecta_probabilities": 3,
+        "most_likely_orders": len(runner_ids),
+    }
+    for field, order_size in ordered_shapes.items():
+        rows = document.get(field)
+        if type(rows) is not list or any(
+            type(row) is not dict
+            or set(row) != {"order", "probability"}
+            or type(row["order"]) is not list
+            or len(row["order"]) != order_size
+            or len(set(row["order"])) != order_size
+            or any(runner not in runner_ids for runner in row["order"])
+            or not _probability(row["probability"])
+            for row in rows
+        ):
+            raise ForecastUnavailable("prediction artifact schema is invalid")
+    try:
+        full_rows = document["ordered_finish_probabilities"]
+        full = {tuple(row["order"]): row["probability"] for row in full_rows}
+        if len(full) != len(full_rows):
+            raise OrderedFinishError("ordered probabilities are duplicated")
+        reconstructed = ordered_finish_from_probabilities(runner_ids, full)
+    except (KeyError, TypeError, ValueError, OrderedFinishError) as error:
+        raise ForecastUnavailable("prediction ordered distribution is invalid") from error
+    expected_projections = {
+        "exacta_probabilities": reconstructed.exacta,
+        "trifecta_probabilities": reconstructed.trifecta,
+    }
+    for field, expected in expected_projections.items():
+        actual = {tuple(row["order"]): row["probability"] for row in document[field]}
+        if len(actual) != len(document[field]) or actual != expected:
+            raise ForecastUnavailable("prediction ordered distribution is invalid")
+    most_likely = [
+        {"order": list(order), "probability": probability}
+        for order, probability in reconstructed.most_likely_orders
+    ]
+    if document["most_likely_orders"] != most_likely:
+        raise ForecastUnavailable("prediction ordered distribution is invalid")
+    expected_predictions = [
+        {
+            "dog_id": runner,
+            "win_probability": reconstructed.win[runner],
+            "top_2_probability": reconstructed.top_2[runner],
+            "top_3_probability": reconstructed.top_3[runner],
+            "rank": reconstructed.ranking.index(runner) + 1,
+        }
+        for runner in reconstructed.ranking
+    ]
+    if predictions != expected_predictions:
+        raise ForecastUnavailable("prediction ordered distribution is invalid")
 
 
 @dataclass(frozen=True, slots=True)
@@ -245,10 +347,8 @@ class CanonicalForecastService:
         except Exception as error:
             raise ForecastUnavailable(str(error)) from error
 
-    def forecast_with_champion(
-        self, champion, request: ForecastRequest, *, computed_at: datetime
-    ) -> Mapping[str, Any]:
-        require_aware(computed_at, "computed_at")
+    def derive_with_champion(self, champion, request: ForecastRequest):
+        """Authenticate and derive the exact sealed inputs without invoking the model."""
         try:
             evidence = self.artifacts.read(request.evidence_checksum)
             evidence_document = json.loads(evidence)
@@ -285,6 +385,20 @@ class CanonicalForecastService:
                 expected_feature_cutoff_at=durable_frozen_at,
                 raw_evidence_reader=self.artifacts.read,
             )
+            return derived, evidence_frozen_at
+        except ForecastUnavailable:
+            raise
+        except Exception as error:
+            if isinstance(error, (KeyboardInterrupt, SystemExit)):
+                raise
+            raise ForecastUnavailable(str(error)) from error
+
+    def forecast_with_champion(
+        self, champion, request: ForecastRequest, *, computed_at: datetime
+    ) -> Mapping[str, Any]:
+        require_aware(computed_at, "computed_at")
+        try:
+            derived, evidence_frozen_at = self.derive_with_champion(champion, request)
             contract = champion.bundle.forecast_contract_version
             ordered = None
             legacy_wins = None
@@ -468,7 +582,8 @@ class CanonicalDeferredPredictor:
     def authenticate(self, checksum: ArtifactChecksum, expected_computed_at: datetime) -> None:
         """Authenticate the returned document against Phase-3's commit time."""
         document = json.loads(self.artifacts.read(checksum))
-        self._reject_result_data(document)
+        if type(document) is not dict:
+            raise ForecastUnavailable("prediction artifact schema is invalid")
         actual = document.get("provenance", {}).get("prediction_computed_at")
         if actual != iso_timestamp(expected_computed_at):
             raise ForecastUnavailable("prediction artifact computation time disagrees")
@@ -482,6 +597,7 @@ class CanonicalDeferredPredictor:
         """Bind the sealed prediction bytes to the exact lifecycle authority snapshot."""
         self.authenticate(checksum, expected_computed_at)
         document = json.loads(self.artifacts.read(checksum))
+        champion = self.service.loader.load_day_pin(request)
         base_fields = {
             "success",
             "forecast_contract_version",
@@ -507,6 +623,9 @@ class CanonicalDeferredPredictor:
         )
         if set(document) != expected_fields or document.get("success") is not True:
             raise ForecastUnavailable("prediction artifact schema is invalid")
+        if document.get("forecast_contract_version") != champion.bundle.forecast_contract_version:
+            raise ForecastUnavailable("prediction forecast contract is invalid")
+        _validate_prediction_output_schema(document)
         identity = document.get("deferred_identity")
         expected = {
             "race_id": str(request.race_id),
@@ -524,8 +643,28 @@ class CanonicalDeferredPredictor:
             PredictionProvenance.__dataclass_fields__
         ):
             raise ForecastUnavailable("prediction provenance envelope is incomplete")
-        if provenance.get("champion_model_id") != request.bundle.model_id:
-            raise ForecastUnavailable("prediction model identity disagrees")
+        try:
+            PredictionProvenance(**provenance)
+            ArtifactChecksum(provenance["artifact_checksum"])
+        except (TypeError, ValueError) as error:
+            raise ForecastUnavailable("prediction provenance envelope is invalid") from error
+        evidence_frozen_at = self.service.loader.authenticate_seal(
+            seal_id=request.seal_id,
+            race_id=str(request.race_id),
+            evidence_checksum=request.evidence_checksum,
+        )
+        expected_provenance = PredictionProvenance(
+            champion.bundle.model_id,
+            str(champion.bundle.bundle_checksum),
+            champion.bundle.trained_through,
+            champion.assignment.promotion_approved_at,
+            champion.assignment.promotion_effective_from_racing_day,
+            champion.assignment.promotion_record_id,
+            iso_timestamp(expected_computed_at),
+            iso_timestamp(evidence_frozen_at),
+        ).as_dict()
+        if provenance != expected_provenance:
+            raise ForecastUnavailable("prediction provenance disagrees with durable authority")
         if document.get("evidence_checksum") != str(request.evidence_checksum):
             raise ForecastUnavailable("prediction evidence identity disagrees")
         contract = document.get("feature_contract")
@@ -535,40 +674,50 @@ class CanonicalDeferredPredictor:
             "missingness_policy_checksum",
         }:
             raise ForecastUnavailable("prediction feature contract provenance is incomplete")
+        schema_component = champion.bundle.component("feature_schema")
+        missing_component = champion.bundle.component("missingness_policy")
+        expected_contract = {
+            "version": champion.bundle.feature_contract_version,
+            "schema_checksum": str(schema_component.checksum),
+            "missingness_policy_checksum": str(missing_component.checksum),
+        }
+        if contract != expected_contract:
+            raise ForecastUnavailable("prediction feature contract version is invalid")
         ArtifactChecksum(contract["schema_checksum"])
         ArtifactChecksum(contract["missingness_policy_checksum"])
         manifest = document.get("feature_availability_manifest")
-        entry_fields = {
-            "feature",
-            "family",
-            "semantics",
-            "status",
-            "source_name",
-            "source_schema_version",
-            "source_native_race_id",
-            "source_native_runner_ids",
-            "raw_checksum",
-            "normalized_checksum",
-            "provider_published_at",
-            "collector_received_at",
-            "feature_frozen_at",
-            "completeness",
-            "whole_race_coverage",
-            "derivation_version",
-            "blocking_reasons",
-        }
         if (
             type(manifest) is not dict
-            or set(manifest) != {"version", "race_id", "evidence_checksum", "entries"}
             or manifest.get("race_id") != str(request.race_id)
             or manifest.get("evidence_checksum") != str(request.evidence_checksum)
-            or type(manifest.get("entries")) is not list
-            or any(
-                type(entry) is not dict or set(entry) != entry_fields
-                for entry in manifest["entries"]
-            )
         ):
             raise ForecastUnavailable("prediction feature availability manifest is invalid")
+        try:
+            manifest_features = validate_feature_availability_manifest_document(manifest)
+        except (TypeError, ValueError) as error:
+            raise ForecastUnavailable(
+                "prediction feature availability manifest is invalid"
+            ) from error
+        try:
+            schema = json.loads(self.artifacts.read(schema_component.checksum))
+            declared_features = [
+                (item["name"], item["family"], item["semantics"])
+                for item in [*schema["fields"], *schema.get("candidate_features", [])]
+            ]
+        except (KeyError, TypeError, UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ForecastUnavailable(
+                "prediction feature availability manifest authority is invalid"
+            ) from error
+        manifest_declarations = [
+            (entry["feature"], entry["family"], entry["semantics"])
+            for entry in manifest["entries"]
+        ]
+        if list(manifest_features) != [item[0] for item in declared_features] or (
+            manifest_declarations != declared_features
+        ):
+            raise ForecastUnavailable(
+                "prediction feature availability manifest membership disagrees"
+            )
         manifest_checksum = ArtifactChecksum(document["feature_availability_manifest_checksum"])
         manifest_bytes = json.dumps(
             manifest, sort_keys=True, separators=(",", ":"), allow_nan=False
@@ -578,19 +727,20 @@ class CanonicalDeferredPredictor:
             != manifest_checksum
         ):
             raise ForecastUnavailable("prediction feature availability manifest checksum disagrees")
-        ArtifactChecksum(document["feature_matrix_checksum"])
-
-    @staticmethod
-    def _reject_result_data(value: Any) -> None:
-        forbidden = RESULT_DERIVED_INPUT_NAMES
-        if type(value) is dict:
-            for key, nested in value.items():
-                if type(key) is str and key.casefold() in forbidden:
-                    raise ForecastUnavailable("prediction artifact contains result data")
-                CanonicalDeferredPredictor._reject_result_data(nested)
-        elif type(value) is list:
-            for nested in value:
-                CanonicalDeferredPredictor._reject_result_data(nested)
+        matrix_checksum = ArtifactChecksum(document["feature_matrix_checksum"])
+        derived, _frozen_at = self.service.derive_with_champion(
+            champion,
+            ForecastRequest(request.evidence_checksum, request.seal_id, str(request.race_id)),
+        )
+        if (
+            derived.availability_manifest is None
+            or manifest != derived.availability_manifest.as_dict()
+            or manifest_checksum != derived.availability_manifest.checksum
+            or matrix_checksum != derived.matrix.checksum
+        ):
+            raise ForecastUnavailable(
+                "prediction feature availability manifest or matrix disagrees with sealed evidence"
+            )
 
 
 def canonical_endpoint(

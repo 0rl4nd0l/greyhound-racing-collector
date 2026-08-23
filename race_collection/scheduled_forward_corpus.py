@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
+from race_collection.domain import ArtifactChecksum, EvidenceField
 from race_collection.forward_sealed_corpus import (
     PREJUMP_SOURCE,
     ForwardCorpusRejected,
@@ -35,7 +36,18 @@ from utils.runner_completeness import normalise_runner_name, parse_runner_rows_f
 ADMISSION_SCHEMA = "scheduled-forward-corpus-admission-v1"
 FEATURE_BUNDLE_ID = "official-result-first-observation-v1-natural-canary"
 MAX_EXACT_RECEIPT_AGE_SECONDS = 7 * 24 * 60 * 60
-CANDIDATE_FEATURES = (
+READY_CONTEXT_FEATURES = (
+    ("canonical_race_identity", "race_identity", EvidenceField.RACE_IDENTITY.value),
+    ("canonical_runner_identity", "runner_identity", EvidenceField.RUNNER_IDENTITY.value),
+    ("venue", "race_card", EvidenceField.VENUE.value),
+    ("distance", "race_card", EvidenceField.DISTANCE.value),
+)
+EXCLUDED_BASELINE_FEATURES = (
+    ("race_card_context", "race_card"),
+    ("form_context", "form"),
+    ("speed_context", "speed"),
+)
+FORWARD_CAPTURE_FEATURES = (
     ("recent_workload", "runner_history"),
     ("prior_official_weight", "runner_history"),
     ("pir_running_position", "runner_history"),
@@ -43,6 +55,11 @@ CANDIDATE_FEATURES = (
     ("steward_veterinary_state", "steward_veterinary"),
     ("lifecycle_age", "lifecycle"),
     ("sportsbet_win_market", "market"),
+)
+CANDIDATE_FEATURES = (
+    tuple((name, family) for name, family, _field in READY_CONTEXT_FEATURES)
+    + EXCLUDED_BASELINE_FEATURES
+    + FORWARD_CAPTURE_FEATURES
 )
 
 FEATURE_SCHEMA_BYTES = canonical_json(
@@ -101,6 +118,15 @@ def _aware(value: Any, name: str) -> datetime:
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         raise ForwardCorpusRejected(f"{name} must be timezone-aware")
     return parsed
+
+
+def _distance_metres(value: Any) -> int:
+    text = _text(value, "race distance").casefold()
+    if text.endswith("m"):
+        text = text[:-1]
+    if not text.isascii() or not text.isdecimal() or int(text) <= 0:
+        raise ForwardCorpusRejected("race distance is invalid")
+    return int(text)
 
 
 def _sha256(value: Any, name: str) -> str:
@@ -302,6 +328,8 @@ def _verified_race(
         or type(native_race_id) is not str
         or not native_race_id.isascii()
         or not native_race_id.isdecimal()
+        or type(race.get("distance_metres")) is not int
+        or race["distance_metres"] <= 0
     ):
         raise ForwardCorpusRejected("verified current-index race identity disagrees")
     return race
@@ -514,6 +542,7 @@ def admit_scheduled_capture(
         verified_race["source_native_race_id"],
         cohort_id=cohort_id,
         expected_cohort_checksum=cohort_checksum,
+        expected_distance_metres=verified_race["distance_metres"],
     )
     if frozen_race_id is not None:
         race_id = frozen_race_id
@@ -555,11 +584,18 @@ def admit_scheduled_capture(
         row["source_native_runner_id"]: {"box_number": row["box_number"]}
         for row in runners
     }
+    race_info = _mapping(sidecar.get("race_info"), "race metadata")
+    distance_metres = _distance_metres(race_info.get("distance") or shadow.get("distance"))
+    if distance_metres != verified_race["distance_metres"]:
+        raise ForwardCorpusRejected("verified current-index race distance disagrees")
     raw_checksum = "sha256:" + sha256_bytes(raw_source)
     fields = {
         "runner_set": runner_ids,
         "runner_identity": {runner_id: "authoritative" for runner_id in runner_ids},
         "runner_features": runner_features,
+        "race_identity": verified_race["source_native_race_id"],
+        "venue": plan_item["venue"],
+        "distance": distance_metres,
         "feature_availability": {
             "box_number": {
                 "status": "READY_NOW",
@@ -576,7 +612,27 @@ def admit_scheduled_capture(
             },
             **{
                 name: {
-                    "status": "FORWARD_CAPTURE",
+                    "status": "READY_NOW",
+                    "source_name": PREJUMP_SOURCE,
+                    "source_schema_version": "collector-canonical-runner-alignment-v1",
+                    "source_native_race_id": verified_race["source_native_race_id"],
+                    "source_native_runner_ids": runner_ids,
+                    "provider_published_at": None,
+                    "collector_received_at": observed_text,
+                    "completeness": "COMPLETE",
+                    "whole_race_coverage": True,
+                    "derivation_version": f"scheduled-forward-{name}-v1",
+                    "blocking_reasons": [],
+                }
+                for name, _family, _field in READY_CONTEXT_FEATURES
+            },
+            **{
+                name: {
+                    "status": (
+                        "EXCLUDED"
+                        if (name, _family) in EXCLUDED_BASELINE_FEATURES
+                        else "FORWARD_CAPTURE"
+                    ),
                     "source_name": None,
                     "source_schema_version": None,
                     "source_native_race_id": None,
@@ -591,13 +647,17 @@ def admit_scheduled_capture(
                         "INCOMPLETE_COVERAGE",
                         "NORMALIZED_EVIDENCE_MISSING",
                         *(
+                            ["NOT_REQUESTED_BY_BASELINE"]
+                            if (name, _family) in EXCLUDED_BASELINE_FEATURES
+                            else (
                             ["SOURCE_AUTHORIZATION_REQUIRED"]
                             if name != "sportsbet_win_market"
                             else []
+                            )
                         ),
                     ],
                 }
-                for name, _family in CANDIDATE_FEATURES
+                for name, _family in (EXCLUDED_BASELINE_FEATURES + FORWARD_CAPTURE_FEATURES)
             },
         },
     }
@@ -611,12 +671,19 @@ def admit_scheduled_capture(
                 {
                     "field": field,
                     "authority": "canonical-thedogs-final-runner-set",
-                    "critical": True,
+                    "critical": EvidenceField(field).critical,
                     "value": fields[field],
                     "source": PREJUMP_SOURCE,
                     "artifact_checksum": raw_checksum,
                 }
-                for field in ("runner_set", "runner_identity", "runner_features")
+                for field in (
+                    "runner_set",
+                    "runner_identity",
+                    "runner_features",
+                    "race_identity",
+                    "venue",
+                    "distance",
+                )
             ],
             "freeze": {
                 "at": frozen_text,
@@ -625,13 +692,6 @@ def admit_scheduled_capture(
             },
         }
     )
-    race_info = _mapping(sidecar.get("race_info"), "race metadata")
-    distance = race_info.get("distance") or shadow.get("distance")
-    try:
-        distance_metres = int(str(distance).removesuffix("m"))
-    except ValueError as error:
-        raise ForwardCorpusRejected("race distance is missing or invalid") from error
-
     lock = acquire_collector_lock_no_steal(
         root / "forward-sealed-corpus.lock",
         run_id=f"forward_corpus_{collector_run_id}",

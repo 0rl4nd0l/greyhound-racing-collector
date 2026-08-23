@@ -22,7 +22,12 @@ from scripts.ingest_results_for_date import (
 
 from .artifacts import ArtifactStoreError, LocalArtifactStore
 from .domain import ArtifactChecksum, require_aware
-from .features import RESULT_DERIVED_INPUT_NAMES, FeatureQuarantine, derive_features
+from .features import (
+    FeatureQuarantine,
+    derive_features,
+    validate_result_free_provenance_bindings,
+    validate_result_free_source_metadata,
+)
 from .model_bundle import SUPPORTED_FEATURE_CONTRACT
 
 FORWARD_CORPUS_ORIGIN = "official-result-first-observation-v1"
@@ -68,8 +73,6 @@ _OBSERVATION_FIELDS_V1 = {
     "implementation_hash",
 }
 _OBSERVATION_FIELDS_V2 = _OBSERVATION_FIELDS_V1 | {"normalization_version"}
-
-_RESULT_DERIVED_KEYS = RESULT_DERIVED_INPUT_NAMES
 
 
 class ForwardCorpusRejected(ValueError):
@@ -180,22 +183,12 @@ def _source_url(
     return url
 
 
-def _reject_result_derived(value: Any) -> None:
-    if type(value) is dict:
-        for key, nested in value.items():
-            if type(key) is str and key.casefold() in _RESULT_DERIVED_KEYS:
-                raise ForwardCorpusRejected("pre-jump evidence contains a result-derived field")
-            _reject_result_derived(nested)
-    elif type(value) is list:
-        for nested in value:
-            _reject_result_derived(nested)
-
-
 def _metadata(value: Any, name: str) -> dict[str, Any]:
-    if type(value) is not dict or not value:
-        raise ForwardCorpusRejected(f"{name} must be a non-empty object")
+    try:
+        validate_result_free_source_metadata(value, name)
+    except ValueError as error:
+        raise ForwardCorpusRejected(str(error)) from error
     canonical_json(value)
-    _reject_result_derived(value)
     return dict(value)
 
 
@@ -535,6 +528,7 @@ class ForwardSealedCorpus:
             "racing_date",
             "venue",
             "race_number",
+            "distance_metres",
             "source_native_race_id",
             "source_native_runner_ids",
             "feature_cutoff_at",
@@ -548,11 +542,14 @@ class ForwardSealedCorpus:
             racing_date = _known_text(value["racing_date"], "racing date")
             venue = _known_text(value["venue"], "venue")
             race_number = value["race_number"]
+            distance_metres = value["distance_metres"]
             native_race = _known_text(value["source_native_race_id"], "native race id")
             native_runners = value["source_native_runner_ids"]
             if (
                 type(race_number) is not int
                 or race_number <= 0
+                or type(distance_metres) is not int
+                or distance_metres <= 0
                 or not native_race.isascii()
                 or not native_race.isdecimal()
                 or type(native_runners) is not list
@@ -580,6 +577,7 @@ class ForwardSealedCorpus:
                     "racing_date": racing_date,
                     "venue": venue,
                     "race_number": race_number,
+                    "distance_metres": distance_metres,
                     "source_native_race_id": native_race,
                     "source_native_runner_ids": list(native_runners),
                     "feature_cutoff_at": cutoff_text,
@@ -691,6 +689,7 @@ class ForwardSealedCorpus:
         *,
         cohort_id: str | None = None,
         expected_cohort_checksum: ArtifactChecksum | None = None,
+        expected_distance_metres: int | None = None,
     ) -> str | None:
         """Resolve a scheduled capture to its immutable internal cohort RaceId."""
         native_id = _known_text(source_native_race_id, "source-native race identity")
@@ -713,6 +712,11 @@ class ForwardSealedCorpus:
                 raise ForwardCorpusRejected(
                     "scheduled race is absent from the authoritative cohort"
                 )
+            if (
+                expected_distance_metres is not None
+                and matches[0].get("distance_metres") != expected_distance_metres
+            ):
+                raise ForwardCorpusRejected("scheduled race distance disagrees with frozen cohort")
             return matches[0]["race_id"]
         binding = self._cohort_member(source_native_race_id=native_id)
         return binding[1]["race_id"] if binding is not None else None
@@ -792,7 +796,6 @@ class ForwardSealedCorpus:
         evidence = _canonical_object(sealed_evidence_bytes, "sealed race evidence")
         schema = _canonical_object(feature_schema_bytes, "feature schema")
         policy = _canonical_object(missingness_policy_bytes, "missingness policy")
-        _reject_result_derived(evidence)
         bundle_id = _known_text(schema.get("bundle_id"), "target bundle identity")
         if (
             set(evidence)
@@ -886,43 +889,15 @@ class ForwardSealedCorpus:
             raise ForwardCorpusRejected("sealed evidence runner identity is ambiguous")
 
         raw_source = _checksum(raw_source_bytes)
-        provenance = evidence.get("field_provenance")
-        required_bindings = {"runner_set", "runner_identity", "runner_features"}
-        if type(provenance) is not list or not provenance:
-            raise ForwardCorpusRejected("sealed feature source bindings are incomplete")
-        bound_fields = set()
-        for item in provenance:
-            if type(item) is not dict or set(item) != {
-                "field",
-                "authority",
-                "critical",
-                "value",
-                "source",
-                "artifact_checksum",
-            }:
-                raise ForwardCorpusRejected("sealed feature source binding is invalid")
-            try:
-                ArtifactChecksum(item["artifact_checksum"])
-            except (KeyError, ValueError) as error:
-                raise ForwardCorpusRejected(
-                    "sealed feature source binding checksum is invalid"
-                ) from error
-            _known_text(item.get("field"), "sealed feature source binding field")
-            _known_text(item.get("authority"), "sealed feature source binding authority")
-            _known_text(item.get("source"), "sealed feature source binding source")
-            if type(item.get("critical")) is not bool:
-                raise ForwardCorpusRejected("sealed feature source binding criticality is invalid")
-            if (
-                item.get("field") in required_bindings
-                and item.get("artifact_checksum") == str(raw_source)
-                and item.get("source") == source_name
-                and item.get("value") == fields.get(item["field"])
-            ):
-                bound_fields.add(item["field"])
-        if bound_fields != required_bindings:
-            raise ForwardCorpusRejected(
-                "runner feature evidence is not bound to the preserved raw source bytes"
+        try:
+            validate_result_free_provenance_bindings(
+                fields,
+                evidence.get("field_provenance"),
+                raw_checksum=raw_source,
+                source_name=source_name,
             )
+        except ValueError as error:
+            raise ForwardCorpusRejected(str(error)) from error
         sealed_evidence = _checksum(sealed_evidence_bytes)
         feature_schema = _checksum(feature_schema_bytes)
         missingness_policy = _checksum(missingness_policy_bytes)

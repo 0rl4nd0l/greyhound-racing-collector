@@ -1158,6 +1158,7 @@ def test_current_index_requires_time_and_normalizes_producer_time():
         },
         now=datetime.fromisoformat("2026-07-19T12:00:00+10:00"),
     )
+    row["distance_metres"] = 527
     normalized = capture._normalize_current_index_rows(
         {"selected_count": 1, "selected_races": [row]}, max_races=32
     )[0]
@@ -1165,6 +1166,7 @@ def test_current_index_requires_time_and_normalizes_producer_time():
     assert normalized["race_id"] == "Race 5 - GUNN - 2026-07-19"
     assert normalized["jump_datetime"] == "2026-07-19T13:00:00+10:00"
     assert normalized["race_time"] == "13:00"
+    assert normalized["distance_metres"] == 527
     row["race_time"] = ""
     with pytest.raises(CaptureOneRejected):
         capture._normalize_current_index_rows(

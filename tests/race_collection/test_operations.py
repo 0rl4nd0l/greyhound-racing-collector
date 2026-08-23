@@ -108,7 +108,7 @@ def test_empty_and_repeated_migrations_enable_wal_and_foreign_keys(tmp_path):
     store.migrate()
     with sqlite3.connect(store.path) as db:
         assert db.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
-        assert db.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 30
+        assert db.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0] == 31
     with store._connect() as db:
         assert db.execute("PRAGMA foreign_keys").fetchone()[0] == 1
 
@@ -209,7 +209,7 @@ def test_populated_schema_17_migrates_forward_to_latest_without_data_loss(tmp_pa
     store.migrate()
 
     with store._connect() as db:
-        assert db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 30
+        assert db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 31
         assert (
             db.execute(
                 "SELECT source_race_id FROM expected_races WHERE source_race_id='legacy-race'"

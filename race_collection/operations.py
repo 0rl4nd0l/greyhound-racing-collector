@@ -131,6 +131,16 @@ class OperationsStore(Protocol):
         self, race_id: RaceId
     ) -> Mapping[str, Any] | None: ...
 
+    def record_forward_baseline_prediction_quarantine(
+        self,
+        operation_id: OperationId,
+        race_id: RaceId,
+        *,
+        code: str,
+        details: str,
+        at: datetime,
+    ) -> bool: ...
+
     def forward_baseline_cohort_lifecycle(
         self, cohort_id: str
     ) -> Mapping[str, Any] | None: ...
@@ -294,6 +304,7 @@ class SQLiteOperationsStore:
             (28, "0028_phase7_probation_seal_authority.sql"),
             (29, "0029_phase7_bounded_timing_authority.sql"),
             (30, "0030_forward_baseline_cohort_authority.sql"),
+            (31, "0031_forward_baseline_prediction_quarantine.sql"),
         )
         return tuple(
             (version, name, migration_root.joinpath(name).read_bytes()) for version, name in names
@@ -526,6 +537,78 @@ class SQLiteOperationsStore:
             ).fetchone()
         return None if row is None else self.forward_baseline_cohort(row["cohort_id"])
 
+    def record_forward_baseline_prediction_quarantine(
+        self,
+        operation_id: OperationId,
+        race_id: RaceId,
+        *,
+        code: str,
+        details: str,
+        at: datetime,
+    ) -> bool:
+        """Append one explicit prediction quarantine backed by a collection rejection."""
+        if (
+            type(code) is not str
+            or not code.strip()
+            or type(details) is not str
+            or not details.strip()
+        ):
+            raise OperationsStoreError("baseline prediction quarantine requires exact reasons")
+        payload = {
+            "race": str(race_id),
+            "code": code,
+            "details": details,
+            "at": iso_timestamp(at),
+        }
+        with self._operation(
+            operation_id, "quarantine_forward_baseline_prediction", payload
+        ) as (db, replay):
+            if replay:
+                return False
+            source = db.execute(
+                "SELECT m.cohort_id,q.quarantine_id,q.code,q.details,q.created_at "
+                "FROM forward_baseline_cohort_members m "
+                "JOIN collection_quarantines q ON q.race_id=m.race_id "
+                "WHERE m.race_id=? ORDER BY q.quarantine_id DESC LIMIT 1",
+                (str(race_id),),
+            ).fetchone()
+            if source is None:
+                raise OperationsStoreError(
+                    "baseline prediction quarantine requires a collection rejection"
+                )
+            if source["code"] != code or source["details"] != details:
+                raise OperationsStoreError(
+                    "baseline prediction quarantine must preserve the collection rejection"
+                )
+            if at < datetime.fromisoformat(source["created_at"]):
+                raise OperationsStoreError(
+                    "baseline prediction quarantine cannot predate collection rejection"
+                )
+            terminal_count = db.execute(
+                "SELECT "
+                "EXISTS(SELECT 1 FROM deferred_predictions WHERE race_id=?) + "
+                "EXISTS(SELECT 1 FROM prediction_quarantines WHERE race_id=?) + "
+                "EXISTS(SELECT 1 FROM forward_baseline_prediction_quarantines "
+                "WHERE race_id=?)",
+                (str(race_id), str(race_id), str(race_id)),
+            ).fetchone()[0]
+            if terminal_count:
+                raise OperationsStoreError("baseline race already has a prediction terminal")
+            db.execute(
+                "INSERT INTO forward_baseline_prediction_quarantines "
+                "VALUES(?,?,?,?,?,?,?)",
+                (
+                    str(race_id),
+                    source["cohort_id"],
+                    source["quarantine_id"],
+                    code,
+                    details,
+                    iso_timestamp(at),
+                    str(operation_id),
+                ),
+            )
+        return True
+
     def forward_baseline_cohort_lifecycle(
         self, cohort_id: str
     ) -> Mapping[str, Any] | None:
@@ -555,18 +638,25 @@ class SQLiteOperationsStore:
                     "e.scheduled_jump,s.frozen_at,p.prediction_id,p.artifact_checksum,"
                     "p.computed_at,q.prediction_id quarantine_prediction_id,"
                     "q.code prediction_code,"
-                    "q.details prediction_details,q.quarantined_at "
+                    "q.details prediction_details,q.quarantined_at,"
+                    "bq.operation_id baseline_prediction_quarantine_id,"
+                    "bq.code baseline_prediction_code,"
+                    "bq.details baseline_prediction_details,"
+                    "bq.quarantined_at baseline_prediction_quarantined_at "
                     "FROM races r JOIN racing_days d USING(racing_day_id) "
                     "JOIN expected_races e USING(race_id) "
                     "LEFT JOIN sealed_evidence s USING(race_id) "
                     "LEFT JOIN deferred_predictions p USING(race_id) "
                     "LEFT JOIN prediction_quarantines q USING(race_id) "
+                    "LEFT JOIN forward_baseline_prediction_quarantines bq USING(race_id) "
                     "WHERE r.race_id=?",
                     (race_id,),
                 ).fetchone()
                 collection_rejections = db.execute(
-                    "SELECT stage,code,details,created_at FROM collection_quarantines "
-                    "WHERE race_id=? ORDER BY quarantine_id",
+                    "SELECT q.stage,q.code,q.details,q.created_at,"
+                    "o.kind operation_kind FROM collection_quarantines q "
+                    "JOIN operations o USING(operation_id) "
+                    "WHERE q.race_id=? ORDER BY q.quarantine_id",
                     (race_id,),
                 ).fetchall()
                 races[race_id] = {
@@ -696,8 +786,9 @@ class SQLiteOperationsStore:
                     baseline = db.execute(
                         "SELECT cohort_id FROM forward_baseline_cohort_members "
                         "WHERE race_id=? AND ("
-                        "EXISTS(SELECT 1 FROM collection_quarantines WHERE race_id=?) "
-                        "OR EXISTS(SELECT 1 FROM prediction_quarantines WHERE race_id=?))",
+                        "EXISTS(SELECT 1 FROM prediction_quarantines WHERE race_id=?) "
+                        "OR EXISTS(SELECT 1 FROM forward_baseline_prediction_quarantines "
+                        "WHERE race_id=?))",
                         (str(race_id), str(race_id), str(race_id)),
                     ).fetchone()
                     if baseline is None:
@@ -711,7 +802,7 @@ class SQLiteOperationsStore:
                         "WHERE p.race_id=m.race_id) "
                         "AND NOT EXISTS(SELECT 1 FROM prediction_quarantines p "
                         "WHERE p.race_id=m.race_id) "
-                        "AND NOT EXISTS(SELECT 1 FROM collection_quarantines q "
+                        "AND NOT EXISTS(SELECT 1 FROM forward_baseline_prediction_quarantines q "
                         "WHERE q.race_id=m.race_id)",
                         (baseline["cohort_id"],),
                     ).fetchone()[0]

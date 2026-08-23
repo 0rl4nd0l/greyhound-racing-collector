@@ -48,6 +48,7 @@ def candidate(number, *, venue="Sandown", racing_date="2026-08-23"):
         "date": racing_date,
         "venue": venue,
         "race_number": number,
+        "distance_metres": 515,
         "jump_datetime": jump.isoformat(),
         "source_native_race_id": str(159000 + number),
         "runners": [
@@ -322,6 +323,7 @@ def test_production_entrypoint_freezes_exact_cohort_and_schedules_existing_lifec
     ] == [
         runner["source_native_runner_id"] for runner in races[4]["runners"]
     ]
+    assert by_native_race[races[4]["source_native_race_id"]]["distance_metres"] == 515
     with store._connect() as connection:
         assert connection.execute("SELECT count(*) FROM racing_days").fetchone()[0] == 2
         assert connection.execute("SELECT count(*) FROM expected_races").fetchone()[0] == 20
@@ -339,6 +341,15 @@ def test_production_entrypoint_freezes_exact_cohort_and_schedules_existing_lifec
     substituted = complete_candidates()
     substituted[19]["source_native_race_id"] = "999999"
     conflict = service.run(verified_index(substituted), now=NOW)
+
+    assert conflict["status"] == "INTEGRITY_FAILED"
+    assert conflict["reason"] == "FROZEN_COHORT_BINDING_MISMATCH"
+    assert table_counts(database) == before
+    assert cohort_paths[0].read_bytes() == cohort_bytes
+
+    distance_drift = complete_candidates()
+    distance_drift[19]["distance_metres"] = 595
+    conflict = service.run(verified_index(distance_drift), now=NOW)
 
     assert conflict["status"] == "INTEGRITY_FAILED"
     assert conflict["reason"] == "FROZEN_COHORT_BINDING_MISMATCH"
