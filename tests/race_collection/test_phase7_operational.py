@@ -350,7 +350,7 @@ class Phase7OperationalTests(unittest.TestCase):
             release_id,
             "6cd5dacfe83719cbbc376a265829e84593eafb68",
             ArtifactChecksum("sha256:" + hashlib.sha256(content).hexdigest()),
-            29,
+            31,
             "canonical-artifacts-v1",
             "phase6-promotion-v1",
             ("runner-win-probability-v1",),
@@ -2302,7 +2302,7 @@ class Phase7OperationalTests(unittest.TestCase):
                     "unsupported-bundle-contract",
                     "a" * 40,
                     unsupported_checksum,
-                    29,
+                    31,
                     "canonical-artifacts-v1",
                     "phase6-promotion-v1",
                     ("unsupported-forecast-v99",),
@@ -2812,7 +2812,7 @@ class Phase7OperationalTests(unittest.TestCase):
                 "future-schema",
                 "6cd5dacfe83719cbbc376a265829e84593eafb68",
                 PROGRAMME,
-                30,
+                32,
                 "canonical-artifacts-v1",
                 "phase6-promotion-v1",
                 ("runner-win-probability-v1",),
@@ -2984,7 +2984,7 @@ class Phase7OperationalTests(unittest.TestCase):
                 "candidate",
                 "6cd5dacfe83719cbbc376a265829e84593eafb68",
                 config_checksum,
-                29,
+                31,
                 "canonical-artifacts-v1",
                 "phase6-promotion-v1",
                 ("runner-win-probability-v1",),
@@ -3611,7 +3611,7 @@ class Phase7OperationalTests(unittest.TestCase):
                 "cross-phase-release",
                 "6cd5dacfe83719cbbc376a265829e84593eafb68",
                 config_checksum,
-                29,
+                31,
                 "canonical-artifacts-v1",
                 "phase6-promotion-v1",
                 ("runner-win-probability-v1",),
@@ -3648,7 +3648,7 @@ class Phase7OperationalTests(unittest.TestCase):
     def test_artifact_inventory_fails_closed_for_unknown_future_schema(self) -> None:
         with self.store._connect() as db:
             db.execute(
-                "INSERT INTO schema_migrations VALUES(30,?,?)",
+                "INSERT INTO schema_migrations VALUES(32,?,?)",
                 ("future-contract-unknown", NOW.isoformat()),
             )
             with self.assertRaisesRegex(RecoveryRejected, "does not cover"):
@@ -4294,7 +4294,7 @@ class Phase7OperationalTests(unittest.TestCase):
                 release_id,
                 source_commit,
                 checksum,
-                29,
+                31,
                 "canonical-artifacts-v1",
                 "phase6-promotion-v1",
                 ("runner-win-probability-v1",),

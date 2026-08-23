@@ -294,6 +294,7 @@ class SQLiteOperationsStore:
             (28, "0028_phase7_probation_seal_authority.sql"),
             (29, "0029_phase7_bounded_timing_authority.sql"),
             (30, "0030_forward_baseline_cohort_authority.sql"),
+            (31, "0031_forward_baseline_prediction_quarantine.sql"),
         )
         return tuple(
             (version, name, migration_root.joinpath(name).read_bytes()) for version, name in names
@@ -555,12 +556,16 @@ class SQLiteOperationsStore:
                     "e.scheduled_jump,s.frozen_at,p.prediction_id,p.artifact_checksum,"
                     "p.computed_at,q.prediction_id quarantine_prediction_id,"
                     "q.code prediction_code,"
-                    "q.details prediction_details,q.quarantined_at "
+                    "q.details prediction_details,q.quarantined_at,"
+                    "bq.prediction_id cohort_quarantine_prediction_id,"
+                    "bq.code cohort_quarantine_code,bq.details cohort_quarantine_details,"
+                    "bq.quarantined_at cohort_quarantined_at "
                     "FROM races r JOIN racing_days d USING(racing_day_id) "
                     "JOIN expected_races e USING(race_id) "
                     "LEFT JOIN sealed_evidence s USING(race_id) "
                     "LEFT JOIN deferred_predictions p USING(race_id) "
                     "LEFT JOIN prediction_quarantines q USING(race_id) "
+                    "LEFT JOIN forward_baseline_prediction_quarantines bq USING(race_id) "
                     "WHERE r.race_id=?",
                     (race_id,),
                 ).fetchone()
@@ -1537,6 +1542,25 @@ class SQLiteOperationsStore:
                     str(request_intent_digest) if request_intent_digest is not None else None,
                 ),
             )
+            cohort = db.execute(
+                "SELECT cohort_id FROM forward_baseline_cohort_members WHERE race_id=?",
+                (str(race_id),),
+            ).fetchone()
+            if cohort is not None:
+                db.execute(
+                    "INSERT INTO forward_baseline_prediction_quarantines "
+                    "VALUES(?,?,?,?,?,?,?,?)",
+                    (
+                        cohort["cohort_id"],
+                        str(race_id),
+                        f"cohort-quarantine-{operation_id}",
+                        stage,
+                        code,
+                        details,
+                        iso_timestamp(at),
+                        str(operation_id),
+                    ),
+                )
         return True
 
     def odds_attempts(self, race_id: RaceId) -> tuple[OddsAttemptRecord, ...]:

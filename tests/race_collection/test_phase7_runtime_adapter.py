@@ -709,7 +709,7 @@ def _runtime_fixture(
             release_id,
             source_commit,
             config_checksum,
-            30,
+            31,
             "canonical-artifacts-v1",
             "phase6-promotion-v1",
             bundle_versions,

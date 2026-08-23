@@ -477,7 +477,7 @@ class ReleaseManifest:
         if not re.fullmatch(r"[0-9a-f]{40}", _strict_nonempty(self.code_commit, "code commit")):
             raise ValueError("code_commit must be an exact Git commit")
         _safe_operational_path(self.service_root)
-        if self.database_schema != 30 or not self.supported_bundle_versions:
+        if self.database_schema != 31 or not self.supported_bundle_versions:
             raise ValueError("release schema or bundle contract is unsupported")
 
     def document(self) -> Mapping[str, Any]:

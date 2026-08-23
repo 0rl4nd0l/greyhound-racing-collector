@@ -144,7 +144,7 @@ def test_migration_empty_repeat_and_populated_pre_phase3(tmp_path):
     store.migrate()
     store.migrate()
     with store._connect() as db:
-        assert db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 30
+        assert db.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 31
         assert (
             db.execute("SELECT kind FROM operations WHERE operation_id='legacy'").fetchone()[0]
             == "fixture"
@@ -443,6 +443,13 @@ def test_frozen_twenty_race_cohort_uses_real_terminal_barrier_and_finite_records
     assert all(
         row["rejections"] for row in terminal["records"] if row["classification"] != "ACCEPTED"
     )
+    collection_terminal = next(
+        row
+        for row in terminal["records"]
+        if row["race_id"] == str(collection_quarantined[0])
+    )
+    assert collection_terminal["prediction_id"]
+    assert authority.baseline_cohort_terminal_records(cohort_bytes) == terminal
     assert authority.open_baseline_results(
         operation(operation_number), accepted[0], NOW, cohort_bytes=cohort_bytes
     )

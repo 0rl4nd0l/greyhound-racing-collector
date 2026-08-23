@@ -329,22 +329,25 @@ class ForecastingAuthority:
                         "at": terminal_at,
                     }
                 )
-            elif rejections:
-                rejection = rejections[-1]
+            elif row["cohort_quarantine_prediction_id"] is not None:
                 classification = (
                     BaselineTerminalClassification.AUTHORIZATION_BLOCKED
-                    if rejection["code"] in authorization_codes
+                    if row["cohort_quarantine_code"] in authorization_codes
                     else (
                         BaselineTerminalClassification.INTEGRITY_FAILED
-                        if rejection["code"] in integrity_codes
+                        if row["cohort_quarantine_code"] in integrity_codes
                         else BaselineTerminalClassification.QUARANTINED
                     )
                 )
-                code = rejection["code"]
-                details = rejection["details"]
-                terminal_at = rejection["at"]
-                prediction_id = None
+                code = row["cohort_quarantine_code"]
+                details = row["cohort_quarantine_details"]
+                terminal_at = row["cohort_quarantined_at"]
+                prediction_id = row["cohort_quarantine_prediction_id"]
                 artifact_checksum = None
+            elif rejections:
+                raise OperationsStoreError(
+                    "collection rejection lacks explicit baseline prediction quarantine"
+                )
             else:
                 incomplete.append(race_id)
                 continue
