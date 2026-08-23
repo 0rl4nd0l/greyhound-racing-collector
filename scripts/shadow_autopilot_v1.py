@@ -629,6 +629,7 @@ def autonomous_live_odds_capture_command(
     collector_receipt_root: Path | None = None,
     collector_run_id: str | None = None,
     forward_corpus_root: Path | None = None,
+    forward_baseline_config: Path | None = None,
     command_prefix: Sequence[str] | None = None,
 ) -> list[str]:
     command = list(command_prefix or odds_capture_command_prefix())
@@ -669,7 +670,18 @@ def autonomous_live_odds_capture_command(
     if forward_corpus_root is not None:
         if collector_receipt_root is None or collector_run_id is None:
             raise ValueError("forward_corpus_scheduled_receipt_authority_missing")
-        command.extend(["--forward-corpus-root", str(forward_corpus_root)])
+        if forward_baseline_config is None:
+            raise ValueError("forward_baseline_config_missing")
+        command.extend(
+            [
+                "--forward-corpus-root",
+                str(forward_corpus_root),
+                "--forward-baseline-config",
+                str(forward_baseline_config),
+            ]
+        )
+    elif forward_baseline_config is not None:
+        raise ValueError("forward_corpus_root_missing")
     if manual_request_id is not None:
         if manual_request_root is None or collector_run_id is None:
             raise ValueError("manual_request_collector_authority_missing")
@@ -6901,6 +6913,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
                 else None
             ),
             forward_corpus_root=args.forward_corpus_root,
+            forward_baseline_config=args.forward_baseline_config,
         )
         autonomous_odds_step = step_command(
             name="autonomous_live_odds_capture",
@@ -8544,6 +8557,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--collector-lock-path", type=Path)
     parser.add_argument("--current-race-index-state-path", type=Path)
     parser.add_argument("--forward-corpus-root", type=Path)
+    parser.add_argument("--forward-baseline-config", type=Path)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--current-time")
     parser.add_argument("--db", type=Path, default=ROOT / "greyhound_racing_data.db")
@@ -8608,7 +8622,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         type=int,
         default=DEFAULT_RESULT_BACKLOG_LOOKBACK_DAYS,
     )
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if (args.forward_corpus_root is None) != (args.forward_baseline_config is None):
+        parser.error(
+            "--forward-corpus-root and --forward-baseline-config must be supplied together"
+        )
+    return args
 
 
 def main(argv: Sequence[str] | None = None) -> int:

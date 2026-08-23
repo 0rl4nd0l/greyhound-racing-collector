@@ -282,7 +282,7 @@ class CanonicalForecastService:
                 expected_schema_checksum=schema_component.checksum,
                 missingness_policy_bytes=self.artifacts.read(missing_component.checksum),
                 expected_missingness_checksum=missing_component.checksum,
-                expected_feature_cutoff_at=evidence_frozen_at,
+                expected_feature_cutoff_at=durable_frozen_at,
                 raw_evidence_reader=self.artifacts.read,
             )
             contract = champion.bundle.forecast_contract_version

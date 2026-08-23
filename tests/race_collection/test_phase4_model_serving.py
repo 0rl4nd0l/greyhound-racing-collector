@@ -894,7 +894,9 @@ def test_legacy_deferred_forecast_does_not_fabricate_availability_manifest(canon
     assert "feature_availability_manifest_checksum" not in result
 
 
-def test_manifest_aware_deferred_forecast_binds_contract_and_manifest(canonical_setup):
+def test_manifest_aware_deferred_forecast_binds_contract_and_manifest(
+    canonical_setup, monkeypatch
+):
     _, artifacts, _, loader, schema, _, _ = canonical_setup
     schema = json.loads(json.dumps(schema))
     for field in schema["fields"]:
@@ -959,9 +961,10 @@ def test_manifest_aware_deferred_forecast_binds_contract_and_manifest(canonical_
         feature_schema=schema,
     )
 
+    monkeypatch.setattr(loader, "authenticate_seal", lambda **_: NOW)
     result = CanonicalForecastService(loader, artifacts).forecast_with_champion(
         champion,
-        ForecastRequest(evidence_artifact.checksum),
+        ForecastRequest(evidence_artifact.checksum, 7, "race_fixture"),
         computed_at=NOW,
     )
 
@@ -969,6 +972,41 @@ def test_manifest_aware_deferred_forecast_binds_contract_and_manifest(canonical_
     assert LocalArtifactStore.checksum(canonical(result["feature_availability_manifest"])) == (
         ArtifactChecksum(result["feature_availability_manifest_checksum"])
     )
+
+
+def test_manifest_aware_forecast_rejects_self_attested_cutoff(canonical_setup):
+    _, artifacts, _, loader, schema, _, _ = canonical_setup
+    changed = json.loads(json.dumps(schema))
+    changed["availability_manifest_version"] = "feature-availability-manifest-v1"
+    changed["source_contracts"] = {}
+    schema_bytes = canonical(changed)
+    schema_artifact = artifacts.put(schema_bytes, media_type="application/json")
+    champion = loader.load()
+    champion = replace(
+        champion,
+        bundle=replace(
+            champion.bundle,
+            components=tuple(
+                replace(
+                    component,
+                    checksum=schema_artifact.checksum,
+                    byte_size=len(schema_bytes),
+                )
+                if component.kind == "feature_schema"
+                else component
+                for component in champion.bundle.components
+            ),
+        ),
+        feature_schema=changed,
+    )
+    evidence = artifacts.put(evidence_bytes(), media_type="application/json")
+
+    with pytest.raises(ForecastUnavailable, match="cutoff"):
+        CanonicalForecastService(loader, artifacts).forecast_with_champion(
+            champion,
+            ForecastRequest(evidence.checksum),
+            computed_at=NOW,
+        )
 
 
 def test_manifest_aware_race_commits_through_deferred_prediction_lifecycle(canonical_setup):
