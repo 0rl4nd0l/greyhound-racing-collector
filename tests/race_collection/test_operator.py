@@ -76,7 +76,7 @@ def python_311_executable() -> str:
     return executable
 
 
-def test_migrate_rejects_legacy_and_non_operations_databases_and_ends_at_29(tmp_path, capsys):
+def test_migrate_rejects_legacy_and_non_operations_databases_and_ends_at_31(tmp_path, capsys):
     legacy = tmp_path / "greyhound_racing_data.db"
     with sqlite3.connect(legacy) as db:
         db.execute("CREATE TABLE race_metadata(race_id TEXT PRIMARY KEY)")
@@ -105,11 +105,11 @@ def test_migrate_rejects_legacy_and_non_operations_databases_and_ends_at_29(tmp_
     operations = tmp_path / "operations.sqlite3"
     assert main(["migrate", *common(operations, legacy)]) == 0
     result = json.loads(capsys.readouterr().out.splitlines()[-1])
-    assert result == {"command": "migrate", "schema_version": 30, "status": "ok"}
+    assert result == {"command": "migrate", "schema_version": 31, "status": "ok"}
     with sqlite3.connect(operations) as db:
         assert [
             row[0] for row in db.execute("SELECT version FROM schema_migrations ORDER BY version")
-        ] == list(range(1, 31))
+        ] == list(range(1, 32))
         assert db.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
     with sqlite3.connect(legacy) as db:
         assert db.execute(
@@ -117,7 +117,7 @@ def test_migrate_rejects_legacy_and_non_operations_databases_and_ends_at_29(tmp_
         ).fetchall() == [("race_metadata",)]
     with sqlite3.connect(operations) as db:
         db.execute(
-            "UPDATE schema_migrations SET checksum=? WHERE version=30",
+            "UPDATE schema_migrations SET checksum=? WHERE version=31",
             ("0" * 64,),
         )
     assert (
@@ -169,7 +169,7 @@ def test_registration_and_observation_commands_preserve_exact_immutable_authorit
         "release_id": "candidate-release",
         "code_commit": "a" * 40,
         "config_checksum": config_checksum,
-        "database_schema": 30,
+        "database_schema": 31,
         "artifact_contract": "canonical-artifacts-v1",
         "policy_version": policy_document["policy_id"],
         "supported_bundle_versions": ["runner-win-probability-v1"],

@@ -255,6 +255,7 @@ nohup.out
 *.sqlite*
 *.sql
 !race_collection/migrations/0030_forward_baseline_cohort_authority.sql
+!race_collection/migrations/0031_forward_baseline_prediction_quarantine.sql
 
 # Temporary and build files
 temp/
