@@ -892,6 +892,84 @@ def test_main_routes_forward_corpus_through_durable_baseline_service(
     assert observed[0]["evidence_root"] == evidence_root
 
 
+def test_main_forward_corpus_without_baseline_config_keeps_existing_admission(
+    tmp_path, monkeypatch
+):
+    input_dir = tmp_path / "upcoming"
+    _write_capture_input(input_dir)
+    evidence_root = tmp_path / "evidence"
+    evidence_root.mkdir()
+    output_dir = evidence_root / "autonomous_live_odds_capture_existing_unit"
+    corpus_root = tmp_path / "forward-corpus"
+    index_path = evidence_root / "manual_prediction_current_race_index.json"
+    verified_index = object()
+    observed = []
+    release_root = tmp_path / "release-repo"
+    release_root.mkdir()
+    monkeypatch.setattr(capture, "ROOT", release_root)
+    monkeypatch.setattr(capture, "build_capture_plan", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(
+        "race_collection.scheduled_forward_corpus.admit_scheduled_capture",
+        lambda **values: observed.append(values) or {"status": "PREJUMP_CAPTURED"},
+    )
+
+    def execute(_plan, **values):
+        admission = values["forward_corpus_admitter"](
+            plan_item={"race_id": "race-existing"},
+            attempt={"status": "APPENDED"},
+            receipt_publish={"status": "PUBLISHED"},
+            emitted_at=datetime.fromisoformat("2026-06-10T14:40:00+10:00"),
+        )
+        assert admission == {"status": "PREJUMP_CAPTURED"}
+        return {
+            "attempts": [],
+            "capture_window_coverage": {},
+            "final_status": "NO_ELIGIBLE_WINDOWS",
+        }
+
+    monkeypatch.setattr(capture, "execute_capture_plan", execute)
+
+    assert (
+        capture.main(
+            [
+                "--input-dir",
+                str(input_dir),
+                "--evidence-root",
+                str(evidence_root),
+                "--output-dir",
+                str(output_dir),
+                "--db",
+                str(tmp_path / "odds.db"),
+                "--current-time",
+                "2026-06-10T14:40:00+10:00",
+                "--execute",
+                "--allow-auto-scrape-odds",
+                "--collector-receipt-root",
+                str(tmp_path / "receipts"),
+                "--collector-run-id",
+                "collector-existing",
+                "--forward-corpus-root",
+                str(corpus_root),
+                "--forward-current-race-index-path",
+                str(index_path),
+            ],
+            forward_baseline_loader=lambda _path: pytest.fail(
+                "baseline initialization must remain disabled"
+            ),
+            current_index_reader=lambda **values: (
+                verified_index
+                if values["index_path"] == index_path
+                and values["return_verified_view"] is True
+                else None
+            ),
+        )
+        == 0
+    )
+    assert observed[0]["corpus_root"] == corpus_root
+    assert observed[0]["collector_run_id"] == "collector-existing"
+    assert observed[0]["verified_index"] is verified_index
+
+
 def test_execute_capture_plan_skips_existing_superset_capture_without_retry(
     tmp_path,
 ):

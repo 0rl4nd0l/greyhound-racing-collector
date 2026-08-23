@@ -619,23 +619,37 @@ def test_autonomous_live_odds_capture_command_requires_explicit_execute_flags():
             forward_baseline_config=Path("forward-baseline.json"),
         )
 
-    with pytest.raises(ValueError, match="forward_baseline_config_missing"):
-        autopilot.autonomous_live_odds_capture_command(
-            input_dirs=[Path("upcoming_a")],
-            evidence_root=Path("artifacts/full_evidence_orchestration_20260525"),
-            capture_dir=Path("autonomous_live_odds_capture_x"),
-            db_path=Path("greyhound_racing_data.db"),
-            current_time="2026-06-10T14:00:00+10:00",
-            limit=16,
-            execute=True,
-            allow_auto_scrape_odds=True,
-            collector_receipt_root=Path("collector-requests"),
-            collector_run_id="scheduled-run-1",
-            forward_corpus_root=Path("forward-corpus"),
-        )
+    existing_binding = autopilot.autonomous_live_odds_capture_command(
+        input_dirs=[Path("upcoming_a")],
+        evidence_root=Path("artifacts/full_evidence_orchestration_20260525"),
+        capture_dir=Path("autonomous_live_odds_capture_x"),
+        db_path=Path("greyhound_racing_data.db"),
+        current_time="2026-06-10T14:00:00+10:00",
+        limit=16,
+        execute=True,
+        allow_auto_scrape_odds=True,
+        collector_receipt_root=Path("collector-requests"),
+        collector_run_id="scheduled-run-1",
+        forward_corpus_root=Path("forward-corpus"),
+        forward_current_race_index_path=Path("current-race-index.json"),
+    )
+    assert existing_binding[
+        existing_binding.index("--forward-corpus-root") + 1
+    ] == "forward-corpus"
+    assert "--forward-baseline-config" not in existing_binding
+    assert existing_binding[
+        existing_binding.index("--forward-current-race-index-path") + 1
+    ] == "current-race-index.json"
 
+    existing_args = autopilot.parse_args(
+        ["--forward-corpus-root", "forward-corpus"]
+    )
+    assert existing_args.forward_corpus_root == Path("forward-corpus")
+    assert existing_args.forward_baseline_config is None
     with pytest.raises(SystemExit):
-        autopilot.parse_args(["--forward-corpus-root", "forward-corpus"])
+        autopilot.parse_args(
+            ["--forward-baseline-config", "forward-baseline.json"]
+        )
 
 
 def test_manual_request_command_is_bound_to_claimed_collector_run():

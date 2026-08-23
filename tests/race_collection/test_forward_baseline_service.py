@@ -253,10 +253,11 @@ def test_production_preflight_rejects_malformed_selected_race_before_any_write(
     assert not configuration(tmp_path).corpus_root.exists()
 
 
-def test_production_preflight_rejects_stale_verified_view_before_any_write(tmp_path: Path):
+def test_production_preflight_awaits_fresh_verified_view_before_any_write(tmp_path: Path):
     database = tmp_path / "operations.sqlite3"
     store = SQLiteOperationsStore(database)
     store.migrate()
+    config_path, evidence_root, index_path = production_config(tmp_path, database)
     stale = verified_index(complete_candidates())
     stale = VerifiedCurrentRaceIndex(
         **{
@@ -268,12 +269,19 @@ def test_production_preflight_rejects_stale_verified_view_before_any_write(tmp_p
     )
     before = table_counts(database)
 
-    report = ForwardBaselineCaptureService(store, configuration(tmp_path)).run(
-        stale,
+    report = run_forward_baseline_capture(
+        config_path,
         now=NOW,
+        current_index_reader=lambda **values: (
+            stale
+            if values["index_path"] == index_path
+            and values["evidence_root"] == evidence_root
+            and values["return_verified_view"] is True
+            else None
+        ),
     )
 
-    assert report["status"] == "INTEGRITY_FAILED"
+    assert report["status"] == "AWAITING_COHORT_CANDIDATES"
     assert report["reason"] == "CURRENT_RACE_INDEX_NOT_READY_NOW"
     assert table_counts(database) == before
     assert not configuration(tmp_path).corpus_root.exists()

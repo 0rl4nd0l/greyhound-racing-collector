@@ -1240,10 +1240,8 @@ def require_forward_baseline_binding(
     forward_corpus_root: Path | None,
     forward_baseline_config: Path | None,
 ) -> None:
-    if (forward_corpus_root is None) != (forward_baseline_config is None):
-        raise ValueError(
-            "forward_corpus_root and forward_baseline_config must be supplied together"
-        )
+    if forward_baseline_config is not None and forward_corpus_root is None:
+        raise ValueError("forward_baseline_config requires forward_corpus_root")
 
 
 def service_file_text(
@@ -1277,10 +1275,16 @@ def service_file_text(
                 "--enable-forward-official-result-observer",
                 "--forward-corpus-root",
                 systemd_exec_argument(str(forward_corpus_root)),
+            ]
+            if forward_corpus_root is not None
+            else []
+        ),
+        *(
+            [
                 "--forward-baseline-config",
                 systemd_exec_argument(str(forward_baseline_config)),
             ]
-            if forward_corpus_root is not None and forward_baseline_config is not None
+            if forward_baseline_config is not None
             else []
         ),
     ]
@@ -1373,10 +1377,16 @@ def odds_capture_service_file_text(
             [
                 "--forward-corpus-root",
                 systemd_exec_argument(str(forward_corpus_root)),
+            ]
+            if forward_corpus_root is not None
+            else []
+        ),
+        *(
+            [
                 "--forward-baseline-config",
                 systemd_exec_argument(str(forward_baseline_config)),
             ]
-            if forward_corpus_root is not None and forward_baseline_config is not None
+            if forward_baseline_config is not None
             else []
         ),
     ]
@@ -1952,18 +1962,18 @@ def odds_capture_only_autopilot_command(
     if state_path is not None:
         command.extend(["--current-race-index-state-path", str(state_path)])
     if forward_corpus_root is not None:
-        if forward_baseline_config is None:
-            raise ValueError("forward_baseline_config_missing")
         command.extend(
             [
                 "--forward-corpus-root",
                 str(forward_corpus_root),
-                "--forward-baseline-config",
-                str(forward_baseline_config),
             ]
         )
-    elif forward_baseline_config is not None:
-        raise ValueError("forward_corpus_root_missing")
+    if forward_baseline_config is not None:
+        if forward_corpus_root is None:
+            raise ValueError("forward_corpus_root_missing")
+        command.extend(
+            ["--forward-baseline-config", str(forward_baseline_config)]
+        )
     return command
 
 
@@ -9695,11 +9705,27 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             autopilot_command.append("--allow-auto-scrape-odds")
         if args.enable_autonomous_result_capture:
             autopilot_command.append("--enable-autonomous-result-capture")
+        if (
+            args.forward_corpus_root is not None
+            and args.forward_baseline_config is None
+            and args.odds_capture_state_path is not None
+        ):
+            autopilot_command.extend(
+                [
+                    "--current-race-index-state-path",
+                    str(args.odds_capture_state_path),
+                ]
+            )
         if args.forward_corpus_root is not None:
             autopilot_command.extend(
                 [
                     "--forward-corpus-root",
                     str(args.forward_corpus_root),
+                ]
+            )
+        if args.forward_baseline_config is not None:
+            autopilot_command.extend(
+                [
                     "--forward-baseline-config",
                     str(args.forward_baseline_config),
                 ]
@@ -13470,11 +13496,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
             "--forward-corpus-root is required with "
             "--enable-forward-official-result-observer"
         )
-    if bool(getattr(args, "forward_corpus_root", None)) != bool(
-        getattr(args, "forward_baseline_config", None)
+    if (
+        getattr(args, "forward_baseline_config", None) is not None
+        and getattr(args, "forward_corpus_root", None) is None
     ):
         parser.error(
-            "--forward-corpus-root and --forward-baseline-config must be supplied together"
+            "--forward-baseline-config requires --forward-corpus-root"
         )
     return args
 
