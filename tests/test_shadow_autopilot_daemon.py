@@ -509,6 +509,8 @@ def test_run_once_releases_after_primary_when_odds_refresh_due(tmp_path, monkeyp
     def fake_run_command(*, name, command, output_dir, timeout_seconds, cwd=daemon.ROOT):
         if name != "autopilot_cycle":
             raise AssertionError(f"post-primary release should not run {name}")
+        assert command[command.index("--days-ahead") + 1] == "1"
+        assert command[command.index("--refresh-limit") + 1] == "6"
         assert command[command.index("--autonomous-odds-capture-limit") + 1] == "16"
         assert command[command.index("--result-backlog-limit") + 1] == "8"
         assert command[command.index("--result-backlog-shadow-run-limit") + 1] == "16"
@@ -543,6 +545,8 @@ def test_run_once_releases_after_primary_when_odds_refresh_due(tmp_path, monkeyp
             "--enable-autonomous-odds-capture",
             "--odds-capture-state-path",
             str(odds_state_path),
+            "--state-path",
+            str(tmp_path / "runtime" / "daemon_state.json"),
         ]
     )
 
@@ -656,6 +660,9 @@ def test_run_once_releases_after_primary_when_odds_refresh_due(tmp_path, monkeyp
     assert written[
         "autopilot_cycle_best_aggregate_unified_evidence_eligible_rows"
     ] == report["autopilot_cycle_best_aggregate_unified_evidence_eligible_rows"]
+    state = json.loads((tmp_path / "runtime" / "daemon_state.json").read_text())
+    assert state["consecutive_odds_priority_full_deferrals"] == 0
+    assert state["last_full_primary_opportunity_run_id"] == "release"
     assert odds_state_path.exists()
 
 
@@ -913,6 +920,7 @@ def test_run_once_defer_writes_startup_output_manifest(tmp_path, monkeypatch):
     evidence_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
     output_dir = evidence_root / "shadow_autopilot_daemonization_v1_defer"
     odds_state_path = tmp_path / "runtime" / "odds_capture_state.json"
+    state_path = tmp_path / "runtime" / "daemon_state.json"
 
     monkeypatch.setattr(daemon, "ROOT", tmp_path)
     monkeypatch.setattr(daemon, "copy_if_exists", lambda source, dest: None)
@@ -954,6 +962,8 @@ def test_run_once_defer_writes_startup_output_manifest(tmp_path, monkeypatch):
             "--enable-autonomous-odds-capture",
             "--odds-capture-state-path",
             str(odds_state_path),
+            "--state-path",
+            str(state_path),
         ]
     )
 
@@ -965,6 +975,81 @@ def test_run_once_defer_writes_startup_output_manifest(tmp_path, monkeypatch):
     assert any(path.endswith("daemon_run_report.json") for path in manifest["files"])
     assert any(path.endswith("final_status.txt") for path in manifest["files"])
     assert any(path.endswith("full_daemon_odds_window_defer.json") for path in manifest["files"])
+    state = json.loads(state_path.read_text())
+    assert state["consecutive_odds_priority_full_deferrals"] == 1
+    assert state["last_odds_priority_full_deferral_run_id"] == "defer"
+
+
+def test_run_once_repeated_odds_priority_cannot_starve_full_primary(
+    tmp_path, monkeypatch
+):
+    evidence_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
+    output_dir = evidence_root / "shadow_autopilot_daemonization_v1_fairness"
+    odds_state_path = tmp_path / "runtime" / "odds_capture_state.json"
+    state_path = tmp_path / "runtime" / "daemon_state.json"
+    daemon.write_json(
+        state_path,
+        {
+            "schema_version": "shadow_autopilot_daemon_state_v1",
+            "consecutive_odds_priority_full_deferrals": 1,
+            "last_odds_priority_full_deferral_run_id": "previous-full",
+        },
+    )
+
+    monkeypatch.setattr(daemon, "ROOT", tmp_path)
+    monkeypatch.setattr(daemon, "copy_if_exists", lambda source, dest: None)
+    monkeypatch.setattr(
+        daemon,
+        "write_service_files",
+        lambda **kwargs: {
+            "status": "SERVICE_FILES_WRITTEN",
+            "systemd_deployment_ready": True,
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "full_daemon_odds_window_defer_decision",
+        lambda odds_state, current_time: {
+            "should_defer": True,
+            "reason": "test_fixed_window_open",
+        },
+    )
+    monkeypatch.setattr(
+        daemon,
+        "acquire_lock_with_odds_capture_retry",
+        lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("full primary lock opportunity reached")
+        ),
+    )
+
+    args = daemon.parse_args(
+        [
+            "run-once",
+            "--run-id",
+            "fairness",
+            "--evidence-root",
+            str(evidence_root),
+            "--output-dir",
+            str(output_dir),
+            "--current-time",
+            "2026-06-13T15:32:11+10:00",
+            "--enable-autonomous-odds-capture",
+            "--odds-capture-state-path",
+            str(odds_state_path),
+            "--state-path",
+            str(state_path),
+        ]
+    )
+
+    report = daemon.run_once(args)
+
+    decision = json.loads(
+        (output_dir / "full_daemon_odds_window_defer.json").read_text()
+    )
+    assert report["runtime_action"] == "CHECK_DAEMON_EXCEPTION"
+    assert report["exception_message"] == "full primary lock opportunity reached"
+    assert decision["should_defer"] is False
+    assert decision["full_primary_fairness_status"] == "FAIRNESS_OVERRIDE"
 
 
 def test_run_once_keeps_source_service_templates_immutable(tmp_path, monkeypatch):
@@ -1018,6 +1103,8 @@ def test_run_once_keeps_source_service_templates_immutable(tmp_path, monkeypatch
             "--enable-autonomous-odds-capture",
             "--odds-capture-state-path",
             str(odds_state_path),
+            "--state-path",
+            str(tmp_path / "runtime" / "daemon_state.json"),
         ]
     )
 
@@ -1347,6 +1434,8 @@ def test_run_once_observer_waits_for_natural_odds_release_then_continues(
             "--enable-autonomous-odds-capture",
             "--odds-capture-state-path",
             str(odds_state_path),
+            "--state-path",
+            str(tmp_path / "runtime" / "daemon_state.json"),
         ]
     )
 
@@ -1596,6 +1685,8 @@ def test_observer_completion_refreshes_wall_time_before_odds_defer(
             "--enable-autonomous-odds-capture",
             "--odds-capture-state-path",
             str(odds_state_path),
+            "--state-path",
+            str(tmp_path / "runtime" / "daemon_state.json"),
         ]
     )
 
@@ -1688,6 +1779,8 @@ def test_run_once_defers_before_lock_when_t2_window_recomputed_due(
             "--enable-autonomous-odds-capture",
             "--odds-capture-state-path",
             str(odds_state_path),
+            "--state-path",
+            str(tmp_path / "runtime" / "daemon_state.json"),
         ]
     )
 
@@ -4209,6 +4302,44 @@ def test_full_daemon_odds_window_defer_decision_defers_fresh_multi_race_open_sta
     assert decision["should_defer"] is True
     assert decision["reason"] == "odds_capture_state_open_with_additional_selected_races"
     assert decision["fresh_open_multi_race_state"] is True
+
+
+def test_full_primary_fairness_allows_only_one_consecutive_odds_priority_deferral():
+    decision = daemon.bounded_full_primary_defer_decision(
+        {
+            "should_defer": True,
+            "reason": "odds_capture_window_open_or_imminent",
+        },
+        {
+            "consecutive_odds_priority_full_deferrals": 1,
+        },
+    )
+
+    assert decision["should_defer"] is False
+    assert decision["reason"] == "full_primary_fairness_opportunity_due"
+    assert decision["original_reason"] == "odds_capture_window_open_or_imminent"
+    assert decision["full_primary_fairness_status"] == "FAIRNESS_OVERRIDE"
+    assert decision["consecutive_odds_priority_full_deferrals"] == 1
+
+
+def test_full_primary_fairness_fails_closed_on_ambiguous_durable_state():
+    for invalid_count in ("1", 2, -1, True):
+        decision = daemon.bounded_full_primary_defer_decision(
+            {
+                "should_defer": True,
+                "reason": "odds_capture_window_open_or_imminent",
+            },
+            {
+                "consecutive_odds_priority_full_deferrals": invalid_count,
+            },
+        )
+
+        assert decision["should_defer"] is True
+        assert decision["reason"] == "odds_capture_window_open_or_imminent"
+        assert decision["full_primary_fairness_status"] == "INVALID_FAIL_CLOSED"
+        assert decision["full_primary_fairness_blocker"] == (
+            "consecutive_odds_priority_full_deferrals_invalid"
+        )
 
 
 def test_run_odds_capture_once_preserves_window_state_on_lock_busy(
