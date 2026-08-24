@@ -465,6 +465,16 @@ def _metadata_record_for_csv(csv_path: Path) -> dict[str, Any]:
         and isinstance(payload.get("prejump_shadow_metadata"), Mapping)
         else {}
     )
+    runner_rows = shadow.get("runner_box_name_list")
+    native_runner_ids = (
+        [
+            row.get("source_native_runner_id")
+            for row in runner_rows
+            if isinstance(row, Mapping)
+        ]
+        if isinstance(runner_rows, list)
+        else []
+    )
     weather_present = bool(weather_track.get("weather"))
     track_present = bool(weather_track.get("track_condition"))
     expert_form_safe = bool(expert_form.get("metadata_is_leakage_safe"))
@@ -482,6 +492,8 @@ def _metadata_record_for_csv(csv_path: Path) -> dict[str, Any]:
             weather_present and track_present and expert_form_safe
         ),
         "runner_source_observed_at": shadow.get("metadata_captured_at"),
+        "source_native_race_id": shadow.get("source_native_race_id"),
+        "source_native_runner_ids": native_runner_ids,
         "weather": weather_track.get("weather"),
         "track_condition": weather_track.get("track_condition"),
         "weather_track_metadata_source": weather_track.get("weather_track_metadata_source"),
@@ -677,8 +689,30 @@ def current_index_metadata_selection(
             and generated < jump
             and observed < jump
         )
-        if aligned and safe_components and safe_runner_timing:
-            eligible.append(dict(selected))
+        native_race_id = (
+            row.get("source_native_race_id") if isinstance(row, Mapping) else None
+        )
+        native_runner_ids = (
+            row.get("source_native_runner_ids") if isinstance(row, Mapping) else None
+        )
+        safe_native_identity = bool(
+            isinstance(native_race_id, str)
+            and native_race_id.isascii()
+            and native_race_id.isdecimal()
+            and isinstance(native_runner_ids, list)
+            and len(native_runner_ids) >= 2
+            and all(
+                isinstance(value, str)
+                and value.isascii()
+                and value.isdecimal()
+                for value in native_runner_ids
+            )
+            and len(native_runner_ids) == len(set(native_runner_ids))
+        )
+        if aligned and safe_components and safe_runner_timing and safe_native_identity:
+            eligible.append(
+                {**dict(selected), "source_native_race_id": native_race_id}
+            )
             continue
         missing = []
         if not aligned:
@@ -694,6 +728,8 @@ def current_index_metadata_selection(
                 missing.append("expert_form")
             if not safe_runner_timing:
                 missing.append("runner_source_timing")
+            if not safe_native_identity:
+                missing.append("native_source_identity")
         exclusions.append(
             {
                 "race_id": selected.get("race_id"),

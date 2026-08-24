@@ -281,7 +281,11 @@ def _synthetic_thedogs_export(runners):
 
 def _canonical_runner_set_for_test(race_url, runners):
     participants = [
-        {"box_number": box_number, "dog_name": dog_name}
+        {
+            "box_number": box_number,
+            "dog_name": dog_name,
+            "source_native_runner_id": str(159000 + box_number),
+        }
         for box_number, dog_name in runners
     ]
     return {
@@ -292,6 +296,8 @@ def _canonical_runner_set_for_test(race_url, runners):
         "final_runner_boxes": [box_number for box_number, _dog_name in runners],
         "final_runner_names": [dog_name for _box_number, dog_name in runners],
         "final_runner_participants": participants,
+        "source_native_race_id": "15900",
+        "native_identity_status": "available",
         "scratched_boxes": [],
         "scratched_participants": [],
         "reserve_boxes": [],
@@ -339,7 +345,7 @@ def test_download_refreshes_existing_csv_with_stale_sidecar_contract(
     monkeypatch.setattr(
         br,
         "extract_detailed_race_info",
-        lambda soup, url: {
+        lambda soup, url, **_kwargs: {
             "race_number": "1",
             "venue": "TEST",
             "date": "2030-06-09",
@@ -351,7 +357,7 @@ def test_download_refreshes_existing_csv_with_stale_sidecar_contract(
     monkeypatch.setattr(
         br,
         "_extract_safe_target_metadata_from_page",
-        lambda soup, url: {
+        lambda soup, url, **_kwargs: {
             "target_distance": "400m",
             "target_distance_source": "canonical_pre_race_page",
             "metadata_source_url": race_url,
@@ -424,11 +430,28 @@ def test_download_refreshes_existing_csv_with_stale_sidecar_contract(
     assert sidecar["prejump_shadow_metadata"]["status"] == "PASS"
     assert sidecar["prejump_shadow_metadata"]["metadata_captured_at"]
     assert sidecar["prejump_shadow_metadata"]["runner_box_name_list"] == [
-        {"box_number": 1, "dog_name": "Alpha Runner"},
-        {"box_number": 2, "dog_name": "Bravo Runner"},
-        {"box_number": 3, "dog_name": "Charlie Runner"},
-        {"box_number": 4, "dog_name": "Delta Runner"},
+        {
+            "box_number": 1, "dog_name": "Alpha Runner",
+            "scratch_state": "ACTIVE",
+            "source_native_runner_id": "159001",
+        },
+        {
+            "box_number": 2, "dog_name": "Bravo Runner",
+            "scratch_state": "ACTIVE",
+            "source_native_runner_id": "159002",
+        },
+        {
+            "box_number": 3, "dog_name": "Charlie Runner",
+            "scratch_state": "ACTIVE",
+            "source_native_runner_id": "159003",
+        },
+        {
+            "box_number": 4, "dog_name": "Delta Runner",
+            "scratch_state": "ACTIVE",
+            "source_native_runner_id": "159004",
+        },
     ]
+    assert sidecar["prejump_shadow_metadata"]["source_native_race_id"] == "15900"
     validation = validate_prejump_sidecar_metadata(existing_path)
     assert validation["status"] == "PASS", validation
     contract = existing_prejump_sidecar_contract_status(existing_path)
@@ -457,7 +480,7 @@ def test_download_fallback_quarantines_csv_without_valid_prejump_sidecar(
     monkeypatch.setattr(
         br,
         "extract_detailed_race_info",
-        lambda soup, url: {
+        lambda soup, url, **_kwargs: {
             "race_number": "1",
             "venue": "TEST",
             "date": "2026-06-09",
@@ -469,7 +492,7 @@ def test_download_fallback_quarantines_csv_without_valid_prejump_sidecar(
     monkeypatch.setattr(
         br,
         "_extract_safe_target_metadata_from_page",
-        lambda soup, url: {
+        lambda soup, url, **_kwargs: {
             "target_distance": "400m",
             "target_distance_source": "canonical_pre_race_page",
             "target_grade": "Maiden",
@@ -549,7 +572,7 @@ def test_download_pdf_masquerading_as_csv_tries_expert_form_fallback(
     monkeypatch.setattr(
         br,
         "extract_detailed_race_info",
-        lambda soup, url: {
+        lambda soup, url, **_kwargs: {
             "race_number": "9",
             "venue": "TAREE",
             "date": "2026-06-13",
@@ -561,7 +584,7 @@ def test_download_pdf_masquerading_as_csv_tries_expert_form_fallback(
     monkeypatch.setattr(
         br,
         "_extract_safe_target_metadata_from_page",
-        lambda soup, url: {
+        lambda soup, url, **_kwargs: {
             "target_distance": "300m",
             "target_distance_source": "canonical_pre_race_page",
             "target_grade": "5th Grade",

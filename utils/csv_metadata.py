@@ -1616,6 +1616,13 @@ def _participant_box_name_list(payload: Mapping[str, Any]) -> list[Dict[str, Any
             if box_number is None or not dog_name:
                 continue
             row = {"box_number": box_number, "dog_name": dog_name}
+            native_id = participant.get("source_native_runner_id")
+            if (
+                isinstance(native_id, str)
+                and native_id.isascii()
+                and native_id.isdecimal()
+            ):
+                row["source_native_runner_id"] = native_id
             if participant.get("scratch_state") == "ACTIVE":
                 row["scratch_state"] = "ACTIVE"
             rows.append(row)
@@ -1727,6 +1734,7 @@ def build_prejump_shadow_metadata_payload(payload: Mapping[str, Any]) -> Dict[st
         "target_grade_safe": target_grade,
         "target_grade_source": str(grade_source) if grade_source not in (None, "") else None,
         "source_url": str(source_url) if source_url not in (None, "") else None,
+        "source_native_race_id": payload.get("source_native_race_id"),
         "runner_box_name_list": participants,
         "canonical_final_runner_alignment": {
             "status": alignment.get("status"),
@@ -1735,6 +1743,7 @@ def build_prejump_shadow_metadata_payload(payload: Mapping[str, Any]) -> Dict[st
             "prediction_runner_count": alignment.get("prediction_runner_count"),
             "source_url": canonical_runner_source_url,
             "reason": alignment.get("reason"),
+            "native_identity_status": alignment.get("native_identity_status"),
         },
     }
 
@@ -1792,6 +1801,10 @@ def normalize_verified_thedogs_export_content(
             source=str(accepted_csv_path),
         )
         base["canonical_runner_alignment"] = canonical_alignment
+        if canonical_runner_set.get("native_identity_status") == "available":
+            base["source_native_race_id"] = canonical_runner_set.get(
+                "source_native_race_id"
+            )
         if canonical_alignment.get("status") == "aligned":
             content_for_normalization = aligned_content
             effective_delimiter = (
@@ -1817,7 +1830,7 @@ def normalize_verified_thedogs_export_content(
                 (
                     _safe_int(participant.get("box_number")),
                     normalise_runner_name(participant.get("dog_name") or ""),
-                )
+                ): participant
                 for participant in canonical_runner_set.get(
                     "final_runner_participants", []
                 )
@@ -1837,6 +1850,15 @@ def normalize_verified_thedogs_export_content(
                     # pre-race producer explicitly excluded scratched and
                     # unpromoted reserve rows before reporting this active set.
                     participant["scratch_state"] = "ACTIVE"
+                    native_id = canonical_active[identity].get(
+                        "source_native_runner_id"
+                    )
+                    if (
+                        isinstance(native_id, str)
+                        and native_id.isascii()
+                        and native_id.isdecimal()
+                    ):
+                        participant["source_native_runner_id"] = native_id
             base["runner_completeness_after_canonical_alignment"] = (
                 dict(effective_runner_completeness)
             )

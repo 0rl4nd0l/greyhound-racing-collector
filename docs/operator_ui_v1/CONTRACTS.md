@@ -146,7 +146,7 @@ These policies are exhaustive; an adapter may not invent or defer a threshold:
   `shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json`
   at its server-configured locator beneath the server-owned evidence root. The
   packet has schema `collector_current_race_index_v1` or
-  `collector_current_race_index_v2`, canonical bytes, at most 32 races, a
+  `collector_current_race_index_v2`, canonical bytes, one to 32 races, a
   timezone-aware `source_generated_at`, and the sealed refresh-report path and
   SHA-256. Its configured maximum age is exactly 1200 seconds. Every v1 and v2
   row contains validated `date`, timezone-aware `jump_datetime`, stable
@@ -180,8 +180,10 @@ These policies are exhaustive; an adapter may not invent or defer a threshold:
   lock, caller-path resolution, or independent refresh-report interpretation.
   Each runner binds integer box, source display name, protocol-compatible
   normalized uppercase identity, explicit `ACTIVE` scratch state, and a
-  source-native runner ID only when the accepted source supplies it; absence is
-  explicit and IDs are never guessed. Duplicate box/normalized identity,
+  numeric source-native runner ID retained from the accepted source. Every v2
+  race likewise retains its numeric source-native race ID. Missing,
+  non-numeric, conflicting, duplicated, or ambiguous native identity is
+  rejected and IDs are never guessed. Duplicate box/normalized identity,
   empty/partial/ambiguous sets, unknown scratch state, or noncanonical ordering
   is invalid. The deterministic runner-set SHA binds the ordered set to exact
   race URL/date/venue/number/jump identity, pre-race source URL/timestamp,

@@ -3108,15 +3108,13 @@ def test_run_odds_capture_once_uses_lock_and_writes_compact_report(tmp_path, mon
         "AUTONOMOUS_LIVE_ODDS_CAPTURE_NO_ELIGIBLE_WINDOWS"
     )
     assert report["allowed_write_scope"] == "append_only_live_odds_rows_when_validation_passes"
-    assert report["current_race_index_publish"]["status"] == "PUBLISHED"
+    assert report["current_race_index_publish"] == {
+        "schema_version": "collector_current_race_index_publish_v2",
+        "status": "SKIPPED",
+        "reason": "odds_capture_only_does_not_publish_candidate_index",
+    }
     assert not lock_path.exists()
-    current_index = json.loads(
-        (
-            state_path.parent / "manual_prediction_current_race_index.json"
-        ).read_text()
-    )
-    assert current_index["race_count"] == 1
-    assert current_index["races"][0]["race_id"] == "Race 1 - HEA - 2026-06-12"
+    assert not (state_path.parent / "manual_prediction_current_race_index.json").exists()
     written = json.loads((output_dir / "odds_capture_only_daemon_report.json").read_text())
     manifest = json.loads((output_dir / "output_manifest.json").read_text())
     state = json.loads(state_path.read_text())
