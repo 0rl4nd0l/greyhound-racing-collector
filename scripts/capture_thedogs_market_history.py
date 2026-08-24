@@ -19,7 +19,7 @@ import math
 import os
 import re
 import stat
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
@@ -371,7 +371,9 @@ def make_session() -> requests.Session:
     return session
 
 
-def _receipt_headers(headers: Mapping[str, Any]) -> dict[str, str]:
+def bounded_receipt_headers(headers: Mapping[str, Any]) -> dict[str, str]:
+    """Retain only source-validation headers, never cookies or credentials."""
+
     lowered = {str(key).lower(): str(value) for key, value in headers.items()}
     return {key: lowered[key] for key in RECEIPT_HTTP_HEADERS if key in lowered}
 
@@ -405,7 +407,7 @@ def timed_get(
         request_end_utc=end,
         final_url=str(response.url),
         status_code=int(response.status_code),
-        headers=_receipt_headers(response.headers),
+        headers=bounded_receipt_headers(response.headers),
         body=body,
     )
 
@@ -540,11 +542,15 @@ def normalize_api_snapshot(
         if runner.active and provider is None:
             active_provider_unknown += 1
         market = quote.get("market") if quote is not None else None
-        native_race_id = ""
-        if isinstance(market, Mapping):
+        if runner.active:
+            if not isinstance(market, Mapping):
+                raise CaptureError("native_race_identity_incomplete")
             native_race_id = str(market.get("race_id") or "").strip()
-            if native_race_id:
-                native_race_ids.add(native_race_id)
+            if not native_race_id:
+                raise CaptureError("native_race_identity_incomplete")
+            if not native_race_id.isascii() or not native_race_id.isdecimal():
+                raise CaptureError("native_race_identity_invalid")
+            native_race_ids.add(native_race_id)
         api_run_box = quote.get("run_box") if quote is not None else None
         parsed_api_run_box = None
         if api_run_box is not None:
@@ -618,6 +624,7 @@ def normalize_api_snapshot(
         raise CaptureError("active_effective_box_not_unique")
     if len(native_race_ids) != 1:
         raise CaptureError("native_race_identity_not_unique")
+    native_race_id = next(iter(native_race_ids))
     if len(provider_values) > 1:
         raise CaptureError("provider_identity_not_unique")
     if provider_values and active_provider_unknown:
@@ -639,7 +646,295 @@ def normalize_api_snapshot(
             "name": None,
             "source": "provider_not_explicit_in_source_payload",
         }
-    return rows, provider, next(iter(native_race_ids))
+    return rows, provider, native_race_id
+
+
+def _expected_native_runner_box_map(value: Any) -> dict[str, int]:
+    try:
+        pairs = list(value)
+    except TypeError as exc:
+        raise CaptureError("expected_active_runner_boxes_invalid") from exc
+    if len(pairs) < 2:
+        raise CaptureError("expected_active_runner_boxes_invalid")
+    normalized: dict[str, int] = {}
+    boxes: set[int] = set()
+    for pair in pairs:
+        if not isinstance(pair, (list, tuple)) or len(pair) != 2:
+            raise CaptureError("expected_active_runner_boxes_invalid")
+        runner_id, effective_box = pair
+        if (
+            not isinstance(runner_id, str)
+            or not runner_id.isascii()
+            or not runner_id.isdecimal()
+            or runner_id in normalized
+            or not isinstance(effective_box, int)
+            or isinstance(effective_box, bool)
+            or effective_box not in range(1, 9)
+            or effective_box in boxes
+        ):
+            raise CaptureError("expected_active_runner_boxes_invalid")
+        normalized[runner_id] = effective_box
+        boxes.add(effective_box)
+    return normalized
+
+
+def capture_native_identity_from_retained_race_page(
+    *,
+    session: Any,
+    race_page: TimedResponse,
+    expected_active_runner_boxes: Sequence[tuple[str, int]],
+    expected_jump_utc: datetime,
+    current_time: datetime,
+    clock: Callable[[], datetime] = utc_now,
+) -> dict[str, Any]:
+    """Bind a retained primary race page to native identity in two requests."""
+
+    expected_boxes = _expected_native_runner_box_map(expected_active_runner_boxes)
+    expected_ids = set(expected_boxes)
+    if expected_jump_utc.tzinfo is None or expected_jump_utc.utcoffset() is None:
+        raise CaptureError("expected_jump_timestamp_timezone_required")
+    if current_time.tzinfo is None or current_time.utcoffset() is None:
+        raise CaptureError("current_time_timezone_required")
+    jump_utc = expected_jump_utc.astimezone(timezone.utc)
+    observed_now = current_time.astimezone(timezone.utc)
+    retained_age_seconds = (
+        observed_now - race_page.request_end_utc.astimezone(timezone.utc)
+    ).total_seconds()
+    if retained_age_seconds < 0 or retained_age_seconds > 1200:
+        raise CaptureError("native_identity_evidence_stale")
+    validate_response(
+        race_page,
+        exact_url=race_page.requested_url,
+        content_type_prefix="text/html",
+    )
+    source_jump = parse_jump_from_source(race_page.body)
+    if source_jump != jump_utc:
+        raise CaptureError("jump_source_timestamp_mismatch")
+    retained_url = urlparse(race_page.requested_url)
+    canonical_race_url = retained_url._replace(query="", fragment="").geturl().rstrip("/")
+    identity = exact_odds_identity(f"{canonical_race_url}/odds")
+
+    odds = timed_get(
+        session,
+        str(identity["odds_url"]),
+        referer=str(identity["race_url"]),
+        accept=PAGE_HEADERS["Accept"],
+        clock=clock,
+    )
+    validate_response(
+        odds,
+        exact_url=str(identity["odds_url"]),
+        content_type_prefix="text/html",
+    )
+    source_runners = parse_source_runners(odds.body)
+    observed_active_ids = {
+        runner.native_runner_id for runner in source_runners if runner.active
+    }
+    if observed_active_ids != expected_ids:
+        raise CaptureError("expected_native_runner_set_mismatch")
+
+    api_url = _api_url(source_runners)
+    api = timed_get(
+        session,
+        api_url,
+        referer=str(identity["odds_url"]),
+        accept="application/json",
+        clock=clock,
+        xhr=True,
+    )
+    validate_response(
+        api,
+        exact_url=api_url,
+        content_type_prefix="application/json",
+    )
+    if not (
+        race_page.request_end_utc
+        <= odds.request_start_utc
+        <= odds.request_end_utc
+        <= api.request_start_utc
+        <= api.request_end_utc
+    ):
+        raise CaptureError("request_chain_time_order_invalid")
+    try:
+        api_payload = json.loads(api.body.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise CaptureError("odds_api_json_invalid") from exc
+    if not isinstance(api_payload, Mapping):
+        raise CaptureError("odds_api_json_invalid")
+    rows, provider, native_race_id = normalize_api_snapshot(
+        api_payload, source_runners
+    )
+    observed_boxes = {
+        row["native_runner_id"]: row["effective_box"]
+        for row in rows
+        if row["active"] is True
+    }
+    if observed_boxes != expected_boxes:
+        raise CaptureError("expected_native_runner_effective_box_mismatch")
+    if api.request_end_utc >= jump_utc:
+        raise CaptureError("capture_not_strictly_prejump")
+    evidence_age_seconds = (
+        api.request_end_utc - race_page.request_end_utc
+    ).total_seconds()
+    if evidence_age_seconds < 0 or evidence_age_seconds > 1200:
+        raise CaptureError("native_identity_evidence_stale")
+    evidence: dict[str, Any] = {
+        "schema_version": "thedogs_primary_native_identity_evidence_v1",
+        "source_class": SOURCE_CLASS,
+        "source_native_race_id": native_race_id,
+        "active_native_runner_ids": sorted(observed_active_ids),
+        "active_native_runner_boxes": dict(sorted(observed_boxes.items())),
+        "all_native_runner_ids": sorted(
+            runner.native_runner_id for runner in source_runners
+        ),
+        "jump_timestamp": iso_utc(jump_utc),
+        "capture_start_utc": iso_utc(odds.request_start_utc),
+        "capture_end_utc": iso_utc(api.request_end_utc),
+        "race_page_http": _response_receipt(race_page, include_body=True),
+        "odds_page_http": _response_receipt(odds, include_body=True),
+        "odds_api_http": _response_receipt(api, include_body=True),
+        "provider": provider,
+        "runners": rows,
+        "request_accounting": {
+            "logical_requests": 2,
+            "shared_session_max_attempts_per_request": 3,
+            "worst_case_wire_attempts": 6,
+        },
+    }
+    evidence["evidence_sha256"] = sha256_bytes(canonical_json_bytes(evidence))
+    return evidence
+
+
+def validate_primary_native_identity_evidence(
+    evidence: Any,
+    *,
+    expected_race_url: str,
+    expected_native_race_id: str,
+    expected_active_runner_boxes: Sequence[tuple[str, int]],
+    metadata_captured_at: str,
+) -> tuple[bool, str | None]:
+    """Revalidate persisted primary identity evidence without network access."""
+
+    try:
+        if not isinstance(evidence, Mapping):
+            raise CaptureError("native_identity_evidence_missing")
+        if evidence.get("schema_version") != "thedogs_primary_native_identity_evidence_v1":
+            raise CaptureError("native_identity_evidence_schema_invalid")
+        if evidence.get("source_class") != SOURCE_CLASS:
+            raise CaptureError("native_identity_evidence_source_class_invalid")
+        if evidence.get("request_accounting") != {
+            "logical_requests": 2,
+            "shared_session_max_attempts_per_request": 3,
+            "worst_case_wire_attempts": 6,
+        }:
+            raise CaptureError("native_identity_request_accounting_invalid")
+        core = {key: value for key, value in evidence.items() if key != "evidence_sha256"}
+        if evidence.get("evidence_sha256") != sha256_bytes(canonical_json_bytes(core)):
+            raise CaptureError("native_identity_evidence_hash_mismatch")
+        expected_boxes = _expected_native_runner_box_map(
+            expected_active_runner_boxes
+        )
+        expected_ids = set(expected_boxes)
+        if (
+            not isinstance(expected_native_race_id, str)
+            or not expected_native_race_id.isascii()
+            or not expected_native_race_id.isdecimal()
+        ):
+            raise CaptureError("expected_native_race_id_invalid")
+
+        race = _stored_response(
+            evidence.get("race_page_http"),
+            field="race_page_http",
+            exact_url=expected_race_url,
+            content_type_prefix="text/html",
+            require_body=True,
+        )
+        retained_url = urlparse(expected_race_url)
+        canonical_race_url = retained_url._replace(query="", fragment="").geturl().rstrip("/")
+        identity = exact_odds_identity(f"{canonical_race_url}/odds")
+        odds = _stored_response(
+            evidence.get("odds_page_http"),
+            field="odds_page_http",
+            exact_url=str(identity["odds_url"]),
+            content_type_prefix="text/html",
+            require_body=True,
+        )
+        source_runners = parse_source_runners(odds.body)
+        active_ids = sorted(
+            runner.native_runner_id for runner in source_runners if runner.active
+        )
+        if active_ids != sorted(expected_ids):
+            raise CaptureError("expected_native_runner_set_mismatch")
+        api_url = _api_url(source_runners)
+        api = _stored_response(
+            evidence.get("odds_api_http"),
+            field="odds_api_http",
+            exact_url=api_url,
+            content_type_prefix="application/json",
+            require_body=True,
+        )
+        try:
+            api_payload = json.loads(api.body.decode("utf-8"))
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise CaptureError("odds_api_json_invalid") from exc
+        if not isinstance(api_payload, Mapping):
+            raise CaptureError("odds_api_json_invalid")
+        rows, provider, native_race_id = normalize_api_snapshot(
+            api_payload, source_runners
+        )
+        observed_boxes = {
+            row["native_runner_id"]: row["effective_box"]
+            for row in rows
+            if row["active"] is True
+        }
+        if observed_boxes != expected_boxes:
+            raise CaptureError("expected_native_runner_effective_box_mismatch")
+        if native_race_id != expected_native_race_id:
+            raise CaptureError("expected_native_race_id_mismatch")
+        if evidence.get("source_native_race_id") != native_race_id:
+            raise CaptureError("persisted_native_race_id_mismatch")
+        if evidence.get("active_native_runner_ids") != active_ids:
+            raise CaptureError("persisted_active_runner_ids_mismatch")
+        if evidence.get("active_native_runner_boxes") != dict(
+            sorted(observed_boxes.items())
+        ):
+            raise CaptureError("persisted_active_runner_boxes_mismatch")
+        if evidence.get("all_native_runner_ids") != sorted(
+            runner.native_runner_id for runner in source_runners
+        ):
+            raise CaptureError("persisted_all_runner_ids_mismatch")
+        if evidence.get("runners") != rows:
+            raise CaptureError("persisted_native_runner_projection_mismatch")
+        if evidence.get("provider") != provider:
+            raise CaptureError("persisted_provider_projection_mismatch")
+        if evidence.get("capture_start_utc") != iso_utc(odds.request_start_utc):
+            raise CaptureError("persisted_capture_start_mismatch")
+        if evidence.get("capture_end_utc") != iso_utc(api.request_end_utc):
+            raise CaptureError("persisted_capture_end_mismatch")
+        jump_utc = parse_jump_from_source(race.body)
+        if evidence.get("jump_timestamp") != iso_utc(jump_utc):
+            raise CaptureError("persisted_jump_timestamp_mismatch")
+        if not (
+            race.request_end_utc
+            <= odds.request_start_utc
+            <= odds.request_end_utc
+            <= api.request_start_utc
+            <= api.request_end_utc
+            < jump_utc
+        ):
+            raise CaptureError("request_chain_time_order_invalid")
+        if (api.request_end_utc - race.request_end_utc).total_seconds() > 1200:
+            raise CaptureError("native_identity_evidence_stale")
+        metadata_time = parse_timestamp(
+            metadata_captured_at,
+            field="metadata_captured_at",
+        )
+        metadata_distance = (metadata_time - api.request_end_utc).total_seconds()
+        if metadata_distance < -5 or metadata_distance > 1200 or metadata_time >= jump_utc:
+            raise CaptureError("native_identity_evidence_stale")
+    except (CaptureError, TypeError, ValueError) as exc:
+        return False, str(exc)
+    return True, None
 
 
 def _response_receipt(response: TimedResponse, *, include_body: bool) -> dict[str, Any]:

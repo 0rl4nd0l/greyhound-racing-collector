@@ -1,9 +1,12 @@
+import hashlib
 import io
 import os
 import sys
 import types
 import tempfile
 import json
+from datetime import datetime, timezone
+from email.utils import format_datetime
 from pathlib import Path
 
 import pytest
@@ -165,7 +168,7 @@ def test_download_rejects_html_masquerading_as_csv(monkeypatch, _isolate_upcomin
     br = UpcomingRaceBrowser()
 
     # Patch link finder to return direct CSV content which is actually HTML
-    def _fake_find_csv_download_link(soup, race_url):
+    def _fake_find_csv_download_link(soup, race_url, **_kwargs):
         return {"type": "direct_csv", "data": "<html><body>Not CSV</body></html>"}
 
     monkeypatch.setattr(br, "find_csv_download_link", _fake_find_csv_download_link)
@@ -181,7 +184,7 @@ def test_download_rejects_html_masquerading_as_csv(monkeypatch, _isolate_upcomin
             pass
     
     fake_session = types.SimpleNamespace(
-        get=lambda url, timeout=30: _Resp(200, content=b"<html><title>Race 5</title></html>")
+        get=lambda url, timeout=30, **_kwargs: _Resp(200, content=b"<html><title>Race 5</title></html>")
     )
     monkeypatch.setattr(br, "session", fake_session)
 
@@ -201,7 +204,7 @@ def test_download_accepts_verified_thedogs_export_and_writes_pipe_file(monkeypat
     csv_content = REAL_COMMA_EXPORT.read_text(encoding="utf-8")
     sidecar = json.loads(REAL_COMMA_SIDECAR.read_text(encoding="utf-8"))
 
-    def _fake_find_csv_download_link(soup, race_url):
+    def _fake_find_csv_download_link(soup, race_url, **_kwargs):
         return {"type": "direct_csv", "data": csv_content}
 
     monkeypatch.setattr(br, "find_csv_download_link", _fake_find_csv_download_link)
@@ -234,7 +237,7 @@ def test_download_accepts_verified_thedogs_export_and_writes_pipe_file(monkeypat
             pass
 
     fake_session = types.SimpleNamespace(
-        get=lambda url, timeout=30: _Resp(200, content=b"<html><title>Race 5</title></html>")
+        get=lambda url, timeout=30, **_kwargs: _Resp(200, content=b"<html><title>Race 5</title></html>")
     )
     monkeypatch.setattr(br, "session", fake_session)
 
@@ -277,6 +280,240 @@ def _synthetic_thedogs_export(runners):
             ]
         )
     return "\n".join(",".join(row) for row in rows) + "\n"
+
+
+def test_primary_download_reallocates_duplicate_refetches_to_native_identity(
+    monkeypatch,
+    _isolate_upcoming_dir,
+):
+    from upcoming_race_browser import UpcomingRaceBrowser
+    from scripts.refresh_prejump_upcoming import (
+        current_index_metadata_selection,
+        sidecar_metadata_coverage,
+    )
+
+    jump = datetime(2099, 6, 9, 13, 15, tzinfo=timezone.utc)
+    race_url = "https://www.thedogs.com.au/racing/the-meadows/2099-06-09/1/test-race"
+    odds_url = f"{race_url}/odds"
+    expert_url = f"{race_url}/expert-form"
+    export_url = f"{expert_url}/export.csv"
+    race_html = f"""
+    <html><head><title>Race 1</title></head><body>
+      <formatted-time data-format="datetime_short" data-timestamp="{int(jump.timestamp())}">11:15 PM</formatted-time>
+      <section class="race-card"><dl>
+        <dt>Race Distance</dt><dd>400m</dd><dt>Race Grade</dt><dd>Maiden</dd>
+        <dt>Track Condition</dt><dd>Good</dd><dt>Weather</dt><dd>Fine</dd>
+      </dl></section>
+      <table class="race-runners">
+        <tbody data-content-url="/dogs/runner/159001/odds"><tr class="race-runner">
+          <td class="race-runners__box"><sprite-svg name="rug_1"></sprite-svg></td>
+          <td><div class="race-runners__name__dog">Alpha Runner<span>29.1</span></div></td>
+          <td><runner-odd data-runner-id="159001"></runner-odd></td>
+        </tr></tbody>
+        <tbody data-content-url="/dogs/runner/159002/odds"><tr class="race-runner">
+          <td class="race-runners__box"><sprite-svg name="rug_2"></sprite-svg></td>
+          <td><div class="race-runners__name__dog">Bravo Runner<span>29.2</span></div></td>
+          <td><runner-odd data-runner-id="159002"></runner-odd></td>
+        </tr></tbody>
+        <tbody data-content-url="/dogs/runner/159003/odds"><tr class="race-runner">
+          <td class="race-runners__box"><sprite-svg name="rug_3"></sprite-svg></td>
+          <td><div class="race-runners__name__dog">Charlie Runner<span>29.3</span></div></td>
+          <td><runner-odd data-runner-id="159003"></runner-odd></td>
+        </tr></tbody>
+        <tbody data-content-url="/dogs/runner/159004/odds"><tr class="race-runner">
+          <td class="race-runners__box"><sprite-svg name="rug_4"></sprite-svg></td>
+          <td><div class="race-runners__name__dog">Delta Runner<span>29.4</span></div></td>
+          <td><runner-odd data-runner-id="159004"></runner-odd></td>
+        </tr></tbody>
+      </table>
+    </body></html>
+    """.encode()
+    expert_html = f"""
+    <html><body><a href="{export_url}">Download CSV</a>
+      <div class="layout--sidebar--expert">
+        <div class="expert-form-runner__details__dog__name">Alpha Runner<span>(M)</span></div>
+      </div>
+    </body></html>
+    """.encode()
+    csv_content = _synthetic_thedogs_export(
+        [
+            (1, "Alpha Runner"),
+            (2, "Bravo Runner"),
+            (3, "Charlie Runner"),
+            (4, "Delta Runner"),
+        ]
+    )
+    api_url_prefix = "https://www.thedogs.com.au/api/runners/odds?"
+    api_body = json.dumps(
+        {
+            "runner_odds": {
+                runner_id: [
+                    {
+                        "runner_id": int(runner_id),
+                        "run_box": box,
+                        "price": 2.5 + box,
+                        "bookmaker": {"id": 63, "code": "ladbrokes", "name": "Ladbrokes"},
+                        "market": {"code": "fixed_win", "race_id": 15900},
+                    }
+                ]
+                for box, runner_id in (
+                    (1, "159001"),
+                    (2, "159002"),
+                    (3, "159003"),
+                    (4, "159004"),
+                )
+            }
+        },
+        sort_keys=True,
+    ).encode()
+
+    class Response:
+        def __init__(self, url, body, content_type):
+            self.url = url
+            self.content = body
+            self.text = body.decode()
+            self.status_code = 200
+            self.headers = {
+                "Content-Type": content_type,
+                "Date": format_datetime(datetime.now(timezone.utc), usegmt=True),
+                "Set-Cookie": "session=must-not-be-retained",
+            }
+
+        def close(self):
+            pass
+
+        def json(self):
+            return json.loads(self.text)
+
+    class Session:
+        def __init__(self):
+            self.calls = []
+
+        def get(self, url, **kwargs):
+            self.calls.append(url)
+            if url == race_url:
+                return Response(url, race_html, "text/html; charset=utf-8")
+            if url == expert_url:
+                return Response(url, expert_html, "text/html; charset=utf-8")
+            if url == export_url:
+                return Response(url, csv_content.encode(), "text/csv")
+            if url == odds_url:
+                return Response(url, race_html, "text/html; charset=utf-8")
+            if url.startswith(api_url_prefix):
+                return Response(url, api_body, "application/json; charset=utf-8")
+            if url.startswith("https://api.open-meteo.com/v1/forecast?"):
+                weather = {
+                    "hourly": {
+                        "time": ["2099-06-09T23:00"],
+                        "temperature_2m": [18.0],
+                        "relative_humidity_2m": [70],
+                        "precipitation": [0.0],
+                        "pressure_msl": [1014.0],
+                        "weather_code": [0],
+                        "wind_speed_10m": [12.0],
+                        "wind_direction_10m": [180],
+                        "visibility": [10000],
+                    }
+                }
+                return Response(url, json.dumps(weather).encode(), "application/json")
+            raise AssertionError(f"unexpected request: {url}")
+
+    browser = UpcomingRaceBrowser()
+    session = Session()
+    browser.session = session
+    result = browser.download_race_csv(
+        race_url,
+        race_info_hint={
+            "url": race_url,
+            "date": "2099-06-09",
+            "venue": "MEA",
+            "race_number": 1,
+            "jump_datetime": jump.isoformat(),
+        },
+    )
+
+    assert result["success"] is True, result
+    assert session.calls[0] == race_url
+    assert session.calls[1].startswith("https://api.open-meteo.com/v1/forecast?")
+    assert len(session.calls) == 6
+    assert session.calls[2:5] == [expert_url, export_url, odds_url]
+    assert session.calls[-1].startswith(api_url_prefix)
+    assert session.calls.count(race_url) == 1
+    assert session.calls.count(expert_url) == 1
+    sidecar = json.loads(Path(f"{result['filepath']}.metadata.json").read_text())
+    assert sidecar["source_native_race_id"] == "15900"
+    evidence = sidecar["native_identity_evidence"]
+    assert evidence["active_native_runner_ids"] == [
+        "159001",
+        "159002",
+        "159003",
+        "159004",
+    ]
+    assert evidence["request_accounting"]["logical_requests"] == 2
+    evidence_core = {
+        key: value for key, value in evidence.items() if key != "evidence_sha256"
+    }
+    assert evidence["evidence_sha256"] == hashlib.sha256(
+        json.dumps(
+            evidence_core,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ).encode()
+    ).hexdigest()
+    assert evidence["odds_page_http"]["body_sha256"]
+    assert evidence["odds_api_http"]["body_sha256"]
+    assert "set-cookie" not in evidence["race_page_http"]["headers"]
+    assert sidecar["expert_form_metadata"]["source_final_url"] == expert_url
+    assert sidecar["expert_form_metadata"]["source_sha256"] == hashlib.sha256(
+        expert_html
+    ).hexdigest()
+    assert sidecar["prejump_shadow_metadata"]["source_native_race_id"] == "15900"
+    selected = [
+        {
+            "race_id": "Race 1 - MEA - 2099-06-09",
+            "race_id_aliases": ["Race 1 - MEA - 2099-06-09"],
+            "race_url": race_url,
+            "race_number": 1,
+            "venue": "MEA",
+            "date": "2099-06-09",
+            "jump_datetime": jump.isoformat(),
+        }
+    ]
+    coverage = sidecar_metadata_coverage(Path(browser.upcoming_dir), selected)
+    identity_coverage = json.loads(json.dumps(coverage))
+    identity_coverage["races"][0].update(
+        {
+            "safe_weather_present": True,
+            "safe_track_condition_present": True,
+            "safe_expert_form_present": True,
+            "safe_all_weather_track_expert_form_present": True,
+        }
+    )
+    eligible, selection = current_index_metadata_selection(
+        selected,
+        identity_coverage,
+        source_generated_at=datetime.now(timezone.utc),
+    )
+    assert selection["status"] == "READY", (selection, identity_coverage)
+    assert eligible[0]["source_native_race_id"] == "15900"
+
+    verified_sidecar = json.loads(json.dumps(sidecar))
+    sidecar["native_identity_evidence"]["source_native_race_id"] = "15999"
+    Path(f"{result['filepath']}.metadata.json").write_text(json.dumps(sidecar))
+    tampered = sidecar_metadata_coverage(Path(browser.upcoming_dir), selected)
+    assert tampered["races"][0]["source_native_race_id"] is None
+    assert tampered["races"][0]["source_native_runner_ids"] == []
+
+    del verified_sidecar["native_identity_evidence"]
+    Path(f"{result['filepath']}.metadata.json").write_text(
+        json.dumps(verified_sidecar)
+    )
+    missing = sidecar_metadata_coverage(Path(browser.upcoming_dir), selected)
+    assert missing["races"][0]["source_native_race_id"] is None
+    assert missing["races"][0]["native_identity_evidence_reason"] == (
+        "native_identity_evidence_missing"
+    )
 
 
 def _canonical_runner_set_for_test(race_url, runners):
@@ -340,7 +577,7 @@ def test_download_refreshes_existing_csv_with_stale_sidecar_contract(
     monkeypatch.setattr(
         br,
         "find_csv_download_link",
-        lambda soup, url: {"type": "direct_csv", "data": csv_content},
+        lambda soup, url, **_kwargs: {"type": "direct_csv", "data": csv_content},
     )
     monkeypatch.setattr(
         br,
@@ -365,8 +602,10 @@ def test_download_refreshes_existing_csv_with_stale_sidecar_contract(
     )
     monkeypatch.setattr(
         browser_module,
-        "fetch_canonical_runner_set",
-        lambda url, session=None: _canonical_runner_set_for_test(url, runners),
+        "extract_canonical_runner_set_from_html",
+        lambda html, source_url=None, **_kwargs: _canonical_runner_set_for_test(
+            source_url, runners
+        ),
     )
 
     class _Resp:
@@ -381,7 +620,7 @@ def test_download_refreshes_existing_csv_with_stale_sidecar_contract(
     monkeypatch.setattr(
         br,
         "session",
-        types.SimpleNamespace(get=lambda url, timeout=30: _Resp()),
+        types.SimpleNamespace(get=lambda url, timeout=30, **_kwargs: _Resp()),
     )
 
     result = br.download_race_csv(
@@ -476,7 +715,9 @@ def test_download_fallback_quarantines_csv_without_valid_prejump_sidecar(
     race_url = "https://www.thedogs.com.au/racing/test/2026-06-09/1/test?trial=false"
     filename = "Race 1 - TEST - 2026-06-09.csv"
 
-    monkeypatch.setattr(br, "find_csv_download_link", lambda soup, url: None)
+    monkeypatch.setattr(
+        br, "find_csv_download_link", lambda soup, url, **_kwargs: None
+    )
     monkeypatch.setattr(
         br,
         "extract_detailed_race_info",
@@ -514,7 +755,7 @@ def test_download_fallback_quarantines_csv_without_valid_prejump_sidecar(
     monkeypatch.setattr(
         br,
         "session",
-        types.SimpleNamespace(get=lambda url, timeout=30: _Resp()),
+        types.SimpleNamespace(get=lambda url, timeout=30, **_kwargs: _Resp()),
     )
 
     class _FakeExpertFormCsvScraper:
@@ -567,7 +808,10 @@ def test_download_pdf_masquerading_as_csv_tries_expert_form_fallback(
     monkeypatch.setattr(
         br,
         "find_csv_download_link",
-        lambda soup, url: {"type": "direct_csv", "data": "%PDF-1.5\nnot a csv\n"},
+        lambda soup, url, **_kwargs: {
+            "type": "direct_csv",
+            "data": "%PDF-1.5\nnot a csv\n",
+        },
     )
     monkeypatch.setattr(
         br,
@@ -619,7 +863,7 @@ def test_download_pdf_masquerading_as_csv_tries_expert_form_fallback(
     monkeypatch.setattr(
         br,
         "session",
-        types.SimpleNamespace(get=lambda url, timeout=30: _Resp()),
+        types.SimpleNamespace(get=lambda url, timeout=30, **_kwargs: _Resp()),
     )
 
     calls = []
@@ -724,7 +968,7 @@ def test_download_rejects_partial_runner_set(monkeypatch, _isolate_upcoming_dir)
     br = UpcomingRaceBrowser()
     csv_content = "Dog Name,Box\n2. Shima Lexie,2\n4. Sekiro,4\n"
 
-    def _fake_find_csv_download_link(soup, race_url):
+    def _fake_find_csv_download_link(soup, race_url, **_kwargs):
         return {"type": "direct_csv", "data": csv_content}
 
     monkeypatch.setattr(br, "find_csv_download_link", _fake_find_csv_download_link)
@@ -740,7 +984,7 @@ def test_download_rejects_partial_runner_set(monkeypatch, _isolate_upcoming_dir)
             pass
 
     fake_session = types.SimpleNamespace(
-        get=lambda url, timeout=30: _Resp(200, content=b"<html><title>Race 5</title></html>")
+        get=lambda url, timeout=30, **_kwargs: _Resp(200, content=b"<html><title>Race 5</title></html>")
     )
     monkeypatch.setattr(br, "session", fake_session)
 
