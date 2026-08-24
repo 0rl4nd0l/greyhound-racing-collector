@@ -83,6 +83,7 @@ DEFAULT_HEAVY_SCHEDULING_PAUSE_PATH = DEFAULT_RUNTIME_DIR / "pause-heavy-schedul
 DEFAULT_ODDS_CAPTURE_ONLY_PREFLIGHT_MAX_AGE_SECONDS = 30 * 60
 DEFAULT_ODDS_CAPTURE_ONLY_PREFLIGHT_RESUME_BUFFER_SECONDS = 5 * 60
 DEFAULT_FULL_DAEMON_ODDS_DEFER_HORIZON_SECONDS = 8 * 60
+MAX_CONSECUTIVE_ODDS_PRIORITY_FULL_DEFERRALS = 1
 DEFAULT_FULL_DAEMON_ODDS_LOCK_RETRY_SECONDS = DEFAULT_ODDS_CAPTURE_ONLY_TIMEOUT_SECONDS + 60
 DEFAULT_FULL_DAEMON_ODDS_LOCK_RETRY_POLL_SECONDS = 5
 DEFAULT_ODDS_CAPTURE_ONLY_T2_LOCK_RETRY_SECONDS = 90
@@ -3391,6 +3392,105 @@ def full_daemon_odds_window_defer_decision(
         "fresh_open_multi_race_state": fresh_open_multi_race_state,
         "due_capture_window_count": due_count,
     }
+
+
+def bounded_full_primary_defer_decision(
+    defer_decision: Mapping[str, Any],
+    daemon_state: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Bound odds-window priority without weakening the shared-lock handoff."""
+    decision = dict(defer_decision)
+    state = daemon_state if isinstance(daemon_state, Mapping) else {}
+    count = state.get("consecutive_odds_priority_full_deferrals", 0)
+    if type(count) is not int or count < 0:
+        decision.update(
+            {
+                "full_primary_fairness_status": "INVALID_FAIL_CLOSED",
+                "full_primary_fairness_blocker": (
+                    "consecutive_odds_priority_full_deferrals_invalid"
+                ),
+                "consecutive_odds_priority_full_deferrals": None,
+            }
+        )
+        return decision
+
+    decision.update(
+        {
+            "full_primary_fairness_status": "ODDS_PRIORITY_ALLOWED",
+            "full_primary_fairness_blocker": None,
+            "consecutive_odds_priority_full_deferrals": count,
+        }
+    )
+    if (
+        decision.get("should_defer")
+        and count >= MAX_CONSECUTIVE_ODDS_PRIORITY_FULL_DEFERRALS
+    ):
+        decision.update(
+            {
+                "should_defer": False,
+                "original_reason": decision.get("reason"),
+                "reason": "full_primary_fairness_opportunity_due",
+                "full_primary_fairness_status": "FAIRNESS_OVERRIDE",
+            }
+        )
+    return decision
+
+
+def persist_odds_priority_full_deferral(
+    *,
+    state_path: Path,
+    run_id: str,
+    generated_at: datetime,
+    defer_decision: Mapping[str, Any],
+) -> None:
+    """Record the single allowed odds-priority deferral in daemon state."""
+    previous = load_json(state_path)
+    if state_path.exists() and previous is None:
+        raise ValueError("full primary fairness durable state is unreadable")
+    count = defer_decision.get("consecutive_odds_priority_full_deferrals")
+    if type(count) is not int or count < 0:
+        raise ValueError("full primary fairness durable state is invalid")
+    payload = dict(previous or {})
+    payload.update(
+        {
+            "schema_version": "shadow_autopilot_daemon_state_v1",
+            "last_run_id": run_id,
+            "updated_at": generated_at.isoformat(),
+            "consecutive_odds_priority_full_deferrals": min(
+                count + 1,
+                MAX_CONSECUTIVE_ODDS_PRIORITY_FULL_DEFERRALS,
+            ),
+            "last_odds_priority_full_deferral_run_id": run_id,
+            "last_odds_priority_full_deferral_at": generated_at.isoformat(),
+        }
+    )
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    write_json(state_path, payload)
+
+
+def persist_full_primary_opportunity(
+    *,
+    state_path: Path,
+    run_id: str,
+    generated_at: datetime,
+) -> None:
+    """Reset fairness after the existing primary cycle has been invoked."""
+    previous = load_json(state_path)
+    if state_path.exists() and previous is None:
+        raise ValueError("full primary fairness durable state is unreadable")
+    payload = dict(previous or {})
+    payload.update(
+        {
+            "schema_version": "shadow_autopilot_daemon_state_v1",
+            "last_run_id": run_id,
+            "updated_at": generated_at.isoformat(),
+            "consecutive_odds_priority_full_deferrals": 0,
+            "last_full_primary_opportunity_run_id": run_id,
+            "last_full_primary_opportunity_at": generated_at.isoformat(),
+        }
+    )
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    write_json(state_path, payload)
 
 
 def post_primary_odds_capture_release_decision(
@@ -9531,9 +9631,25 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             odds_state,
             current_time=current_dt,
         )
+        daemon_state = load_json(state_path)
+        if state_path.exists() and daemon_state is None:
+            daemon_state = {"consecutive_odds_priority_full_deferrals": None}
+        defer_decision = bounded_full_primary_defer_decision(
+            defer_decision,
+            daemon_state,
+        )
         defer_decision["odds_capture_state_path"] = relpath(odds_state_path)
         write_json(output_dir / "full_daemon_odds_window_defer.json", defer_decision)
         if defer_decision.get("should_defer"):
+            if defer_decision.get("full_primary_fairness_status") != (
+                "INVALID_FAIL_CLOSED"
+            ):
+                persist_odds_priority_full_deferral(
+                    state_path=state_path,
+                    run_id=run_id,
+                    generated_at=generated_at,
+                    defer_decision=defer_decision,
+                )
             result = {
                 "schema_version": "shadow_autopilot_daemon_run_v1",
                 "run_id": run_id,
@@ -9724,6 +9840,11 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
                 output_dir=output_dir,
                 timeout_seconds=autopilot_cycle_timeout_seconds(args.timeout_seconds),
             )
+        )
+        persist_full_primary_opportunity(
+            state_path=state_path,
+            run_id=run_id,
+            generated_at=generated_at,
         )
         autopilot_stdout = output_dir / "logs" / "autopilot_cycle.stdout.txt"
         autopilot_result = load_json(autopilot_stdout)
@@ -12905,6 +13026,9 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
         "last_observability_status": observability["status"].get("status"),
         "last_cycle_activity_status": cycle_activity.get("status"),
         "last_safe_joined_delta": cycle_activity.get("safe_joined_delta_this_cycle"),
+        "consecutive_odds_priority_full_deferrals": 0,
+        "last_full_primary_opportunity_run_id": run_id,
+        "last_full_primary_opportunity_at": generated_at.isoformat(),
         "updated_at": datetime.now().astimezone().isoformat(),
     }
     state_payload.update(autopilot_cycle_state_fields(daily_status))
