@@ -3402,7 +3402,11 @@ def bounded_full_primary_defer_decision(
     decision = dict(defer_decision)
     state = daemon_state if isinstance(daemon_state, Mapping) else {}
     count = state.get("consecutive_odds_priority_full_deferrals", 0)
-    if type(count) is not int or count < 0:
+    if (
+        type(count) is not int
+        or count < 0
+        or count > MAX_CONSECUTIVE_ODDS_PRIORITY_FULL_DEFERRALS
+    ):
         decision.update(
             {
                 "full_primary_fairness_status": "INVALID_FAIL_CLOSED",
@@ -3448,7 +3452,11 @@ def persist_odds_priority_full_deferral(
     if state_path.exists() and previous is None:
         raise ValueError("full primary fairness durable state is unreadable")
     count = defer_decision.get("consecutive_odds_priority_full_deferrals")
-    if type(count) is not int or count < 0:
+    if (
+        type(count) is not int
+        or count < 0
+        or count > MAX_CONSECUTIVE_ODDS_PRIORITY_FULL_DEFERRALS
+    ):
         raise ValueError("full primary fairness durable state is invalid")
     payload = dict(previous or {})
     payload.update(

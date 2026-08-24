@@ -4323,22 +4323,23 @@ def test_full_primary_fairness_allows_only_one_consecutive_odds_priority_deferra
 
 
 def test_full_primary_fairness_fails_closed_on_ambiguous_durable_state():
-    decision = daemon.bounded_full_primary_defer_decision(
-        {
-            "should_defer": True,
-            "reason": "odds_capture_window_open_or_imminent",
-        },
-        {
-            "consecutive_odds_priority_full_deferrals": "1",
-        },
-    )
+    for invalid_count in ("1", 2, -1, True):
+        decision = daemon.bounded_full_primary_defer_decision(
+            {
+                "should_defer": True,
+                "reason": "odds_capture_window_open_or_imminent",
+            },
+            {
+                "consecutive_odds_priority_full_deferrals": invalid_count,
+            },
+        )
 
-    assert decision["should_defer"] is True
-    assert decision["reason"] == "odds_capture_window_open_or_imminent"
-    assert decision["full_primary_fairness_status"] == "INVALID_FAIL_CLOSED"
-    assert decision["full_primary_fairness_blocker"] == (
-        "consecutive_odds_priority_full_deferrals_invalid"
-    )
+        assert decision["should_defer"] is True
+        assert decision["reason"] == "odds_capture_window_open_or_imminent"
+        assert decision["full_primary_fairness_status"] == "INVALID_FAIL_CLOSED"
+        assert decision["full_primary_fairness_blocker"] == (
+            "consecutive_odds_priority_full_deferrals_invalid"
+        )
 
 
 def test_run_odds_capture_once_preserves_window_state_on_lock_busy(
