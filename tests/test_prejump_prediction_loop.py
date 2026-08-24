@@ -800,7 +800,9 @@ def test_refresh_prejump_upcoming_honors_supplied_current_time(tmp_path, monkeyp
 
 
 def _write_safe_collection_sidecar(csv_path: Path, *, expert_form: bool = True):
-    csv_path.write_text("box|dog_name\n1|Alpha Runner\n", encoding="utf-8")
+    csv_path.write_text(
+        "box|dog_name\n1|Alpha Runner\n2|Bravo Runner\n", encoding="utf-8"
+    )
     expert = {
         "schema_version": "thedogs_expert_form_metadata_v1",
         "source": "thedogs_expert_form_page",
@@ -822,6 +824,19 @@ def _write_safe_collection_sidecar(csv_path: Path, *, expert_form: bool = True):
         "metadata_captured_at": "2026-06-17T02:45:00Z",
         "prejump_shadow_metadata": {
             "metadata_captured_at": "2026-06-17T02:45:00Z",
+            "source_native_race_id": "15900",
+            "runner_box_name_list": [
+                {
+                    "box_number": 1,
+                    "dog_name": "Alpha Runner",
+                    "source_native_runner_id": "159001",
+                },
+                {
+                    "box_number": 2,
+                    "dog_name": "Bravo Runner",
+                    "source_native_runner_id": "159002",
+                },
+            ],
         },
         "race_url": "https://www.thedogs.com.au/racing/sale/2026-06-17/9/test?trial=false",
         "race_info": {
@@ -915,6 +930,8 @@ def test_current_index_metadata_selection_requires_complete_consistent_identity(
         "safe_expert_form_present": True,
         "safe_all_weather_track_expert_form_present": True,
         "runner_source_observed_at": "2026-06-17T12:45:00+10:00",
+        "source_native_race_id": "15900",
+        "source_native_runner_ids": ["159001", "159002"],
     }
 
     eligible, selection = current_index_metadata_selection(
@@ -938,6 +955,47 @@ def test_current_index_metadata_selection_requires_complete_consistent_identity(
     assert selection["exclusions"][0]["missing_safe_metadata"] == ["weather"]
 
 
+def test_current_index_metadata_selection_rejects_unsafe_native_identity():
+    race_url = "https://www.thedogs.com.au/racing/sale/2026-06-17/9/test"
+    race = {
+        "race_id": "Race 9 - SAL - 2026-06-17",
+        "race_id_aliases": ["Race 9 - SAL - 2026-06-17"],
+        "race_url": race_url,
+        "jump_datetime": "2026-06-17T13:57:00+10:00",
+    }
+    safe_row = {
+        "race_id": race["race_id"],
+        "race_url": race_url,
+        "csv_path": "/evidence/Race 9 - SAL - 2026-06-17.csv",
+        "safe_weather_present": True,
+        "safe_track_condition_present": True,
+        "safe_expert_form_present": True,
+        "safe_all_weather_track_expert_form_present": True,
+        "runner_source_observed_at": "2026-06-17T12:45:00+10:00",
+    }
+    for race_id, runner_ids in (
+        ("not-numeric", ["159001", "159002"]),
+        ("15900", ["159001", "not-numeric"]),
+        ("15900", ["159001", "159001"]),
+        ("15900", ["159001", []]),
+    ):
+        row = {
+            **safe_row,
+            "source_native_race_id": race_id,
+            "source_native_runner_ids": runner_ids,
+        }
+        eligible, selection = current_index_metadata_selection(
+            [race],
+            {"races": [row]},
+            source_generated_at="2026-06-17T12:30:00+10:00",
+        )
+
+        assert eligible == []
+        assert selection["exclusions"][0]["missing_safe_metadata"] == [
+            "native_source_identity"
+        ]
+
+
 def test_current_index_metadata_selection_excludes_postjump_runner_observation():
     race_url = "https://www.thedogs.com.au/racing/sale/2026-06-17/9/test"
     race = {
@@ -955,6 +1013,8 @@ def test_current_index_metadata_selection_excludes_postjump_runner_observation()
         "safe_expert_form_present": True,
         "safe_all_weather_track_expert_form_present": True,
         "runner_source_observed_at": "2026-06-17T13:00:06+10:00",
+        "source_native_race_id": "15900",
+        "source_native_runner_ids": ["159001", "159002"],
     }
 
     eligible, selection = current_index_metadata_selection(
@@ -999,6 +1059,8 @@ def test_current_index_metadata_selection_enforces_runner_source_age_boundary():
         "safe_track_condition_present": True,
         "safe_expert_form_present": True,
         "safe_all_weather_track_expert_form_present": True,
+        "source_native_race_id": "15900",
+        "source_native_runner_ids": ["159001", "159002"],
     }
     cases = [
         ("2026-06-17T12:50:00+10:00", True),

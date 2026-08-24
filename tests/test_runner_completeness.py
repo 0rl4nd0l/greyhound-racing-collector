@@ -22,17 +22,22 @@ def _source_report(participants):
     }
 
 
-def _runner_row(box, name, *, scratched=False, into_box=None):
+def _runner_row(box, name, *, scratched=False, into_box=None, native_id=None):
     classes = "accordion__anchor race-runner"
     if scratched:
         classes += " race-runner--scratched"
     into = f"(into box {into_box})" if into_box is not None else ""
     odds = "SCR" if scratched else "N/A"
+    native = (
+        f'<blackbook-dog data-dog-id="{native_id}"></blackbook-dog>'
+        if native_id is not None
+        else ""
+    )
     return f"""
     <tr class="{classes}">
       <td class="race-runners__box"><sprite-svg name="rug_{box}"></sprite-svg></td>
       <td class="race-runners__name">
-        <div class="race-runners__name__dog">{name}
+        <div class="race-runners__name__dog">{name}{native}
           <span class="race-runners__name__time">24.00</span>
           <span class="race-runners__name__box">{into}</span>
         </div>
@@ -49,6 +54,82 @@ def _race_page(*rows):
       <table class="race-runners"><tbody>{''.join(rows)}</tbody></table>
     </body></html>
     """
+
+
+def test_canonical_runner_parser_preserves_numeric_native_source_identities():
+    html = _race_page(
+        _runner_row(1, "Alpha Runner", native_id="159001"),
+        _runner_row(2, "Bravo Runner", native_id="159002"),
+    ).replace(
+        '<div class="race-header">',
+        '<div class="race-header" data-race-id="15900">',
+    )
+
+    canonical = extract_canonical_runner_set_from_html(
+        html,
+        source_url="https://www.thedogs.com.au/racing/test/2026-05-27/4/example",
+    )
+
+    assert canonical["source_native_race_id"] == "15900"
+    assert canonical["native_identity_status"] == "available"
+    assert [
+        row["source_native_runner_id"]
+        for row in canonical["final_runner_participants"]
+    ] == ["159001", "159002"]
+
+
+def test_canonical_runner_parser_uses_native_odds_page_runner_identity():
+    html = """
+    <html><body><div data-race-id="15900"></div>
+      <table class="race-runners">
+        <tbody data-content-url="/dogs/runner/159001/odds">
+          <tr class="race-runner">
+            <td class="race-runners__box"><sprite-svg name="rug_1"></sprite-svg></td>
+            <td class="race-runners__name"><div class="race-runners__name__dog">Alpha Runner</div></td>
+            <td><runner-odd data-runner-id="159001"></runner-odd></td>
+          </tr>
+        </tbody>
+        <tbody data-content-url="/dogs/runner/159002/odds">
+          <tr class="race-runner">
+            <td class="race-runners__box"><sprite-svg name="rug_2"></sprite-svg></td>
+            <td class="race-runners__name"><div class="race-runners__name__dog">Bravo Runner</div></td>
+            <td><runner-odd data-runner-id="159002"></runner-odd></td>
+          </tr>
+        </tbody>
+      </table>
+    </body></html>
+    """
+
+    canonical = extract_canonical_runner_set_from_html(
+        html,
+        source_url="https://www.thedogs.com.au/racing/test/2026-05-27/4/example",
+    )
+
+    assert canonical["native_identity_status"] == "available"
+    assert [
+        row["source_native_runner_id"]
+        for row in canonical["final_runner_participants"]
+    ] == ["159001", "159002"]
+
+
+def test_canonical_runner_parser_rejects_ambiguous_native_source_identity():
+    html = _race_page(
+        _runner_row(1, "Alpha Runner", native_id="159001"),
+        _runner_row(2, "Bravo Runner", native_id="not-numeric"),
+    ).replace(
+        '<div class="race-header">',
+        '<div class="race-header" data-race-id="15900">',
+    )
+
+    canonical = extract_canonical_runner_set_from_html(
+        html,
+        source_url="https://www.thedogs.com.au/racing/test/2026-05-27/4/example",
+    )
+
+    assert canonical["native_identity_status"] == "unavailable"
+    assert canonical["native_identity_reasons"] == [
+        "source_native_runner_id_unavailable:box:2"
+    ]
 
 
 def test_runner_completeness_extracts_full_embedded_form_field():

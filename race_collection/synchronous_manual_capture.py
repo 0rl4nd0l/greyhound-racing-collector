@@ -835,17 +835,16 @@ def _normalize_current_index_rows(
             "race_url": race_url,
             "venue": venue,
         }
-        if "source_native_race_id" in raw:
-            native_race_id = raw.get("source_native_race_id")
-            if (
-                type(native_race_id) is not str
-                or not native_race_id.isascii()
-                or not native_race_id.isdecimal()
-            ):
-                raise CaptureOneRejected(
-                    "CURRENT_INDEX_INVALID", reason="source_native_race_id_invalid"
-                )
-            row["source_native_race_id"] = native_race_id
+        native_race_id = raw.get("source_native_race_id")
+        if (
+            type(native_race_id) is not str
+            or not native_race_id.isascii()
+            or not native_race_id.isdecimal()
+        ):
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_INVALID", reason="source_native_race_id_invalid"
+            )
+        row["source_native_race_id"] = native_race_id
         alias_set = set(aliases)
         canonical_aliases = sorted(stable_race_id_variants(row))
         if (
@@ -910,6 +909,11 @@ def _v2_runner_rows(
         or not isinstance(shadow.get("venue"), str)
         or normalize_venue(shadow["venue"]) != normalize_venue(race["venue"])
         or shadow.get("race_number") != race["race_number"]
+        or (
+            race.get("source_native_race_id") is not None
+            and shadow.get("source_native_race_id")
+            != race.get("source_native_race_id")
+        )
     ):
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_race_identity_mismatch")
     observed = datetime.fromisoformat(str(shadow.get("metadata_captured_at") or ""))
@@ -942,7 +946,9 @@ def _v2_runner_rows(
     def admitted_native_id(item: Mapping[str, Any]) -> str | None:
         value = item.get("source_native_runner_id", item.get("runner_id"))
         if value is None:
-            return None
+            raise CaptureOneRejected(
+                "CURRENT_INDEX_SOURCE_INVALID", reason="runner_id_unavailable"
+            )
         if isinstance(value, bool) or not isinstance(value, (str, int)):
             raise CaptureOneRejected(
                 "CURRENT_INDEX_SOURCE_INVALID", reason="runner_id_invalid"
@@ -1300,6 +1306,10 @@ def publish_current_race_index(
             ):
                 raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
             races = _normalize_current_index_rows(source, max_races=max_races)
+            if not races:
+                raise CaptureOneRejected(
+                    "CURRENT_INDEX_SOURCE_INVALID", reason="no_valid_current_races"
+                )
             sealed_races = []
             for race in races:
                 runners, runner_source, runner_hash = _v2_runner_rows(

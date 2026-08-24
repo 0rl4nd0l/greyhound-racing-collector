@@ -6662,10 +6662,17 @@ def publish_current_race_index_after_refresh(
     evidence_root: Path,
     output_dir: Path,
     run_id: str,
+    source_refresh_report_path: Path | None,
 ) -> dict[str, Any]:
     """Publish the bounded index before the slower odds-capture batch begins."""
 
-    if state_path is None:
+    if source_refresh_report_path is None:
+        publication = {
+            "schema_version": "collector_current_race_index_publish_v2",
+            "status": "SKIPPED",
+            "reason": "primary_candidate_refresh_not_run",
+        }
+    elif state_path is None:
         publication = {
             "schema_version": "collector_current_race_index_publish_v1",
             "status": "SKIPPED",
@@ -6675,9 +6682,7 @@ def publish_current_race_index_after_refresh(
         publication = publish_current_race_index(
             state_path=state_path,
             evidence_root=evidence_root,
-            source_refresh_report_path=(
-                output_dir / "odds_capture_refresh_report.json"
-            ),
+            source_refresh_report_path=source_refresh_report_path,
             run_id=run_id,
         )
     report_path = output_dir / CURRENT_RACE_INDEX_PUBLISH_REPORT_FILENAME
@@ -6888,6 +6893,11 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         evidence_root=evidence_root,
         output_dir=output_dir,
         run_id=collector_run_id or run_id,
+        source_refresh_report_path=(
+            None
+            if args.skip_refresh or skip_primary_refresh
+            else output_dir / "refresh_prejump_report.json"
+        ),
     )
     if args.enable_autonomous_odds_capture:
         capture_current_time = (

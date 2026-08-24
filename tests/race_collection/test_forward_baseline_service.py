@@ -159,6 +159,37 @@ def test_production_preflight_awaits_complete_candidate_population_without_write
     assert not configuration(tmp_path).corpus_root.exists()
 
 
+def test_forward_cohort_freeze_still_requires_twenty_races_three_venues_two_dates(
+    tmp_path: Path,
+):
+    cases = (
+        [
+            candidate(
+                number,
+                venue=("Sandown", "Richmond")[number % 2],
+                racing_date="2026-08-23" if number <= 10 else "2026-08-24",
+            )
+            for number in range(1, 21)
+        ],
+        [candidate(number, venue=("Sandown", "Richmond", "Albion Park")[number % 3]) for number in range(1, 21)],
+    )
+    for index, races in enumerate(cases):
+        database = tmp_path / f"operations-{index}.sqlite3"
+        store = SQLiteOperationsStore(database)
+        store.migrate()
+        before = table_counts(database)
+
+        report = ForwardBaselineCaptureService(
+            store, configuration(tmp_path / str(index))
+        ).run(verified_index(races), now=NOW)
+
+        assert report["status"] == "AWAITING_COHORT_CANDIDATES"
+        assert report["required_race_count"] == 20
+        assert report["required_venue_count"] == 3
+        assert report["required_race_date_count"] == 2
+        assert table_counts(database) == before
+
+
 def test_checked_in_production_entrypoint_uses_verified_v2_index_and_awaits_without_writes(
     tmp_path: Path,
 ):

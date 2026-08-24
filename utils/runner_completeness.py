@@ -297,6 +297,11 @@ def align_csv_text_to_canonical_final_runner_set(
         "source": source,
         "canonical_runner_set_status": canonical.get("canonical_runner_set_status"),
         "canonical_source_url": canonical.get("final_runner_source_url"),
+        "source_native_race_id": canonical.get("source_native_race_id"),
+        "native_identity_status": canonical.get("native_identity_status"),
+        "native_identity_reasons": list(
+            canonical.get("native_identity_reasons") or []
+        ),
         "source_runner_count": 0,
         "canonical_runner_count": len(participants),
         "prediction_runner_count": 0,
@@ -605,6 +610,9 @@ def _canonical_unavailable(
         "reserve_boxes": [],
         "vacant_boxes": [],
         "race_number": _extract_race_number_from_url(source_url),
+        "source_native_race_id": None,
+        "native_identity_status": "unavailable",
+        "native_identity_reasons": [reason],
         "extraction_timestamp": extraction_timestamp or _iso_utc_now(),
         "unavailable_reason": reason,
     }
@@ -662,11 +670,65 @@ def extract_canonical_runner_set_from_html(
     reserve_boxes: set[int] = set()
     vacant_boxes: set[int] = set()
     ambiguous_reasons: list[str] = []
+    native_identity_reasons: list[str] = []
+
+    race_id_values = {
+        str(element.get("data-race-id") or "").strip()
+        for element in soup.select("[data-race-id]")
+        if str(element.get("data-race-id") or "").strip()
+    }
+    numeric_race_ids = {
+        value for value in race_id_values if value.isascii() and value.isdecimal()
+    }
+    source_native_race_id = (
+        next(iter(numeric_race_ids))
+        if len(race_id_values) == 1 and len(numeric_race_ids) == 1
+        else None
+    )
+    if source_native_race_id is None:
+        native_identity_reasons.append(
+            "source_native_race_id_missing"
+            if not race_id_values
+            else "source_native_race_id_invalid_or_ambiguous"
+        )
 
     for row in rows:
         original_box = _runner_row_box(row)
         dog_name = _runner_row_name(row)
         into_box = _runner_row_into_box(row)
+        runner_id_values = {
+            str(element.get("data-dog-id") or "").strip()
+            for element in row.select("[data-dog-id]")
+            if str(element.get("data-dog-id") or "").strip()
+        }
+        runner_id_values.update(
+            str(element.get("data-runner-id") or "").strip()
+            for element in row.select("[data-runner-id]")
+            if str(element.get("data-runner-id") or "").strip()
+        )
+        runner_group = row.find_parent("tbody")
+        if runner_group is not None:
+            match = re.fullmatch(
+                r"/dogs/runner/([0-9]+)/odds",
+                urlparse(str(runner_group.get("data-content-url") or "")).path,
+                flags=re.IGNORECASE,
+            )
+            if match:
+                runner_id_values.add(match.group(1))
+        for anchor in row.select("a[href]"):
+            parts = urlparse(str(anchor.get("href") or "")).path.split("/")
+            if len(parts) >= 3 and parts[1].lower() == "dogs" and parts[2].isdigit():
+                runner_id_values.add(parts[2])
+        numeric_runner_ids = {
+            value
+            for value in runner_id_values
+            if value.isascii() and value.isdecimal()
+        }
+        source_native_runner_id = (
+            next(iter(numeric_runner_ids))
+            if len(runner_id_values) == 1 and len(numeric_runner_ids) == 1
+            else None
+        )
         if original_box is not None and original_box > 8:
             reserve_boxes.add(original_box)
 
@@ -680,6 +742,8 @@ def extract_canonical_runner_set_from_html(
             continue
 
         participant = {"box_number": original_box, "dog_name": dog_name}
+        if source_native_runner_id is not None:
+            participant["source_native_runner_id"] = source_native_runner_id
         if _runner_row_is_scratched(row):
             scratched.append(participant)
             continue
@@ -689,6 +753,12 @@ def extract_canonical_runner_set_from_html(
 
         final_box = into_box or original_box
         active_participant = {"box_number": final_box, "dog_name": dog_name}
+        if source_native_runner_id is not None:
+            active_participant["source_native_runner_id"] = source_native_runner_id
+        else:
+            native_identity_reasons.append(
+                f"source_native_runner_id_unavailable:box:{final_box}"
+            )
         if into_box is not None and into_box != original_box:
             active_participant["original_box_number"] = original_box
         active.append(active_participant)
@@ -724,6 +794,11 @@ def extract_canonical_runner_set_from_html(
         "vacant_boxes": sorted(vacant_boxes),
         "race_number": page_race_number or expected,
         "expected_race_number": expected,
+        "source_native_race_id": source_native_race_id,
+        "native_identity_status": (
+            "available" if not native_identity_reasons else "unavailable"
+        ),
+        "native_identity_reasons": native_identity_reasons,
         "extraction_timestamp": timestamp,
         "ambiguous_reasons": ambiguous_reasons,
     }

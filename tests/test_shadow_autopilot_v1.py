@@ -67,7 +67,7 @@ def test_current_race_index_is_published_from_completed_refresh(
     output_dir = evidence_root / "run"
     output_dir.mkdir(parents=True)
     state_path = evidence_root / "runtime/odds_capture_state.json"
-    source_path = output_dir / "odds_capture_refresh_report.json"
+    source_path = output_dir / "refresh_prejump_report.json"
     observed = {}
     def fake_publish(**kwargs):
         observed.update(kwargs)
@@ -87,6 +87,7 @@ def test_current_race_index_is_published_from_completed_refresh(
         evidence_root=evidence_root,
         output_dir=output_dir,
         run_id="scheduled-run",
+        source_refresh_report_path=source_path,
     )
 
     assert result["status"] == "PUBLISHED"
@@ -5307,6 +5308,13 @@ def test_skip_primary_refresh_still_runs_odds_capture_refresh(tmp_path, monkeypa
         }
 
     monkeypatch.setattr(autopilot, "step_command", fake_step_command)
+    monkeypatch.setattr(
+        autopilot,
+        "publish_current_race_index",
+        lambda **_kwargs: pytest.fail(
+            "odds-only refresh must not replace the shared candidate index"
+        ),
+    )
 
     args = autopilot.parse_args(
         [
@@ -5318,6 +5326,8 @@ def test_skip_primary_refresh_still_runs_odds_capture_refresh(tmp_path, monkeypa
             "2026-06-12T00:35:00+10:00",
             "--db",
             str(db_path),
+            "--current-race-index-state-path",
+            str(evidence_root / "runtime/odds_capture_state.json"),
             "--enable-autonomous-odds-capture",
             "--execute-autonomous-odds-capture",
             "--allow-auto-scrape-odds",
@@ -5348,6 +5358,14 @@ def test_skip_primary_refresh_still_runs_odds_capture_refresh(tmp_path, monkeypa
         "AUTONOMOUS_LIVE_ODDS_CAPTURE_NO_ELIGIBLE_WINDOWS"
     )
     assert (output_dir / "odds_capture_refresh_report.json").exists()
+    publication = json.loads(
+        (output_dir / "current_race_index_publish.json").read_text(encoding="utf-8")
+    )
+    assert publication == {
+        "schema_version": "collector_current_race_index_publish_v2",
+        "status": "SKIPPED",
+        "reason": "primary_candidate_refresh_not_run",
+    }
     assert (output_dir / "rolling_model_comparison_status.json").exists()
     assert (output_dir / "high_accuracy_refinement_status.json").exists()
     rolling_status = json.loads(

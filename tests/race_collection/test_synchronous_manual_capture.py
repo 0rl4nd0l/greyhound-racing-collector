@@ -42,9 +42,16 @@ from race_collection.synchronous_manual_capture import (
 from src.predictor.on_demand import canonical_bytes, sha256_bytes
 
 
-def _runner_coverage(evidence_root: Path, race_url: str, observed_at: datetime | None = None) -> dict:
+def _runner_coverage(
+    evidence_root: Path,
+    race_url: str,
+    observed_at: datetime | None = None,
+    *,
+    race_number: int = 5,
+    native_race_id: str = "15900",
+) -> dict:
     observed_at = observed_at or NOW
-    csv_path = evidence_root / "upcoming/Race 5 - GUNN - 2026-07-19.csv"
+    csv_path = evidence_root / f"upcoming/Race {race_number} - GUNN - 2026-07-19.csv"
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     csv_path.write_bytes(b"box|dog_name\n1|Alpha\n2|Beta\n")
     sidecar = csv_path.with_name(csv_path.name + ".metadata.json")
@@ -52,17 +59,24 @@ def _runner_coverage(evidence_root: Path, race_url: str, observed_at: datetime |
         "runner_completeness_after_canonical_alignment": {
             "status": "COMPLETE", "runner_count": 2,
             "participants": [
-                {"box_number": 1, "dog_name": "Alpha", "scratch_state": "ACTIVE"},
-                {"box_number": 2, "dog_name": "Beta", "scratch_state": "ACTIVE"},
+                {
+                    "box_number": 1, "dog_name": "Alpha", "scratch_state": "ACTIVE",
+                    "source_native_runner_id": "159001",
+                },
+                {
+                    "box_number": 2, "dog_name": "Beta", "scratch_state": "ACTIVE",
+                    "source_native_runner_id": "159002",
+                },
             ],
         },
         "prejump_shadow_metadata": {
             "status": "PASS", "metadata_is_leakage_safe": True,
-            "race_date": "2026-07-19", "venue": "GUNN", "race_number": 5,
+            "race_date": "2026-07-19", "venue": "GUNN", "race_number": race_number,
             "source_url": race_url, "metadata_captured_at": observed_at.isoformat(),
+            "source_native_race_id": native_race_id,
             "runner_box_name_list": [
-                {"box_number": 1, "dog_name": "Alpha"},
-                {"box_number": 2, "dog_name": "Beta"},
+                {"box_number": 1, "dog_name": "Alpha", "source_native_runner_id": "159001"},
+                {"box_number": 2, "dog_name": "Beta", "source_native_runner_id": "159002"},
             ],
             "canonical_final_runner_alignment": {
                 "status": "aligned", "canonical_runner_set_status": "available"
@@ -70,7 +84,9 @@ def _runner_coverage(evidence_root: Path, race_url: str, observed_at: datetime |
         }
     }))
     return {"schema_version": "prejump_sidecar_metadata_coverage_v1", "races": [{
-        "race_url": race_url, "csv_path": str(csv_path), "sidecar_path": str(sidecar)
+        "race_url": race_url, "csv_path": str(csv_path), "sidecar_path": str(sidecar),
+        "source_native_race_id": native_race_id,
+        "source_native_runner_ids": ["159001", "159002"],
     }]}
 
 
@@ -307,7 +323,7 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
 ):
     evidence_root = tmp_path / "evidence"
     state = evidence_root / "shadow_autopilot_daemon_runtime/odds_capture_state.json"
-    source = evidence_root / "shadow_autopilot_v1_fixture/odds_capture_refresh_report.json"
+    source = evidence_root / "shadow_autopilot_v1_fixture/refresh_prejump_report.json"
     source.parent.mkdir(parents=True)
     index_now = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
     race_url = "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
@@ -339,9 +355,7 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
                         "race_number": 5,
                         "source_native_race_id": "15900",
                         "race_time": "13:00",
-                        "race_url": (
-                            race_url
-                        ),
+                        "race_url": race_url,
                         "venue": "GUNN",
                     }
                 ],
@@ -352,6 +366,7 @@ def test_current_race_index_publication_is_atomic_bounded_and_source_sealed(
     published = autopilot.publish_current_race_index_after_refresh(
         state_path=state, evidence_root=evidence_root,
         output_dir=source.parent, run_id="fixture",
+        source_refresh_report_path=source,
     )
     index_path = current_race_index_path(state)
     original = index_path.read_bytes()
@@ -798,6 +813,142 @@ def test_current_race_index_publishes_explicit_safe_subset_from_mixed_candidates
     assert rejected["reason"] == "CURRENT_INDEX_SOURCE_INVALID"
 
 
+def test_current_race_index_publishes_multiple_safe_races_without_cohort_floor(
+    tmp_path: Path,
+):
+    evidence_root = tmp_path / "evidence"
+    state = evidence_root / "runtime/odds_capture_state.json"
+    source = evidence_root / "run/refresh_prejump_report.json"
+    source.parent.mkdir(parents=True)
+    generated = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
+    races = [
+        {
+            "date": "2026-07-19",
+            "jump_datetime": f"2026-07-19T13:0{number - 5}:00+10:00",
+            "race_id": f"Race {number} - GUNN - 2026-07-19",
+            "race_id_aliases": [
+                f"Race {number} - GUNN - 2026-07-19",
+                f"Race {number} - GUNNEDAH - 2026-07-19",
+            ],
+            "race_number": number,
+            "race_time": f"13:0{number - 5}",
+            "race_url": f"https://www.thedogs.com.au/racing/gunnedah/2026-07-19/{number}",
+            "venue": "GUNN",
+        }
+        for number in (5, 6)
+    ]
+    coverage_rows = []
+    for offset, race in enumerate(races):
+        coverage = _runner_coverage(
+            evidence_root,
+            race["race_url"],
+            generated,
+            race_number=race["race_number"],
+            native_race_id=str(15900 + offset),
+        )
+        coverage["races"][0].update({
+            "race_id": race["race_id"],
+            "safe_weather_present": True,
+            "safe_track_condition_present": True,
+            "safe_expert_form_present": True,
+            "safe_all_weather_track_expert_form_present": True,
+            "runner_source_observed_at": generated.isoformat(),
+        })
+        coverage_rows.extend(coverage["races"])
+    coverage = {
+        "schema_version": "prejump_sidecar_metadata_coverage_v1",
+        "races": coverage_rows,
+    }
+    current_races, selection = current_index_metadata_selection(
+        races, coverage, source_generated_at=generated
+    )
+    source.write_bytes(canonical_bytes({
+        "status": "SUCCESS",
+        "generated_at": generated.isoformat(),
+        "sidecar_metadata_coverage": coverage,
+        "selected_count": 2,
+        "selected_races": races,
+        "current_index_race_count": 2,
+        "current_index_races": current_races,
+        "current_index_metadata_selection": selection,
+    }))
+
+    published = publish_current_race_index(
+        state_path=state,
+        evidence_root=evidence_root,
+        source_refresh_report_path=source,
+        run_id="two-safe-races",
+    )
+
+    assert published["status"] == "PUBLISHED"
+    packet = json.loads(current_race_index_path(state).read_bytes())
+    assert packet["race_count"] == 2
+    assert {race["source_native_race_id"] for race in packet["races"]} == {
+        "15900", "15901"
+    }
+
+
+def test_zero_safe_races_rejects_and_preserves_existing_index(tmp_path: Path):
+    evidence_root = tmp_path / "evidence"
+    state = evidence_root / "runtime/odds_capture_state.json"
+    source = evidence_root / "run/refresh_prejump_report.json"
+    source.parent.mkdir(parents=True)
+    generated = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
+    race_url = "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
+    coverage = _runner_coverage(evidence_root, race_url, generated)
+    race = {
+        "date": "2026-07-19",
+        "jump_datetime": "2026-07-19T13:00:00+10:00",
+        "race_id": "Race 5 - GUNN - 2026-07-19",
+        "race_id_aliases": [
+            "Race 5 - GUNN - 2026-07-19",
+            "Race 5 - GUNNEDAH - 2026-07-19",
+        ],
+        "race_number": 5,
+        "race_time": "13:00",
+        "race_url": race_url,
+        "source_native_race_id": "15900",
+        "venue": "GUNN",
+    }
+    source.write_bytes(canonical_bytes({
+        "status": "SUCCESS",
+        "generated_at": generated.isoformat(),
+        "sidecar_metadata_coverage": coverage,
+        "selected_count": 1,
+        "selected_races": [race],
+    }))
+    first = publish_current_race_index(
+        state_path=state,
+        evidence_root=evidence_root,
+        source_refresh_report_path=source,
+        run_id="one-safe-race",
+    )
+    assert first["status"] == "PUBLISHED"
+    index_path = current_race_index_path(state)
+    existing = index_path.read_bytes()
+
+    source.write_bytes(canonical_bytes({
+        "status": "SUCCESS",
+        "generated_at": generated.isoformat(),
+        "sidecar_metadata_coverage": {
+            "schema_version": "prejump_sidecar_metadata_coverage_v1",
+            "races": [],
+        },
+        "selected_count": 0,
+        "selected_races": [],
+    }))
+    rejected = publish_current_race_index(
+        state_path=state,
+        evidence_root=evidence_root,
+        source_refresh_report_path=source,
+        run_id="zero-safe-races",
+    )
+
+    assert rejected["status"] == "REJECTED"
+    assert rejected["reason"] == "CURRENT_INDEX_SOURCE_INVALID"
+    assert index_path.read_bytes() == existing
+
+
 def test_current_race_index_rejects_contradictory_explicit_subset_report(
     tmp_path: Path,
 ):
@@ -891,9 +1042,8 @@ def test_current_race_index_rejects_stale_or_changed_source(tmp_path: Path):
                         ],
                         "race_number": 5,
                         "race_time": "13:00",
-                        "race_url": (
-                            race_url
-                        ),
+                        "race_url": race_url,
+                        "source_native_race_id": "15900",
                         "venue": "GUNN",
                     }
                 ],
@@ -952,6 +1102,7 @@ def test_final_validation_rejection_never_publishes_new_marker(
                 "Race 5 - GUNNEDAH - 2026-07-19",
             ],
             "race_number": 5, "race_time": "13:00", "race_url": race_url,
+            "source_native_race_id": "15900",
             "venue": "GUNN",
         }],
     }))
@@ -1019,6 +1170,8 @@ def test_v2_runner_seal_rejects_native_id_collisions(
     if case == "duplicate":
         detailed[0]["source_native_runner_id"] = "15901"
         detailed[1]["source_native_runner_id"] = "15901"
+        shadow[0]["source_native_runner_id"] = "15901"
+        shadow[1]["source_native_runner_id"] = "15901"
     else:
         detailed[0]["source_native_runner_id"] = "15901"
         shadow[0]["source_native_runner_id"] = "15902"
@@ -1036,6 +1189,85 @@ def test_v2_runner_seal_rejects_native_id_collisions(
 
     expected = "runner_id_duplicate" if case == "duplicate" else "runner_id_conflict"
     assert rejected.value.details["reason"] == expected
+
+
+def test_v2_runner_seal_rejects_missing_native_ids(tmp_path: Path):
+    evidence_root = tmp_path / "evidence"
+    race_url = "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
+    observed = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
+    coverage = _runner_coverage(evidence_root, race_url, observed)
+    sidecar_path = Path(coverage["races"][0]["sidecar_path"])
+    sidecar = json.loads(sidecar_path.read_bytes())
+    for section in (
+        sidecar["runner_completeness_after_canonical_alignment"]["participants"],
+        sidecar["prejump_shadow_metadata"]["runner_box_name_list"],
+    ):
+        for runner in section:
+            runner.pop("source_native_runner_id", None)
+    sidecar_path.write_bytes(canonical_bytes(sidecar))
+
+    with pytest.raises(CaptureOneRejected) as rejected:
+        capture._v2_runner_rows(
+            {
+                "date": "2026-07-19",
+                "jump_datetime": "2026-07-19T13:00:00+10:00",
+                "race_number": 5,
+                "race_url": race_url,
+                "venue": "GUNN",
+            },
+            {
+                "generated_at": observed.isoformat(),
+                "sidecar_metadata_coverage": coverage,
+            },
+            evidence_root=evidence_root,
+        )
+
+    assert rejected.value.details["reason"] == "runner_id_unavailable"
+
+
+def test_current_index_rejects_sidecar_native_race_id_substitution(tmp_path: Path):
+    evidence_root = tmp_path / "evidence"
+    state = evidence_root / "runtime/odds_capture_state.json"
+    source = evidence_root / "run/refresh_prejump_report.json"
+    source.parent.mkdir(parents=True)
+    observed = datetime.fromisoformat("2026-07-19T12:55:00+10:00")
+    race_url = "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
+    coverage = _runner_coverage(evidence_root, race_url, observed)
+    sidecar_path = Path(coverage["races"][0]["sidecar_path"])
+    sidecar = json.loads(sidecar_path.read_bytes())
+    sidecar["prejump_shadow_metadata"]["source_native_race_id"] = "99999"
+    sidecar_path.write_bytes(canonical_bytes(sidecar))
+    source.write_bytes(canonical_bytes({
+        "status": "SUCCESS",
+        "generated_at": observed.isoformat(),
+        "selected_count": 1,
+        "selected_races": [{
+            "date": "2026-07-19",
+            "jump_datetime": "2026-07-19T13:00:00+10:00",
+            "race_id": "Race 5 - GUNN - 2026-07-19",
+            "race_id_aliases": [
+                "Race 5 - GUNN - 2026-07-19",
+                "Race 5 - GUNNEDAH - 2026-07-19",
+            ],
+            "race_number": 5,
+            "race_time": "13:00",
+            "race_url": race_url,
+            "source_native_race_id": "15900",
+            "venue": "GUNN",
+        }],
+        "sidecar_metadata_coverage": coverage,
+    }))
+
+    publication = publish_current_race_index(
+        state_path=state,
+        evidence_root=evidence_root,
+        source_refresh_report_path=source,
+        run_id="native-race-substitution",
+    )
+
+    assert publication["status"] == "REJECTED"
+    assert publication["reason"] == "CURRENT_INDEX_SOURCE_INVALID"
+    assert not current_race_index_path(state).exists()
 
 
 def test_retained_inputs_survive_expected_atomic_publication(tmp_path: Path):
@@ -1158,6 +1390,7 @@ def test_current_index_requires_time_and_normalizes_producer_time():
         },
         now=datetime.fromisoformat("2026-07-19T12:00:00+10:00"),
     )
+    row["source_native_race_id"] = "15900"
     normalized = capture._normalize_current_index_rows(
         {"selected_count": 1, "selected_races": [row]}, max_races=32
     )[0]
@@ -1170,6 +1403,31 @@ def test_current_index_requires_time_and_normalizes_producer_time():
         capture._normalize_current_index_rows(
             {"selected_count": 1, "selected_races": [row]}, max_races=32
         )
+
+
+@pytest.mark.parametrize("native_race_id", [None, "race-15900", 15900])
+def test_current_index_rejects_missing_or_non_numeric_native_race_id(
+    native_race_id: object,
+):
+    row = race_window_record(
+        {
+            "date": "2026-07-19",
+            "race_number": 5,
+            "race_time": "1:00 PM",
+            "url": "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5",
+            "venue": "GUNN",
+        },
+        now=datetime.fromisoformat("2026-07-19T12:00:00+10:00"),
+    )
+    row["source_native_race_id"] = native_race_id
+
+    with pytest.raises(CaptureOneRejected) as rejected:
+        capture._normalize_current_index_rows(
+            {"selected_count": 1, "selected_races": [row]}, max_races=32
+        )
+
+    assert rejected.value.code == "CURRENT_INDEX_INVALID"
+    assert rejected.value.details["reason"] == "source_native_race_id_invalid"
 
 
 @pytest.mark.parametrize("mutation", ["arbitrary", "extra", "substitution", "omission"])
@@ -1720,6 +1978,7 @@ def test_v2_requires_matching_successful_retained_publication(tmp_path: Path):
                 "Race 5 - GUNNEDAH - 2026-07-19",
             ],
             "race_number": 5, "race_time": "13:00", "race_url": race_url,
+            "source_native_race_id": "15900",
             "venue": "GUNN",
         }],
     }))

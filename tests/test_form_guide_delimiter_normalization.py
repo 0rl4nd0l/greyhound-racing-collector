@@ -135,7 +135,11 @@ def _synthetic_sidecar() -> dict:
 
 def _canonical_runner_set(runners: list[tuple[int, str]]) -> dict:
     participants = [
-        {"box_number": box_number, "dog_name": dog_name}
+        {
+            "box_number": box_number,
+            "dog_name": dog_name,
+            "source_native_runner_id": str(159000 + box_number),
+        }
         for box_number, dog_name in runners
     ]
     return {
@@ -146,6 +150,8 @@ def _canonical_runner_set(runners: list[tuple[int, str]]) -> dict:
         "final_runner_boxes": [box_number for box_number, _dog_name in runners],
         "final_runner_names": [dog_name for _box_number, dog_name in runners],
         "final_runner_participants": participants,
+        "source_native_race_id": "15900",
+        "native_identity_status": "available",
         "scratched_boxes": [],
         "scratched_participants": [],
         "reserve_boxes": [],
@@ -247,11 +253,24 @@ def test_provenance_payload_writes_flat_prejump_shadow_metadata_block(
     assert shadow_metadata["target_grade_safe"] == "Maiden"
     assert shadow_metadata["source_url"] == SYNTHETIC_RACE_URL
     assert shadow_metadata["runner_box_name_list"] == [
-        {"box_number": 1, "dog_name": "Alpha Runner", "scratch_state": "ACTIVE"},
-        {"box_number": 2, "dog_name": "Bravo Runner", "scratch_state": "ACTIVE"},
-        {"box_number": 3, "dog_name": "Charlie Runner", "scratch_state": "ACTIVE"},
-        {"box_number": 4, "dog_name": "Delta Runner", "scratch_state": "ACTIVE"},
+        {
+            "box_number": 1, "dog_name": "Alpha Runner", "scratch_state": "ACTIVE",
+            "source_native_runner_id": "159001",
+        },
+        {
+            "box_number": 2, "dog_name": "Bravo Runner", "scratch_state": "ACTIVE",
+            "source_native_runner_id": "159002",
+        },
+        {
+            "box_number": 3, "dog_name": "Charlie Runner", "scratch_state": "ACTIVE",
+            "source_native_runner_id": "159003",
+        },
+        {
+            "box_number": 4, "dog_name": "Delta Runner", "scratch_state": "ACTIVE",
+            "source_native_runner_id": "159004",
+        },
     ]
+    assert shadow_metadata["source_native_race_id"] == "15900"
     assert {
         row["scratch_state"]
         for row in final_sidecar[
@@ -277,6 +296,7 @@ def test_provenance_payload_writes_flat_prejump_shadow_metadata_block(
             "jump_datetime": "2026-05-29T11:15:00+10:00",
             "race_number": 1,
             "race_url": SYNTHETIC_RACE_URL,
+            "source_native_race_id": "15900",
             "venue": "TEST",
         },
         {
