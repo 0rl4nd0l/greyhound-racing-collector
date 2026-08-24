@@ -30,6 +30,9 @@ from utils.csv_metadata import (  # noqa: E402
 )
 from utils.expert_form_metadata import safe_expert_form_metadata_from_payload  # noqa: E402
 from utils.race_lifecycle import melbourne_now  # noqa: E402
+from scripts.capture_thedogs_market_history import (  # noqa: E402
+    validate_primary_native_identity_evidence,
+)
 
 
 def parse_current_time(value: str | None) -> datetime:
@@ -475,6 +478,49 @@ def _metadata_record_for_csv(csv_path: Path) -> dict[str, Any]:
         if isinstance(runner_rows, list)
         else []
     )
+    native_runner_boxes = (
+        [
+            (
+                row.get("source_native_runner_id"),
+                row.get("box_number") or row.get("box"),
+            )
+            for row in runner_rows
+            if isinstance(row, Mapping)
+        ]
+        if isinstance(runner_rows, list)
+        else []
+    )
+    native_race_id = shadow.get("source_native_race_id")
+    native_identity_evidence_status = "not_required_direct_source_identity"
+    native_identity_evidence_reason = None
+    evidence = payload.get("native_identity_evidence") if isinstance(payload, Mapping) else None
+    evidence_required = (
+        shadow.get("source_native_identity_origin")
+        == "thedogs_odds_api_exact_runner_set"
+    )
+    if evidence_required and evidence is None:
+        native_identity_evidence_status = "rejected"
+        native_identity_evidence_reason = "native_identity_evidence_missing"
+        native_race_id = None
+        native_runner_ids = []
+    if evidence is not None:
+        evidence_valid, native_identity_evidence_reason = (
+            validate_primary_native_identity_evidence(
+                evidence,
+                expected_race_url=str(_sidecar_race_url(payload) or ""),
+                expected_native_race_id=str(native_race_id or ""),
+                expected_active_runner_boxes=native_runner_boxes,
+                metadata_captured_at=str(
+                    shadow.get("metadata_captured_at")
+                    or payload.get("metadata_captured_at")
+                    or ""
+                ),
+            )
+        )
+        native_identity_evidence_status = "verified" if evidence_valid else "rejected"
+        if not evidence_valid:
+            native_race_id = None
+            native_runner_ids = []
     weather_present = bool(weather_track.get("weather"))
     track_present = bool(weather_track.get("track_condition"))
     expert_form_safe = bool(expert_form.get("metadata_is_leakage_safe"))
@@ -492,8 +538,10 @@ def _metadata_record_for_csv(csv_path: Path) -> dict[str, Any]:
             weather_present and track_present and expert_form_safe
         ),
         "runner_source_observed_at": shadow.get("metadata_captured_at"),
-        "source_native_race_id": shadow.get("source_native_race_id"),
+        "source_native_race_id": native_race_id,
         "source_native_runner_ids": native_runner_ids,
+        "native_identity_evidence_status": native_identity_evidence_status,
+        "native_identity_evidence_reason": native_identity_evidence_reason,
         "weather": weather_track.get("weather"),
         "track_condition": weather_track.get("track_condition"),
         "weather_track_metadata_source": weather_track.get("weather_track_metadata_source"),
@@ -787,10 +835,20 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
 
     downloads: list[dict[str, Any]] = []
     if not args.dry_run:
+        selected_record_by_url = {
+            str(record.get("race_url") or ""): record
+            for record in records
+            if record.get("selected") is True and record.get("race_url")
+        }
         for race in selected:
+            race_url = str(race["url"])
+            selected_record = selected_record_by_url.get(race_url, {})
             result = browser.download_race_csv(
-                str(race["url"]),
-                race_info_hint=race,
+                race_url,
+                race_info_hint={
+                    **dict(race),
+                    "jump_datetime": selected_record.get("jump_datetime"),
+                },
             )
             downloads.append(
                 {

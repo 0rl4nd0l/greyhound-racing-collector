@@ -1735,6 +1735,9 @@ def build_prejump_shadow_metadata_payload(payload: Mapping[str, Any]) -> Dict[st
         "target_grade_source": str(grade_source) if grade_source not in (None, "") else None,
         "source_url": str(source_url) if source_url not in (None, "") else None,
         "source_native_race_id": payload.get("source_native_race_id"),
+        "source_native_identity_origin": payload.get(
+            "source_native_identity_origin"
+        ),
         "runner_box_name_list": participants,
         "canonical_final_runner_alignment": {
             "status": alignment.get("status"),
@@ -1805,6 +1808,14 @@ def normalize_verified_thedogs_export_content(
             base["source_native_race_id"] = canonical_runner_set.get(
                 "source_native_race_id"
             )
+            native_identity_evidence = canonical_runner_set.get(
+                "native_identity_evidence"
+            )
+            if isinstance(native_identity_evidence, Mapping):
+                base["native_identity_evidence"] = dict(native_identity_evidence)
+                base["source_native_identity_origin"] = (
+                    "thedogs_odds_api_exact_runner_set"
+                )
         if canonical_alignment.get("status") == "aligned":
             content_for_normalization = aligned_content
             effective_delimiter = (

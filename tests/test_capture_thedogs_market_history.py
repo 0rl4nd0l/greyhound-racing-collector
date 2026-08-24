@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from scripts import capture_thedogs_market_history as subject
 from scripts.capture_thedogs_market_history import (
     CaptureError,
     TimedResponse,
@@ -315,6 +316,333 @@ def test_complete_active_field_and_native_ids_are_captured(tmp_path):
     assert receipt["open_low_high_are_temporal_observations"] is False
     assert len(session.calls) == 4
 
+
+def test_retained_race_page_identity_binding_uses_exactly_two_requests():
+    observed = JUMP - timedelta(minutes=20)
+    session = FakeSession(server_time=observed)
+    race_page = TimedResponse(
+        requested_url=RACE_URL,
+        request_start_utc=observed - timedelta(milliseconds=100),
+        request_end_utc=observed,
+        final_url=RACE_URL,
+        status_code=200,
+        headers={
+            "content-type": "text/html; charset=utf-8",
+            "date": format_datetime(observed, usegmt=True),
+        },
+        body=source_html(),
+    )
+
+    evidence = subject.capture_native_identity_from_retained_race_page(
+        session=session,
+        race_page=race_page,
+        expected_active_runner_boxes=[("101", 1), ("102", 2)],
+        expected_jump_utc=JUMP,
+        current_time=observed + timedelta(seconds=1),
+        clock=FakeClock(observed + timedelta(milliseconds=100)),
+    )
+
+    assert session.calls == [ODDS_URL, subject._api_url(parse_source_runners(source_html()))]
+    assert evidence["source_native_race_id"] == "9001"
+    assert evidence["active_native_runner_ids"] == ["101", "102"]
+    assert evidence["request_accounting"] == {
+        "logical_requests": 2,
+        "shared_session_max_attempts_per_request": 3,
+        "worst_case_wire_attempts": 6,
+    }
+    assert evidence["evidence_sha256"] == sha256_bytes(
+        canonical_json_bytes(
+            {key: value for key, value in evidence.items() if key != "evidence_sha256"}
+        )
+    )
+
+
+def test_primary_identity_request_accounting_matches_shared_retry_bound():
+    from utils.http_client import get_shared_session
+
+    retries = get_shared_session().get_adapter("https://").max_retries
+    assert retries.total == 2
+    assert 1 + retries.total == 3
+    assert 2 * (1 + retries.total) == 6
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement", "reason"),
+    [
+        (
+            "capture_start_utc",
+            "2026-06-01T08:39:00Z",
+            "persisted_capture_start_mismatch",
+        ),
+        (
+            "capture_end_utc",
+            "2026-06-01T08:41:00Z",
+            "persisted_capture_end_mismatch",
+        ),
+        (
+            "provider",
+            {
+                "classification": "provider_unknown",
+                "id": None,
+                "code": None,
+                "name": None,
+                "source": "provider_not_explicit_in_source_payload",
+            },
+            "persisted_provider_projection_mismatch",
+        ),
+    ],
+)
+def test_primary_identity_revalidation_rejects_rehashed_provenance_tampering(
+    field,
+    replacement,
+    reason,
+):
+    observed = JUMP - timedelta(minutes=20)
+    evidence = subject.capture_native_identity_from_retained_race_page(
+        session=FakeSession(server_time=observed),
+        race_page=TimedResponse(
+            requested_url=RACE_URL,
+            request_start_utc=observed - timedelta(milliseconds=100),
+            request_end_utc=observed,
+            final_url=RACE_URL,
+            status_code=200,
+            headers={
+                "content-type": "text/html; charset=utf-8",
+                "date": format_datetime(observed, usegmt=True),
+            },
+            body=source_html(),
+        ),
+        expected_active_runner_boxes=[("101", 1), ("102", 2)],
+        expected_jump_utc=JUMP,
+        current_time=observed + timedelta(seconds=1),
+        clock=FakeClock(observed + timedelta(milliseconds=100)),
+    )
+    evidence[field] = replacement
+    evidence["evidence_sha256"] = sha256_bytes(
+        canonical_json_bytes(
+            {key: value for key, value in evidence.items() if key != "evidence_sha256"}
+        )
+    )
+
+    valid, observed_reason = subject.validate_primary_native_identity_evidence(
+        evidence,
+        expected_race_url=RACE_URL,
+        expected_native_race_id="9001",
+        expected_active_runner_boxes=[("101", 1), ("102", 2)],
+        metadata_captured_at=evidence["odds_api_http"]["request_end_utc"],
+    )
+
+    assert valid is False
+    assert observed_reason == reason
+
+
+def test_retained_race_page_identity_rejects_non_numeric_native_race_id():
+    observed = JUMP - timedelta(minutes=20)
+    payload = json.loads(api_payload())
+    for quotes in payload["runner_odds"].values():
+        quotes[0]["market"]["race_id"] = "race-nine-thousand-one"
+    session = FakeSession(
+        server_time=observed,
+        api_body=json.dumps(payload).encode(),
+    )
+    race_page = TimedResponse(
+        requested_url=RACE_URL,
+        request_start_utc=observed - timedelta(milliseconds=100),
+        request_end_utc=observed,
+        final_url=RACE_URL,
+        status_code=200,
+        headers={
+            "content-type": "text/html; charset=utf-8",
+            "date": format_datetime(observed, usegmt=True),
+        },
+        body=source_html(),
+    )
+
+    with pytest.raises(CaptureError, match="native_race_identity_invalid"):
+        subject.capture_native_identity_from_retained_race_page(
+            session=session,
+            race_page=race_page,
+            expected_active_runner_boxes=[("101", 1), ("102", 2)],
+            expected_jump_utc=JUMP,
+            current_time=observed + timedelta(seconds=1),
+            clock=FakeClock(observed + timedelta(milliseconds=100)),
+        )
+
+
+def test_retained_race_page_identity_rejects_partial_native_race_id():
+    observed = JUMP - timedelta(minutes=20)
+    payload = json.loads(api_payload())
+    del payload["runner_odds"]["102"][0]["market"]["race_id"]
+    session = FakeSession(
+        server_time=observed,
+        api_body=json.dumps(payload).encode(),
+    )
+    race_page = TimedResponse(
+        requested_url=RACE_URL,
+        request_start_utc=observed - timedelta(milliseconds=100),
+        request_end_utc=observed,
+        final_url=RACE_URL,
+        status_code=200,
+        headers={
+            "content-type": "text/html; charset=utf-8",
+            "date": format_datetime(observed, usegmt=True),
+        },
+        body=source_html(),
+    )
+
+    with pytest.raises(CaptureError, match="native_race_identity_incomplete"):
+        subject.capture_native_identity_from_retained_race_page(
+            session=session,
+            race_page=race_page,
+            expected_active_runner_boxes=[("101", 1), ("102", 2)],
+            expected_jump_utc=JUMP,
+            current_time=observed + timedelta(seconds=1),
+            clock=FakeClock(observed + timedelta(milliseconds=100)),
+        )
+
+
+@pytest.mark.parametrize(
+    ("expected_runner_boxes", "reason"),
+    [
+        ([("101", 1)], "expected_active_runner_boxes_invalid"),
+        (
+            [("101", 1), ("101", 2)],
+            "expected_active_runner_boxes_invalid",
+        ),
+        (
+            [("101", 1), ("runner-two", 2)],
+            "expected_active_runner_boxes_invalid",
+        ),
+        (
+            [("101", 1), ("999", 2)],
+            "expected_native_runner_set_mismatch",
+        ),
+    ],
+)
+def test_retained_race_page_identity_rejects_partial_or_mismatched_runner_ids(
+    expected_runner_boxes,
+    reason,
+):
+    observed = JUMP - timedelta(minutes=20)
+    session = FakeSession(server_time=observed)
+    race_page = TimedResponse(
+        requested_url=RACE_URL,
+        request_start_utc=observed - timedelta(milliseconds=100),
+        request_end_utc=observed,
+        final_url=RACE_URL,
+        status_code=200,
+        headers={
+            "content-type": "text/html; charset=utf-8",
+            "date": format_datetime(observed, usegmt=True),
+        },
+        body=source_html(),
+    )
+
+    with pytest.raises(CaptureError, match=reason):
+        subject.capture_native_identity_from_retained_race_page(
+            session=session,
+            race_page=race_page,
+            expected_active_runner_boxes=expected_runner_boxes,
+            expected_jump_utc=JUMP,
+            current_time=observed + timedelta(seconds=1),
+            clock=FakeClock(observed + timedelta(milliseconds=100)),
+        )
+
+
+def test_retained_race_page_identity_rejects_ambiguous_native_race_id():
+    observed = JUMP - timedelta(minutes=20)
+    payload = json.loads(api_payload())
+    payload["runner_odds"]["102"][0]["market"]["race_id"] = 9002
+    session = FakeSession(
+        server_time=observed,
+        api_body=json.dumps(payload).encode(),
+    )
+    race_page = TimedResponse(
+        requested_url=RACE_URL,
+        request_start_utc=observed - timedelta(milliseconds=100),
+        request_end_utc=observed,
+        final_url=RACE_URL,
+        status_code=200,
+        headers={
+            "content-type": "text/html; charset=utf-8",
+            "date": format_datetime(observed, usegmt=True),
+        },
+        body=source_html(),
+    )
+
+    with pytest.raises(CaptureError, match="native_race_identity_not_unique"):
+        subject.capture_native_identity_from_retained_race_page(
+            session=session,
+            race_page=race_page,
+            expected_active_runner_boxes=[("101", 1), ("102", 2)],
+            expected_jump_utc=JUMP,
+            current_time=observed + timedelta(seconds=1),
+            clock=FakeClock(observed + timedelta(milliseconds=100)),
+        )
+
+
+def test_retained_race_page_identity_rejects_primary_effective_box_mismatch():
+    observed = JUMP - timedelta(minutes=20)
+    race_page = TimedResponse(
+        requested_url=RACE_URL,
+        request_start_utc=observed - timedelta(milliseconds=100),
+        request_end_utc=observed,
+        final_url=RACE_URL,
+        status_code=200,
+        headers={
+            "content-type": "text/html; charset=utf-8",
+            "date": format_datetime(observed, usegmt=True),
+        },
+        body=source_html(),
+    )
+
+    with pytest.raises(
+        CaptureError,
+        match="expected_native_runner_effective_box_mismatch",
+    ):
+        subject.capture_native_identity_from_retained_race_page(
+            session=FakeSession(server_time=observed),
+            race_page=race_page,
+            expected_active_runner_boxes=[("101", 1), ("102", 3)],
+            expected_jump_utc=JUMP,
+            current_time=observed + timedelta(seconds=1),
+            clock=FakeClock(observed + timedelta(milliseconds=100)),
+        )
+
+
+def test_retained_race_page_identity_rejects_stale_or_postjump_evidence():
+    observed = JUMP - timedelta(minutes=20)
+    race_page = TimedResponse(
+        requested_url=RACE_URL,
+        request_start_utc=observed - timedelta(milliseconds=100),
+        request_end_utc=observed,
+        final_url=RACE_URL,
+        status_code=200,
+        headers={
+            "content-type": "text/html; charset=utf-8",
+            "date": format_datetime(observed, usegmt=True),
+        },
+        body=source_html(),
+    )
+    with pytest.raises(CaptureError, match="native_identity_evidence_stale"):
+        subject.capture_native_identity_from_retained_race_page(
+            session=FakeSession(server_time=observed),
+            race_page=race_page,
+            expected_active_runner_boxes=[("101", 1), ("102", 2)],
+            expected_jump_utc=JUMP,
+            current_time=observed + timedelta(seconds=1201),
+            clock=FakeClock(observed + timedelta(milliseconds=100)),
+        )
+
+    with pytest.raises(CaptureError, match="capture_not_strictly_prejump"):
+        subject.capture_native_identity_from_retained_race_page(
+            session=FakeSession(server_time=JUMP),
+            race_page=race_page,
+            expected_active_runner_boxes=[("101", 1), ("102", 2)],
+            expected_jump_utc=JUMP,
+            current_time=observed + timedelta(seconds=1),
+            clock=FakeClock(JUMP),
+        )
 
 def test_native_odds_api_uses_frontend_xhr_request_header(tmp_path):
     _result, session = capture(tmp_path)

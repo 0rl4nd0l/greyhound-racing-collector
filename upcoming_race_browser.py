@@ -16,7 +16,7 @@ import os
 import re
 import sys
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urljoin, urlsplit
 
@@ -29,9 +29,15 @@ except Exception as _bs4_import_error:
 from utils.http_client import get_shared_session
 from utils.runner_completeness import (
     analyze_csv_text_runner_completeness,
-    fetch_canonical_runner_set,
+    extract_canonical_runner_set_from_html,
     quarantine_csv_content,
     quarantine_existing_file,
+)
+from scripts.capture_thedogs_market_history import (
+    CaptureError as NativeIdentityCaptureError,
+    TimedResponse,
+    bounded_receipt_headers,
+    capture_native_identity_from_retained_race_page,
 )
 from utils.csv_metadata import (
     THEDOGS_EXACT_RACE_PAGE_GRADE_SOURCE,
@@ -1951,6 +1957,12 @@ class UpcomingRaceBrowser:
     def _collect_expert_form_metadata(self, race_url, race_info):
         """Collect structured Expert Form page metadata for the CSV sidecar."""
 
+        metadata, _soup = self._fetch_expert_form_artifact(race_url, race_info)
+        return metadata
+
+    def _fetch_expert_form_artifact(self, race_url, race_info):
+        """Fetch one Expert Form response for metadata and export discovery."""
+
         base_race_url, expert_form_url = self._normalize_race_url(race_url)
         response = None
         try:
@@ -1980,12 +1992,38 @@ class UpcomingRaceBrowser:
                     "rejected_reasons": [
                         f"expert_form_source_fetch_failed:{response.status_code}"
                     ],
-                }
-            return build_expert_form_metadata_payload(
+                }, None
+            final_url = str(getattr(response, "url", expert_form_url) or "")
+            if final_url != expert_form_url:
+                return {
+                    "schema_version": "thedogs_expert_form_metadata_v1",
+                    "source": "thedogs_expert_form_page",
+                    "source_url": expert_form_url,
+                    "source_final_url": final_url,
+                    "metadata_is_leakage_safe": False,
+                    "runner_count": 0,
+                    "runners": [],
+                    "rejected_reasons": [
+                        "expert_form_source_redirect_or_url_mismatch"
+                    ],
+                }, None
+            body = bytes(response.content)
+            captured_at = datetime.now(timezone.utc)
+            metadata = build_expert_form_metadata_payload(
                 response.text,
                 race_info=race_info,
                 source_url=expert_form_url,
+                captured_at=captured_at,
             )
+            metadata.update(
+                {
+                    "source_final_url": final_url,
+                    "source_sha256": hashlib.sha256(body).hexdigest(),
+                    "source_bytes": len(body),
+                }
+            )
+            expert_soup = bs4.BeautifulSoup(body, "html.parser") if bs4 else None
+            return metadata, expert_soup
         except Exception as exc:
             return {
                 "schema_version": "thedogs_expert_form_metadata_v1",
@@ -1997,7 +2035,7 @@ class UpcomingRaceBrowser:
                 "rejected_reasons": [
                     f"expert_form_source_fetch_failed:{type(exc).__name__}"
                 ],
-            }
+            }, None
         finally:
             if response is not None:
                 try:
@@ -2012,8 +2050,16 @@ class UpcomingRaceBrowser:
 
             # Get race page
             response = None
+            race_request_start = datetime.now(timezone.utc)
+            retained_race_page = None
             try:
-                response = self.session.get(race_url, timeout=30)
+                response = self.session.get(
+                    race_url,
+                    timeout=30,
+                    headers={"Accept-Encoding": "identity"},
+                    allow_redirects=False,
+                )
+                race_request_end = datetime.now(timezone.utc)
 
                 if response.status_code == 404:
                     return {
@@ -2030,6 +2076,17 @@ class UpcomingRaceBrowser:
                     raise RuntimeError("BeautifulSoup (bs4) is required. Install with 'pip install beautifulsoup4'.")
                 race_page_content = response.content
                 race_page_sha256 = hashlib.sha256(race_page_content).hexdigest()
+                retained_race_page = TimedResponse(
+                    requested_url=race_url,
+                    request_start_utc=race_request_start,
+                    request_end_utc=race_request_end,
+                    final_url=str(getattr(response, "url", race_url) or ""),
+                    status_code=int(response.status_code),
+                    headers=bounded_receipt_headers(
+                        dict(getattr(response, "headers", {}) or {})
+                    ),
+                    body=bytes(race_page_content),
+                )
                 soup = bs4.BeautifulSoup(race_page_content, "html.parser")
             finally:
                 if response is not None:
@@ -2078,10 +2135,11 @@ class UpcomingRaceBrowser:
                 race_info,
                 self._collect_safe_weather_metadata_from_forecast(race_info)
             )
-            race_info["expert_form_metadata"] = self._collect_expert_form_metadata(
+            expert_form_metadata, retained_expert_soup = self._fetch_expert_form_artifact(
                 race_url,
                 {**race_info, "url": race_url},
             )
+            race_info["expert_form_metadata"] = expert_form_metadata
 
             # Generate filename
             filename = f"Race {race_info['race_number']} - {race_info['venue']} - {race_info['date']}.csv"
@@ -2112,7 +2170,11 @@ class UpcomingRaceBrowser:
                 )
 
             # Find CSV download link
-            csv_info = self.find_csv_download_link(soup, race_url)
+            csv_info = self.find_csv_download_link(
+                soup,
+                race_url,
+                retained_expert_soup=retained_expert_soup,
+            )
 
             if not csv_info:
                 fallback = self._try_expert_form_fallback(
@@ -2260,10 +2322,55 @@ class UpcomingRaceBrowser:
                 filename=filename,
                 allow_generic_fields=False,
             )
-            canonical_runner_set = fetch_canonical_runner_set(
-                race_url,
-                session=self.session,
+            canonical_runner_set = extract_canonical_runner_set_from_html(
+                race_page_content.decode("utf-8", errors="strict"),
+                source_url=race_url,
+                expected_race_number=int(race_info["race_number"]),
+                extraction_timestamp=retained_race_page.request_end_utc.isoformat(),
             )
+            expected_native_runner_boxes = [
+                (
+                    participant.get("source_native_runner_id"),
+                    participant.get("box_number"),
+                )
+                for participant in canonical_runner_set.get(
+                    "final_runner_participants", []
+                )
+                if isinstance(participant, dict)
+            ]
+            if (
+                canonical_runner_set.get("canonical_runner_set_status") == "available"
+                and canonical_runner_set.get("native_identity_status") != "available"
+                and expected_native_runner_boxes
+                and race_info_hint
+                and race_info_hint.get("jump_datetime")
+            ):
+                try:
+                    expected_jump = datetime.fromisoformat(
+                        str(race_info_hint["jump_datetime"])
+                    )
+                    identity_evidence = capture_native_identity_from_retained_race_page(
+                        session=self.session,
+                        race_page=retained_race_page,
+                        expected_active_runner_boxes=expected_native_runner_boxes,
+                        expected_jump_utc=expected_jump,
+                        current_time=datetime.now(timezone.utc),
+                    )
+                except (NativeIdentityCaptureError, UnicodeError, ValueError) as exc:
+                    canonical_runner_set["native_identity_reasons"] = [
+                        f"native_identity_evidence_rejected:{exc}"
+                    ]
+                else:
+                    canonical_runner_set.update(
+                        {
+                            "source_native_race_id": identity_evidence[
+                                "source_native_race_id"
+                            ],
+                            "native_identity_status": "available",
+                            "native_identity_reasons": [],
+                            "native_identity_evidence": identity_evidence,
+                        }
+                    )
             normalization = normalize_verified_thedogs_export_content(
                 content,
                 accepted_csv_path=filepath,
@@ -2426,7 +2533,7 @@ class UpcomingRaceBrowser:
             print(f"   ❌ Error extracting race info: {e}")
             return None
 
-    def find_csv_download_link(self, soup, race_url):
+    def find_csv_download_link(self, soup, race_url, *, retained_expert_soup=False):
         """Find CSV download link on the race page"""
         try:
             # Try the expert-form page method first (normalized)
@@ -2434,39 +2541,42 @@ class UpcomingRaceBrowser:
 
             print(f"   🔍 Trying expert-form URL: {expert_form_url}")
             response = None
-            try:
-                # Include Referer and browser-like headers to avoid 403 blocks
-                response = self.session.get(
-                    expert_form_url,
-                    timeout=15,
-                    headers={
-                        "Referer": base_race_url,
-                        "Origin": self.base_url,
-                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-                        "Accept-Language": "en-US,en;q=0.9",
-                        "Upgrade-Insecure-Requests": "1",
-                        "Sec-Fetch-Site": "same-origin",
-                        "Sec-Fetch-Mode": "navigate",
-                        "Sec-Fetch-Dest": "document",
-                        "DNT": "1",
-                    },
-                )
-
-                if response.status_code == 200:
-                    if bs4 is None:
-                        raise RuntimeError("BeautifulSoup (bs4) is required. Install with 'pip install beautifulsoup4'.")
-                    expert_soup = bs4.BeautifulSoup(response.content, "html.parser")
-                else:
-                    print(
-                        f"   ❌ Expert-form page not accessible: {response.status_code}"
+            if retained_expert_soup is not False:
+                expert_soup = retained_expert_soup
+            else:
+                try:
+                    # Include Referer and browser-like headers to avoid 403 blocks.
+                    response = self.session.get(
+                        expert_form_url,
+                        timeout=15,
+                        headers={
+                            "Referer": base_race_url,
+                            "Origin": self.base_url,
+                            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+                            "Accept-Language": "en-US,en;q=0.9",
+                            "Upgrade-Insecure-Requests": "1",
+                            "Sec-Fetch-Site": "same-origin",
+                            "Sec-Fetch-Mode": "navigate",
+                            "Sec-Fetch-Dest": "document",
+                            "DNT": "1",
+                        },
                     )
-                    expert_soup = None
-            finally:
-                if response is not None:
-                    try:
-                        response.close()
-                    except Exception:
-                        pass
+
+                    if response.status_code == 200:
+                        if bs4 is None:
+                            raise RuntimeError("BeautifulSoup (bs4) is required. Install with 'pip install beautifulsoup4'.")
+                        expert_soup = bs4.BeautifulSoup(response.content, "html.parser")
+                    else:
+                        print(
+                            f"   ❌ Expert-form page not accessible: {response.status_code}"
+                        )
+                        expert_soup = None
+                finally:
+                    if response is not None:
+                        try:
+                            response.close()
+                        except Exception:
+                            pass
 
             if expert_soup:
                 # Method 1: Look for direct CSV download links
