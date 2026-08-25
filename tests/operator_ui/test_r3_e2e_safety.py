@@ -124,7 +124,7 @@ def test_one_authenticated_submission_reaches_real_worker_once_without_false_rea
                  popen=lambda *args, **kwargs: Process(output),
                  reader=index)
 
-    install_r3_api(app, R3Services(store, resolved, launch, lambda job: None, clock=lambda: NOW, rate_limit=20))
+    install_r3_api(app, R3Services(store, resolved, launch, lambda job, _confirm: job, lambda job: None, clock=lambda: NOW, rate_limit=20))
     client = app.test_client()
     token = client.get("/operator-ui/login", base_url="https://localhost").get_json()["csrf_token"]
     token = client.post("/operator-ui/login", base_url="https://localhost", data={"username": "operator", "password": "safe-password", "csrf_token": token}).get_json()["csrf_token"]

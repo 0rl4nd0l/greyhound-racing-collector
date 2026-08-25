@@ -6,16 +6,17 @@ from datetime import datetime, timezone
 from flask import Flask
 from werkzeug.security import generate_password_hash
 
-from src.operator_ui.job_store import JobInput, JobStore, JobStoreError, Phase
-from src.operator_ui.r3_api import R3Rejected, R3Services, ResolvedSubmission, install_r3_api
+from src.operator_ui.job_store import JobInput, JobStore, JobStoreError, Phase, resolve_audit_confirmation
+from src.operator_ui.r3_api import R3Rejected, R3Services, ResolvedSubmission, finalize_producer_bundle, install_r3_api
 from src.operator_ui.security import install_connected_mode
+from src.predictor.on_demand import VerifiedPredictionBundle, VerifiedPredictionBundleIndex
 
 NOW = datetime(2026, 8, 1, tzinfo=timezone.utc)
 H = hashlib.sha256(b"r3").hexdigest()
 RACE = "race-20260801-richmond-r05"
 
 
-def application(tmp_path, *, level=2, resolver=None, result=lambda _job: None, rate=20, launch=None):
+def application(tmp_path, *, level=2, resolver=None, result=lambda _job: None, rate=20, launch=None, finalize=lambda job, _confirm: job):
     app = Flask(__name__)
     app.config.update(
         TESTING=True, OPERATOR_UI_CONNECTED_MODE=True,
@@ -38,7 +39,7 @@ def application(tmp_path, *, level=2, resolver=None, result=lambda _job: None, r
         runners = ({"box": 1, "name": "ALPHA", "identity": "ALPHA"},)
         return ResolvedSubmission(JobInput(RACE, "2026-08-01T01:00:00Z", H, "latest-research", "model-v1", H, H, H, "manual-default", H, "auto", runners), runners)
     dispatcher = launch or (lambda job_id, _confirm: launched.append(job_id))
-    install_r3_api(app, R3Services(store, resolve, dispatcher, result, clock=lambda: NOW, rate_limit=rate))
+    install_r3_api(app, R3Services(store, resolve, dispatcher, finalize, result, clock=lambda: NOW, rate_limit=rate))
     return app, store, launched
 
 
@@ -52,6 +53,15 @@ def body(**changes):
     value = {"race_id": RACE, "model_id": "latest-research", "config_id": "manual-default", "odds_source_id": "auto", "idempotency_key": "12345678-1234-4123-8123-123456789abc"}
     value.update(changes)
     return value
+
+
+def producer_complete(store, job_id):
+    confirm=lambda intent:resolve_audit_confirmation(intent,H)
+    job,attempt=store.claim_attempt(job_id,now=NOW,confirm_audit=confirm)
+    job=store.transition(job_id,Phase.ATTEMPT_STARTED,now=NOW,status="RUNNING",reason="predictor_started",facts={"attempt_id":attempt,"pid":123},confirm_audit=confirm)
+    empty=hashlib.sha256(b"").hexdigest(); facts={"attempt_id":attempt,"pid":123,"exit_code":0,"stdout_complete":True,"stdout_length":0,"stdout_sha256":empty,"stdout_prefix_length":0,"stdout_prefix_sha256":empty,"stderr_complete":True,"stderr_length":0,"stderr_sha256":empty,"stderr_prefix_length":0,"stderr_prefix_sha256":empty,"predictor_status":"PREDICTION_READY","prediction_id":"12345678-1234-4123-8123-123456789abc","producer_job_id":job_id}
+    job=store.transition(job_id,Phase.RESPONSE_RECORDED,now=NOW,status="RECORDED",reason="bounded_process_response",facts=facts,confirm_audit=confirm)
+    return store.transition(job_id,Phase.PRODUCER_COMPLETED,now=NOW,status="PRODUCER_COMPLETED",reason="PRODUCER_PREDICTION_READY",facts=facts,confirm_audit=confirm)
 
 
 def test_level2_csrf_exact_schema_idempotency_poll_and_actor_isolation(tmp_path):
@@ -153,6 +163,58 @@ def test_restart_get_alone_dispatches_and_claims_waiting_job_once(tmp_path):
     assert calls == [job_id]
     assert restarted.get(job_id).phase.value == "CLAIMED"
     assert restarted.verify()
+
+
+def test_restart_get_resumes_verification_of_durable_producer_completion(tmp_path):
+    app, store, _ = application(tmp_path)
+    client = app.test_client(); token = login(client)
+    created = client.post("/operator-ui/api/v1/prediction-jobs", base_url="https://localhost", json=body(), headers={"X-CSRF-Token": token})
+    job_id = created.get_json()["job_id"]
+    producer_complete(store,job_id)
+    finalized=[]
+    app, restarted, _ = application(tmp_path, finalize=lambda job, _confirm: (finalized.append(job.job_id) or job))
+    client=app.test_client(); login(client)
+    response=client.get(f"/operator-ui/api/v1/prediction-jobs/{job_id}",base_url="https://localhost")
+    assert response.status_code==200 and finalized==[job_id]
+    assert restarted.get(job_id).phase is Phase.PRODUCER_COMPLETED
+
+
+def test_missing_sealed_bundle_index_is_a_durable_exact_verifier_failure(tmp_path):
+    authority=object(); store=JobStore(tmp_path/"jobs.db",verifier_authority=authority)
+    runners=({"box":1,"name":"ALPHA","identity":"ALPHA"},)
+    inp=JobInput(RACE,"2026-08-01T01:00:00Z",H,"latest-research","model-v1",H,H,H,"manual-default",H,"receipt",runners)
+    confirm=lambda intent:resolve_audit_confirmation(intent,H)
+    job=store.create(actor_identity="operator",actor_level=2,operation="manual_prediction",idempotency_key="12345678-1234-4123-8123-123456789abc",job_input=inp,now=NOW,confirm_audit=confirm)
+    job=store.transition(job.job_id,Phase.VALIDATED,now=NOW,status="VALID",reason="validated",confirm_audit=confirm)
+    job=store.transition(job.job_id,Phase.WAITING_FOR_CLAIM,now=NOW,status="WAITING",reason="ready",confirm_audit=confirm)
+    job=producer_complete(store,job.job_id)
+    final=finalize_producer_bundle(tmp_path/"missing-bundles",store,job,capability=authority,now=NOW,confirm_audit=confirm)
+    assert final.phase is Phase.FAILED
+    assert store.events(job.job_id)[-1]["facts"]["blocker"]=={"code":"BUNDLE_INDEX_VERIFICATION_FAILED","stage":"BUNDLE_VERIFICATION"}
+    assert store.verify()
+
+
+def test_mismatched_sealed_blocker_is_a_durable_exact_verifier_failure(tmp_path,monkeypatch):
+    from src.operator_ui import r3_api as r3_api_module
+    authority=object(); store=JobStore(tmp_path/"jobs.db",verifier_authority=authority)
+    runners=({"box":1,"name":"ALPHA","identity":"ALPHA"},); confirm=lambda intent:resolve_audit_confirmation(intent,H)
+    inp=JobInput(RACE,"2026-08-01T01:00:00Z",H,"latest-research","model-v1",H,H,H,"manual-default",H,"receipt",runners)
+    job=store.create(actor_identity="operator",actor_level=2,operation="manual_prediction",idempotency_key="12345678-1234-4123-8123-123456789abc",job_input=inp,now=NOW,confirm_audit=confirm)
+    job=store.transition(job.job_id,Phase.VALIDATED,now=NOW,status="VALID",reason="validated",confirm_audit=confirm)
+    job=store.transition(job.job_id,Phase.WAITING_FOR_CLAIM,now=NOW,status="WAITING",reason="ready",confirm_audit=confirm)
+    job,attempt=store.claim_attempt(job.job_id,now=NOW,confirm_audit=confirm)
+    job=store.transition(job.job_id,Phase.ATTEMPT_STARTED,now=NOW,status="RUNNING",reason="predictor_started",facts={"attempt_id":attempt,"pid":123},confirm_audit=confirm)
+    empty=hashlib.sha256(b"").hexdigest(); facts={"attempt_id":attempt,"pid":123,"exit_code":2,"stdout_complete":True,"stdout_length":0,"stdout_sha256":empty,"stdout_prefix_length":0,"stdout_prefix_sha256":empty,"stderr_complete":True,"stderr_length":0,"stderr_sha256":empty,"stderr_prefix_length":0,"stderr_prefix_sha256":empty,"predictor_status":"PREDICTION_BLOCKED","prediction_id":"12345678-1234-4123-8123-123456789abc","producer_job_id":job.job_id,"producer_blocker":{"code":"POST_JUMP","stage":"VALIDATION"}}
+    job=store.transition(job.job_id,Phase.RESPONSE_RECORDED,now=NOW,status="RECORDED",reason="bounded_process_response",facts=facts,confirm_audit=confirm)
+    job=store.transition(job.job_id,Phase.PRODUCER_COMPLETED,now=NOW,status="PRODUCER_COMPLETED",reason="PRODUCER_PREDICTION_BLOCKED:POST_JUMP",facts=facts,confirm_audit=confirm)
+    entry={"directory":"prediction_safe","prediction_id":facts["prediction_id"],"job_id":job.job_id,"status":"PREDICTION_BLOCKED","manifest_sha256":H,"logical_bundle_sha256":H}
+    bundle=VerifiedPredictionBundle("prediction_safe",entry,{"blocker":{"code":"NO_MATCH"},"blocker_stage":"VALIDATION"},{},{})
+    monkeypatch.setattr(r3_api_module,"verify_prediction_bundle_index",lambda *_args,**_kwargs:VerifiedPredictionBundleIndex("on_demand_prediction_bundle_index_v1",NOW.isoformat(),(entry,),b"{}",H))
+    monkeypatch.setattr(r3_api_module,"verify_indexed_prediction_bundle",lambda *_args,**_kwargs:bundle)
+    final=finalize_producer_bundle(tmp_path,store,job,capability=authority,now=NOW,confirm_audit=confirm)
+    assert final.phase is Phase.FAILED
+    assert store.events(job.job_id)[-1]["facts"]["blocker"]=={"code":"BUNDLE_BLOCKER_IDENTITY_MISMATCH","stage":"BUNDLE_VERIFICATION"}
+    assert store.verify()
 
 
 def test_same_process_get_renotifies_when_dispatch_has_no_durable_outcome(tmp_path):
