@@ -205,6 +205,8 @@ _PROCESS_FACTS=frozenset({"attempt_id","pid","exit_code","stdout_complete","stdo
 _STREAM_REQUIRED=frozenset({"attempt_id","pid","exit_code","stdout_complete","stdout_prefix_length","stdout_prefix_sha256","stderr_complete","stderr_prefix_length","stderr_prefix_sha256"})
 _STREAM_OPTIONAL=frozenset({"stdout_reader_error","stdout_bytes","stdout_length","stdout_sha256","stderr_reader_error","stderr_bytes","stderr_length","stderr_sha256"})
 _VERIFIER_FACTS=frozenset({"prediction_id","job_id","race_id","jump_timestamp","runner_set_sha256","resolved_model_identity","model_sha256","model_manifest_sha256","model_schema_sha256","config_id","config_sha256","index_sha256","result_sha256","manifest_sha256","logical_bundle_sha256","bundle_locator","producer_status","research_only","production_persisted","betting_output","verification_status","blocker"})
+_VERIFIER_FAILURE_FACTS=frozenset({"prediction_id","job_id","race_id","jump_timestamp","runner_set_sha256","resolved_model_identity","model_sha256","model_manifest_sha256","model_schema_sha256","config_id","config_sha256","producer_status","verification_status","blocker"})
+_VERIFIER_FAILURE_CODES=frozenset({"BUNDLE_INDEX_VERIFICATION_FAILED","BUNDLE_IDENTITY_MISSING_OR_AMBIGUOUS","BUNDLE_VERIFICATION_FAILED","BUNDLE_JOB_IDENTITY_MISMATCH","BUNDLE_BLOCKER_IDENTITY_MISMATCH","BUNDLE_RESULT_IDENTITY_UNAVAILABLE"})
 
 def _event_contracts():
     empty=frozenset(); claim=frozenset({"attempt_id"}); start=frozenset({"attempt_id","pid"})
@@ -220,7 +222,7 @@ def _event_contracts():
       (Phase.ATTEMPT_STARTED,Phase.RESPONSE_RECORDED,"RECORDED","bounded_process_response"):(process,_STREAM_OPTIONAL|{"predictor_status","prediction_id","producer_job_id","producer_blocker","protocol_chain","authenticated_cutoff"},"process"),
       (Phase.RESPONSE_RECORDED,Phase.PRODUCER_COMPLETED,"PRODUCER_COMPLETED","PRODUCER_PREDICTION_READY"):(producer,_STREAM_OPTIONAL|{"protocol_chain","authenticated_cutoff"},"producer_ready"),
       (Phase.PRODUCER_COMPLETED,Phase.PREDICTION_READY,"READY","verified"):(_VERIFIER_FACTS,empty,"verifier_ready"),
-      (Phase.PRODUCER_COMPLETED,Phase.FAILED,"FAILED","verification_failed"):(_VERIFIER_FACTS,empty,"verifier_failed"),
+      (Phase.PRODUCER_COMPLETED,Phase.FAILED,"FAILED","verification_failed"):(empty,_VERIFIER_FACTS|_VERIFIER_FAILURE_FACTS,"verifier_failed"),
       (Phase.PRODUCER_COMPLETED,Phase.REJECTED,"REJECTED","verification_rejected"):(_VERIFIER_FACTS,empty,"verifier_rejected"),
     }
     for predecessor in (Phase.CLAIMED,Phase.ATTEMPT_STARTED,Phase.RESPONSE_RECORDED):
@@ -246,11 +248,15 @@ def _validate_facts(phase:Phase,facts:Any,prior:Phase|None,status:str="",reason:
     if contract is None: raise ValueError("undeclared event contract")
     required,optional,_kind=contract
     if not required.issubset(facts) or set(facts)-required-optional: raise ValueError("event facts do not match exact contract")
-    verifier=set(_VERIFIER_FACTS)
+    verifier=set(_VERIFIER_FACTS); verifier_failure=set(_VERIFIER_FAILURE_FACTS)
+    if prior is Phase.PRODUCER_COMPLETED and phase is Phase.FAILED and set(facts) not in {frozenset(verifier),frozenset(verifier_failure)}: raise ValueError("exact verifier failure evidence required")
     if "verification_status" in facts:
-        if set(facts)!=verifier: raise ValueError("exact verifier evidence required")
+        if phase is Phase.FAILED and set(facts)==verifier_failure:
+            blocker=facts.get("blocker")
+            if facts.get("verification_status")!="FAILED" or facts.get("producer_status") not in {"PREDICTION_READY","PREDICTION_BLOCKED"} or not isinstance(blocker,dict) or set(blocker)!={"code","stage"} or blocker.get("code") not in _VERIFIER_FAILURE_CODES or blocker.get("stage")!="BUNDLE_VERIFICATION": raise ValueError("invalid bundle verification failure facts")
+        elif set(facts)!=verifier: raise ValueError("exact verifier evidence required")
         if phase is Phase.PREDICTION_READY and (facts.get("verification_status")!="VERIFIED" or facts.get("producer_status")!="PREDICTION_READY" or facts.get("blocker") is not None): raise ValueError("invalid ready verification facts")
-        if phase in {Phase.FAILED,Phase.REJECTED}:
+        if phase in {Phase.FAILED,Phase.REJECTED} and set(facts)==verifier:
             blocker=facts.get("blocker")
             expected="FAILED" if phase is Phase.FAILED else "REJECTED"
             if facts.get("verification_status")!=expected or facts.get("producer_status")!="PREDICTION_BLOCKED" or not isinstance(blocker,dict) or set(blocker)!={"code","stage"}: raise ValueError("invalid verifier blocker facts")
@@ -591,16 +597,19 @@ class JobStore:
     def verifier_transition(self,job_id,phase,*,capability:object,now,status,reason,facts,confirm_audit:AuditConfirmation):
         if self._verifier_authority is None or capability is not self._verifier_authority: raise VerifierAuthorizationError("verifier authority required")
         if phase not in {Phase.PREDICTION_READY,Phase.FAILED,Phase.REJECTED}: raise IllegalTransition("invalid verifier transition")
-        required={"prediction_id","job_id","race_id","jump_timestamp","runner_set_sha256","resolved_model_identity","model_sha256","model_manifest_sha256","model_schema_sha256","config_id","config_sha256","index_sha256","result_sha256","manifest_sha256","logical_bundle_sha256","bundle_locator","producer_status","research_only","production_persisted","betting_output","verification_status","blocker"}
-        if not isinstance(facts,dict) or set(facts)!=required: raise ValueError("exact verifier evidence required")
-        for name in ("runner_set_sha256","model_sha256","model_manifest_sha256","model_schema_sha256","config_sha256","index_sha256","result_sha256","manifest_sha256","logical_bundle_sha256"): _hash(facts[name],name)
+        allowed={_VERIFIER_FACTS,_VERIFIER_FAILURE_FACTS}
+        if not isinstance(facts,dict) or frozenset(facts) not in allowed: raise ValueError("exact verifier evidence required")
+        for name in ("runner_set_sha256","model_sha256","model_manifest_sha256","model_schema_sha256","config_sha256"): _hash(facts[name],name)
+        for name in ("index_sha256","result_sha256","manifest_sha256","logical_bundle_sha256"):
+            if name in facts: _hash(facts[name],name)
         _canonical_uuid(facts["prediction_id"],"prediction_id"); _identifier(facts["verification_status"],"verification_status")
-        locator=facts["bundle_locator"]
-        if not isinstance(locator,str) or not locator or Path(locator).is_absolute() or "\\" in locator or any(part in {"",".",".."} for part in locator.split("/")): raise ValueError("unsafe bundle locator")
-        for flag in ("research_only","production_persisted","betting_output"):
-            if not isinstance(facts[flag],bool): raise ValueError("invalid verifier safety flag")
+        if "bundle_locator" in facts:
+            locator=facts["bundle_locator"]
+            if not isinstance(locator,str) or not locator or Path(locator).is_absolute() or "\\" in locator or any(part in {"",".",".."} for part in locator.split("/")): raise ValueError("unsafe bundle locator")
+            for flag in ("research_only","production_persisted","betting_output"):
+                if not isinstance(facts[flag],bool): raise ValueError("invalid verifier safety flag")
         if phase is Phase.PREDICTION_READY and (facts["verification_status"]!="VERIFIED" or facts["producer_status"]!="PREDICTION_READY" or facts["research_only"] is not True or facts["production_persisted"] is not False or facts["betting_output"] is not False or facts["blocker"] is not None): raise ValueError("readiness requires verified safe sealed evidence")
-        if phase in {Phase.FAILED,Phase.REJECTED}:
+        if phase in {Phase.FAILED,Phase.REJECTED} and frozenset(facts)==_VERIFIER_FACTS:
             expected_status="FAILED" if phase is Phase.FAILED else "REJECTED"
             blocker=facts["blocker"]
             if facts["verification_status"]!=expected_status or facts["producer_status"]!="PREDICTION_BLOCKED" or facts["research_only"] is not True or facts["production_persisted"] is not False or facts["betting_output"] is not False: raise ValueError("verifier blocker contradicts target phase")
@@ -617,9 +626,10 @@ class JobStore:
             actual=tuple(facts[n] for n in ("job_id","race_id","jump_timestamp","runner_set_sha256","resolved_model_identity","model_sha256","model_manifest_sha256","model_schema_sha256","config_id","config_sha256"))
             if actual!=expected: raise ValueError("verifier evidence identity mismatch")
             producer=json.loads(db.execute("SELECT facts_json FROM job_events WHERE job_id=? AND phase=? ORDER BY sequence DESC LIMIT 1",(job_id,Phase.PRODUCER_COMPLETED.value)).fetchone()[0])
+            if producer.get("prediction_id")!=facts["prediction_id"] or producer.get("predictor_status")!=facts["producer_status"]: raise ValueError("verifier differs from producer identity")
             if phase is Phase.PREDICTION_READY:
                 if producer.get("predictor_status")!="PREDICTION_READY" or producer.get("producer_blocker") is not None: raise ValueError("verifier readiness contradicts producer")
-            elif producer.get("predictor_status")!="PREDICTION_BLOCKED" or producer.get("producer_blocker")!=facts["blocker"]: raise ValueError("verifier blocker differs from producer")
+            elif phase is Phase.REJECTED and (producer.get("predictor_status")!="PREDICTION_BLOCKED" or producer.get("producer_blocker")!=facts["blocker"]): raise ValueError("verifier blocker differs from producer")
             intent,event_id,previous=self._mutation_intent(db,job,"verify",current,phase,at,status,reason,facts)
             receipt=self._confirm(confirm_audit,intent); audit=receipt.audit_sha256; self._append_event(db,job_id,phase,at,status,reason,facts,audit,prior=current,event_id=event_id,previous=previous); self._seal(db); anchor=db.execute("SELECT mutation_count,store_hash FROM store_anchor WHERE singleton=1").fetchone()
             if anchor[0]!=receipt.next_mutation_count or not hmac.compare_digest(anchor[1],receipt.next_store_hash): raise ConfirmationMismatch("persisted store differs from confirmation")

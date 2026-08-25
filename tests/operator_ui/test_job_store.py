@@ -345,6 +345,14 @@ def test_verifier_failure_requires_exact_nonempty_blocker(tmp_path):
     with pytest.raises(ValueError): value.verifier_transition(job.job_id,Phase.FAILED,capability=authority,now=NOW,status="FAILED",reason="verification_failed",facts=facts,confirm_audit=CONFIRM)
     assert value.get(job.job_id).phase is Phase.PRODUCER_COMPLETED
 
+def test_verifier_can_terminally_record_exact_sealed_bundle_failure_without_fabricated_hashes(tmp_path):
+    authority=object(); value=JobStore(tmp_path/"jobs.db",verifier_authority=authority); job,evidence=producer_completed(value,authority)
+    facts={"prediction_id":evidence["prediction_id"],"job_id":job.job_id,"race_id":job.input.race_id,"jump_timestamp":job.input.jump_timestamp,"runner_set_sha256":job.input.runner_set_sha256,"resolved_model_identity":job.input.resolved_model_identity,"model_sha256":job.input.model_sha256,"model_manifest_sha256":job.input.model_manifest_sha256,"model_schema_sha256":job.input.model_schema_sha256,"config_id":job.input.config_id,"config_sha256":job.input.config_sha256,"producer_status":"PREDICTION_READY","verification_status":"FAILED","blocker":{"code":"BUNDLE_INDEX_VERIFICATION_FAILED","stage":"BUNDLE_VERIFICATION"}}
+    final=value.verifier_transition(job.job_id,Phase.FAILED,capability=authority,now=NOW,status="FAILED",reason="verification_failed",facts=facts,confirm_audit=CONFIRM)
+    assert final.phase is Phase.FAILED
+    assert value.events(job.job_id)[-1]["facts"]["blocker"]==facts["blocker"]
+    assert value.verify()
+
 def test_claimed_failure_rejects_reviewer_impossible_error_shape(tmp_path):
     value=store(tmp_path); job,attempt=value.claim_attempt(claimable(value,create(value)).job_id,now=NOW,confirm_audit=CONFIRM)
     with pytest.raises(JobStoreError):

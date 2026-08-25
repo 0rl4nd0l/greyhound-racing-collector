@@ -68,6 +68,7 @@ class R3Services:
     job_store: JobStore
     resolve_submission: Callable[[Mapping[str, str], datetime], ResolvedSubmission]
     launch_once: Callable[[str, Callable[[Mapping[str, Any]], Any]], None]
+    finalize_once: Callable[[Job, Callable[[Mapping[str, Any]], Any]], Job]
     read_verified_result: Callable[[Job], Mapping[str, Any] | None]
     clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc)
     rate_limit: int = 5
@@ -112,6 +113,89 @@ def build_verified_bundle_reader(root: Path, store: JobStore) -> Callable[[Job],
     return read
 
 
+def _sealed_request_matches_job(job: Job, value: Any) -> bool:
+    if not isinstance(value,VerifiedPredictionBundle) or not isinstance(value.request,Mapping):
+        return False
+    request=value.request; provenance=job.input.operational_index_provenance
+    if provenance is None or request.get("schema_version")!="on_demand_prediction_request_v2" or request.get("operational_index_provenance")!=provenance.fields():
+        return False
+    model=request.get("model",{})
+    if (request.get("job_id"),request.get("race_id"),request.get("jump_timestamp"),request.get("runner_set_sha256"),request.get("odds_source"),request.get("config_sha256")) != (job.job_id,job.input.race_id,job.input.jump_timestamp,job.input.runner_set_sha256,job.input.odds_source,job.input.config_sha256):
+        return False
+    if (model.get("requested"),model.get("resolved"),model.get("model_sha256"),model.get("manifest_sha256"),model.get("schema_sha256")) != (job.input.model_selector,job.input.resolved_model_identity,job.input.model_sha256,job.input.model_manifest_sha256,job.input.model_schema_sha256):
+        return False
+    expected={(r["box"],r["name"],r["identity"],r.get("source_native_runner_id")) for r in job.input.fields()["ordered_runners"]}
+    runners=request.get("runners")
+    return isinstance(runners,list) and {(r.get("box_number"),r.get("display_name"),r.get("identity"),r.get("source_native_runner_id")) for r in runners}==expected and len(runners)==len(expected)
+
+
+def finalize_producer_bundle(root: Path, store: JobStore, job: Job, *, capability: object,
+                             now: datetime, confirm_audit) -> Job:
+    """Finalize one producer completion only from its verified indexed bundle."""
+    if job.phase is not Phase.PRODUCER_COMPLETED:
+        return job
+    events=list(store.events(job.job_id))
+    completed=[event for event in events if event["phase"]==Phase.PRODUCER_COMPLETED.value]
+    if len(completed)!=1:
+        raise JobStoreError("producer completion evidence is ambiguous")
+    producer=completed[0]["facts"]
+    prediction_id=producer.get("prediction_id")
+    producer_status=producer.get("predictor_status")
+    def fail(code: str) -> Job:
+        facts={
+            "prediction_id":prediction_id,"job_id":job.job_id,"race_id":job.input.race_id,
+            "jump_timestamp":job.input.jump_timestamp,"runner_set_sha256":job.input.runner_set_sha256,
+            "resolved_model_identity":job.input.resolved_model_identity,"model_sha256":job.input.model_sha256,
+            "model_manifest_sha256":job.input.model_manifest_sha256,"model_schema_sha256":job.input.model_schema_sha256,
+            "config_id":job.input.config_id,"config_sha256":job.input.config_sha256,
+            "producer_status":producer_status,"verification_status":"FAILED",
+            "blocker":{"code":code,"stage":"BUNDLE_VERIFICATION"},
+        }
+        return store.verifier_transition(job.job_id,Phase.FAILED,capability=capability,now=now,status="FAILED",reason="verification_failed",facts=facts,confirm_audit=confirm_audit)
+    try:view=verify_prediction_bundle_index(Path(root),return_verified_view=True)
+    except (OSError,ValueError,TypeError,PredictionBlocked):return fail("BUNDLE_INDEX_VERIFICATION_FAILED")
+    if not isinstance(view,VerifiedPredictionBundleIndex):
+        return fail("BUNDLE_INDEX_VERIFICATION_FAILED")
+    matches=[entry for entry in view.entries if entry.get("job_id")==job.job_id and entry.get("prediction_id")==prediction_id and entry.get("status")==producer_status]
+    if len(matches)!=1:
+        return fail("BUNDLE_IDENTITY_MISSING_OR_AMBIGUOUS")
+    try:bundle=verify_indexed_prediction_bundle(Path(root),matches[0])
+    except (OSError,ValueError,TypeError,PredictionBlocked):return fail("BUNDLE_VERIFICATION_FAILED")
+    if not _sealed_request_matches_job(job,bundle):
+        return fail("BUNDLE_JOB_IDENTITY_MISMATCH")
+    result=bundle.result; entry=bundle.index_entry; manifest=bundle.manifest
+    if producer_status=="PREDICTION_READY":
+        if _verified_result(job,bundle,events) is None:
+            return fail("BUNDLE_JOB_IDENTITY_MISMATCH")
+        phase,status,reason,verification,blocker=Phase.PREDICTION_READY,"READY","verified","VERIFIED",None
+    elif producer_status=="PREDICTION_BLOCKED":
+        sealed_blocker=result.get("blocker")
+        stage=result.get("blocker_stage")
+        if not isinstance(sealed_blocker,Mapping) or set(sealed_blocker)!={"code"} or producer.get("producer_blocker")!={"code":sealed_blocker.get("code"),"stage":stage}:
+            return fail("BUNDLE_BLOCKER_IDENTITY_MISMATCH")
+        phase,status,reason,verification,blocker=Phase.REJECTED,"REJECTED","verification_rejected","REJECTED",{"code":sealed_blocker["code"],"stage":stage}
+    else:
+        raise JobStoreError("producer completion status is invalid")
+    files=manifest.get("files")
+    result_file=files.get("result.json") if isinstance(files,Mapping) else None
+    if not isinstance(result_file,Mapping):
+        return fail("BUNDLE_RESULT_IDENTITY_UNAVAILABLE")
+    facts={
+        "prediction_id":result["prediction_id"],"job_id":job.job_id,
+        "race_id":result["race"]["race_id"],"jump_timestamp":result["race"]["jump_timestamp"],
+        "runner_set_sha256":result["evidence"]["runner_set_sha256"],
+        "resolved_model_identity":result["model"]["resolved"],"model_sha256":result["model"]["artifact_sha256"],
+        "model_manifest_sha256":result["model"]["artifact_manifest_sha256"],"model_schema_sha256":result["model"]["schema_sha256"],
+        "config_id":job.input.config_id,"config_sha256":result["config"]["sha256"],
+        "index_sha256":view.sha256,"result_sha256":result_file["sha256"],
+        "manifest_sha256":entry["manifest_sha256"],"logical_bundle_sha256":entry["logical_bundle_sha256"],
+        "bundle_locator":bundle.directory,"producer_status":producer_status,
+        "research_only":result["research_only"],"production_persisted":result["production_persisted"],
+        "betting_output":result["betting_output"],"verification_status":verification,"blocker":blocker,
+    }
+    return store.verifier_transition(job.job_id,phase,capability=capability,now=now,status=status,reason=reason,facts=facts,confirm_audit=confirm_audit)
+
+
 def _bounded(value: Any, name: str, maximum: int = 256) -> str:
     if not isinstance(value, str) or not value or len(value.encode()) > maximum or any(ord(c) < 32 or ord(c) == 127 for c in value):
         raise R3Rejected(f"INVALID_{name.upper()}", 400)
@@ -123,15 +207,9 @@ def _public_facts(value: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _verified_result(job: Job, value: Any, events: list[Mapping[str,Any]] | None = None) -> dict[str, Any] | None:
-    if not isinstance(value, VerifiedPredictionBundle):
+    if not _sealed_request_matches_job(job,value):
         return None
     result=value.result; entry=value.index_entry; manifest=value.manifest
-    request_value=value.request
-    if not isinstance(request_value,Mapping):
-        return None
-    provenance=job.input.operational_index_provenance
-    if provenance is None or request_value.get("schema_version")!="on_demand_prediction_request_v2" or request_value.get("operational_index_provenance")!=provenance.fields():
-        return None
     if result.get("status") != "PREDICTION_READY" or entry.get("status") != "PREDICTION_READY":
         return None
     chain=result.get("evidence",{}).get("protocol_chain"); cutoff=result.get("evidence",{}).get("authenticated_cutoff")
@@ -154,11 +232,6 @@ def _verified_result(job: Job, value: Any, events: list[Mapping[str,Any]] | None
         return None
     if (model.get("requested"),model.get("resolved"),model.get("artifact_sha256"),model.get("artifact_manifest_sha256"),model.get("schema_sha256"),config.get("sha256")) != (job.input.model_selector,job.input.resolved_model_identity,job.input.model_sha256,job.input.model_manifest_sha256,job.input.model_schema_sha256,job.input.config_sha256):
         return None
-    request_model=request_value.get("model",{})
-    if (request_value.get("job_id"),request_value.get("race_id"),request_value.get("jump_timestamp"),request_value.get("runner_set_sha256"),request_value.get("odds_source"),request_value.get("config_sha256")) != (job.job_id,job.input.race_id,job.input.jump_timestamp,job.input.runner_set_sha256,job.input.odds_source,job.input.config_sha256):
-        return None
-    if (request_model.get("requested"),request_model.get("resolved"),request_model.get("model_sha256"),request_model.get("manifest_sha256"),request_model.get("schema_sha256")) != (job.input.model_selector,job.input.resolved_model_identity,job.input.model_sha256,job.input.model_manifest_sha256,job.input.model_schema_sha256):
-        return None
     rows=result.get("prediction",{}).get("predictions") if isinstance(result.get("prediction"),Mapping) else None
     if not isinstance(rows,list):
         return None
@@ -166,15 +239,12 @@ def _verified_result(job: Job, value: Any, events: list[Mapping[str,Any]] | None
     actual={(r.get("box_number"),r.get("dog_name"),r.get("identity"),r.get("source_native_runner_id")) for r in rows}
     if actual != expected or len(actual)!=len(rows):
         return None
-    request_runners=request_value.get("runners")
-    if not isinstance(request_runners,list) or {(r.get("box_number"),r.get("display_name"),r.get("identity"),r.get("source_native_runner_id")) for r in request_runners} != expected or len(request_runners)!=len(expected):
-        return None
     probabilities=[{"rank":r["rank"],"runner_id":r["identity"],"box":r["box_number"],"name":r["dog_name"],"probability":r["probability"]} for r in rows]
     return {"schema":"operator_ui_verified_prediction_result_v1","verification_status":"VERIFIED","probabilities":probabilities,"evidence":{"prediction_id":result["prediction_id"],"job_id":job.job_id,"bundle_locator":value.directory,"manifest":dict(manifest),"index_entry":dict(entry)}}
 
 
 def _job_payload(store: JobStore, job: Job, result_reader: Callable[[Job], Mapping[str, Any] | None]) -> dict[str, Any]:
-    events = store.events(job.job_id)
+    events = list(store.events(job.job_id))
     timeline = [
         {"event_id": event["event_id"], "phase": event["phase"], "event_at": event["event_at"],
          "status": event["status"], "reason": event["reason"], "event_hash": event["event_hash"],
@@ -197,7 +267,8 @@ def _job_payload(store: JobStore, job: Job, result_reader: Callable[[Job], Mappi
         else:
             payload["result"] = result
     elif job.phase in TERMINAL_PHASES:
-        payload["blocker"] = timeline[-1]["reason"]
+        blocker=timeline[-1]["facts"].get("blocker")
+        payload["blocker"] = blocker["code"] if isinstance(blocker,Mapping) and isinstance(blocker.get("code"),str) else timeline[-1]["reason"]
     return payload
 
 
@@ -261,6 +332,9 @@ def install_r3_api(app: Flask, services: R3Services | None = None) -> bool:
         return resolve_audit_confirmation(intent, audit_hash)
 
     def dispatch_waiting(job: Job, confirm_audit) -> Job:
+        if job.phase is Phase.PRODUCER_COMPLETED:
+            try:return services.finalize_once(job,confirm_audit)
+            except Exception:return services.job_store.get(job.job_id)
         if job.phase is not Phase.WAITING_FOR_CLAIM or job.attempt_claimed:
             return job
         try:
@@ -378,4 +452,4 @@ def install_r3_api(app: Flask, services: R3Services | None = None) -> bool:
     return True
 
 
-__all__ = ["R3Rejected", "R3Services", "ResolvedSubmission", "install_r3_api"]
+__all__ = ["R3Rejected", "R3Services", "ResolvedSubmission", "finalize_producer_bundle", "install_r3_api"]
