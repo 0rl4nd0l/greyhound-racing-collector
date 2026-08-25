@@ -7,7 +7,9 @@ one shadow run, one result packet, or one daemon artifact.
 For work on prediction-data gaps, Issue #159, the current-race index, forward
 baseline activation, prospective cohorts, or model-research priorities, first
 read `docs/prediction_program_orchestrator.md` and its machine-readable
-`docs/prediction_program_state.json` snapshot.
+`docs/prediction_program_state.json` snapshot. Their recorded next steps are
+largely superseded: use them as history and constraints, then reconcile the
+current user direction, Git state, runtime, and active work before choosing work.
 
 ## Default Operating Mode
 

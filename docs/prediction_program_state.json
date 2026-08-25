@@ -12,7 +12,9 @@
       "forward baseline operations database"
     ]
   },
-  "blockers": [
+  "current_execution_direction": "Not defined by this historical snapshot; reconcile current user direction and live repository/runtime state.",
+  "document_updated_at": "2026-08-25T17:03:11+10:00",
+  "snapshot_blockers": [
     {
       "code": "FORWARD_BASELINE_CANDIDATE_POPULATION_INCOMPLETE",
       "detail": "The verified live index has four venues but only six races on one date; cohort freeze requires 20 races across at least three venues and two dates."
@@ -55,7 +57,7 @@
       169
     ]
   },
-  "immediate_next_stage": {
+  "historical_next_stage": {
     "completion": "A reviewed draft PR or one exact bounded-horizon design blocker",
     "name": "bounded incremental two-date candidate horizon",
     "requirements": [
@@ -67,7 +69,8 @@
       "produce one fresh verifiable candidate population",
       "enforce explicit per-cycle and per-day request budgets",
       "retain one scheduler, publisher, shared lock, and prediction lifecycle"
-    ]
+    ],
+    "status": "largely_superseded"
   },
   "known_superseded_work": {
     "base": "d41d3c710cf9493ba8ccd44ccfcede2a0264b527",
@@ -96,7 +99,7 @@
       "WAR"
     ]
   },
-  "planned_sequence": [
+  "historical_planned_sequence": [
     "implement and review bounded horizon inventory",
     "merge with explicit authority",
     "deploy exact merge and observe a natural primary cycle",
@@ -131,5 +134,14 @@
     "forward overround successor",
     "report-only feature research",
     "rights-gated optional runner-state evidence"
-  ]
+  ],
+  "supersession": {
+    "instruction": "Use recorded next steps only as historical rationale. Establish current completed work, blockers, owner intent, and authority before proposing or executing a task.",
+    "scope": [
+      "historical_next_stage",
+      "historical_planned_sequence",
+      "bounded horizon acquisition design"
+    ],
+    "status": "largely_superseded"
+  }
 }

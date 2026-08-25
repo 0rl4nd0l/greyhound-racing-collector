@@ -1,10 +1,19 @@
 # Greyhound prediction programme: orchestrator context
 
 This is the coordination entrypoint for moving the project from trustworthy
-pre-race collection to genuine forward predictions. It records the programme's
-current state, unresolved acquisition seam, ordered next work, and authority
-boundaries. It is not runtime configuration, capture authority, model evidence,
-or promotion authority.
+pre-race collection to genuine forward predictions. It records one programme
+snapshot, the historical acquisition seam and plan, and durable authority
+boundaries. It is not a current task queue, runtime configuration, capture
+authority, model evidence, or promotion authority.
+
+> **Supersession notice (owner direction, 2026-08-25):** The acquisition design
+> and ordered next steps recorded below are largely superseded. They are retained
+> to explain prior decisions, constraints, and completed work; they are not a
+> current execution queue. Before selecting work, reconcile the latest user
+> direction, GitHub issues and PRs, `origin/master`, installed runtime, active
+> worktrees, current evidence, and authority. The mission, evidence classes,
+> cohort invariants, and safety boundaries remain relevant unless explicitly
+> replaced.
 
 Read `prediction_program_state.json` beside this file for the exact verified
 snapshot. Recheck Git, installed units, current index, processes, shared lock,
@@ -28,7 +37,7 @@ Optional runner-state enrichment must not delay the first baseline. Unknown
 data stays unknown; it is not imputed from post-race pages, names, row order, or
 other weak aliases.
 
-## Current outcome
+## Snapshot outcome
 
 The trustworthy prediction lifecycle is merged and the current collection
 runtime is healthy, but the forward baseline is not active. At the verified
@@ -205,7 +214,11 @@ The full primary path is still invoked with `--days-ahead 1 --refresh-limit 6`.
 It therefore cannot present 20 races across two dates in one verified packet.
 The forward service has no cross-packet candidate accumulation.
 
-## Agreed next design: bounded horizon inventory
+## Historical design direction: bounded horizon inventory
+
+This was the agreed next design at the snapshot time. It is now **largely
+superseded** and must not be treated as present authority or assumed remaining
+work. Retain it as rationale for rejecting a naive recurring request expansion.
 
 The next change should deepen the existing primary discovery-to-index path. It
 should not raise full per-race collection from six to twenty every 15 minutes.
@@ -237,7 +250,12 @@ from separately observed, still-fresh, immutable candidate evidence without
 recollecting full far-future feature packets. Offline success does not prove
 live source coverage.
 
-## Ordered execution plan
+## Historical execution sequence
+
+The following sequence is retained for provenance and is **largely superseded**.
+An orchestrator must establish the current completed work and current owner goal
+before selecting any stage. No stage below is authorized merely because it
+appears in this document.
 
 ### Stage 1: implement bounded horizon inventory
 
