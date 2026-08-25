@@ -847,6 +847,7 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
                 race_url,
                 race_info_hint={
                     **dict(race),
+                    "race_discovery_key": selected_record.get("race_id"),
                     "jump_datetime": selected_record.get("jump_datetime"),
                 },
             )

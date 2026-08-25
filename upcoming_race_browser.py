@@ -38,6 +38,7 @@ from scripts.capture_thedogs_market_history import (
     TimedResponse,
     bounded_receipt_headers,
     capture_native_identity_from_retained_race_page,
+    persist_primary_race_page_evidence,
 )
 from utils.csv_metadata import (
     THEDOGS_EXACT_RACE_PAGE_GRADE_SOURCE,
@@ -2125,6 +2126,9 @@ class UpcomingRaceBrowser:
                 else:
                     race_info["race_time_source"] = "canonical_race_url"
                     race_info["race_time_mapping_status"] = "missing_race_time"
+            race_discovery_key = str(
+                (race_info_hint or {}).get("race_discovery_key") or ""
+            ).strip()
             self._merge_safe_weather_track_metadata(
                 race_info,
                 self._collect_safe_track_metadata_from_sportsbet(
@@ -2150,6 +2154,21 @@ class UpcomingRaceBrowser:
             if os.path.exists(filepath):
                 existing_contract = self._existing_prejump_sidecar_contract_status(filepath)
                 if existing_contract.get("status") == "PASS":
+                    if race_discovery_key:
+                        persist_primary_race_page_evidence(
+                            artifact_root=Path(self.upcoming_dir),
+                            race_discovery_key=race_discovery_key,
+                            response=retained_race_page,
+                            canonical_runner_set={
+                                "schema_version": "canonical_pre_race_runner_set_v1",
+                                "canonical_runner_set_status": "not_run",
+                                "final_runner_participants": [],
+                                "native_identity_status": "unavailable",
+                                "native_identity_reasons": [
+                                    "canonical_runner_extraction_not_run:existing_sidecar_contract_pass"
+                                ],
+                            },
+                        )
                     return {
                         "success": True,
                         "filename": filename,
@@ -2322,12 +2341,38 @@ class UpcomingRaceBrowser:
                 filename=filename,
                 allow_generic_fields=False,
             )
-            canonical_runner_set = extract_canonical_runner_set_from_html(
-                race_page_content.decode("utf-8", errors="strict"),
-                source_url=race_url,
-                expected_race_number=int(race_info["race_number"]),
-                extraction_timestamp=retained_race_page.request_end_utc.isoformat(),
-            )
+            try:
+                canonical_runner_set = extract_canonical_runner_set_from_html(
+                    race_page_content.decode("utf-8", errors="strict"),
+                    source_url=race_url,
+                    expected_race_number=int(race_info["race_number"]),
+                    extraction_timestamp=retained_race_page.request_end_utc.isoformat(),
+                )
+            except Exception as exc:
+                if race_discovery_key:
+                    persist_primary_race_page_evidence(
+                        artifact_root=Path(self.upcoming_dir),
+                        race_discovery_key=race_discovery_key,
+                        response=retained_race_page,
+                        canonical_runner_set={
+                            "schema_version": "canonical_pre_race_runner_set_v1",
+                            "canonical_runner_set_status": "unavailable",
+                            "final_runner_participants": [],
+                            "native_identity_status": "unavailable",
+                            "native_identity_reasons": [
+                                "canonical_runner_extraction_failed:"
+                                f"{type(exc).__name__}"
+                            ],
+                        },
+                    )
+                raise
+            if race_discovery_key:
+                race_info["primary_race_page_evidence"] = persist_primary_race_page_evidence(
+                    artifact_root=Path(self.upcoming_dir),
+                    race_discovery_key=race_discovery_key,
+                    response=retained_race_page,
+                    canonical_runner_set=canonical_runner_set,
+                )
             expected_native_runner_boxes = [
                 (
                     participant.get("source_native_runner_id"),

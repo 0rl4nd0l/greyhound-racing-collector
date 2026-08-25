@@ -1593,6 +1593,9 @@ def build_csv_download_provenance_payload(
     expert_form_metadata = race_info_dict.get("expert_form_metadata")
     if isinstance(expert_form_metadata, Mapping):
         payload["expert_form_metadata"] = dict(expert_form_metadata)
+    primary_race_page_evidence = race_info_dict.get("primary_race_page_evidence")
+    if isinstance(primary_race_page_evidence, Mapping):
+        payload["primary_race_page_evidence"] = dict(primary_race_page_evidence)
     if normalization:
         payload.update(dict(normalization))
     payload["prejump_shadow_metadata"] = build_prejump_shadow_metadata_payload(payload)

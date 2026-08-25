@@ -701,6 +701,7 @@ def test_refresh_prejump_upcoming_reports_top_level_artifact_counts(tmp_path, mo
                     "https://www.thedogs.com.au/racing/2026-05-29"
                 ),
                 "target_grade_source_sha256": "c" * 64,
+                "race_discovery_key": "Race 1 - TEST - 2026-05-29",
                 "jump_datetime": "2026-05-29T13:45:00+10:00",
             }
             upcoming_dir = tmp_path / "upcoming"

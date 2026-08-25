@@ -286,6 +286,7 @@ def test_primary_download_reallocates_duplicate_refetches_to_native_identity(
     monkeypatch,
     _isolate_upcoming_dir,
 ):
+    import upcoming_race_browser as browser_module
     from upcoming_race_browser import UpcomingRaceBrowser
     from scripts.refresh_prejump_upcoming import (
         current_index_metadata_selection,
@@ -421,15 +422,17 @@ def test_primary_download_reallocates_duplicate_refetches_to_native_identity(
     browser = UpcomingRaceBrowser()
     session = Session()
     browser.session = session
+    race_info_hint = {
+        "race_discovery_key": "Race 1 - MEA - 2099-06-09",
+        "url": race_url,
+        "date": "2099-06-09",
+        "venue": "MEA",
+        "race_number": 1,
+        "jump_datetime": jump.isoformat(),
+    }
     result = browser.download_race_csv(
         race_url,
-        race_info_hint={
-            "url": race_url,
-            "date": "2099-06-09",
-            "venue": "MEA",
-            "race_number": 1,
-            "jump_datetime": jump.isoformat(),
-        },
+        race_info_hint=race_info_hint,
     )
 
     assert result["success"] is True, result
@@ -441,6 +444,34 @@ def test_primary_download_reallocates_duplicate_refetches_to_native_identity(
     assert session.calls.count(race_url) == 1
     assert session.calls.count(expert_url) == 1
     sidecar = json.loads(Path(f"{result['filepath']}.metadata.json").read_text())
+    page_evidence = sidecar["primary_race_page_evidence"]
+    raw_page_path = Path(_isolate_upcoming_dir) / page_evidence["raw_path"]
+    receipt_path = Path(_isolate_upcoming_dir) / page_evidence["receipt_path"]
+    evidence_dir = Path(_isolate_upcoming_dir) / "source_evidence" / "primary_race_pages"
+    assert list(evidence_dir.glob("*.race-page.html")) == [raw_page_path]
+    assert list(evidence_dir.glob("*.race-page.receipt.json")) == [receipt_path]
+    assert raw_page_path.read_bytes() == race_html
+    receipt = json.loads(receipt_path.read_text())
+    assert receipt["schema_version"] == "thedogs_primary_race_page_evidence_v1"
+    assert receipt["race_discovery_key"] == "Race 1 - MEA - 2099-06-09"
+    assert receipt["requested_url"] == race_url
+    assert receipt["final_url"] == race_url
+    assert receipt["status_code"] == 200
+    assert receipt["content_length"] == len(race_html)
+    assert receipt["body_sha256"] == hashlib.sha256(race_html).hexdigest()
+    assert receipt["headers"] == {
+        "content-type": "text/html; charset=utf-8",
+        "date": receipt["headers"]["date"],
+    }
+    assert receipt["canonical_runner_extraction"] == {
+        "active_runner_count": 4,
+        "native_identity_reasons": ["source_native_race_id_missing"],
+        "native_identity_status": "unavailable",
+        "numeric_native_runner_id_count": 4,
+        "numeric_native_runner_ids_complete": True,
+        "schema_version": "canonical_pre_race_runner_set_v1",
+        "status": "available",
+    }
     assert sidecar["source_native_race_id"] == "15900"
     evidence = sidecar["native_identity_evidence"]
     assert evidence["active_native_runner_ids"] == [
@@ -497,6 +528,16 @@ def test_primary_download_reallocates_duplicate_refetches_to_native_identity(
     )
     assert selection["status"] == "READY", (selection, identity_coverage)
     assert eligible[0]["source_native_race_id"] == "15900"
+    repeated = browser.download_race_csv(
+        race_url,
+        race_info_hint=race_info_hint,
+    )
+    assert repeated["success"] is True, repeated
+    assert repeated["already_exists"] is True
+    assert len(session.calls) == 9
+    assert session.calls.count(race_url) == 2
+    assert len(list(evidence_dir.glob("*.race-page.html"))) == 1
+    assert len(list(evidence_dir.glob("*.race-page.receipt.json"))) == 2
 
     verified_sidecar = json.loads(json.dumps(sidecar))
     sidecar["native_identity_evidence"]["source_native_race_id"] = "15999"
@@ -514,6 +555,51 @@ def test_primary_download_reallocates_duplicate_refetches_to_native_identity(
     assert missing["races"][0]["native_identity_evidence_reason"] == (
         "native_identity_evidence_missing"
     )
+
+    failure_root = Path(_isolate_upcoming_dir) / "parser_failure_cycle"
+    failure_root.mkdir()
+    failing_browser = UpcomingRaceBrowser()
+    failing_browser.upcoming_dir = str(failure_root)
+    failing_session = Session()
+    failing_browser.session = failing_session
+
+    def _raise_parser_failure(*_args, **_kwargs):
+        raise RuntimeError("synthetic_parser_failure")
+
+    monkeypatch.setattr(
+        browser_module,
+        "extract_canonical_runner_set_from_html",
+        _raise_parser_failure,
+    )
+    failed = failing_browser.download_race_csv(
+        race_url,
+        race_info_hint=race_info_hint,
+    )
+    assert failed == {
+        "success": False,
+        "error": "Error downloading race CSV: synthetic_parser_failure",
+    }
+    assert len(failing_session.calls) == 4
+    assert failing_session.calls.count(race_url) == 1
+    assert odds_url not in failing_session.calls
+    assert not any(url.startswith(api_url_prefix) for url in failing_session.calls)
+    failure_receipt_path = next(
+        (failure_root / "source_evidence" / "primary_race_pages").glob(
+            "*.race-page.receipt.json"
+        )
+    )
+    failure_receipt = json.loads(failure_receipt_path.read_text())
+    assert failure_receipt["canonical_runner_extraction"] == {
+        "active_runner_count": 0,
+        "native_identity_reasons": [
+            "canonical_runner_extraction_failed:RuntimeError"
+        ],
+        "native_identity_status": "unavailable",
+        "numeric_native_runner_id_count": 0,
+        "numeric_native_runner_ids_complete": False,
+        "schema_version": "canonical_pre_race_runner_set_v1",
+        "status": "unavailable",
+    }
 
 
 def _canonical_runner_set_for_test(race_url, runners):
