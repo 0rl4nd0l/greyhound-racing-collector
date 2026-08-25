@@ -1,0 +1,135 @@
+{
+  "as_of": "2026-08-25T16:56:03+10:00",
+  "authority": {
+    "authorizes_actions": false,
+    "purpose": "machine-readable coordination snapshot",
+    "reverify_before_action": [
+      "origin/master",
+      "installed systemd units",
+      "active processes and shared lock",
+      "collector current-race index",
+      "forward baseline configuration",
+      "forward baseline operations database"
+    ]
+  },
+  "blockers": [
+    {
+      "code": "FORWARD_BASELINE_CANDIDATE_POPULATION_INCOMPLETE",
+      "detail": "The verified live index has four venues but only six races on one date; cohort freeze requires 20 races across at least three venues and two dates."
+    },
+    {
+      "code": "FORWARD_BASELINE_RUNTIME_UNBOUND",
+      "detail": "The installed service has no forward baseline config argument and no dedicated operations database or bound config was found in scoped runtime locations."
+    }
+  ],
+  "dirty_checkout": {
+    "path": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector-ci-routing-fix",
+    "policy": "preserve; do not implement, clean, reset, or stage from this checkout"
+  },
+  "forward_baseline_contract": {
+    "cohort_races": 20,
+    "minimum_dates": 2,
+    "minimum_venues": 3,
+    "native_identity": "numeric source-native race and runner IDs",
+    "result_barrier": "closed until every member has an immutable prediction or prediction quarantine",
+    "substitution_retry_backfill": false
+  },
+  "git": {
+    "ci": {
+      "successful_check_count": 8,
+      "status": "success"
+    },
+    "origin_master": "c04cc378a4860dac1cbc42c66c7f79570bb1451e",
+    "relevant_merged_prs": [
+      154,
+      157,
+      158,
+      160,
+      161,
+      162,
+      163,
+      165,
+      166,
+      167,
+      168,
+      169
+    ]
+  },
+  "immediate_next_stage": {
+    "completion": "A reviewed draft PR or one exact bounded-horizon design blocker",
+    "name": "bounded incremental two-date candidate horizon",
+    "requirements": [
+      "extend the existing primary discovery-to-index path",
+      "collect identity only for newly observed future candidates",
+      "retain and reuse verified identity evidence",
+      "keep frequent near-race refresh unchanged",
+      "remove expired or identity-changing candidates",
+      "produce one fresh verifiable candidate population",
+      "enforce explicit per-cycle and per-day request budgets",
+      "retain one scheduler, publisher, shared lock, and prediction lifecycle"
+    ]
+  },
+  "known_superseded_work": {
+    "base": "d41d3c710cf9493ba8ccd44ccfcede2a0264b527",
+    "path": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-current-index-fix-20260824",
+    "reason": "Its native-identity and publication-ownership goals landed differently through PRs 163 and 166-169; do not transplant the full diff."
+  },
+  "live_current_index_snapshot": {
+    "date_count": 1,
+    "dates": [
+      "2026-08-25"
+    ],
+    "index_sha256": "d5b6034c5570ce0db4b3af7de86be5d8a86b18083f4503871f7d4b3d03bd5bd9",
+    "index_path": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525/shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json",
+    "native_race_id_count": 6,
+    "native_runner_id_count": 44,
+    "native_runner_ids_numeric": 44,
+    "race_count": 6,
+    "run_id": "20260825T164843+1000",
+    "schema_version": "collector_current_race_index_v2",
+    "source_generated_at": "2026-08-25T16:50:04.368299+10:00",
+    "venue_count": 4,
+    "venues": [
+      "BULLI",
+      "GEE",
+      "QOT",
+      "WAR"
+    ]
+  },
+  "planned_sequence": [
+    "implement and review bounded horizon inventory",
+    "merge with explicit authority",
+    "deploy exact merge and observe a natural primary cycle",
+    "run a separately authorized bounded live horizon proof",
+    "create and bind the dedicated operations database and closed config",
+    "freeze one qualifying 20-race cohort",
+    "capture sealed pre-race evidence and predictions",
+    "open results only after the 20-terminal barrier",
+    "evaluate against frozen market and model baselines",
+    "test additional feature interactions without promotion or betting claims"
+  ],
+  "runtime": {
+    "baseline_config_argument_present": false,
+    "deployed_commit": "c04cc378a4860dac1cbc42c66c7f79570bb1451e",
+    "deployed_worktree": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-runtime-master-live-20260825-c04cc378",
+    "full_primary_days_ahead": 1,
+    "full_primary_refresh_limit": 6,
+    "operations_database_bound": false,
+    "runtime_evidence_root": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/artifacts/full_evidence_orchestration_20260525",
+    "shared_lock": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/artifacts/full_evidence_orchestration_20260525/shadow_autopilot_daemon_runtime/shadow_autopilot.lock",
+    "timers_enabled": [
+      "shadow-autopilot.timer",
+      "shadow-autopilot-odds-capture.timer"
+    ]
+  },
+  "schema_version": "greyhound_prediction_orchestrator_state_v1",
+  "separate_evidence_lanes": [
+    "installed shadow-only Random Forest",
+    "Issue 159 forward baseline",
+    "TheDogs five-window market history",
+    "frozen Betfair 95/5 evaluation",
+    "forward overround successor",
+    "report-only feature research",
+    "rights-gated optional runner-state evidence"
+  ]
+}

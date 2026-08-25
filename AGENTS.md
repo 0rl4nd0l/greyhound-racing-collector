@@ -4,6 +4,11 @@ Before claiming races, odds, results, weather, track condition, or prediction
 coverage, build or read the race evidence inventory. Do not infer coverage from
 one shadow run, one result packet, or one daemon artifact.
 
+For work on prediction-data gaps, Issue #159, the current-race index, forward
+baseline activation, prospective cohorts, or model-research priorities, first
+read `docs/prediction_program_orchestrator.md` and its machine-readable
+`docs/prediction_program_state.json` snapshot.
+
 ## Default Operating Mode
 
 - Complete the requested outcome with the smallest correct change consistent
