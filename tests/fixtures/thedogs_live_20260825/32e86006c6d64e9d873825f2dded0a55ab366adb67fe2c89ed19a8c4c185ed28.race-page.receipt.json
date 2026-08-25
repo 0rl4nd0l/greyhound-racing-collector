@@ -1,0 +1,47 @@
+{
+  "body_sha256": "8151dedd4cf52bfe409791fa3286f1ac5b6ba56b2f41237f57faa87e35f7adbf",
+  "canonical_runner_extraction": {
+    "active_runner_count": 7,
+    "native_identity_reasons": [
+      "source_native_race_id_missing",
+      "source_native_runner_id_unavailable:box:1",
+      "source_native_runner_id_unavailable:box:2",
+      "source_native_runner_id_unavailable:box:3",
+      "source_native_runner_id_unavailable:box:4",
+      "source_native_runner_id_unavailable:box:5",
+      "source_native_runner_id_unavailable:box:6",
+      "source_native_runner_id_unavailable:box:8"
+    ],
+    "native_identity_status": "unavailable",
+    "numeric_native_runner_id_count": 0,
+    "numeric_native_runner_ids_complete": false,
+    "schema_version": "canonical_pre_race_runner_set_v1",
+    "status": "available"
+  },
+  "capture_timestamp": "2026-08-25T01:24:50.081477Z",
+  "content_length": 43968,
+  "final_url": "https://www.thedogs.com.au/racing/hobart/2026-08-25/1/save-tassie-greyhound-racing-division1?trial=false",
+  "headers": {
+    "age": "0",
+    "cache-control": "max-age=0, public, must-revalidate, s-maxage=10",
+    "content-length": "43968",
+    "content-type": "text/html; charset=utf-8",
+    "date": "Tue, 25 Aug 2026 01:24:50 GMT",
+    "last-modified": "Tue, 25 Aug 2026 01:17:08 GMT",
+    "server": "nginx",
+    "via": "1.1 varnish (Varnish/6.2)",
+    "x-request-id": "41ab9ee5-85a2-4407-bf1f-1a889f805998",
+    "x-runtime": "0.263251",
+    "x-varnish-cache": "MISS from varnish"
+  },
+  "provider": "thedogs",
+  "race_discovery_key": "Race 1 - HOBT - 2026-08-25",
+  "raw_path": "source_evidence/primary_race_pages/8151dedd4cf52bfe409791fa3286f1ac5b6ba56b2f41237f57faa87e35f7adbf.race-page.html",
+  "receipt_core_sha256": "32e86006c6d64e9d873825f2dded0a55ab366adb67fe2c89ed19a8c4c185ed28",
+  "request_end_utc": "2026-08-25T01:24:50.081477Z",
+  "request_start_utc": "2026-08-25T01:24:49.781175Z",
+  "requested_url": "https://www.thedogs.com.au/racing/hobart/2026-08-25/1/save-tassie-greyhound-racing-division1?trial=false",
+  "schema_version": "thedogs_primary_race_page_evidence_v1",
+  "source": "thedogs_primary_race_page",
+  "status_code": 200
+}
