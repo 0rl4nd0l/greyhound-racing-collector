@@ -1379,17 +1379,19 @@ def _retarget_fixture_contract(
     venue_slug: str,
     sidecar_grade: str,
     feature_grade: str,
+    race_number: int | None = None,
 ) -> str:
     sidecar = _json(paths["sidecar"])
     assert isinstance(sidecar, dict)
     shadow = sidecar["prejump_shadow_metadata"]
-    race_number = int(shadow["race_number"])
+    race_number = race_number or int(shadow["race_number"])
     race_date = str(shadow["race_date"])
     race_id = f"Race {race_number} - {venue} - {race_date}"
     thedogs_url = (
         f"https://www.thedogs.com.au/racing/{venue_slug}/{race_date}/{race_number}/test"
     )
     shadow["venue"] = venue
+    shadow["race_number"] = race_number
     shadow["grade"] = sidecar_grade
     shadow["source_url"] = thedogs_url
     sidecar["race_url"] = thedogs_url
@@ -1451,6 +1453,282 @@ def _retarget_fixture_contract(
 
     _reseal(paths, retarget)
     return race_id
+
+
+def _apply_preserved_qot_r7_identity(paths: dict[str, Path]) -> dict:
+    evidence = _json(
+        ROOT / "tests/fixtures/qot_r7_race_identity_alias_20260825.json"
+    )
+    assert isinstance(evidence, dict)
+    source_race_id = str(evidence["source_race_id"])
+    source_url = str(evidence["source_url"])
+    race_date = str(evidence["race_date"])
+    race_number = int(evidence["race_number"])
+    source_venue = str(evidence["source_venue"])
+    runners = evidence["runners"]
+    assert isinstance(runners, list) and len(runners) == 8
+    participants = [
+        {
+            "box_number": int(runner["box_number"]),
+            "dog_name": str(runner["display_name"]),
+        }
+        for runner in runners
+    ]
+
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    shadow = sidecar["prejump_shadow_metadata"]
+    shadow.update(
+        {
+            "metadata_captured_at": "2026-08-25T16:52:43+10:00",
+            "race_date": race_date,
+            "race_number": race_number,
+            "venue": source_venue,
+            "jump_datetime": "2026-08-25T17:18:00+10:00",
+            "source_url": source_url,
+        }
+    )
+    shadow["runner_box_name_list"] = copy.deepcopy(participants)
+    sidecar["runner_completeness"].update(
+        {
+            "runner_count": len(participants),
+            "participants": copy.deepcopy(participants),
+        }
+    )
+    exact_url = source_url.removesuffix("?trial=false")
+    proof_values = {
+        "target_grade_source": "thedogs_exact_race_page",
+        "target_grade_context_schema": "thedogs_exact_race_page_v1",
+        "target_grade_race_date": race_date,
+        "target_grade_race_number": race_number,
+        "target_grade_race_url": exact_url,
+        "target_grade_source_url": exact_url,
+        "target_grade_venue": str(evidence["caller_venue"]),
+    }
+    sidecar.update({"race_url": source_url, **proof_values})
+    sidecar["race_info"].update(
+        {
+            "date": race_date,
+            "venue": source_venue,
+            "race_number": race_number,
+            "url": source_url,
+            **proof_values,
+        }
+    )
+    old_form_csv = paths["form_csv"]
+    old_sidecar = paths["sidecar"]
+    form_csv = old_form_csv.with_name(f"{source_race_id}.csv")
+    sidecar_path = form_csv.with_name(form_csv.name + ".metadata.json")
+    old_form_csv.rename(form_csv)
+    old_sidecar.rename(sidecar_path)
+    paths["form_csv"] = form_csv
+    paths["sidecar"] = sidecar_path
+    sidecar["filename"] = form_csv.name
+    _write_json(sidecar_path, sidecar)
+
+    capture = _json(paths["capture"])
+    assert isinstance(capture, dict)
+    attempt = capture["attempts"][0]
+    attempt.update(
+        {
+            "race_id": evidence["caller_race_id"],
+            "fetch_time": "2026-08-25T16:56:08+10:00",
+            "append_time": "2026-08-25T16:56:43+10:00",
+        }
+    )
+    attempt["validation"]["source_url"] = (
+        "https://www.sportsbet.com.au/greyhound-racing/australia-nz/"
+        "q1-lakeside/race-7-10845900"
+    )
+    attempt["validation"].update(
+        {
+            "accepted_rows": [
+                {
+                    "box_number": int(runner["box_number"]),
+                    "dog_name": str(runner["capture_name"]),
+                    "identity": str(runner["identity"]),
+                    "odds_decimal": float(runner["odds_decimal"]),
+                    "sportsbet_box_source": "runner_text",
+                }
+                for runner in runners
+            ],
+            "accepted_row_count": len(runners),
+            "expected_runner_count": len(runners),
+            "active_expected_runner_count": len(runners),
+        }
+    )
+    _write_json(paths["capture"], capture)
+
+    def retarget(rows, manifest):
+        manifest["generated_at"] = "2026-08-25T17:06:08+10:00"
+        manifest["feature_freeze_timestamp"] = "2026-08-25T17:06:08+10:00"
+        manifest["input_files"] = [str(form_csv.resolve())]
+        template = copy.deepcopy(rows[0])
+        rows[:] = []
+        for runner in runners:
+            row = copy.deepcopy(template)
+            row.update(
+                {
+                    "race_id": source_race_id,
+                    "race_date": race_date,
+                    "race_number": race_number,
+                    "venue": source_venue,
+                    "box_number": int(runner["box_number"]),
+                    "dog_name": str(runner["display_name"]),
+                    "target_metadata_source_url": source_url,
+                    "source_csv": str(form_csv.resolve()),
+                    **dict(zip(FEATURES, runner["features"])),
+                }
+            )
+            rows.append(row)
+
+    _reseal(paths, retarget)
+    return evidence
+
+
+def test_preserved_qot_r7_alias_reaches_scoring_with_caller_identity(tmp_path):
+    paths = _write_fixture(tmp_path)
+    evidence = _apply_preserved_qot_r7_identity(paths)
+
+    prediction = _score_paths(
+        paths,
+        race_id=evidence["caller_race_id"],
+        score_timestamp=datetime.fromisoformat("2026-08-25T17:06:09+10:00"),
+    )
+
+    assert prediction["race_id"] == evidence["caller_race_id"]
+    assert len(prediction["predictions"]) == len(evidence["runners"])
+    assert [row["box"] for row in prediction["canonical_runner_order"]] == list(
+        range(1, 9)
+    )
+    assert all(len(runner["features"]) == len(FEATURES) for runner in evidence["runners"])
+    assert evidence["preserved_input_sha256"]["features/shadow_feature_rows.json"] == (
+        "e9ee8f7d94936a7d20f92b7bc8314cfa4ff4b88a1029085e1971df72a31eea94"
+    )
+
+
+def test_preserved_qot_r7_alias_discovery_keeps_exact_caller_identity(tmp_path):
+    paths = _write_fixture(tmp_path)
+    evidence = _apply_preserved_qot_r7_identity(paths)
+
+    discovered = manual.discover_race_artifacts(
+        race_query="qot r7",
+        exact_race_id=evidence["caller_race_id"],
+        evidence_roots=[tmp_path],
+        score_timestamp=datetime.fromisoformat("2026-08-25T17:06:09+10:00"),
+    )
+
+    assert discovered["race_id"] == evidence["caller_race_id"]
+    assert discovered["feature_rows_path"] == paths["feature_rows"].resolve()
+
+
+@pytest.mark.parametrize(
+    "caller_race_id",
+    [
+        "Race 7 - QOT - 2026-08-24",
+        "Race 8 - QOT - 2026-08-25",
+        "Race 7 - WAR - 2026-08-25",
+        "Race 7 - UNMAPPED-Q1-LAKESIDE - 2026-08-25",
+    ],
+)
+def test_preserved_qot_r7_alias_rejects_different_or_unknown_race(
+    tmp_path, caller_race_id
+):
+    paths = _write_fixture(tmp_path)
+    _apply_preserved_qot_r7_identity(paths)
+
+    with pytest.raises(ManualPredictionError, match="race_id_sidecar_mismatch"):
+        _score_paths(
+            paths,
+            race_id=caller_race_id,
+            score_timestamp=datetime.fromisoformat("2026-08-25T17:06:09+10:00"),
+        )
+
+
+@pytest.mark.parametrize(
+    ("venue", "venue_slug"),
+    [
+        ("UNKNOWN", "unknown"),
+        ("TEST_VEN", "test-ven"),
+        ("RACE", "race"),
+        ("__R_", "unknown"),
+    ],
+)
+def test_structured_race_identity_rejects_non_racing_mapping_sentinels(
+    venue, venue_slug
+):
+    race_id = f"Race 7 - {venue} - 2026-08-25"
+
+    assert not manual._race_identity_equivalent(
+        race_id,
+        race_id,
+        source_url=(
+            f"https://www.thedogs.com.au/racing/{venue_slug}/"
+            "2026-08-25/7/example"
+        ),
+    )
+
+
+def test_preserved_qot_r7_alias_rejects_runner_set_mismatch(tmp_path):
+    paths = _write_fixture(tmp_path)
+    evidence = _apply_preserved_qot_r7_identity(paths)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    sidecar["prejump_shadow_metadata"]["runner_box_name_list"][0]["dog_name"] = (
+        "Different Runner"
+    )
+    sidecar["runner_completeness"]["participants"][0]["dog_name"] = (
+        "Different Runner"
+    )
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="feature_runner_set_mismatch"):
+        _score_paths(
+            paths,
+            race_id=evidence["caller_race_id"],
+            score_timestamp=datetime.fromisoformat("2026-08-25T17:06:09+10:00"),
+        )
+
+
+def test_preserved_qot_r7_alias_rejects_source_url_for_other_race(tmp_path):
+    paths = _write_fixture(tmp_path)
+    evidence = _apply_preserved_qot_r7_identity(paths)
+    sidecar = _json(paths["sidecar"])
+    assert isinstance(sidecar, dict)
+    wrong_url = str(evidence["source_url"]).replace("/7/", "/8/")
+    for mapping, key in (
+        (sidecar["prejump_shadow_metadata"], "source_url"),
+        (sidecar, "race_url"),
+        (sidecar["race_info"], "url"),
+    ):
+        mapping[key] = wrong_url
+    _write_json(paths["sidecar"], sidecar)
+
+    with pytest.raises(ManualPredictionError, match="target_grade_proof_mismatch"):
+        _score_paths(
+            paths,
+            race_id=evidence["caller_race_id"],
+            score_timestamp=datetime.fromisoformat("2026-08-25T17:06:09+10:00"),
+        )
+
+
+def test_non_aliased_war_r4_prediction_is_unchanged(tmp_path):
+    paths = _write_fixture(tmp_path)
+    baseline = _score_paths(paths)
+    race_id = _retarget_fixture_contract(
+        paths,
+        venue="WAR",
+        venue_slug="warrnambool",
+        sidecar_grade="Grade 5",
+        feature_grade="Grade 5",
+        race_number=4,
+    )
+
+    prediction = _score_paths(paths, race_id=race_id)
+
+    assert race_id == "Race 4 - WAR - 2026-07-16"
+    assert prediction["race_id"] == race_id
+    assert prediction["predictions"] == baseline["predictions"]
 
 
 def _early_residual_index_payload(
