@@ -5,6 +5,7 @@ import shutil
 import stat
 import tempfile
 import threading
+import time
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,7 +32,7 @@ from src.operator_ui.foundation import OperatorEvidenceReader
 from src.operator_ui.job_store import Phase
 from src.operator_ui.live_adapters import LiveEvidenceAdapters
 from src.operator_ui.security import install_connected_mode
-from src.predictor.on_demand import resolve_model
+from src.predictor.on_demand import VerifiedPredictionBundle, VerifiedPredictionBundleIndex, resolve_model
 
 
 @pytest.fixture
@@ -225,6 +226,73 @@ def test_repository_profile_binds_authoritative_sources_and_separate_operations_
     assert refresh_payload["generated_at"]=="2026-08-03T01:02:03Z"
     catalog_envelope,_=live._reader.read_payload("model_catalog")
     assert catalog_envelope.observed_at=="2026-08-03T01:02:03Z"
+
+
+def test_repository_profile_finalizes_one_verified_worker_bundle_before_disclosing_probabilities(tmp_path,monkeypatch):
+    from src.operator_ui import r3_api as r3_api_module
+    from src.operator_ui.prediction_worker import run_once as real_run_once
+    from tests.operator_ui.test_prediction_worker import H, Process, RACE_ID, ready
+
+    repo,evidence,_,operations,canonical=repository_binding_fixture(tmp_path,monkeypatch)
+    runners=(
+        {"box_number":1,"display_name":"ALPHA","identity":"ALPHA","source_native_runner_id":"dog-1"},
+        {"box_number":2,"display_name":"BETA","identity":"BETA","source_native_runner_id":"dog-2"},
+    )
+    race={"race_id":RACE_ID,"jump_datetime":"2026-08-01T01:00:00+00:00","runner_set_sha256":H,"runners":runners}
+    current_view=VerifiedCurrentRaceIndex("collector_current_race_index_v2","run","2026-08-01T00:00:00Z",H,b"{}",(race,),"source.json",H,H,H,H)
+    monkeypatch.setattr(bootstrap_module,"bounded_current_race_index",lambda **_:current_view)
+    monkeypatch.setattr(bootstrap_module,"preflight_race_receipt",lambda race,**_:ReceiptAdmission(str(race["race_id"]),str(race["jump_datetime"]),READY,None))
+    receipt_revalidations=[]
+    monkeypatch.setattr("src.operator_ui.prediction_worker.validate_receipt_before_claim",lambda job,*_,**__:receipt_revalidations.append(job.job_id))
+
+    worker_completed=threading.Event(); holder={}
+    prediction_id="12345678-1234-4123-8123-123456789abc"
+    directory="prediction_20260801T000001000000+0000_123456789abc"
+
+    def bundle_for(job):
+        result=json.loads(ready(job))
+        result_raw=ready(job)
+        manifest={"schema_version":"on_demand_prediction_bundle_manifest_v2","prediction_id":prediction_id,"job_id":job.job_id,"files":{"result.json":{"bytes":len(result_raw),"sha256":hashlib.sha256(result_raw).hexdigest()}}}
+        entry={"directory":directory,"prediction_id":prediction_id,"job_id":job.job_id,"generated_at":"2026-08-01T00:00:01+00:00","status":"PREDICTION_READY","blocker_stage":None,"manifest_sha256":H,"logical_bundle_sha256":H}
+        request={"schema_version":"on_demand_prediction_request_v2","job_id":job.job_id,"race_id":job.input.race_id,"jump_timestamp":job.input.jump_timestamp,"runner_set_sha256":job.input.runner_set_sha256,"odds_source":job.input.odds_source,"config_sha256":job.input.config_sha256,"model":{"requested":job.input.model_selector,"resolved":job.input.resolved_model_identity,"model_sha256":job.input.model_sha256,"manifest_sha256":job.input.model_manifest_sha256,"schema_sha256":job.input.model_schema_sha256},"runners":[{"box_number":row["box"],"display_name":row["name"],"identity":row["identity"],"source_native_runner_id":row.get("source_native_runner_id")} for row in job.input.fields()["ordered_runners"]],"operational_index_provenance":job.input.operational_index_provenance.fields()}
+        return VerifiedPredictionBundle(directory,entry,result,manifest,request)
+
+    monkeypatch.setattr(r3_api_module,"verify_prediction_bundle_index",lambda *_args,**_kwargs:VerifiedPredictionBundleIndex("on_demand_prediction_bundle_index_v1","2026-08-01T00:00:01+00:00",(bundle_for(holder["store"].get(holder["job_id"])).index_entry,),b"{}",H))
+    def verify_bundle(*_args,**_kwargs):
+        return bundle_for(holder["store"].get(holder["job_id"]))
+    monkeypatch.setattr(r3_api_module,"verify_indexed_prediction_bundle",verify_bundle)
+
+    def successful_runner(store,job_id,_worker,*,now,confirm_audit):
+        holder.update(store=store,job_id=job_id)
+        def popen(argv,**_kwargs):
+            holder["argv"]=argv
+            return Process(ready(store.get(job_id)))
+        completed=real_run_once(store,job_id,_worker,now=now,confirm_audit=confirm_audit,popen=popen,reader=lambda **_:current_view)
+        worker_completed.set()
+        return completed
+    monkeypatch.setattr(bootstrap_module,"run_once",successful_runner)
+
+    app=Flask(__name__);app.config.update(TESTING=True,OPERATOR_UI_CONNECTED_MODE=True,OPERATOR_UI_SECRET_KEY="repository-secret-"+"x"*40,OPERATOR_UI_USERNAME="operator",OPERATOR_UI_PASSWORD_HASH=generate_password_hash("correct horse"),OPERATOR_UI_LEVEL=2,OPERATOR_UI_DEPLOYED_COMMIT="21e7b02e60e82da9c4dbbb796ea435bc120e9862",OPERATOR_UI_DEPLOYED_TREE="2cfc75cd8a2af1a9e5da4986c969cb668b93af62",OPERATOR_UI_DEPLOYED_VERSION="operator-ui-v1",OPERATOR_UI_DEPLOYED_PROFILE="repository-v1")
+    app.config[R3_PROFILE_KEY]="repository-v1";assert bootstrap_module.configure_r3_startup(app) is True
+    install_connected_mode(app);assert bind_configured_r3(app) is True
+    holder["store"]=app.extensions["operator_ui_r3_services"].job_store
+    client=app.test_client();token=client.get("/operator-ui/login",base_url="https://localhost").get_json()["csrf_token"]
+    token=client.post("/operator-ui/login",base_url="https://localhost",data={"username":"operator","password":"correct horse","csrf_token":token}).get_json()["csrf_token"]
+    response=client.post("/operator-ui/api/v1/prediction-jobs",base_url="https://localhost",headers={"X-CSRF-Token":token},json={"race_id":RACE_ID,"model_id":"latest-research","config_id":"manual-default","odds_source_id":"receipt","idempotency_key":"12345678-1234-4123-8123-123456789abc"})
+    holder["job_id"]=response.get_json()["job_id"]
+    assert worker_completed.wait(timeout=5)
+    deadline=time.monotonic()+5
+    while True:
+        payload=client.get(f"/operator-ui/api/v1/prediction-jobs/{holder['job_id']}",base_url="https://localhost").get_json()
+        if payload["phase"]=="PREDICTION_READY" or time.monotonic()>=deadline:break
+        time.sleep(.01)
+    assert payload["phase"]=="PREDICTION_READY"
+    assert payload["result"]["verification_status"]=="VERIFIED"
+    assert [row["runner_id"] for row in payload["result"]["probabilities"]]==["ALPHA","BETA"]
+    assert receipt_revalidations==[holder["job_id"]]
+    assert holder["argv"][holder["argv"].index("--odds-source")+1]=="receipt"
+    assert canonical.read_bytes()==b"canonical-read-only"
+    assert holder["store"].verify()
 
 
 def test_repository_profile_schema_evidence_identities_pass_api_validation(tmp_path,monkeypatch):
