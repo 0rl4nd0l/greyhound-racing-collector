@@ -37,6 +37,7 @@ SCHEMA_VERSION = "thedogs_market_snapshot_receipt_v2"
 RECEIPT_SCHEMA_VERSIONS = frozenset({LEGACY_SCHEMA_VERSION, SCHEMA_VERSION})
 PLAN_SCHEMA_VERSION = "thedogs_market_snapshot_plan_v1"
 SOURCE_CLASS = "thedogs_prospective_point_in_time_market_history"
+PRIMARY_RACE_PAGE_EVIDENCE_SCHEMA_VERSION = "thedogs_primary_race_page_evidence_v1"
 NOMINAL_WINDOWS_MINUTES = (120, 60, 30, 10, 2)
 NOMINAL_WINDOWS = tuple(f"T-{minutes}" for minutes in NOMINAL_WINDOWS_MINUTES)
 DEFAULT_EARLY_TOLERANCE_SECONDS = 30
@@ -968,6 +969,224 @@ def _write_new_immutable(path: Path, payload: bytes) -> None:
         except OSError:
             pass
         raise
+
+
+def _primary_runner_extraction_summary(
+    canonical_runner_set: Mapping[str, Any],
+) -> dict[str, Any]:
+    participants = [
+        row
+        for row in canonical_runner_set.get("final_runner_participants", [])
+        if isinstance(row, Mapping)
+    ]
+    native_ids = [
+        str(row.get("source_native_runner_id") or "").strip()
+        for row in participants
+    ]
+    numeric_ids = [
+        value for value in native_ids if value.isascii() and value.isdecimal()
+    ]
+    return {
+        "schema_version": str(
+            canonical_runner_set.get("schema_version")
+            or "canonical_pre_race_runner_set_v1"
+        ),
+        "status": str(
+            canonical_runner_set.get("canonical_runner_set_status") or "unavailable"
+        ),
+        "native_identity_status": str(
+            canonical_runner_set.get("native_identity_status") or "unavailable"
+        ),
+        "native_identity_reasons": list(
+            canonical_runner_set.get("native_identity_reasons") or []
+        ),
+        "active_runner_count": len(participants),
+        "numeric_native_runner_id_count": len(numeric_ids),
+        "numeric_native_runner_ids_complete": bool(participants)
+        and len(numeric_ids) == len(participants)
+        and len(set(numeric_ids)) == len(numeric_ids),
+    }
+
+
+def _primary_evidence_directory(artifact_root: Path) -> tuple[Path, Path]:
+    try:
+        root = Path(artifact_root).resolve(strict=True)
+    except OSError as exc:
+        raise CaptureError("primary_race_page_artifact_root_invalid") from exc
+    if not root.is_dir():
+        raise CaptureError("primary_race_page_artifact_root_invalid")
+    current = root
+    for component in ("source_evidence", "primary_race_pages"):
+        current = current / component
+        try:
+            current.mkdir(mode=0o755)
+        except FileExistsError:
+            pass
+        if current.is_symlink() or not current.is_dir():
+            raise CaptureError("primary_race_page_evidence_path_invalid")
+        try:
+            resolved = current.resolve(strict=True)
+        except OSError as exc:
+            raise CaptureError("primary_race_page_evidence_path_invalid") from exc
+        if root not in resolved.parents:
+            raise CaptureError("primary_race_page_evidence_path_invalid")
+        current = resolved
+    return root, current
+
+
+def _write_or_verify_immutable(path: Path, payload: bytes, *, collision: str) -> None:
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        directory_flags |= os.O_NOFOLLOW
+    try:
+        directory_fd = os.open(path.parent, directory_flags)
+    except OSError as exc:
+        raise CaptureError("primary_race_page_evidence_path_invalid") from exc
+    file_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        file_flags |= os.O_NOFOLLOW
+    try:
+        try:
+            descriptor = os.open(
+                path.name,
+                file_flags,
+                0o444,
+                dir_fd=directory_fd,
+            )
+        except FileExistsError:
+            read_flags = os.O_RDONLY
+            if hasattr(os, "O_NOFOLLOW"):
+                read_flags |= os.O_NOFOLLOW
+            try:
+                descriptor = os.open(path.name, read_flags, dir_fd=directory_fd)
+            except OSError as exc:
+                raise CaptureError(collision) from exc
+            try:
+                if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+                    raise CaptureError(collision)
+                with os.fdopen(descriptor, "rb") as handle:
+                    descriptor = -1
+                    existing = handle.read()
+            finally:
+                if descriptor >= 0:
+                    os.close(descriptor)
+            if existing != payload:
+                raise CaptureError(collision)
+            return
+        try:
+            with os.fdopen(descriptor, "wb") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+        except Exception:
+            try:
+                os.unlink(path.name, dir_fd=directory_fd)
+            except OSError:
+                pass
+            raise
+    finally:
+        os.close(directory_fd)
+
+
+def persist_primary_race_page_evidence(
+    *,
+    artifact_root: Path,
+    race_discovery_key: str,
+    response: TimedResponse,
+    canonical_runner_set: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Persist an already-fetched primary race page without another request."""
+
+    discovery_key = str(race_discovery_key or "").strip()
+    if not discovery_key:
+        raise CaptureError("primary_race_page_discovery_key_required")
+    root, evidence_dir = _primary_evidence_directory(Path(artifact_root))
+    body_sha256 = sha256_bytes(response.body)
+    raw_path = evidence_dir / f"{body_sha256}.race-page.html"
+    raw_relative_path = raw_path.relative_to(root).as_posix()
+    receipt: dict[str, Any] = {
+        "schema_version": PRIMARY_RACE_PAGE_EVIDENCE_SCHEMA_VERSION,
+        "source": "thedogs_primary_race_page",
+        "provider": "thedogs",
+        "race_discovery_key": discovery_key,
+        "requested_url": response.requested_url,
+        "final_url": response.final_url,
+        "request_start_utc": iso_utc(response.request_start_utc),
+        "request_end_utc": iso_utc(response.request_end_utc),
+        "capture_timestamp": iso_utc(response.request_end_utc),
+        "status_code": response.status_code,
+        "headers": bounded_receipt_headers(response.headers),
+        "content_length": len(response.body),
+        "body_sha256": body_sha256,
+        "raw_path": raw_relative_path,
+        "canonical_runner_extraction": _primary_runner_extraction_summary(
+            canonical_runner_set
+        ),
+    }
+    receipt["receipt_core_sha256"] = sha256_bytes(canonical_json_bytes(receipt))
+    receipt_path = (
+        evidence_dir
+        / f"{receipt['receipt_core_sha256']}.race-page.receipt.json"
+    )
+    receipt_bytes = serialized_json_bytes(receipt)
+    _write_or_verify_immutable(
+        raw_path,
+        response.body,
+        collision="primary_race_page_body_hash_collision",
+    )
+    _write_or_verify_immutable(
+        receipt_path,
+        receipt_bytes,
+        collision="primary_race_page_receipt_hash_collision",
+    )
+    return {
+        "schema_version": PRIMARY_RACE_PAGE_EVIDENCE_SCHEMA_VERSION,
+        "raw_path": raw_relative_path,
+        "receipt_path": receipt_path.relative_to(root).as_posix(),
+        "body_sha256": receipt["body_sha256"],
+        "receipt_sha256": sha256_bytes(receipt_bytes),
+    }
+
+
+def verify_primary_race_page_evidence(
+    *, artifact_root: Path, reference: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Verify the immutable primary page reference, receipt, and exact bytes."""
+
+    root = Path(artifact_root).resolve()
+    try:
+        raw_candidate = root / str(reference["raw_path"])
+        receipt_candidate = root / str(reference["receipt_path"])
+        if raw_candidate.is_symlink() or receipt_candidate.is_symlink():
+            raise CaptureError("primary_race_page_evidence_path_invalid")
+        raw_path = raw_candidate.resolve(strict=True)
+        receipt_path = receipt_candidate.resolve(strict=True)
+    except (KeyError, OSError) as exc:
+        raise CaptureError("primary_race_page_evidence_missing") from exc
+    if root not in raw_path.parents or root not in receipt_path.parents:
+        raise CaptureError("primary_race_page_evidence_path_invalid")
+    raw_bytes = raw_path.read_bytes()
+    receipt_bytes = receipt_path.read_bytes()
+    if sha256_bytes(receipt_bytes) != str(reference.get("receipt_sha256") or ""):
+        raise CaptureError("primary_race_page_receipt_hash_mismatch")
+    try:
+        receipt = json.loads(receipt_bytes.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise CaptureError("primary_race_page_receipt_invalid") from exc
+    if not isinstance(receipt, Mapping):
+        raise CaptureError("primary_race_page_receipt_invalid")
+    receipt_core = dict(receipt)
+    recorded_core_hash = str(receipt_core.pop("receipt_core_sha256", ""))
+    if sha256_bytes(canonical_json_bytes(receipt_core)) != recorded_core_hash:
+        raise CaptureError("primary_race_page_receipt_core_hash_mismatch")
+    raw_hash = sha256_bytes(raw_bytes)
+    if raw_hash != str(receipt.get("body_sha256") or "") or raw_hash != str(
+        reference.get("body_sha256") or ""
+    ):
+        raise CaptureError("primary_race_page_body_hash_mismatch")
+    if len(raw_bytes) != receipt.get("content_length"):
+        raise CaptureError("primary_race_page_body_length_mismatch")
+    return dict(receipt)
 
 
 def _stored_response(

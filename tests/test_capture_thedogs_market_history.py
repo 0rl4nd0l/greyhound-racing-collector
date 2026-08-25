@@ -12,14 +12,126 @@ from scripts.capture_thedogs_market_history import (
     canonical_json_bytes,
     capture_snapshot,
     parse_source_runners,
+    persist_primary_race_page_evidence,
     sha256_bytes,
     validate_response,
+    verify_primary_race_page_evidence,
 )
 
 RACE_ID = "race-immutable-0001"
 RACE_URL = "https://www.thedogs.com.au/racing/meadows/2026-06-01/1/test-race"
 ODDS_URL = f"{RACE_URL}/odds"
 JUMP = datetime(2026, 6, 1, 1, 0, tzinfo=timezone.utc)
+
+
+def test_primary_race_page_evidence_is_manifested_and_detects_mutation(tmp_path):
+    from scripts.shadow_autopilot_daemon import output_manifest
+
+    observed = JUMP - timedelta(minutes=20)
+    body = b"\x00<html>exact primary bytes\r\n</html>\xff"
+    response = TimedResponse(
+        requested_url=RACE_URL,
+        request_start_utc=observed - timedelta(milliseconds=100),
+        request_end_utc=observed,
+        final_url=RACE_URL,
+        status_code=200,
+        headers={
+            "Content-Type": "text/html; charset=utf-8",
+            "Date": format_datetime(observed, usegmt=True),
+            "Set-Cookie": "secret=never-persist",
+            "Authorization": "Bearer never-persist",
+        },
+        body=body,
+    )
+    canonical = {
+        "schema_version": "canonical_pre_race_runner_set_v1",
+        "canonical_runner_set_status": "unavailable",
+        "final_runner_participants": [],
+        "native_identity_status": "unavailable",
+        "native_identity_reasons": ["no_race_runner_rows"],
+    }
+
+    reference = persist_primary_race_page_evidence(
+        artifact_root=tmp_path,
+        race_discovery_key="Race 1 - MEA - 2026-06-01",
+        response=response,
+        canonical_runner_set=canonical,
+    )
+
+    raw_path = tmp_path / reference["raw_path"]
+    receipt_path = tmp_path / reference["receipt_path"]
+    assert raw_path.read_bytes() == body
+    receipt = verify_primary_race_page_evidence(
+        artifact_root=tmp_path,
+        reference=reference,
+    )
+    assert receipt["headers"] == {
+        "content-type": "text/html; charset=utf-8",
+        "date": format_datetime(observed, usegmt=True),
+    }
+    assert receipt["canonical_runner_extraction"] == {
+        "active_runner_count": 0,
+        "native_identity_reasons": ["no_race_runner_rows"],
+        "native_identity_status": "unavailable",
+        "numeric_native_runner_id_count": 0,
+        "numeric_native_runner_ids_complete": False,
+        "schema_version": "canonical_pre_race_runner_set_v1",
+        "status": "unavailable",
+    }
+    manifest = output_manifest(tmp_path)
+    raw_manifest = next(
+        value
+        for name, value in manifest["files"].items()
+        if name.endswith(reference["raw_path"])
+    )
+    receipt_manifest = next(
+        value
+        for name, value in manifest["files"].items()
+        if name.endswith(reference["receipt_path"])
+    )
+    assert raw_manifest == {"bytes": len(body), "sha256": sha256_bytes(body)}
+    assert receipt_manifest["sha256"] == reference["receipt_sha256"]
+    repeated_reference = persist_primary_race_page_evidence(
+        artifact_root=tmp_path,
+        race_discovery_key="Race 1 - MEA - 2026-06-01",
+        response=response,
+        canonical_runner_set=canonical,
+    )
+    assert repeated_reference == reference
+    assert raw_path.read_bytes() == body
+
+    raw_path.chmod(0o644)
+    raw_path.write_bytes(body + b"mutated")
+    with pytest.raises(CaptureError, match="primary_race_page_body_hash_mismatch"):
+        verify_primary_race_page_evidence(
+            artifact_root=tmp_path,
+            reference=reference,
+        )
+
+
+def test_primary_race_page_evidence_rejects_symlinked_parent(tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (tmp_path / "source_evidence").symlink_to(outside, target_is_directory=True)
+    observed = JUMP - timedelta(minutes=20)
+    response = TimedResponse(
+        requested_url=RACE_URL,
+        request_start_utc=observed - timedelta(milliseconds=100),
+        request_end_utc=observed,
+        final_url=RACE_URL,
+        status_code=200,
+        headers={},
+        body=b"exact bytes",
+    )
+
+    with pytest.raises(CaptureError, match="primary_race_page_evidence_path_invalid"):
+        persist_primary_race_page_evidence(
+            artifact_root=tmp_path,
+            race_discovery_key="Race 1 - MEA - 2026-06-01",
+            response=response,
+            canonical_runner_set={},
+        )
+    assert list(outside.iterdir()) == []
 
 
 def source_html(jump: datetime = JUMP) -> bytes:
