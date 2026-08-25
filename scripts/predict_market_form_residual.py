@@ -19,13 +19,13 @@ import json
 import math
 import re
 import sys
+from collections.abc import Mapping, Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Mapping, Sequence
+from typing import Any
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
-
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,25 +33,25 @@ ROOT_TEXT = str(ROOT)
 if ROOT_TEXT not in sys.path:
     sys.path.insert(0, ROOT_TEXT)
 
-from src.predictor.market_form_residual import (  # noqa: E402
+from config.venue_mapping import normalize_venue
+from src.predictor.market_form_residual import (
     DEFAULT_ARTIFACT_DIR,
     EFFECTIVE_STATE_SCHEMA,
     FEATURES,
     NUMERICAL_CANONICALIZATION_CONTRACT,
-    ResidualContractError,
     SHADOW_RECORD_SCHEMA,
+    ResidualContractError,
     _runner_set_sha256,
     load_frozen_model,
     score_race,
 )
-from src.predictor.scoring_parity import (  # noqa: E402
+from src.predictor.scoring_parity import (
     SCORING_CONFIG_SHA256,
     build_core_output,
     build_scoring_input,
     parity_binding,
 )
-from config.venue_mapping import VENUE_MAPPING, normalize_venue  # noqa: E402
-from utils.csv_metadata import (  # noqa: E402
+from utils.csv_metadata import (
     THEDOGS_EXACT_RACE_PAGE_GRADE_SOURCE,
     THEDOGS_MEETING_CARD_GRADE_SOURCE,
     canonical_thedogs_meeting_card_url,
@@ -60,7 +60,10 @@ from utils.csv_metadata import (  # noqa: E402
     normalize_exact_target_grade,
     target_grade_equivalence_key,
 )
-
+from utils.race_identity_equivalence import (
+    configured_venue_identity as _configured_venue_identity,
+    race_identity_equivalent as _strict_race_identity_equivalent,
+)
 
 MELBOURNE = ZoneInfo("Australia/Melbourne")
 ALLOWED_BOX_SOURCES = {"explicit_dom", "runner_text"}
@@ -310,7 +313,6 @@ EARLY_RESIDUAL_PARITY_KEYS = frozenset(
     }
 )
 VENUE_CODE_PATTERN = r"[A-Z0-9_]+(?:-[A-Z0-9_]+)*"
-NON_RACING_VENUE_IDENTITIES = frozenset({"UNKNOWN", "TEST_VEN", "RACE"})
 FORBIDDEN_EVIDENCE_PATH_MARKERS = frozenset({"form_only_v1", "pr51"})
 # Finite union of the exact GRADE_MAP and GRADE_VOCAB_MAP contracts, their
 # canonical values, and source-observed exact labels covered by the scorer
@@ -678,38 +680,6 @@ def _race_id_parts(race_id: str) -> tuple[int, str, date]:
     )
 
 
-def _configured_venue_identity(value: Any) -> str | None:
-    """Resolve only venue spellings proved by the checked-in canonical map."""
-
-    if not isinstance(value, str):
-        return None
-    raw = value.strip().upper()
-    if not raw or re.fullmatch(VENUE_CODE_PATTERN, raw) is None:
-        return None
-    candidates = {
-        raw,
-        raw.replace("-", " "),
-        raw.replace("-", "_"),
-        raw.replace("_", " "),
-        raw.replace("_", "-"),
-    }
-    normalized = {
-        normalize_venue(candidate)
-        for candidate in candidates
-        if candidate in VENUE_MAPPING
-    }
-    if len(normalized) != 1:
-        return None
-    configured = next(iter(normalized))
-    canonical = canonical_thedogs_venue_identity(configured)
-    if (
-        configured in NON_RACING_VENUE_IDENTITIES
-        or canonical in NON_RACING_VENUE_IDENTITIES
-    ):
-        return None
-    return canonical
-
-
 def _race_identity_equivalent(
     caller_race_id: Any,
     evidence_race_id: Any,
@@ -718,28 +688,8 @@ def _race_identity_equivalent(
 ) -> bool:
     """Bind caller and sealed-source aliases by exact structured identity."""
 
-    try:
-        caller_number, caller_venue, caller_date = _race_id_parts(caller_race_id)
-        evidence_number, evidence_venue, evidence_date = _race_id_parts(
-            evidence_race_id
-        )
-    except ManualPredictionError:
-        return False
-    source_identity = canonical_thedogs_race_identity(source_url)
-    if source_identity is None:
-        return False
-    venues = (
-        _configured_venue_identity(caller_venue),
-        _configured_venue_identity(evidence_venue),
-        _configured_venue_identity(source_identity["venue_slug"]),
-    )
-    return bool(
-        all(venue is not None for venue in venues)
-        and len(set(venues)) == 1
-        and caller_date == evidence_date
-        and caller_date.isoformat() == source_identity["race_date"]
-        and caller_number == evidence_number
-        and caller_number == source_identity["race_number"]
+    return _strict_race_identity_equivalent(
+        caller_race_id, evidence_race_id, source_url=source_url
     )
 
 

@@ -15,12 +15,15 @@ from scripts.forward_prediction_journal import (
     PENDING_RECEIPT,
     PREFLIGHT_EXCLUDED,
     READY,
+    ReceiptPreflightPolicy,
     observe_receipt_ready_races,
-    validate_exact_receipt_for_race,
 )
-from src.predictor.on_demand import PredictionBlocked, canonical_bytes, sha256_bytes
+from src.predictor.on_demand import canonical_bytes, sha256_bytes
 
 NOW = datetime(2026, 8, 25, 10, 0, tzinfo=timezone(timedelta(hours=10)))
+POLICY = ReceiptPreflightPolicy.from_prediction_config(
+    json.loads(Path("configs/prediction/manual-default.json").read_bytes())
+)
 
 
 def race(venue: str, slug: str, number: int, minutes: int) -> dict[str, Any]:
@@ -218,9 +221,8 @@ def test_four_races_wait_for_independent_staggered_exact_receipts(tmp_path: Path
     first = observe_receipt_ready_races(
         RACES,
         protocol=protocol,
-        current_time=NOW,
-        receipt_max_age_seconds=900,
-        minimum_prejump_margin_seconds=53,
+        policy=POLICY,
+        clock=lambda: NOW,
         recorded_race_ids=frozenset(),
         invoke_ready=invoke,
     )
@@ -234,9 +236,8 @@ def test_four_races_wait_for_independent_staggered_exact_receipts(tmp_path: Path
     second = observe_receipt_ready_races(
         RACES,
         protocol=protocol,
-        current_time=first_arrival,
-        receipt_max_age_seconds=900,
-        minimum_prejump_margin_seconds=53,
+        policy=POLICY,
+        clock=lambda: first_arrival,
         recorded_race_ids=frozenset(),
         invoke_ready=invoke,
     )
@@ -253,9 +254,8 @@ def test_four_races_wait_for_independent_staggered_exact_receipts(tmp_path: Path
     third = observe_receipt_ready_races(
         RACES,
         protocol=protocol,
-        current_time=second_arrival,
-        receipt_max_age_seconds=900,
-        minimum_prejump_margin_seconds=53,
+        policy=POLICY,
+        clock=lambda: second_arrival,
         recorded_race_ids=recorded,
         invoke_ready=invoke,
     )
@@ -278,15 +278,55 @@ def test_expired_pending_race_never_allocates_or_invokes(tmp_path: Path):
     result = observe_receipt_ready_races(
         [value],
         protocol=ManualPredictionCollectorProtocol(tmp_path / "requests"),
-        current_time=NOW + timedelta(seconds=7),
-        receipt_max_age_seconds=900,
-        minimum_prejump_margin_seconds=53,
+        policy=POLICY,
+        clock=lambda: NOW + timedelta(seconds=7),
         recorded_race_ids=frozenset(),
         invoke_ready=lambda row: invoked.append(str(row["race_id"])),
     )
     assert result[0].state == PREFLIGHT_EXCLUDED
     assert result[0].reason == "INSUFFICIENT_PREJUMP_MARGIN"
     assert invoked == []
+
+
+def test_ready_race_is_revalidated_at_allocation_boundary(tmp_path: Path):
+    value = race("GEE", "geelong", 13, 1)
+    protocol = ManualPredictionCollectorProtocol(tmp_path / "requests")
+    publish_manual_receipt(protocol, value, NOW, tmp_path)
+    observations = iter((NOW, NOW, NOW, NOW + timedelta(seconds=8)))
+    invoked: list[str] = []
+    result = observe_receipt_ready_races(
+        [value],
+        protocol=protocol,
+        policy=POLICY,
+        clock=lambda: next(observations),
+        recorded_race_ids=frozenset(),
+        invoke_ready=lambda row: invoked.append(str(row["race_id"])),
+    )
+    assert result[0].state == PREFLIGHT_EXCLUDED
+    assert result[0].reason == "INSUFFICIENT_PREJUMP_MARGIN"
+    assert invoked == []
+
+
+class StaticReceiptProtocol:
+    def __init__(self, value: Mapping[str, Any]):
+        self.value = value
+
+    def discover_exact_handoff(self, **_: Any) -> None:
+        return None
+
+    def discover_collector_exact_handoff(self, **_: Any) -> Mapping[str, Any]:
+        return self.value
+
+    def snapshot_collector_exact_handoff(self, _public: Mapping[str, Any]):
+        return (
+            {},
+            {},
+            {
+                "report": self.value["_report_bytes"],
+                "form": self.value["_form_bytes"],
+                "sidecar": self.value["_sidecar_bytes"],
+            },
+        )
 
 
 @pytest.mark.parametrize(
@@ -365,14 +405,18 @@ def test_exact_receipt_negative_controls_fail_closed(mutation: str, reason: str)
             value_handoff["_report_bytes"]
         )
 
-    with pytest.raises(PredictionBlocked) as captured:
-        validate_exact_receipt_for_race(
-            value,
-            value_handoff,
-            current_time=NOW,
-            receipt_max_age_seconds=900,
-        )
-    assert captured.value.code == reason
+    invoked: list[str] = []
+    result = observe_receipt_ready_races(
+        [value],
+        protocol=StaticReceiptProtocol(value_handoff),
+        policy=POLICY,
+        clock=lambda: NOW,
+        recorded_race_ids=frozenset(),
+        invoke_ready=lambda row: invoked.append(str(row["race_id"])),
+    )
+    assert result[0].state == PREFLIGHT_EXCLUDED
+    assert result[0].reason == reason
+    assert invoked == []
 
 
 def test_recorded_race_is_never_retried_or_backfilled(tmp_path: Path):
@@ -380,9 +424,8 @@ def test_recorded_race_is_never_retried_or_backfilled(tmp_path: Path):
     result = observe_receipt_ready_races(
         [RACES[0]],
         protocol=ManualPredictionCollectorProtocol(tmp_path / "requests"),
-        current_time=NOW,
-        receipt_max_age_seconds=900,
-        minimum_prejump_margin_seconds=53,
+        policy=POLICY,
+        clock=lambda: NOW,
         recorded_race_ids={str(RACES[0]["race_id"])},
         invoke_ready=lambda value: invoked.append(str(value["race_id"])),
     )

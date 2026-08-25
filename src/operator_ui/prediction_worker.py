@@ -13,8 +13,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any,Callable,Mapping
 
-from race_collection.synchronous_manual_capture import CaptureOneRejected,VerifiedCurrentRaceIndex,bounded_current_race_index
+from race_collection.manual_prediction_collector_request import ManualPredictionCollectorProtocol
+from race_collection.synchronous_manual_capture import CaptureOneRejected,LatencyBudget,VerifiedCurrentRaceIndex,bounded_current_race_index
 from src.predictor.on_demand import PredictionBlocked,canonical_bytes,validate_prediction_result_v2
+from src.predictor.receipt_preflight import discover_exact_receipt_ready
 from .job_store import AuditConfirmation,Job,JobStore,JobStoreError,OperationalIndexProvenance,Phase
 
 MAX_STDOUT_BYTES=1_048_576; MAX_STDERR_BYTES=65_536; MAX_FAILED_STDOUT_DIAGNOSTIC_BYTES=4096
@@ -142,7 +144,31 @@ def revalidate_current_race(job,config,*,now,reader=bounded_current_race_index):
     if provenance is None: raise WorkerRejected("OPERATIONAL_INDEX_PROVENANCE_MISSING")
     actual=OperationalIndexProvenance.from_verified_current_race_index(view).fields()
     if provenance.fields()!=actual: raise WorkerRejected("CURRENT_INDEX_PROVENANCE_CHANGED")
-    return view
+    return matches[0]
+
+def validate_receipt_before_claim(job,config,race,*,current_time,completion_clock):
+    try:
+        choice=config.choices[job.input.model_selector]
+        value=json.loads(choice.config_path.read_bytes())
+        bundle=value["bundle"]
+        maximum_age=bundle["receipt_max_age_seconds"]
+        budget=LatencyBudget.from_config(bundle["latency_budget"])
+        jump=datetime.fromisoformat(job.input.jump_timestamp.replace("Z","+00:00"))
+        discover_exact_receipt_ready(
+            protocol=ManualPredictionCollectorProtocol(config.collector_request_root),
+            race_id=job.input.race_id,
+            race_url=str(race.get("race_url",race.get("url")) or ""),
+            jump=jump,
+            expected_runners=race.get("runners",race.get("participants")) or (),
+            current_time=current_time,
+            receipt_max_age_seconds=maximum_age,
+            minimum_prejump_margin_seconds=budget.reuse_margin_seconds,
+            completion_clock=completion_clock,
+        )
+    except (KeyError,TypeError,ValueError,json.JSONDecodeError) as exc:
+        raise WorkerRejected("RECEIPT_PREFLIGHT_CONFIG_INVALID") from exc
+    except PredictionBlocked as exc:
+        raise WorkerRejected(exc.code) from exc
 
 def _drain(pipe:Any,cap:int,sink:dict[str,Any],name:str):
     captured=bytearray(); total=0; digest=hashlib.sha256()
@@ -339,7 +365,8 @@ def _stop_and_reap(process,grace):
 def run_once(store:JobStore,job_id:str,config:WorkerConfig,*,now:Callable[[],datetime],confirm_audit:AuditConfirmation,popen:Callable[...,Any]=subprocess.Popen,reader=bounded_current_race_index,cancel_requested:Callable[[],bool]|None=None)->Job:
     job=store.get(job_id)
     if job.phase is not Phase.WAITING_FOR_CLAIM or job.attempt_claimed:raise WorkerRejected("JOB_NOT_CLAIMABLE")
-    _validate_runtime(config); _validate_choice(job,config); revalidate_current_race(job,config,now=now(),reader=reader); _validate_choice(job,config); _validate_runtime(config)
+    _validate_runtime(config); _validate_choice(job,config); race=revalidate_current_race(job,config,now=now(),reader=reader); _validate_choice(job,config); _validate_runtime(config)
+    validate_receipt_before_claim(job,config,race,current_time=now(),completion_clock=now)
     job,attempt_id=store.claim_attempt(job_id,now=now(),confirm_audit=confirm_audit)
     argv=fixed_argv(job,config); process=None; owner=None; started=False; runtime_fds=()
     try:

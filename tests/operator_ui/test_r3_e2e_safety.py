@@ -88,8 +88,12 @@ class Process:
     def poll(self): return self.returncode
 
 
-def test_one_authenticated_submission_reaches_real_worker_once_without_false_ready(tmp_path):
+def test_one_authenticated_submission_reaches_real_worker_once_without_false_ready(tmp_path,monkeypatch):
     """One POST crosses API/store/worker; only the verifier may make it ready."""
+    monkeypatch.setattr(
+        "src.operator_ui.prediction_worker.validate_receipt_before_claim",
+        lambda *_args, **_kwargs: None,
+    )
     files = []
     for name in ("config.json", "model.json", "manifest.json", "schema.json"):
         path = tmp_path / name

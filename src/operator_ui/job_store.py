@@ -8,11 +8,12 @@ import os
 import sqlite3
 import stat
 import uuid
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any
 
 JOB_SCHEMA = "operator_ui_manual_prediction_job_v3"
 LEGACY_JOB_SCHEMA = "operator_ui_manual_prediction_job_v2"
@@ -42,6 +43,7 @@ INSERT INTO store_anchor VALUES(1,'{STORE_SCHEMA}',0,'{ZERO_HASH}');
 
 class JobStoreError(RuntimeError): pass
 class IdempotencyConflict(JobStoreError): pass
+class RaceAlreadyRecorded(JobStoreError): pass
 class IllegalTransition(JobStoreError): pass
 class AttemptAlreadyClaimed(JobStoreError): pass
 class VerifierAuthorizationError(JobStoreError): pass
@@ -546,13 +548,15 @@ class JobStore:
             if row:
                 if not hmac.compare_digest(row["input_identity_sha256"],identity): raise IdempotencyConflict("idempotency key is already bound to different inputs")
                 db.commit(); return self.get(row["job_id"])
+            prior_race=db.execute("SELECT job_id FROM jobs WHERE operation=? AND json_extract(input_json,'$.race_id')=? LIMIT 1",(operation,job_input.race_id)).fetchone()
+            if prior_race: raise RaceAlreadyRecorded("race already has a durable journal record")
             job_id="job_"+uuid.uuid4().hex; proposed={"job_id":job_id,"actor_identity":actor,"actor_level":2,"operation":operation,"idempotency_key_sha256":key_hash,"input_identity_sha256":identity,"input_json":input_json}; job_row={"job_id":job_id,"schema":JOB_SCHEMA,"actor_identity":actor,"actor_level":2,"operation":operation,"idempotency_key_sha256":key_hash,"input_identity_sha256":identity,"input_json":input_json,"created_at":created,"creation_audit_hash":AUDIT_HASH_BINDING}; intent,event_id,previous=self._mutation_intent(db,proposed,"create","NONE",Phase.SUBMITTED,created,"ACCEPTED","submitted",{},proposed_job=job_row); receipt=self._confirm(confirm_audit,intent); audit=receipt.audit_sha256
             db.execute("INSERT INTO jobs(job_id,schema,actor_identity,actor_level,operation,idempotency_key_sha256,input_identity_sha256,input_json,created_at,creation_audit_hash) VALUES(?,?,?,?,?,?,?,?,?,?)",(job_id,JOB_SCHEMA,actor,2,operation,key_hash,identity,input_json,created,audit))
             self._append_event(db,job_id,Phase.SUBMITTED,created,"ACCEPTED","submitted",{},audit,prior=None,event_id=event_id,previous=previous); self._seal(db)
             anchor=db.execute("SELECT mutation_count,store_hash FROM store_anchor WHERE singleton=1").fetchone()
             if anchor[0]!=receipt.next_mutation_count or not hmac.compare_digest(anchor[1],receipt.next_store_hash): raise ConfirmationMismatch("persisted store differs from confirmation")
             db.commit(); return self.get(job_id)
-        except (IdempotencyConflict,JobStoreError): db.rollback(); raise
+        except (IdempotencyConflict,RaceAlreadyRecorded,JobStoreError): db.rollback(); raise
         except (sqlite3.Error,ValueError,TypeError) as exc: db.rollback(); raise JobStoreError("job creation failed") from exc
         finally: db.close()
     def find_by_idempotency(self,*,actor_identity,operation,idempotency_key):
