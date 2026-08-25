@@ -9,22 +9,55 @@ import re
 import stat
 import sys
 import threading
-import tomllib
 import warnings
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
+import tomllib
 from flask import Flask
 
-from race_collection.synchronous_manual_capture import CaptureOneRejected, VerifiedCurrentRaceIndex, bounded_current_race_index
+from race_collection.manual_prediction_collector_request import (
+    ManualPredictionCollectorProtocol,
+)
+from race_collection.synchronous_manual_capture import (
+    CaptureOneRejected,
+    VerifiedCurrentRaceIndex,
+    bounded_current_race_index,
+)
+from scripts.forward_prediction_journal import (
+    PENDING_RECEIPT,
+    READY,
+    ReceiptPreflightPolicy,
+    preflight_race_receipt,
+)
 from src.predictor.on_demand import PredictionBlocked
+
 from .api import register_level_1_provider
+from .foundation import (
+    JsonSerializationPolicy,
+    JsonSource,
+    OperatorEvidenceReader,
+    RawSourceConfig,
+    SourceConfig,
+    TimestampSyntax,
+)
 from .job_store import JobInput, JobStore, OperationalIndexProvenance, Phase
-from .foundation import JsonSerializationPolicy, JsonSource, OperatorEvidenceReader, RawSourceConfig, SourceConfig, TimestampSyntax
-from .live_adapters import InstalledUnits, LiveEvidenceAdapters, PredictionBundleSource, UpcomingRaceSource
+from .live_adapters import (
+    InstalledUnits,
+    LiveEvidenceAdapters,
+    PredictionBundleSource,
+    UpcomingRaceSource,
+)
 from .prediction_worker import ServerChoice, WorkerConfig, run_once
-from .r3_api import R3Rejected, R3Services, ResolvedSubmission, build_verified_bundle_reader, install_r3_api
+from .r3_api import (
+    R3Rejected,
+    R3Services,
+    ResolvedSubmission,
+    build_verified_bundle_reader,
+    install_r3_api,
+)
 
 CONFIG_KEY = "OPERATOR_UI_LIVE_EVIDENCE_ADAPTERS"
 R3_PROFILE_KEY = "OPERATOR_UI_R3_PROFILE"
@@ -331,6 +364,8 @@ def _build_r3_services(app: Flask, profile: str) -> R3Services:
     config=json.loads(config_path.read_text(encoding="utf-8"))
     if config.get("schema_version")!="on_demand_prediction_config_v1" or config.get("model")!=resolved_model:raise RuntimeError("fixed R3 config divergent")
     choice=ServerChoice(config_path,"manual-default",_sha(config_path),resolved_model,model_sha,manifest_sha,schema_sha,model_path,manifest_path,schema_path)
+    receipt_policy=ReceiptPreflightPolicy.from_prediction_config(config)
+    receipt_protocol=ManualPredictionCollectorProtocol(dirs["collector_requests"])
     captures=(dirs["current_evidence"],) if profile=="repository-v1" else (dirs["current_evidence"],dirs["capture_evidence_a"],dirs["capture_evidence_b"])
     worker=WorkerConfig(layout["pinned_python"] if layout is not None else Path(sys.executable),product_root,{"latest-research":choice},paths["canonical.sqlite3"],dirs["prediction_bundles"],captures,dirs["collector_requests"],paths["current_index.json"],dirs["current_evidence"],1.0,45.0,90.0,2.0)
     store=JobStore(paths["jobs.sqlite3"],separate_from=(paths["audit.sqlite3"],paths["canonical.sqlite3"]))
@@ -345,6 +380,9 @@ def _build_r3_services(app: Flask, profile: str) -> R3Services:
         matches=[row for row in view.races if row.get("race_id")==selected.get("race_id")]
         if len(matches)!=1:raise R3Rejected("RACE_ID_MISSING_OR_AMBIGUOUS")
         race=matches[0]; runners=tuple(_runner(row) for row in race.get("runners",()))
+        receipt_admission=preflight_race_receipt(race,protocol=receipt_protocol,current_time=now,policy=receipt_policy,completion_clock=clock)
+        if receipt_admission.state!=READY:
+            raise R3Rejected(PENDING_RECEIPT if receipt_admission.state==PENDING_RECEIPT else receipt_admission.reason or "PREFLIGHT_EXCLUDED")
         jump=race.get("jump_datetime",race.get("jump_timestamp"))
         provenance=OperationalIndexProvenance.from_verified_current_race_index(view)
         job_input=JobInput(str(race["race_id"]),str(jump),str(race["runner_set_sha256"]),model_id,resolved_model,model_sha,manifest_sha,schema_sha,config_id,choice.config_sha256,odds_source,runners,provenance)

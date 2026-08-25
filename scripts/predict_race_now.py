@@ -27,13 +27,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from race_collection.manual_prediction_collector_request import (  # noqa: E402
+from race_collection.manual_prediction_collector_request import (
     PROTOCOL_DIRECTORY,
     RECEIPT_READY,
     ManualPredictionCollectorProtocol,
     ProtocolRejected,
 )
-from scripts.predict_market_form_residual import (  # noqa: E402
+from scripts.predict_market_form_residual import (
     DEFAULT_EVIDENCE_ROOT,
     DEFAULT_RETAINED_EVIDENCE_ROOTS,
     FEATURE_GENERATOR_FILES,
@@ -43,40 +43,44 @@ from scripts.predict_market_form_residual import (  # noqa: E402
 from scripts.predict_market_form_residual import (
     ManualPredictionError as CaptureHandoffError,
 )
-from scripts.refresh_prejump_upcoming import (  # noqa: E402
+from scripts.refresh_prejump_upcoming import (
     _parse_race_jump_datetime,
     parse_current_time,
     stable_race_id,
     stable_race_id_variants,
     venue_exclusion_aliases,
 )
-from src.predictor.on_demand import (  # noqa: E402
+from src.predictor.on_demand import (
     BLOCKER_STAGE_BY_CODE,
     Dependencies,
     PredictionBlocked,
-    _job_id,
     _copy_exact,
+    _job_id,
     _write_canonical,
     build_prediction_bundle_manifest_v2,
-    bundle_manifest,
     canonical_bytes,
     create_bundle,
     load_config,
     market_only_prediction,
     prediction_bundle_index_entry,
     publish_prediction_bundle_index_entry,
-    receipt_from_handoff,
     resolve_model,
     seal_history_database,
     sealed_runner_set_sha256,
     sha256_bytes,
     sha256_file,
-    verify_bundle,
     validate_operational_index_provenance,
+    verify_bundle,
     write_exact_bytes,
 )
-from utils.csv_metadata import canonical_thedogs_race_identity  # noqa: E402
-from utils.csv_metadata import canonical_thedogs_venue_identity  # noqa: E402
+from src.predictor.receipt_preflight import (
+    ExactReceiptReady,
+    discover_exact_receipt_ready,
+)
+from utils.csv_metadata import (
+    canonical_thedogs_race_identity,
+    canonical_thedogs_venue_identity,
+)
 
 DEFAULT_DB = ROOT / "greyhound_racing_data.db"
 DEFAULT_OUTPUT_ROOT = ROOT / "artifacts/on_demand_prediction_runs"
@@ -492,29 +496,6 @@ def _sealed_result(
     }
 
 
-def _selected_protocol_chain(
-    protocol: ManualPredictionCollectorProtocol, handoff: Mapping[str, Any]
-) -> tuple[dict[str, str], dict[str, bytes], dict[str, Any]]:
-    """Bind the already-validated exact handoff to its immutable protocol chain."""
-    public={str(key):value for key,value in handoff.items() if not str(key).startswith("_")}
-    try:
-        if handoff.get("_scheduled_exact_receipt") is True:
-            chain, members, artifacts = protocol.snapshot_collector_exact_handoff(
-                public
-            )
-            coherent = {
-                **handoff,
-                "_report_bytes": artifacts["report"],
-                "_form_bytes": artifacts["form"],
-                "_sidecar_bytes": artifacts["sidecar"],
-            }
-            return chain, members, coherent
-        chain, members = protocol.snapshot_authenticated_handoff(public)
-        return chain, members, dict(handoff)
-    except ProtocolRejected as exc:
-        raise PredictionBlocked("COLLECTOR_PROTOCOL_INVALID",reason=exc.code) from exc
-
-
 def _seal_and_publish_v2(state: dict[str, Any], result: Mapping[str, Any]) -> None:
     bundle = Path(state["bundle"])
     _write_canonical(bundle / "result.json", result)
@@ -730,52 +711,40 @@ def _acquire_or_reuse(
     latency_budget: Any,
     receipt_max_age_seconds: int,
     fetch_timeout_seconds: float,
-) -> tuple[
-    Mapping[str, Any] | None,
-    list[dict[str, Any]],
-    datetime,
-]:
+) -> tuple[ExactReceiptReady, list[dict[str, Any]], datetime]:
     del db_path
     rejected_receipts: list[dict[str, Any]] = []
     if odds_source not in {"auto", "capture", "receipt"}:
         raise PredictionBlocked("ODDS_SOURCE_UNSUPPORTED", odds_source=odds_source)
+    protocol_race = _request_race(target, race_id=race_id, jump=jump)
+    protocol_race.pop("venue_slug")
+    expected_runners = [
+        {
+            "box_number": row["box_number"],
+            "dog_name": row["display_name"],
+            "identity": row["identity"],
+        }
+        for row in _request_expected_runners(target)
+    ]
     try:
-        manual_handoff = protocol.discover_exact_handoff(
-            race_id=race_id,
-            current_time=current_time,
-            max_age_seconds=receipt_max_age_seconds,
-        )
-        collector_handoff = protocol.discover_collector_exact_handoff(
-            race_id=race_id,
-            current_time=current_time,
-            max_age_seconds=receipt_max_age_seconds,
-        )
-        available_handoffs = [
-            value
-            for value in (manual_handoff, collector_handoff)
-            if value is not None
-        ]
-        handoff = (
-            max(
-                available_handoffs,
-                key=lambda value: datetime.fromisoformat(
-                    str(value["append_timestamp"])
-                ),
+        try:
+            ready = discover_exact_receipt_ready(
+                protocol=protocol,
+                race_id=race_id,
+                race_url=str(protocol_race["url"]),
+                jump=jump,
+                expected_runners=expected_runners,
+                current_time=current_time,
+                receipt_max_age_seconds=receipt_max_age_seconds,
+                minimum_prejump_margin_seconds=latency_budget.reuse_margin_seconds,
+                completion_clock=dependencies.now,
             )
-            if available_handoffs
-            else None
-        )
-        if handoff is not None:
-            if (jump - current_time).total_seconds() <= latency_budget.reuse_margin_seconds:
-                raise PredictionBlocked(
-                    "INSUFFICIENT_PREJUMP_MARGIN",
-                    phase="reuse_validation_and_scoring",
-                    remaining_seconds=(jump - current_time).total_seconds(),
-                    required_seconds=latency_budget.reuse_margin_seconds,
-                )
-            return handoff, rejected_receipts, current_time
-        if odds_source == "receipt":
-            raise PredictionBlocked("RECEIPT_UNAVAILABLE")
+        except PredictionBlocked as exc:
+            if exc.code != "RECEIPT_UNAVAILABLE" or odds_source == "receipt":
+                raise
+            ready = None
+        if ready is not None:
+            return ready, rejected_receipts, current_time
         remaining = (jump - current_time).total_seconds()
         if remaining <= latency_budget.capture_margin_seconds:
             raise PredictionBlocked(
@@ -784,18 +753,9 @@ def _acquire_or_reuse(
                 remaining_seconds=remaining,
                 required_seconds=latency_budget.capture_margin_seconds,
             )
-        protocol_race = _request_race(target, race_id=race_id, jump=jump)
-        protocol_race.pop("venue_slug")
         published = protocol.publish_request(
             race=protocol_race,
-            expected_runners=[
-                {
-                    "box_number": row["box_number"],
-                    "dog_name": row["display_name"],
-                    "identity": row["identity"],
-                }
-                for row in _request_expected_runners(target)
-            ],
+            expected_runners=expected_runners,
             created_at=current_time,
             expires_at=jump,
         )
@@ -870,34 +830,23 @@ def _acquire_or_reuse(
                     else {}
                 ),
             )
-        handoff = protocol.discover_exact_handoff(
+        ready = discover_exact_receipt_ready(
+            protocol=protocol,
             race_id=race_id,
+            race_url=str(protocol_race["url"]),
+            jump=jump,
+            expected_runners=expected_runners,
             current_time=response_observed_time,
-            max_age_seconds=receipt_max_age_seconds,
-        )
-        if handoff is None:
-            raise PredictionBlocked(
-                "RECEIPT_INVALID",
-                reason="sealed_response_receipt_unavailable",
-            )
-        normalized, _, _, _ = receipt_from_handoff(
-            handoff,
-            current_time=response_observed_time,
-            max_age_seconds=receipt_max_age_seconds,
+            receipt_max_age_seconds=receipt_max_age_seconds,
+            minimum_prejump_margin_seconds=latency_budget.reuse_margin_seconds,
+            completion_clock=dependencies.now,
+            margin_phase="post_capture_validation_and_scoring",
         )
         protocol.verify_ready_handoff(
             consumed["receipt"],
-            handoff=handoff,
-            normalized_receipt=normalized,
+            handoff=ready.handoff,
+            normalized_receipt=ready.receipt,
         )
-        remaining = (jump - response_observed_time).total_seconds()
-        if remaining <= latency_budget.reuse_margin_seconds:
-            raise PredictionBlocked(
-                "INSUFFICIENT_PREJUMP_MARGIN",
-                phase="post_capture_validation_and_scoring",
-                remaining_seconds=remaining,
-                required_seconds=latency_budget.reuse_margin_seconds,
-            )
     except PredictionBlocked:
         raise
     except ProtocolRejected as exc:
@@ -906,7 +855,7 @@ def _acquire_or_reuse(
             reason=exc.code,
             **exc.details,
         ) from exc
-    return handoff, rejected_receipts, response_observed_time
+    return ready, rejected_receipts, response_observed_time
 
 
 def _run_prediction(
@@ -1039,11 +988,7 @@ def _run_prediction(
     protocol=ManualPredictionCollectorProtocol(
             Path(getattr(args,"collector_request_root",DEFAULT_COLLECTOR_REQUEST_ROOT))
         )
-    (
-        handoff,
-        rejected_receipts,
-        receipt_validation_time,
-    ) = _acquire_or_reuse(
+    ready_receipt, rejected_receipts, _ = _acquire_or_reuse(
         dependencies,
         protocol=protocol,
         target=target,
@@ -1059,35 +1004,23 @@ def _run_prediction(
             ),
             fetch_timeout_seconds=float(args.fetch_timeout_seconds),
         )
-    if handoff is not None:
-        state["protocol_chain"],protocol_members,handoff=_selected_protocol_chain(protocol,handoff)
-        for member,raw in protocol_members.items():write_exact_bytes(bundle/"protocol"/(member+".json"),raw)
-        receipt, capture_raw, form_raw, sidecar_raw = receipt_from_handoff(
-            handoff,
-            current_time=receipt_validation_time,
-            max_age_seconds=int(config["bundle"]["receipt_max_age_seconds"]),
-        )
-        if (
-            receipt.get("race_id") != race_id
-            or (
-                handoff.get("schema_version")
-                == "on_demand_verified_collector_capture_v2"
-                and receipt.get("runner_set_sha256")
-                != handoff.get("runner_set_sha256")
-            )
-        ):
-            raise PredictionBlocked("RECEIPT_INVALID")
-        form_name = str(handoff.get("_form_name") or "form.csv")
-        if Path(form_name).name != form_name:
-            raise PredictionBlocked("RECEIPT_INVALID")
-        form_csv = bundle / "source" / form_name
-        sidecar = form_csv.with_name(form_csv.name + ".metadata.json")
-        capture_path = bundle / "source" / "capture.json"
-        write_exact_bytes(form_csv, form_raw)
-        write_exact_bytes(sidecar, sidecar_raw)
-        write_exact_bytes(capture_path, capture_raw)
-    else:
-        raise PredictionBlocked("RECEIPT_UNAVAILABLE")
+    handoff = ready_receipt.handoff
+    receipt = ready_receipt.receipt
+    state["protocol_chain"] = ready_receipt.protocol_chain
+    for member, raw in ready_receipt.protocol_members.items():
+        write_exact_bytes(bundle / "protocol" / (member + ".json"), raw)
+    capture_raw = bytes(handoff["_report_bytes"])
+    form_raw = bytes(handoff["_form_bytes"])
+    sidecar_raw = bytes(handoff["_sidecar_bytes"])
+    form_name = str(handoff.get("_form_name") or "form.csv")
+    if Path(form_name).name != form_name:
+        raise PredictionBlocked("RECEIPT_INVALID")
+    form_csv = bundle / "source" / form_name
+    sidecar = form_csv.with_name(form_csv.name + ".metadata.json")
+    capture_path = bundle / "source" / "capture.json"
+    write_exact_bytes(form_csv, form_raw)
+    write_exact_bytes(sidecar, sidecar_raw)
+    write_exact_bytes(capture_path, capture_raw)
 
     try:
         odds_captured_at = datetime.fromisoformat(str(receipt["captured_at"]))

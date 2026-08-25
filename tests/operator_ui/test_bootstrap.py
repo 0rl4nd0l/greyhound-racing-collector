@@ -1,27 +1,37 @@
-import pytest
-import shutil
 import hashlib
+import json
 import os
+import shutil
 import stat
 import tempfile
 import threading
-import json
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
+
+import pytest
 from flask import Flask
 from werkzeug.security import generate_password_hash
 
-from src.operator_ui.api import install_level_1_api, register_level_1_provider
-from src.operator_ui.api import _validate_envelope
-from src.operator_ui.bootstrap import CONFIG_KEY, R3_PROFILE_KEY, bind_configured_live_evidence, bind_configured_r3
+import src.operator_ui.bootstrap as bootstrap_module
+from race_collection.synchronous_manual_capture import VerifiedCurrentRaceIndex
+from scripts.forward_prediction_journal import PENDING_RECEIPT, READY, ReceiptAdmission
+from src.operator_ui.api import (
+    _validate_envelope,
+    install_level_1_api,
+    register_level_1_provider,
+)
+from src.operator_ui.bootstrap import (
+    CONFIG_KEY,
+    R3_PROFILE_KEY,
+    bind_configured_live_evidence,
+    bind_configured_r3,
+)
 from src.operator_ui.foundation import OperatorEvidenceReader
+from src.operator_ui.job_store import Phase
 from src.operator_ui.live_adapters import LiveEvidenceAdapters
 from src.operator_ui.security import install_connected_mode
-import src.operator_ui.bootstrap as bootstrap_module
 from src.predictor.on_demand import resolve_model
-from race_collection.synchronous_manual_capture import VerifiedCurrentRaceIndex
-from src.operator_ui.job_store import Phase
 
 
 @pytest.fixture
@@ -369,6 +379,11 @@ def test_finite_testing_fixture_profile_builds_real_repository_composition(tmp_p
           "runners":[{"box_number":1,"display_name":"ALPHA","identity":"alpha","source_native_runner_id":"dog-1"}]}
     view=VerifiedCurrentRaceIndex("collector_current_race_index_v2","run","2026-08-01T00:00:00Z",digest,b"{}",(race,),"source.json",digest,digest,digest,digest)
     monkeypatch.setattr(bootstrap_module,"bounded_current_race_index",lambda **_:view)
+    receipt_state={"value":PENDING_RECEIPT}
+    def receipt_preflight(race,**_):
+        state=receipt_state["value"]
+        return ReceiptAdmission(str(race["race_id"]),str(race["jump_datetime"]),state,"RECEIPT_UNAVAILABLE" if state==PENDING_RECEIPT else None)
+    monkeypatch.setattr(bootstrap_module,"preflight_race_receipt",receipt_preflight)
     runner_completed = threading.Event()
     def terminal_runner(store,job_id,_worker,*,now,confirm_audit):
         job,attempt=store.claim_attempt(job_id,now=now(),confirm_audit=confirm_audit)
@@ -397,7 +412,13 @@ def test_finite_testing_fixture_profile_builds_real_repository_composition(tmp_p
     token=client.post("/operator-ui/login",base_url="https://localhost",data={"username":"viewer","password":"correct horse","csrf_token":token}).get_json()["csrf_token"]
     rejected=client.post("/operator-ui/api/v1/prediction-jobs",base_url="https://localhost",headers={"X-CSRF-Token":token},json={"race_id":"race-fixture","model_id":"latest-research","config_id":"manual-default","odds_source_id":"auto","idempotency_key":"aaaaaaaa-1234-4123-8123-123456789abc"})
     assert rejected.status_code==409 and rejected.get_json()["classification"]=="SELECTION_NOT_ALLOWLISTED"
-    response=client.post("/operator-ui/api/v1/prediction-jobs",base_url="https://localhost",headers={"X-CSRF-Token":token},json={"race_id":"race-fixture","model_id":"latest-research","config_id":"manual-default","odds_source_id":"receipt","idempotency_key":"12345678-1234-4123-8123-123456789abc"})
+    request={"race_id":"race-fixture","model_id":"latest-research","config_id":"manual-default","odds_source_id":"receipt","idempotency_key":"12345678-1234-4123-8123-123456789abc"}
+    pending=client.post("/operator-ui/api/v1/prediction-jobs",base_url="https://localhost",headers={"X-CSRF-Token":token},json=request)
+    assert pending.status_code==409 and pending.get_json()["classification"]==PENDING_RECEIPT
+    assert services.job_store.find_by_idempotency(actor_identity="viewer",operation="manual_prediction",idempotency_key=request["idempotency_key"]) is None
+    assert not runner_completed.is_set()
+    receipt_state["value"]=READY
+    response=client.post("/operator-ui/api/v1/prediction-jobs",base_url="https://localhost",headers={"X-CSRF-Token":token},json=request)
     assert response.status_code==202 and response.get_json()["phase"]=="WAITING_FOR_CLAIM",response.get_json()
     job_id=response.get_json()["job_id"]
     assert runner_completed.wait(timeout=30), "terminal runner did not complete within 30 seconds"

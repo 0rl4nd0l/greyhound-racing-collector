@@ -6,8 +6,18 @@ from datetime import datetime, timezone
 from flask import Flask
 from werkzeug.security import generate_password_hash
 
-from src.operator_ui.job_store import JobInput, JobStore, JobStoreError, OperationalIndexProvenance, Phase
-from src.operator_ui.r3_api import R3Rejected, R3Services, ResolvedSubmission, install_r3_api
+from src.operator_ui.job_store import (
+    JobInput,
+    JobStore,
+    OperationalIndexProvenance,
+    Phase,
+)
+from src.operator_ui.r3_api import (
+    R3Rejected,
+    R3Services,
+    ResolvedSubmission,
+    install_r3_api,
+)
 from src.operator_ui.security import install_connected_mode
 
 NOW = datetime(2026, 8, 1, tzinfo=timezone.utc)
@@ -76,6 +86,18 @@ def test_level2_csrf_exact_schema_idempotency_poll_and_actor_isolation(tmp_path)
     with client.session_transaction() as session:
         session["operator_actor"] = "different-actor"
     assert client.get(f"/operator-ui/api/v1/prediction-jobs/{job_id}", base_url="https://localhost").status_code in {401, 404}
+    assert store.verify()
+
+
+def test_different_key_cannot_retry_race_with_durable_job(tmp_path):
+    app, store, launched = application(tmp_path)
+    client = app.test_client(); token = login(client)
+    first = client.post("/operator-ui/api/v1/prediction-jobs",base_url="https://localhost",json=body(),headers={"X-CSRF-Token":token})
+    retry = client.post("/operator-ui/api/v1/prediction-jobs",base_url="https://localhost",json=body(idempotency_key="aaaaaaaa-1234-4123-8123-123456789abc"),headers={"X-CSRF-Token":token})
+    assert first.status_code == 202
+    assert retry.status_code == 409
+    assert retry.get_json()["classification"] == "RACE_ALREADY_RECORDED"
+    assert len(launched) == 1
     assert store.verify()
 
 

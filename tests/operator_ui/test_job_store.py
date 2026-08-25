@@ -10,13 +10,22 @@ from datetime import datetime, timedelta, timezone
 from threading import Event
 
 import pytest
-from src.predictor.on_demand import BLOCKER_STAGE_BY_CODE
 
 from src.operator_ui.job_store import (
-    AttemptAlreadyClaimed, IdempotencyConflict, IllegalTransition, JobInput,
-    JobStore, JobStoreError, OperationalIndexProvenance, Phase, VerifierAuthorizationError,
-    canonical, resolve_audit_confirmation,
+    AttemptAlreadyClaimed,
+    IdempotencyConflict,
+    IllegalTransition,
+    JobInput,
+    JobStore,
+    JobStoreError,
+    OperationalIndexProvenance,
+    Phase,
+    RaceAlreadyRecorded,
+    VerifierAuthorizationError,
+    canonical,
+    resolve_audit_confirmation,
 )
+from src.predictor.on_demand import BLOCKER_STAGE_BY_CODE
 
 NOW = datetime(2026, 8, 1, tzinfo=timezone.utc)
 H = hashlib.sha256(b"identity").hexdigest()
@@ -157,7 +166,25 @@ def test_idempotency_duplicate_conflict_cross_actor_and_raw_key_absent(tmp_path)
     assert create(value).job_id == first.job_id
     with pytest.raises(IdempotencyConflict):
         value.create(actor_identity="operator", actor_level=2, operation="manual_prediction", idempotency_key="idempotency-key-1234", job_input=inputs("race-6"), now=NOW, confirm_audit=CONFIRM)
-    assert create(value, actor="other").job_id != first.job_id
+    other=value.create(actor_identity="other",actor_level=2,operation="manual_prediction",idempotency_key="idempotency-key-1234",job_input=inputs("race-7"),now=NOW,confirm_audit=CONFIRM)
+    assert other.job_id != first.job_id
+
+
+def test_different_idempotency_key_cannot_allocate_second_job_for_same_race(tmp_path):
+    value = store(tmp_path)
+    first = create(value)
+    with pytest.raises(RaceAlreadyRecorded):
+        value.create(
+            actor_identity="operator",
+            actor_level=2,
+            operation="manual_prediction",
+            idempotency_key="different-idempotency-key",
+            job_input=inputs(),
+            now=NOW,
+            confirm_audit=CONFIRM,
+        )
+    assert value.get(first.job_id).input.race_id == inputs().race_id
+    assert value.verify()
     assert b"idempotency-key-1234" not in value.path.read_bytes()
 
 

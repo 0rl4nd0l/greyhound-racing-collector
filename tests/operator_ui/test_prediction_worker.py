@@ -13,6 +13,14 @@ from src.operator_ui.prediction_worker import MAX_STDERR_BYTES,MAX_STDOUT_BYTES,
 NOW=datetime(2026,8,1,tzinfo=timezone.utc); H=hashlib.sha256(b"x").hexdigest(); AUDIT=hashlib.sha256(b"audit").hexdigest(); CONFIRM=lambda intent:resolve_audit_confirmation(intent,AUDIT)
 RACE={"race_number":5,"venue":"RICH","race_date":"2026-08-01","url":"https://www.thedogs.com.au/racing/richmond/2026-08-01/5"}; RACE_ID=stable_race_id(RACE)
 
+@pytest.fixture(autouse=True)
+def exact_receipt_ready(monkeypatch):
+    """Keep legacy worker tests focused; exact receipt semantics have their own suite."""
+    monkeypatch.setattr(
+        "src.operator_ui.prediction_worker.validate_receipt_before_claim",
+        lambda *_args, **_kwargs: None,
+    )
+
 def provenance(**changes):
     values={"schema":"operator_ui_operational_index_admission_v1","index_schema_version":"collector_current_race_index_v2","run_id":"run","packet_sha256":H,"source_refresh_sha256":H,"publication_sha256":H,"state_sha256":H,"report_sha256":H}
     values.update(changes); return OperationalIndexProvenance(**values)
@@ -113,6 +121,16 @@ def test_index_turnover_after_admission_fails_before_claim_without_rewriting_pro
     persisted=store.get(job.job_id)
     assert not persisted.attempt_claimed
     assert persisted.input.operational_index_provenance==admitted
+
+def test_receipt_is_revalidated_immediately_before_claim(tmp_path,monkeypatch):
+    cfg,store,job=setup(tmp_path); calls=[]
+    def pending(*_args,**_kwargs): raise WorkerRejected("PENDING_RECEIPT")
+    monkeypatch.setattr("src.operator_ui.prediction_worker.validate_receipt_before_claim",pending)
+    with pytest.raises(WorkerRejected,match="PENDING_RECEIPT"):
+        run_once(store,job.job_id,cfg,now=lambda:NOW,confirm_audit=CONFIRM,popen=lambda *a,**k:calls.append(1),reader=lambda **_:view())
+    persisted=store.get(job.job_id)
+    assert persisted.phase is Phase.WAITING_FOR_CLAIM
+    assert not persisted.attempt_claimed and not calls
 
 def test_identity_change_before_claim_prevents_launch(tmp_path):
     cfg,store,job=setup(tmp_path); cfg.choices["latest-research"].model_path.write_bytes(b"changed"); calls=[]

@@ -1,19 +1,27 @@
 """Narrow Level-2 submission and reconnect API for one exact prediction job."""
 from __future__ import annotations
 
-import hashlib
-import json
 import threading
 import time
 import uuid
-from dataclasses import replace
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
-from typing import Any, Callable, Mapping
+from pathlib import Path
+from typing import Any
 
 from flask import Flask, jsonify, request, session
 
+from src.predictor.on_demand import (
+    PredictionBlocked,
+    VerifiedPredictionBundle,
+    VerifiedPredictionBundleIndex,
+    verify_indexed_prediction_bundle,
+    verify_prediction_bundle_index,
+)
+
 from .job_store import (
+    TERMINAL_PHASES,
     IdempotencyConflict,
     IllegalTransition,
     Job,
@@ -21,12 +29,10 @@ from .job_store import (
     JobStore,
     JobStoreError,
     Phase,
-    TERMINAL_PHASES,
+    RaceAlreadyRecorded,
     resolve_audit_confirmation,
 )
 from .security import AuditUnavailable, OperationAuditEvent
-from pathlib import Path
-from src.predictor.on_demand import PredictionBlocked, VerifiedPredictionBundle, VerifiedPredictionBundleIndex, verify_indexed_prediction_bundle, verify_prediction_bundle_index
 
 API_PREFIX = "/operator-ui/api/v1"
 SUBMISSION_FIELDS = frozenset(
@@ -343,6 +349,8 @@ def install_r3_api(app: Flask, services: R3Services | None = None) -> bool:
             return jsonify(_job_payload(services.job_store, job, services.read_verified_result)), 202 if newly_observed else 200
         except IdempotencyConflict:
             return response_error("IDEMPOTENCY_CONFLICT", 409)
+        except RaceAlreadyRecorded:
+            return response_error("RACE_ALREADY_RECORDED", 409)
         except R3Rejected as exc:
             return response_error(exc.classification, exc.status_code)
         except (AuditUnavailable, JobStoreError):
