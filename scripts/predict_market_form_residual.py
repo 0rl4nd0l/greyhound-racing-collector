@@ -50,7 +50,7 @@ from src.predictor.scoring_parity import (  # noqa: E402
     build_scoring_input,
     parity_binding,
 )
-from config.venue_mapping import normalize_venue  # noqa: E402
+from config.venue_mapping import VENUE_MAPPING, normalize_venue  # noqa: E402
 from utils.csv_metadata import (  # noqa: E402
     THEDOGS_EXACT_RACE_PAGE_GRADE_SOURCE,
     THEDOGS_MEETING_CARD_GRADE_SOURCE,
@@ -310,6 +310,7 @@ EARLY_RESIDUAL_PARITY_KEYS = frozenset(
     }
 )
 VENUE_CODE_PATTERN = r"[A-Z0-9_]+(?:-[A-Z0-9_]+)*"
+NON_RACING_VENUE_IDENTITIES = frozenset({"UNKNOWN", "TEST_VEN", "RACE"})
 FORBIDDEN_EVIDENCE_PATH_MARKERS = frozenset({"form_only_v1", "pr51"})
 # Finite union of the exact GRADE_MAP and GRADE_VOCAB_MAP contracts, their
 # canonical values, and source-observed exact labels covered by the scorer
@@ -674,6 +675,71 @@ def _race_id_parts(race_id: str) -> tuple[int, str, date]:
         int(match.group(1)),
         match.group(2).strip().upper(),
         _parse_date(match.group(3), "discovery_race_date"),
+    )
+
+
+def _configured_venue_identity(value: Any) -> str | None:
+    """Resolve only venue spellings proved by the checked-in canonical map."""
+
+    if not isinstance(value, str):
+        return None
+    raw = value.strip().upper()
+    if not raw or re.fullmatch(VENUE_CODE_PATTERN, raw) is None:
+        return None
+    candidates = {
+        raw,
+        raw.replace("-", " "),
+        raw.replace("-", "_"),
+        raw.replace("_", " "),
+        raw.replace("_", "-"),
+    }
+    normalized = {
+        normalize_venue(candidate)
+        for candidate in candidates
+        if candidate in VENUE_MAPPING
+    }
+    if len(normalized) != 1:
+        return None
+    configured = next(iter(normalized))
+    canonical = canonical_thedogs_venue_identity(configured)
+    if (
+        configured in NON_RACING_VENUE_IDENTITIES
+        or canonical in NON_RACING_VENUE_IDENTITIES
+    ):
+        return None
+    return canonical
+
+
+def _race_identity_equivalent(
+    caller_race_id: Any,
+    evidence_race_id: Any,
+    *,
+    source_url: Any,
+) -> bool:
+    """Bind caller and sealed-source aliases by exact structured identity."""
+
+    try:
+        caller_number, caller_venue, caller_date = _race_id_parts(caller_race_id)
+        evidence_number, evidence_venue, evidence_date = _race_id_parts(
+            evidence_race_id
+        )
+    except ManualPredictionError:
+        return False
+    source_identity = canonical_thedogs_race_identity(source_url)
+    if source_identity is None:
+        return False
+    venues = (
+        _configured_venue_identity(caller_venue),
+        _configured_venue_identity(evidence_venue),
+        _configured_venue_identity(source_identity["venue_slug"]),
+    )
+    return bool(
+        all(venue is not None for venue in venues)
+        and len(set(venues)) == 1
+        and caller_date == evidence_date
+        and caller_date.isoformat() == source_identity["race_date"]
+        and caller_number == evidence_number
+        and caller_number == source_identity["race_number"]
     )
 
 
@@ -1723,7 +1789,12 @@ def _feature_packet(
     selected = [
         row
         for row in rows
-        if isinstance(row, Mapping) and row.get("race_id") == race_id
+        if isinstance(row, Mapping)
+        and _race_identity_equivalent(
+            race_id,
+            row.get("race_id"),
+            source_url=context["source_url"],
+        )
     ]
     if len(selected) < 2:
         raise ManualPredictionError("feature_rows_for_race_missing")
@@ -1766,7 +1837,10 @@ def _feature_packet(
             != context["target_race_date"]
         ):
             raise ManualPredictionError("feature_row_race_date_mismatch")
-        if str(row.get("venue") or "").strip().upper() != context["target_venue"]:
+        if (
+            _configured_venue_identity(row.get("venue"))
+            != _configured_venue_identity(context["target_venue"])
+        ):
             raise ManualPredictionError("feature_row_venue_mismatch")
         if (
             _integer(row.get("race_number"), "feature_row_race_number", minimum=1)
@@ -1833,9 +1907,10 @@ def discover_race_artifacts(
         raise ManualPredictionError("pr51_form_only_v1_evidence_forbidden")
     race_number, venue_query = _race_query_parts(race_query)
     exact_identity = None
+    exact_venue = None
     if exact_race_id is not None:
         exact_identity = str(exact_race_id).strip()
-        _race_id_parts(exact_identity)
+        _, exact_venue, _ = _race_id_parts(exact_identity)
 
     feature_candidates: list[dict[str, Any]] = []
     seen_feature_packets: set[Path] = set()
@@ -1881,8 +1956,6 @@ def discover_race_artifacts(
                 }
             )
             for race_id in race_ids:
-                if exact_identity is not None and race_id != exact_identity:
-                    continue
                 try:
                     candidate_number, candidate_venue, candidate_date = _race_id_parts(
                         race_id
@@ -1896,7 +1969,23 @@ def discover_race_artifacts(
                     for row in rows
                     if isinstance(row, Mapping) and row.get("race_id") == race_id
                 ]
+                source_urls = {
+                    str(row.get("target_metadata_source_url") or "").strip()
+                    for row in selected_rows
+                }
+                source_urls.discard("")
+                if exact_identity is not None and (
+                    len(source_urls) != 1
+                    or not _race_identity_equivalent(
+                        exact_identity,
+                        race_id,
+                        source_url=next(iter(source_urls), None),
+                    )
+                ):
+                    continue
                 aliases: list[str] = []
+                if exact_venue is not None:
+                    aliases.append(exact_venue)
                 for row in selected_rows:
                     row_venue = str(row.get("venue") or "")
                     if _runner_token(row_venue) != _runner_token(candidate_venue):
@@ -2009,7 +2098,7 @@ def discover_race_artifacts(
     if len(selected_features) != 1:
         raise ManualPredictionError("race_feature_packet_ambiguous")
     selected_feature = selected_features[0]
-    race_id = str(selected_feature["race_id"])
+    race_id = exact_identity or str(selected_feature["race_id"])
 
     capture_candidates: list[dict[str, Any]] = []
     seen_capture_reports: set[Path] = set()
@@ -2072,6 +2161,7 @@ def discover_race_artifacts(
 
     return {
         **selected_feature,
+        "race_id": race_id,
         "capture_path": selected_captures[0]["capture_path"],
     }
 
@@ -2605,7 +2695,11 @@ def score_from_artifacts(
         form_sha=form_sha,
     )
     context = _sidecar_context(sidecar)
-    if race_id != context["expected_race_id"]:
+    if not _race_identity_equivalent(
+        race_id,
+        context["expected_race_id"],
+        source_url=context["source_url"],
+    ):
         raise ManualPredictionError("race_id_sidecar_mismatch")
     implementation = _json_object(implementation_raw, "implementation_manifest")
     feature_by_box, feature_time, feature_generated_time = _feature_packet(

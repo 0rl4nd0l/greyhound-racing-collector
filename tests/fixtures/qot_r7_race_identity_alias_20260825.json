@@ -1,0 +1,94 @@
+{
+  "caller_race_id": "Race 7 - QOT - 2026-08-25",
+  "source_race_id": "Race 7 - LADBROKES-Q1-LAKESIDE - 2026-08-25",
+  "source_url": "https://www.thedogs.com.au/racing/ladbrokes-q1-lakeside/2026-08-25/7/garrard-s-horse-and-hound?trial=false",
+  "race_date": "2026-08-25",
+  "race_number": 7,
+  "caller_venue": "QOT",
+  "source_venue": "LADBROKES-Q1-LAKESIDE",
+  "venue_slug": "ladbrokes-q1-lakeside",
+  "runners": [
+    {
+      "box_number": 1,
+      "display_name": "Haras Mosaic",
+      "capture_name": "Hara's Mosaic",
+      "identity": "HARASMOSAIC",
+      "source_native_runner_id": "7582938",
+      "odds_decimal": 4.2,
+      "features": [5, 9, 3.6666666666666665, 1, 0.2, 0.4, 6.5, 0.2, 0.4, 3.2, 0, 0, 0, 0, 3, 0]
+    },
+    {
+      "box_number": 2,
+      "display_name": "Big Grin",
+      "capture_name": "Big Grin",
+      "identity": "BIGGRIN",
+      "source_native_runner_id": "7582939",
+      "odds_decimal": 6.0,
+      "features": [5, 7, 3.6666666666666665, 2, 0, 0.6, 4.25, 0, 0.6, 3.4, 0, 0, 5, 0, 5, 0]
+    },
+    {
+      "box_number": 3,
+      "display_name": "Equal Impact",
+      "capture_name": "Equal Impact",
+      "identity": "EQUALIMPACT",
+      "source_native_runner_id": "7582940",
+      "odds_decimal": 3.3,
+      "features": [5, 7, 3.3333333333333335, 1, 0.2, 0.6, 3.15, 0.2, 0.6, 3.4, 0, 0, 1, 0, 2, 0]
+    },
+    {
+      "box_number": 4,
+      "display_name": "Flaming Valora",
+      "capture_name": "Flaming Valora",
+      "identity": "FLAMINGVALORA",
+      "source_native_runner_id": "7582941",
+      "odds_decimal": 41.0,
+      "features": [5, 7, 4, 3, 0, 0.4, 6.1, 0, 0.4, 4, 0, 0, 5, 0, 5, 0]
+    },
+    {
+      "box_number": 5,
+      "display_name": "Cyclone Saskia",
+      "capture_name": "Cyclone Saskia",
+      "identity": "CYCLONESASKIA",
+      "source_native_runner_id": "7582942",
+      "odds_decimal": 46.0,
+      "features": [5, 7, 4, 2, 0, 0.4, 7.25, 0, 0.4, 4.8, 0, 0, 0, 0, 5, 0]
+    },
+    {
+      "box_number": 6,
+      "display_name": "Elusive Suzie",
+      "capture_name": "Elusive Suzie",
+      "identity": "ELUSIVESUZIE",
+      "source_native_runner_id": "7582943",
+      "odds_decimal": 41.0,
+      "features": [2, 11, 3, 1, 0.5, 0.5, 6.25, 0.5, 0.5, 3, 0, 0, 0, 0, 0, 0]
+    },
+    {
+      "box_number": 7,
+      "display_name": "Lady Shazam",
+      "capture_name": "Lady Shazam",
+      "identity": "LADYSHAZAM",
+      "source_native_runner_id": "7582944",
+      "odds_decimal": 41.0,
+      "features": [5, 7, 6.333333333333333, 3, 0, 0.2, 8.7, 0, 0.2, 5.4, 0, 0, 5, 0, 5, 0]
+    },
+    {
+      "box_number": 8,
+      "display_name": "Get Ahead Tina",
+      "capture_name": "Get Ahead Tina",
+      "identity": "GETAHEADTINA",
+      "source_native_runner_id": "7582945",
+      "odds_decimal": 2.0,
+      "features": [3, 21, 3.6666666666666665, 1, 0.3333333333333333, 0.6666666666666666, 18.083333333333332, 0.3333333333333333, 0.6666666666666666, 3.6666666666666665, 0, 0, 0, 0, 1, 0]
+    }
+  ],
+  "runner_set_sha256": "0fccb99f24f2d9c6ce9fbb39ec37ba6d9c8d49935ad30aec4871a25d064adc95",
+  "preserved_input_sha256": {
+    "request.json": "0c4e5477ae5a07c0cf7762769fffca946907991a28fdcdd439cbe367811207d0",
+    "source/form.csv": "be242572be21e73b5bde88c5fba046ab02cb350bb8b0a425ecc4e0cb288ddea4",
+    "source/sidecar.metadata.json": "6982d1c63ebf56e2dbd8f74adebf951e57ac71c709476212e29d944eb1dbdaa6",
+    "source/capture.json": "d3d22d244ed27a558cdf81150c006bca7769f922ba85536a0de882397794c959",
+    "features/shadow_feature_rows.json": "e9ee8f7d94936a7d20f92b7bc8314cfa4ff4b88a1029085e1971df72a31eea94",
+    "features/shadow_manifest.json": "56ce5b94ea4d2a553cfa199f31337389348d9e1f245f7acfabd50434e177cab7",
+    "features/implementation_file_manifest.json": "29267243a1095f3e8fdf3ef54841d89b99bb6ae1f982e4d46be163e2a508c83d"
+  }
+}
