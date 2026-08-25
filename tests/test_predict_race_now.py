@@ -799,6 +799,22 @@ def test_fixture_e2e_reuses_receipt_seals_features_selects_model_and_bundles(
     assert json.loads((bundle / "result.json").read_bytes()) == result
 
 
+def test_operator_job_seals_exact_admission_operational_index_provenance(tmp_path:Path):
+    provenance={
+        "schema":"operator_ui_operational_index_admission_v1",
+        "index_schema_version":"collector_current_race_index_v2",
+        "run_id":"collector-run-20260801T000000Z",
+        "packet_sha256":"1"*64,"source_refresh_sha256":"2"*64,
+        "publication_sha256":"3"*64,"state_sha256":"4"*64,"report_sha256":"5"*64,
+    }
+    result=run_prediction(args(tmp_path,job_id="job_"+"1"*32,operational_index_provenance=json.dumps(provenance,sort_keys=True,separators=(",",":"))),dependencies())
+    index=json.loads((tmp_path/"bundles/prediction_bundle_index_v1.json").read_bytes())
+    request=json.loads((tmp_path/"bundles"/index["entries"][0]["directory"]/"request.json").read_bytes())
+    assert result["status"]=="PREDICTION_READY"
+    assert request["schema_version"]=="on_demand_prediction_request_v2"
+    assert request["operational_index_provenance"]==provenance
+
+
 def scheduled_exact_receipt(
     tmp_path: Path,
 ) -> tuple[

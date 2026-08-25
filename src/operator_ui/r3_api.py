@@ -123,6 +123,9 @@ def _verified_result(job: Job, value: Any, events: list[Mapping[str,Any]] | None
     request_value=value.request
     if not isinstance(request_value,Mapping):
         return None
+    provenance=job.input.operational_index_provenance
+    if provenance is None or request_value.get("schema_version")!="on_demand_prediction_request_v2" or request_value.get("operational_index_provenance")!=provenance.fields():
+        return None
     if result.get("status") != "PREDICTION_READY" or entry.get("status") != "PREDICTION_READY":
         return None
     chain=result.get("evidence",{}).get("protocol_chain"); cutoff=result.get("evidence",{}).get("authenticated_cutoff")
@@ -227,6 +230,11 @@ def install_r3_api(app: Flask, services: R3Services | None = None) -> bool:
         operation = str(intent["operation"])
         proposed = intent["proposed_event"]
         input_value = intent["input"]
+        provenance_value=input_value.get("operational_index_provenance")
+        provenance_hashes=(
+            {str(value) for name,value in provenance_value.items() if name.endswith("sha256")}
+            if isinstance(provenance_value,Mapping) else set()
+        )
         event = OperationAuditEvent(
             event_id=str(uuid.uuid4()), event_time_utc=services.clock().astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z"),
             actor_identity=str(intent["actor_identity"]), actor_level=2,
@@ -238,7 +246,10 @@ def install_r3_api(app: Flask, services: R3Services | None = None) -> bool:
             config_id=str(input_value["config_id"]), config_sha256=str(input_value["config_sha256"]),
             input_identity_sha256=str(intent["input_identity_sha256"]), prior_state=str(intent["prior_state"]),
             new_state=str(proposed["phase"]), status=str(proposed["status"]), reason=str(proposed["reason"]),
-            reference_hashes=tuple(sorted({str(input_value["model_manifest_sha256"]), str(input_value["model_schema_sha256"])})),
+            reference_hashes=tuple(sorted({
+                str(input_value["model_manifest_sha256"]),str(input_value["model_schema_sha256"]),
+                *provenance_hashes,
+            })),
         )
         audit_hash = audit.append_operation_and_confirm(event)
         return resolve_audit_confirmation(intent, audit_hash)
@@ -279,19 +290,37 @@ def install_r3_api(app: Flask, services: R3Services | None = None) -> bool:
         session_identifier = str(session["operator_session_id"])
         confirm_audit = lambda intent: confirm(intent, session_identifier)
         try:
-            resolved = services.resolve_submission(selected, now)
-            if type(resolved) is not ResolvedSubmission or type(resolved.job_input) is not JobInput or not resolved.ordered_runners:
-                raise R3Rejected("RACE_EVIDENCE_INVALID")
-            ordered_runners = tuple(dict(runner) for runner in resolved.ordered_runners)
-            if resolved.job_input.ordered_runners:
-                if resolved.job_input.fields()["ordered_runners"] != [dict(runner) for runner in ordered_runners]:
-                    raise R3Rejected("RUNNER_SET_BINDING_MISMATCH")
-                job_input = resolved.job_input
+            persisted = services.job_store.find_by_idempotency(
+                actor_identity=identity, operation="manual_prediction",
+                idempotency_key=selected["idempotency_key"],
+            )
+            persisted_selection_matches = persisted is not None and (
+                persisted.input.race_id == selected["race_id"]
+                and persisted.input.model_selector == selected["model_id"]
+                and persisted.input.config_id == selected["config_id"]
+                and persisted.input.odds_source == selected["odds_source_id"]
+            )
+            if persisted_selection_matches:
+                if persisted.input.operational_index_provenance is None:
+                    raise R3Rejected("RACE_EVIDENCE_INVALID")
+                job = persisted
+                newly_observed = False
             else:
-                job_input = replace(resolved.job_input, ordered_runners=ordered_runners)
-            job = services.job_store.create(actor_identity=identity, actor_level=2, operation="manual_prediction",
-                idempotency_key=selected["idempotency_key"], job_input=job_input, now=now, confirm_audit=confirm_audit)
-            newly_observed = job.phase is Phase.SUBMITTED
+                resolved = services.resolve_submission(selected, now)
+                if type(resolved) is not ResolvedSubmission or type(resolved.job_input) is not JobInput or not resolved.ordered_runners:
+                    raise R3Rejected("RACE_EVIDENCE_INVALID")
+                if resolved.job_input.operational_index_provenance is None:
+                    raise R3Rejected("RACE_EVIDENCE_INVALID")
+                ordered_runners = tuple(dict(runner) for runner in resolved.ordered_runners)
+                if resolved.job_input.ordered_runners:
+                    if resolved.job_input.fields()["ordered_runners"] != [dict(runner) for runner in ordered_runners]:
+                        raise R3Rejected("RUNNER_SET_BINDING_MISMATCH")
+                    job_input = resolved.job_input
+                else:
+                    job_input = replace(resolved.job_input, ordered_runners=ordered_runners)
+                job = services.job_store.create(actor_identity=identity, actor_level=2, operation="manual_prediction",
+                    idempotency_key=selected["idempotency_key"], job_input=job_input, now=now, confirm_audit=confirm_audit)
+                newly_observed = job.phase is Phase.SUBMITTED
             launch_eligible = False
             if job.phase is Phase.SUBMITTED:
                 try:

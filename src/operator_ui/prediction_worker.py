@@ -15,7 +15,7 @@ from typing import Any,Callable,Mapping
 
 from race_collection.synchronous_manual_capture import CaptureOneRejected,VerifiedCurrentRaceIndex,bounded_current_race_index
 from src.predictor.on_demand import PredictionBlocked,canonical_bytes,validate_prediction_result_v2
-from .job_store import AuditConfirmation,Job,JobStore,JobStoreError,Phase
+from .job_store import AuditConfirmation,Job,JobStore,JobStoreError,OperationalIndexProvenance,Phase
 
 MAX_STDOUT_BYTES=1_048_576; MAX_STDERR_BYTES=65_536; MAX_FAILED_STDOUT_DIAGNOSTIC_BYTES=4096
 class WorkerRejected(RuntimeError): pass
@@ -99,7 +99,10 @@ def _validate_runtime(config:WorkerConfig)->None:
 def fixed_argv(job:Job,config:WorkerConfig)->tuple[str,...]:
     choice=_validate_choice(job,config)
     _validate_runtime(config)
-    argv=[str(config.pinned_python),str(config.script),"--race-id",job.input.race_id,"--model",job.input.model_selector,"--job-id",job.job_id,"--config",str(choice.config_path),"--odds-source",job.input.odds_source,"--db",str(config.canonical_db),"--output-root",str(config.output_root)]
+    provenance=job.input.operational_index_provenance
+    if provenance is None: raise WorkerRejected("OPERATIONAL_INDEX_PROVENANCE_MISSING")
+    provenance_json=json.dumps(provenance.fields(),sort_keys=True,separators=(",",":"))
+    argv=[str(config.pinned_python),str(config.script),"--race-id",job.input.race_id,"--model",job.input.model_selector,"--job-id",job.job_id,"--config",str(choice.config_path),"--odds-source",job.input.odds_source,"--operational-index-provenance",provenance_json,"--db",str(config.canonical_db),"--output-root",str(config.output_root)]
     for root in config.capture_evidence_roots: argv.extend(("--capture-evidence-root",str(root)))
     argv.extend(("--collector-request-root",str(config.collector_request_root),"--fetch-timeout-seconds",str(config.fetch_timeout_seconds)))
     return tuple(argv)
@@ -135,6 +138,10 @@ def revalidate_current_race(job,config,*,now,reader=bounded_current_race_index):
     if len(matches)!=1: raise WorkerRejected("RACE_ID_MISSING_OR_AMBIGUOUS")
     if matches[0].get("jump_datetime")!=job.input.jump_timestamp: raise WorkerRejected("RACE_JUMP_CHANGED")
     if matches[0].get("runner_set_sha256")!=job.input.runner_set_sha256: raise WorkerRejected("RUNNER_SET_CHANGED")
+    provenance=job.input.operational_index_provenance
+    if provenance is None: raise WorkerRejected("OPERATIONAL_INDEX_PROVENANCE_MISSING")
+    actual=OperationalIndexProvenance.from_verified_current_race_index(view).fields()
+    if provenance.fields()!=actual: raise WorkerRejected("CURRENT_INDEX_PROVENANCE_CHANGED")
     return view
 
 def _drain(pipe:Any,cap:int,sink:dict[str,Any],name:str):

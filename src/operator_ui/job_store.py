@@ -14,10 +14,13 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-JOB_SCHEMA = "operator_ui_manual_prediction_job_v2"
+JOB_SCHEMA = "operator_ui_manual_prediction_job_v3"
+LEGACY_JOB_SCHEMA = "operator_ui_manual_prediction_job_v2"
 EVENT_SCHEMA = "operator_ui_manual_prediction_event_v2"
 ATTEMPT_SCHEMA = "operator_ui_manual_prediction_attempt_v2"
-STORE_SCHEMA = "operator_ui_manual_prediction_store_v2"
+STORE_SCHEMA = "operator_ui_manual_prediction_store_v3"
+LEGACY_STORE_SCHEMA = "operator_ui_manual_prediction_store_v2"
+OPERATIONAL_INDEX_PROVENANCE_SCHEMA = "operator_ui_operational_index_admission_v1"
 ZERO_HASH = "0" * 64
 AUDIT_HASH_BINDING = "<confirmed-audit-sha256>"
 
@@ -73,7 +76,7 @@ def _validate_confirmation_preimage(intent:Mapping[str,Any],proposal:Mapping[str
     _job_id(intent["job_id"]); _identifier(intent["actor_identity"],"actor"); _identifier(intent["job_operation"],"operation")
     if intent["actor_level"]!=2: raise ValueError("invalid mutation actor")
     _hash(intent["idempotency_key_sha256"],"idempotency"); _hash(intent["input_identity_sha256"],"input identity")
-    input_fields=JobInput(**_exact_mapping(intent["input"],set(JobInput.__dataclass_fields__),"input"))
+    input_fields=_job_input_from_mapping(intent["input"])
     if input_fields.identity_sha256!=intent["input_identity_sha256"]: raise ValueError("input identity mismatch")
     anchor=_exact_mapping(intent["prior_store_anchor"],{"singleton","schema","mutation_count","store_hash"},"prior anchor")
     if anchor["singleton"]!=1 or anchor["schema"]!=STORE_SCHEMA or isinstance(anchor["mutation_count"],bool) or not isinstance(anchor["mutation_count"],int) or anchor["mutation_count"]<0: raise ValueError("prior anchor invalid")
@@ -298,15 +301,41 @@ def _validate_facts(phase:Phase,facts:Any,prior:Phase|None,status:str="",reason:
     return facts
 
 @dataclass(frozen=True,slots=True)
+class OperationalIndexProvenance:
+    schema:str; index_schema_version:str; run_id:str; packet_sha256:str
+    source_refresh_sha256:str; publication_sha256:str; state_sha256:str
+    report_sha256:str
+    @classmethod
+    def from_verified_current_race_index(cls,value:Any)->OperationalIndexProvenance:
+        from race_collection.synchronous_manual_capture import VerifiedCurrentRaceIndex
+        if not isinstance(value,VerifiedCurrentRaceIndex): raise ValueError("verified current race index required")
+        return cls(
+            OPERATIONAL_INDEX_PROVENANCE_SCHEMA,value.schema_version,value.run_id,
+            value.packet_sha256,value.source_refresh_report_sha256,value.publication_sha256,
+            value.state_sha256,value.report_sha256,
+        )
+    def fields(self)->dict[str,str]:
+        values={name:getattr(self,name) for name in self.__dataclass_fields__}
+        if values["schema"]!=OPERATIONAL_INDEX_PROVENANCE_SCHEMA: raise ValueError("invalid operational index provenance schema")
+        for name,value in values.items():
+            _hash(value,name) if name.endswith("sha256") else _identifier(value,name)
+        return values
+
+
+@dataclass(frozen=True,slots=True)
 class JobInput:
     race_id:str; jump_timestamp:str; runner_set_sha256:str; model_selector:str
     resolved_model_identity:str; model_sha256:str; model_manifest_sha256:str
     model_schema_sha256:str; config_id:str; config_sha256:str; odds_source:str
     ordered_runners:tuple[Mapping[str,Any],...]=()
+    operational_index_provenance:OperationalIndexProvenance|None=None
     def __post_init__(self):
         if isinstance(self.ordered_runners,list): object.__setattr__(self,"ordered_runners",tuple(self.ordered_runners))
+        if isinstance(self.operational_index_provenance,Mapping):
+            object.__setattr__(self,"operational_index_provenance",OperationalIndexProvenance(**self.operational_index_provenance))
     def fields(self)->dict[str,Any]:
         values={n:getattr(self,n) for n in self.__dataclass_fields__}
+        provenance=values.pop("operational_index_provenance")
         for n,v in values.items():
             if n == "ordered_runners": continue
             _hash(v,n) if n.endswith("sha256") else _identifier(v,n)
@@ -323,11 +352,21 @@ class JobInput:
             if "source_native_runner_id" in row: normalized_row["source_native_runner_id"]=_identifier(row["source_native_runner_id"],"source native runner id")
             identities.add(identity); normalized.append(normalized_row)
         values["ordered_runners"]=normalized
+        if provenance is not None:
+            if not isinstance(provenance,OperationalIndexProvenance): raise ValueError("invalid operational index provenance")
+            values["operational_index_provenance"]=provenance.fields()
         parsed=datetime.fromisoformat(self.jump_timestamp.replace("Z","+00:00"))
         if parsed.tzinfo is None or parsed.utcoffset() is None: raise ValueError("jump_timestamp must be timezone aware")
         return values
     @property
     def identity_sha256(self)->str:return _sha(canonical(self.fields()))
+
+
+def _job_input_from_mapping(value:Any)->JobInput:
+    if not isinstance(value,Mapping): raise ValueError("invalid input shape")
+    keys=set(JobInput.__dataclass_fields__); legacy=keys-{"operational_index_provenance"}
+    if set(value) not in {frozenset(keys),frozenset(legacy)}: raise ValueError("invalid input shape")
+    return JobInput(**value)
 
 @dataclass(frozen=True,slots=True)
 class Job:
@@ -369,9 +408,10 @@ class JobStore:
         if st and (not stat.S_ISREG(st.st_mode) or self.path.is_symlink()): raise JobStoreError("job store must be a regular file")
         self._validate_separation(None if st is None else (st.st_dev,st.st_ino))
         existing=st is not None and st.st_size>0
-        db=sqlite3.connect(self.path,isolation_level=None)
+        db=sqlite3.connect(self.path,isolation_level=None); db.row_factory=sqlite3.Row
         try:
             if not existing: db.executescript(_SCHEMA_SQL)
+            else:self._migrate(db)
         finally: db.close()
         os.chmod(self.path,0o600); st=self.path.lstat(); self._identity=(st.st_dev,st.st_ino); self._validate_path()
         if not self.verify(): raise JobStoreError("job store integrity invalid")
@@ -396,10 +436,26 @@ class JobStore:
                     if [tuple(r) for r in db.execute(f"PRAGMA index_info('{name}')")] != [tuple(r) for r in expected.execute(f"PRAGMA index_info('{name}')")]: return False
             return True
         finally: expected.close()
-    def _verify_db(self,db):
+    def _migrate(self,db):
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            anchor=db.execute("SELECT schema FROM store_anchor WHERE singleton=1").fetchone()
+            if anchor is None: raise JobStoreError("job store migration source invalid")
+            if anchor["schema"]==STORE_SCHEMA:
+                db.commit(); return
+            if anchor["schema"]!=LEGACY_STORE_SCHEMA or not self._verify_db(db,expected_store_schema=LEGACY_STORE_SCHEMA):
+                raise JobStoreError("job store migration source invalid")
+            db.execute("UPDATE store_anchor SET schema=? WHERE singleton=1",(STORE_SCHEMA,))
+            if not self._verify_db(db): raise JobStoreError("job store migration result invalid")
+            db.commit()
+        except JobStoreError:
+            db.rollback(); raise
+        except sqlite3.Error as exc:
+            db.rollback(); raise JobStoreError("job store migration source invalid") from exc
+    def _verify_db(self,db,*,expected_store_schema=STORE_SCHEMA):
         if not self._schema_valid(db) or db.execute("PRAGMA foreign_key_check").fetchone(): return False
         anchor=db.execute("SELECT * FROM store_anchor").fetchall()
-        if len(anchor)!=1 or anchor[0]["singleton"]!=1 or anchor[0]["schema"]!=STORE_SCHEMA or anchor[0]["store_hash"]!=(ZERO_HASH if anchor[0]["mutation_count"]==0 else self._rows_hash(db)): return False
+        if len(anchor)!=1 or anchor[0]["singleton"]!=1 or anchor[0]["schema"]!=expected_store_schema or anchor[0]["store_hash"]!=(ZERO_HASH if anchor[0]["mutation_count"]==0 else self._rows_hash(db)): return False
         jobs=db.execute("SELECT * FROM jobs ORDER BY sequence").fetchall(); events=db.execute("SELECT * FROM job_events ORDER BY sequence").fetchall(); attempts=db.execute("SELECT * FROM job_attempts ORDER BY sequence").fetchall()
         for rows in (jobs,events,attempts):
             if [r["sequence"] for r in rows]!=list(range(1,len(rows)+1)): return False
@@ -409,8 +465,9 @@ class JobStore:
         for e in events: by_job[e["job_id"]].append(e)
         for j in jobs:
             try:
-                if j["schema"]!=JOB_SCHEMA or j["actor_level"]!=2 or _hash(j["creation_audit_hash"],"audit")!=j["creation_audit_hash"]: return False
+                if j["schema"] not in {JOB_SCHEMA,LEGACY_JOB_SCHEMA} or expected_store_schema==LEGACY_STORE_SCHEMA and j["schema"]!=LEGACY_JOB_SCHEMA or j["actor_level"]!=2 or _hash(j["creation_audit_hash"],"audit")!=j["creation_audit_hash"]: return False
                 data=json.loads(j["input_json"]); inp=JobInput(**data)
+                if (j["schema"]==JOB_SCHEMA)!=(inp.operational_index_provenance is not None): return False
                 if canonical(inp.fields()).decode()!=j["input_json"] or inp.identity_sha256!=j["input_identity_sha256"] or j["created_at"]!=utc_text(datetime.fromisoformat(j["created_at"].replace("Z","+00:00"))): return False
                 _job_id(j["job_id"]); _identifier(j["actor_identity"],"actor"); _identifier(j["operation"],"operation"); _hash(j["idempotency_key_sha256"],"key")
                 rows=by_job[j["job_id"]]; previous=ZERO_HASH; prior=None; claimed=[]
@@ -480,6 +537,7 @@ class JobStore:
     def create(self,*,actor_identity,actor_level,operation,idempotency_key,job_input,now,confirm_audit:AuditConfirmation):
         actor=_identifier(actor_identity,"actor_identity"); operation=_identifier(operation,"operation")
         if actor_level!=2: raise ValueError("manual prediction requires exact Level 2 authority")
+        if not isinstance(job_input,JobInput) or job_input.operational_index_provenance is None: raise ValueError("operational index provenance required")
         key_hash=hash_idempotency_key(idempotency_key); input_json=canonical(job_input.fields()).decode(); identity=job_input.identity_sha256; created=utc_text(now)
         db=self._connect()
         try:
@@ -497,6 +555,15 @@ class JobStore:
         except (IdempotencyConflict,JobStoreError): db.rollback(); raise
         except (sqlite3.Error,ValueError,TypeError) as exc: db.rollback(); raise JobStoreError("job creation failed") from exc
         finally: db.close()
+    def find_by_idempotency(self,*,actor_identity,operation,idempotency_key):
+        actor=_identifier(actor_identity,"actor_identity"); operation=_identifier(operation,"operation"); key_hash=hash_idempotency_key(idempotency_key)
+        db=self._connect()
+        try:
+            db.execute("BEGIN"); self._require_valid(db)
+            row=db.execute("SELECT job_id FROM jobs WHERE actor_identity=? AND operation=? AND idempotency_key_sha256=?",(actor,operation,key_hash)).fetchone()
+            job_id=row["job_id"] if row is not None else None
+        finally: db.close()
+        return self.get(job_id) if job_id is not None else None
     def _current(self,db,job_id):
         row=db.execute("SELECT phase,event_at FROM job_events WHERE job_id=? ORDER BY sequence DESC LIMIT 1",(job_id,)).fetchone()
         if not row: raise JobStoreError("unknown job")
@@ -560,6 +627,9 @@ class JobStore:
         at=utc_text(now); db=self._connect()
         try:
             db.execute("BEGIN IMMEDIATE"); self._require_valid(db); current,current_at=self._current(db,job_id)
+            stored=db.execute("SELECT input_json FROM jobs WHERE job_id=?",(job_id,)).fetchone()
+            if stored is None or _job_input_from_mapping(json.loads(stored[0])).operational_index_provenance is None:
+                raise JobStoreError("legacy job missing operational index provenance")
             existing=db.execute("SELECT attempt_id FROM job_attempts WHERE job_id=?",(job_id,)).fetchone()
             if existing: raise AttemptAlreadyClaimed(existing[0])
             if current is not Phase.WAITING_FOR_CLAIM or at<current_at: raise IllegalTransition("job is not claimable")

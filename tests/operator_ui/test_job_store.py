@@ -5,6 +5,7 @@ import hashlib
 import json
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from threading import Event
 
@@ -13,7 +14,7 @@ from src.predictor.on_demand import BLOCKER_STAGE_BY_CODE
 
 from src.operator_ui.job_store import (
     AttemptAlreadyClaimed, IdempotencyConflict, IllegalTransition, JobInput,
-    JobStore, JobStoreError, Phase, VerifierAuthorizationError,
+    JobStore, JobStoreError, OperationalIndexProvenance, Phase, VerifierAuthorizationError,
     canonical, resolve_audit_confirmation,
 )
 
@@ -23,8 +24,23 @@ AUDIT = hashlib.sha256(b"confirmed-operation-audit").hexdigest()
 CONFIRM = lambda intent: resolve_audit_confirmation(intent, AUDIT)
 
 
+def operational_provenance(**changes):
+    values = {
+        "schema": "operator_ui_operational_index_admission_v1",
+        "index_schema_version": "collector_current_race_index_v2",
+        "run_id": "collector-run-20260801T000000Z",
+        "packet_sha256": hashlib.sha256(b"packet").hexdigest(),
+        "source_refresh_sha256": hashlib.sha256(b"source-refresh").hexdigest(),
+        "publication_sha256": hashlib.sha256(b"publication").hexdigest(),
+        "state_sha256": hashlib.sha256(b"state").hexdigest(),
+        "report_sha256": hashlib.sha256(b"report").hexdigest(),
+    }
+    values.update(changes)
+    return OperationalIndexProvenance(**values)
+
+
 def inputs(race="race-5"):
-    return JobInput(race, "2026-08-01T01:00:00Z", H, "latest-research", "model-v1", H, H, H, "manual-default", H, "auto", ({"box":1,"name":"ALPHA","identity":"ALPHA"},))
+    return JobInput(race, "2026-08-01T01:00:00Z", H, "latest-research", "model-v1", H, H, H, "manual-default", H, "auto", ({"box":1,"name":"ALPHA","identity":"ALPHA"},), operational_provenance())
 
 
 def store(tmp_path):
@@ -71,6 +87,69 @@ def test_store_is_separate_and_immutable(tmp_path):
             with pytest.raises(sqlite3.IntegrityError): db.execute(sql)
     assert canonical.read_bytes() == b"canonical" and audit.read_bytes() == b"audit"
     assert value.get(job.job_id).input.race_id == "race-5"
+
+
+def test_operational_index_provenance_is_immutable_and_survives_restart(tmp_path):
+    value = store(tmp_path); job = create(value)
+    expected = operational_provenance()
+    assert job.input.operational_index_provenance == expected
+    assert store(tmp_path).get(job.job_id).input.operational_index_provenance == expected
+    with pytest.raises(sqlite3.IntegrityError):
+        with sqlite3.connect(value.path) as db:
+            payload = json.loads(db.execute("SELECT input_json FROM jobs WHERE job_id=?", (job.job_id,)).fetchone()[0])
+            payload["operational_index_provenance"]["run_id"] = "replacement-run"
+            db.execute("UPDATE jobs SET input_json=? WHERE job_id=?", (canonical(payload).decode(), job.job_id))
+
+
+def test_operational_index_provenance_factory_rejects_unverified_lookalike():
+    with pytest.raises(ValueError,match="verified current race index required"):
+        OperationalIndexProvenance.from_verified_current_race_index(operational_provenance().fields())
+
+
+@pytest.mark.parametrize("changes",[
+    {"schema":"operator_ui_operational_index_admission_v2"},
+    {"run_id":""},
+    {"packet_sha256":"not-a-sha256"},
+])
+def test_new_job_rejects_malformed_operational_index_provenance(tmp_path,changes):
+    value=store(tmp_path); malformed=replace(inputs(),operational_index_provenance=operational_provenance(**changes))
+    with pytest.raises(ValueError):
+        value.create(actor_identity="operator",actor_level=2,operation="manual_prediction",idempotency_key="idempotency-key-1234",job_input=malformed,now=NOW,confirm_audit=CONFIRM)
+
+
+def test_v2_store_migration_preserves_legacy_job_without_fabricating_provenance(tmp_path):
+    value = store(tmp_path); job = claimable(value, create(value))
+    with sqlite3.connect(value.path) as db:
+        db.row_factory = sqlite3.Row
+        db.execute("DROP TRIGGER jobs_no_update")
+        payload = json.loads(db.execute("SELECT input_json FROM jobs WHERE job_id=?", (job.job_id,)).fetchone()[0])
+        payload.pop("operational_index_provenance")
+        input_json = canonical(payload).decode()
+        db.execute("UPDATE jobs SET schema=?,input_json=?,input_identity_sha256=? WHERE job_id=?", (
+            "operator_ui_manual_prediction_job_v2", input_json, hashlib.sha256(input_json.encode()).hexdigest(), job.job_id,
+        ))
+        db.execute("CREATE TRIGGER jobs_no_update BEFORE UPDATE ON jobs BEGIN SELECT RAISE(ABORT,'jobs immutable'); END")
+        rows = {name:[dict(row) for row in db.execute(f"SELECT * FROM {name} ORDER BY sequence")] for name in ("jobs","job_events","job_attempts")}
+        db.execute("UPDATE store_anchor SET schema=?,store_hash=? WHERE singleton=1", (
+            "operator_ui_manual_prediction_store_v2", hashlib.sha256(canonical(rows)).hexdigest(),
+        ))
+    migrated = store(tmp_path)
+    legacy = migrated.get(job.job_id)
+    assert legacy.input.operational_index_provenance is None
+    assert legacy.phase is Phase.WAITING_FOR_CLAIM
+    with sqlite3.connect(value.path) as db:
+        assert db.execute("SELECT schema FROM store_anchor").fetchone()[0] == "operator_ui_manual_prediction_store_v3"
+        assert db.execute("SELECT schema FROM jobs WHERE job_id=?", (job.job_id,)).fetchone()[0] == "operator_ui_manual_prediction_job_v2"
+    with pytest.raises(JobStoreError, match="legacy job missing operational index provenance"):
+        migrated.claim_attempt(job.job_id, now=NOW, confirm_audit=CONFIRM)
+    assert migrated.get(job.job_id).phase is Phase.WAITING_FOR_CLAIM
+
+
+def test_migration_rejects_non_job_store_without_rewriting_it(tmp_path):
+    path=tmp_path/"jobs.db"; original=b"not a sqlite job store"; path.write_bytes(original)
+    with pytest.raises(JobStoreError,match="job store migration source invalid"):
+        JobStore(path)
+    assert path.read_bytes()==original
 
 
 def test_idempotency_duplicate_conflict_cross_actor_and_raw_key_absent(tmp_path):

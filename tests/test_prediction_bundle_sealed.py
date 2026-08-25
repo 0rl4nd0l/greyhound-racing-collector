@@ -16,7 +16,7 @@ import pytest
 
 import src.predictor.on_demand as sealed
 from src.predictor.on_demand import PredictionBlocked, canonical_bytes, sha256_bytes
-from src.operator_ui.job_store import Job, JobInput, Phase
+from src.operator_ui.job_store import Job, JobInput, OperationalIndexProvenance, Phase
 from src.operator_ui.r3_api import _verified_result
 
 
@@ -127,13 +127,17 @@ def request_for(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def make_bundle(root: Path, result: dict[str, Any] | None = None) -> tuple[Path, dict[str, Any]]:
+def make_bundle(root: Path, result: dict[str, Any] | None = None, *, operational_provenance: dict[str,str] | None = None) -> tuple[Path, dict[str, Any]]:
     result = copy.deepcopy(result or ready_result())
     bundle = root / DIRECTORY
     (bundle / "model").mkdir(parents=True)
+    prediction_request=request_for(result)
+    if operational_provenance is not None:
+        prediction_request["schema_version"]="on_demand_prediction_request_v2"
+        prediction_request["operational_index_provenance"]=operational_provenance
     files = {
         "result.json": canonical_bytes(result),
-        "request.json": canonical_bytes(request_for(result)),
+        "request.json": canonical_bytes(prediction_request),
         "config.json": b"{}\n",
         "model/config.schema.json": b"{}\n",
     }
@@ -167,7 +171,11 @@ def make_bundle(root: Path, result: dict[str, Any] | None = None) -> tuple[Path,
         result["model"]["artifact_sha256"] = sha256_bytes(files["model/model.json"])
         result["model"]["artifact_manifest_sha256"] = sha256_bytes(files["model/manifest.json"])
     files["result.json"] = canonical_bytes(result)
-    files["request.json"] = canonical_bytes(request_for(result))
+    prediction_request=request_for(result)
+    if operational_provenance is not None:
+        prediction_request["schema_version"]="on_demand_prediction_request_v2"
+        prediction_request["operational_index_provenance"]=operational_provenance
+    files["request.json"] = canonical_bytes(prediction_request)
     for name, raw in files.items():
         target = bundle / name
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -187,6 +195,11 @@ def operator_result(job_id: str) -> dict[str, Any]:
     value=ready_result(job_id=job_id); value["model"].update(requested="latest-research",resolved="market_form_residual_v1",alias_resolved=True,artifact_identity="AVAILABLE",artifact_manifest_identity="AVAILABLE",artifact_sha256=ZERO_SHA,artifact_manifest_sha256=ZERO_SHA)
     value["evidence"].update(model_artifact="model/model.json",model_manifest="model/manifest.json")
     return value
+
+
+def operator_provenance(**changes) -> OperationalIndexProvenance:
+    values={"schema":"operator_ui_operational_index_admission_v1","index_schema_version":"collector_current_race_index_v2","run_id":"collector-run","packet_sha256":ZERO_SHA,"source_refresh_sha256":ZERO_SHA,"publication_sha256":ZERO_SHA,"state_sha256":ZERO_SHA,"report_sha256":ZERO_SHA}
+    values.update(changes); return OperationalIndexProvenance(**values)
 
 
 def assert_blocked(callable_: Any, *args: Any, **kwargs: Any) -> PredictionBlocked:
@@ -493,13 +506,13 @@ def test_request_schema_downgrade_blocks_after_attacker_reseals_entire_chain(tmp
 
 
 def test_operator_disclosure_binds_authenticated_request_odds_and_runner_projection(tmp_path: Path):
-    job_id="job_"+"1"*32; result=operator_result(job_id); _bundle,entry=make_bundle(tmp_path,result)
+    job_id="job_"+"1"*32; result=operator_result(job_id); provenance=operator_provenance(); _bundle,entry=make_bundle(tmp_path,result,operational_provenance=provenance.fields())
     sealed.publish_prediction_bundle_index_entry(tmp_path,entry)
     verified=sealed.verify_indexed_prediction_bundle(tmp_path,entry)
     model=verified.result["model"]; request=verified.request; assert request is not None
     ordered=tuple({"box":row["box_number"],"name":row["display_name"],"identity":row["identity"],**({"source_native_runner_id":row["source_native_runner_id"]} if row["source_native_runner_id"] is not None else {})} for row in request["runners"])
     def job(odds):
-        inp=JobInput(verified.result["race"]["race_id"],verified.result["race"]["jump_timestamp"],verified.result["evidence"]["runner_set_sha256"],"latest-research",model["resolved"],model["artifact_sha256"],model["artifact_manifest_sha256"],model["schema_sha256"],"manual-default",verified.result["config"]["sha256"],odds,ordered)
+        inp=JobInput(verified.result["race"]["race_id"],verified.result["race"]["jump_timestamp"],verified.result["evidence"]["runner_set_sha256"],"latest-research",model["resolved"],model["artifact_sha256"],model["artifact_manifest_sha256"],model["schema_sha256"],"manual-default",verified.result["config"]["sha256"],odds,ordered,provenance)
         return Job(job_id,"operator",2,"manual_prediction","0"*64,inp,"2026-07-19T01:00:00Z",Phase.PREDICTION_READY,"2026-07-19T02:00:00Z","READY","verified",None,None,True)
     chain=verified.result["evidence"]["protocol_chain"]; cutoff=verified.result["evidence"]["authenticated_cutoff"]
     events=[{"phase":"CLAIMED","facts":{"attempt_id":"attempt-1"}},{"phase":"RESPONSE_RECORDED","facts":{"attempt_id":"attempt-1","protocol_chain":chain,"authenticated_cutoff":cutoff}},{"phase":"PRODUCER_COMPLETED","facts":{"attempt_id":"attempt-1","protocol_chain":chain,"authenticated_cutoff":cutoff}}]
@@ -507,6 +520,19 @@ def test_operator_disclosure_binds_authenticated_request_odds_and_runner_project
     disclosed=_verified_result(job("receipt"),verified,events)
     assert disclosed is not None
     assert {(row["box"],row["runner_id"]) for row in disclosed["probabilities"]}=={(1,"ONE"),(2,"TWO")}
+
+
+def test_operator_terminal_verifier_rejects_sealed_operational_index_provenance_divergence(tmp_path:Path):
+    job_id="job_"+"1"*32; result=operator_result(job_id); admitted=operator_provenance()
+    _bundle,entry=make_bundle(tmp_path,result,operational_provenance=operator_provenance(run_id="different-run").fields())
+    sealed.publish_prediction_bundle_index_entry(tmp_path,entry); verified=sealed.verify_indexed_prediction_bundle(tmp_path,entry)
+    model=verified.result["model"]; request=verified.request; assert request is not None
+    ordered=tuple({"box":row["box_number"],"name":row["display_name"],"identity":row["identity"],**({"source_native_runner_id":row["source_native_runner_id"]} if row["source_native_runner_id"] is not None else {})} for row in request["runners"])
+    inp=JobInput(verified.result["race"]["race_id"],verified.result["race"]["jump_timestamp"],verified.result["evidence"]["runner_set_sha256"],"latest-research",model["resolved"],model["artifact_sha256"],model["artifact_manifest_sha256"],model["schema_sha256"],"manual-default",verified.result["config"]["sha256"],"receipt",ordered,admitted)
+    durable_job=Job(job_id,"operator",2,"manual_prediction","0"*64,inp,"2026-07-19T01:00:00Z",Phase.PREDICTION_READY,"2026-07-19T02:00:00Z","READY","verified",None,None,True)
+    chain=verified.result["evidence"]["protocol_chain"]; cutoff=verified.result["evidence"]["authenticated_cutoff"]
+    events=[{"phase":"CLAIMED","facts":{"attempt_id":"attempt-1"}},{"phase":"RESPONSE_RECORDED","facts":{"attempt_id":"attempt-1","protocol_chain":chain,"authenticated_cutoff":cutoff}},{"phase":"PRODUCER_COMPLETED","facts":{"attempt_id":"attempt-1","protocol_chain":chain,"authenticated_cutoff":cutoff}}]
+    assert _verified_result(durable_job,verified,events) is None
 
 
 @pytest.mark.parametrize("identity",["request_sha256","claim_sha256","attempt_sha256","response_sha256","receipt_sha256","consume_sha256","authenticated_receipt_sha256","cutoff_timestamp"])

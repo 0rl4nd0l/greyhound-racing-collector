@@ -6,13 +6,20 @@ from datetime import datetime, timezone
 from flask import Flask
 from werkzeug.security import generate_password_hash
 
-from src.operator_ui.job_store import JobInput, JobStore, JobStoreError, Phase
+from src.operator_ui.job_store import JobInput, JobStore, JobStoreError, OperationalIndexProvenance, Phase
 from src.operator_ui.r3_api import R3Rejected, R3Services, ResolvedSubmission, install_r3_api
 from src.operator_ui.security import install_connected_mode
 
 NOW = datetime(2026, 8, 1, tzinfo=timezone.utc)
 H = hashlib.sha256(b"r3").hexdigest()
 RACE = "race-20260801-richmond-r05"
+
+
+def provenance():
+    return OperationalIndexProvenance(
+        "operator_ui_operational_index_admission_v1", "collector_current_race_index_v2",
+        "collector-run", H, H, H, H, H,
+    )
 
 
 def application(tmp_path, *, level=2, resolver=None, result=lambda _job: None, rate=20, launch=None):
@@ -36,7 +43,7 @@ def application(tmp_path, *, level=2, resolver=None, result=lambda _job: None, r
         if selected["race_id"] != RACE or selected["model_id"] != "latest-research" or selected["config_id"] != "manual-default" or selected["odds_source_id"] != "auto":
             raise R3Rejected("SELECTION_NOT_ALLOWLISTED")
         runners = ({"box": 1, "name": "ALPHA", "identity": "ALPHA"},)
-        return ResolvedSubmission(JobInput(RACE, "2026-08-01T01:00:00Z", H, "latest-research", "model-v1", H, H, H, "manual-default", H, "auto", runners), runners)
+        return ResolvedSubmission(JobInput(RACE, "2026-08-01T01:00:00Z", H, "latest-research", "model-v1", H, H, H, "manual-default", H, "auto", runners, provenance()), runners)
     dispatcher = launch or (lambda job_id, _confirm: launched.append(job_id))
     install_r3_api(app, R3Services(store, resolve, dispatcher, result, clock=lambda: NOW, rate_limit=rate))
     return app, store, launched
@@ -59,6 +66,7 @@ def test_level2_csrf_exact_schema_idempotency_poll_and_actor_isolation(tmp_path)
     client = app.test_client(); token = login(client)
     assert client.post("/operator-ui/api/v1/prediction-jobs", base_url="https://localhost", json=body()).status_code == 400
     assert client.post("/operator-ui/api/v1/prediction-jobs", base_url="https://localhost", json=body(extra="forbidden"), headers={"X-CSRF-Token": token}).get_json()["classification"] == "INVALID_REQUEST_SCHEMA"
+    assert client.post("/operator-ui/api/v1/prediction-jobs", base_url="https://localhost", json=body(operational_index_provenance=provenance().fields()), headers={"X-CSRF-Token": token}).get_json()["classification"] == "INVALID_REQUEST_SCHEMA"
     first = client.post("/operator-ui/api/v1/prediction-jobs", base_url="https://localhost", json=body(), headers={"X-CSRF-Token": token})
     assert first.status_code == 202 and first.get_json()["phase"] == "WAITING_FOR_CLAIM" and len(launched) == 1
     duplicate = client.post("/operator-ui/api/v1/prediction-jobs", base_url="https://localhost", json=body(), headers={"X-CSRF-Token": token})
@@ -71,12 +79,68 @@ def test_level2_csrf_exact_schema_idempotency_poll_and_actor_isolation(tmp_path)
     assert store.verify()
 
 
+def test_idempotent_retransmission_recovers_persisted_job_after_index_turnover(tmp_path):
+    resolutions = []
+
+    def resolve(_selected, _now):
+        run_id = f"collector-run-{len(resolutions) + 1}"
+        resolutions.append(run_id)
+        runners = ({"box": 1, "name": "ALPHA", "identity": "ALPHA"},)
+        admitted = OperationalIndexProvenance(
+            "operator_ui_operational_index_admission_v1",
+            "collector_current_race_index_v2",
+            run_id,
+            hashlib.sha256(run_id.encode()).hexdigest(),
+            H,
+            H,
+            H,
+            H,
+        )
+        return ResolvedSubmission(
+            JobInput(
+                RACE, "2026-08-01T01:00:00Z", H, "latest-research", "model-v1",
+                H, H, H, "manual-default", H, "auto", runners, admitted,
+            ),
+            runners,
+        )
+
+    app, store, launched = application(tmp_path, resolver=resolve)
+    client = app.test_client(); token = login(client)
+    first = client.post(
+        "/operator-ui/api/v1/prediction-jobs", base_url="https://localhost",
+        json=body(), headers={"X-CSRF-Token": token},
+    )
+    assert first.status_code == 202
+    admitted = store.get(first.get_json()["job_id"]).input.operational_index_provenance
+
+    duplicate = client.post(
+        "/operator-ui/api/v1/prediction-jobs", base_url="https://localhost",
+        json=body(), headers={"X-CSRF-Token": token},
+    )
+
+    assert duplicate.status_code == 200
+    assert duplicate.get_json()["job_id"] == first.get_json()["job_id"]
+    assert store.get(first.get_json()["job_id"]).input.operational_index_provenance == admitted
+    assert resolutions == ["collector-run-1"]
+    assert launched == [first.get_json()["job_id"], first.get_json()["job_id"]]
+
+
 def test_level1_cannot_submit_or_read_and_resolution_blockers_disclose_no_job(tmp_path):
     app, _, launched = application(tmp_path, level=1)
     client = app.test_client(); token = login(client)
     assert client.post("/operator-ui/api/v1/prediction-jobs", base_url="https://localhost", json=body(), headers={"X-CSRF-Token": token}).status_code == 403
     assert client.get("/operator-ui/api/v1/prediction-jobs/job_" + "0" * 32, base_url="https://localhost").status_code == 403
     assert launched == []
+
+
+def test_server_rejects_resolver_output_missing_durable_operational_index_provenance(tmp_path):
+    runners=({"box":1,"name":"ALPHA","identity":"ALPHA"},)
+    legacy=JobInput(RACE,"2026-08-01T01:00:00Z",H,"latest-research","model-v1",H,H,H,"manual-default",H,"auto",runners)
+    app,store,launched=application(tmp_path,resolver=lambda _selected,_now:ResolvedSubmission(legacy,runners))
+    client=app.test_client(); token=login(client)
+    response=client.post("/operator-ui/api/v1/prediction-jobs",base_url="https://localhost",json=body(),headers={"X-CSRF-Token":token})
+    assert response.status_code==409 and response.get_json()["classification"]=="RACE_EVIDENCE_INVALID"
+    assert launched==[] and store.verify()
 
 
 def test_capability_is_authenticated_exact_level2_and_server_owned(tmp_path):

@@ -403,6 +403,17 @@ def test_finite_testing_fixture_profile_builds_real_repository_composition(tmp_p
     assert runner_completed.wait(timeout=30), "terminal runner did not complete within 30 seconds"
     job=services.job_store.get(job_id)
     assert job.input.odds_source=="receipt"
+    assert job.input.operational_index_provenance is not None
+    assert job.input.operational_index_provenance.fields()=={
+        "schema":"operator_ui_operational_index_admission_v1",
+        "index_schema_version":view.schema_version,
+        "run_id":view.run_id,
+        "packet_sha256":view.packet_sha256,
+        "source_refresh_sha256":view.source_refresh_report_sha256,
+        "publication_sha256":view.publication_sha256,
+        "state_sha256":view.state_sha256,
+        "report_sha256":view.report_sha256,
+    }
     assert job.attempt_claimed and job.phase is Phase.FAILED
     assert [event["phase"] for event in services.job_store.events(job_id)][-3:]==["CLAIMED","ATTEMPT_STARTED","FAILED"]
 
