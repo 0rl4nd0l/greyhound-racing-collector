@@ -7,11 +7,15 @@ import pytest
 from race_collection.synchronous_manual_capture import VerifiedCurrentRaceIndex
 from scripts.refresh_prejump_upcoming import stable_race_id
 from src.predictor.on_demand import canonical_bytes
-from src.operator_ui.job_store import JobInput,JobStore,JobStoreError,Phase,resolve_audit_confirmation
+from src.operator_ui.job_store import JobInput,JobStore,JobStoreError,OperationalIndexProvenance,Phase,resolve_audit_confirmation
 from src.operator_ui.prediction_worker import MAX_STDERR_BYTES,MAX_STDOUT_BYTES,ServerChoice,WorkerConfig,WorkerRejected,drain_bounded,fixed_argv,revalidate_current_race,run_once
 
 NOW=datetime(2026,8,1,tzinfo=timezone.utc); H=hashlib.sha256(b"x").hexdigest(); AUDIT=hashlib.sha256(b"audit").hexdigest(); CONFIRM=lambda intent:resolve_audit_confirmation(intent,AUDIT)
 RACE={"race_number":5,"venue":"RICH","race_date":"2026-08-01","url":"https://www.thedogs.com.au/racing/richmond/2026-08-01/5"}; RACE_ID=stable_race_id(RACE)
+
+def provenance(**changes):
+    values={"schema":"operator_ui_operational_index_admission_v1","index_schema_version":"collector_current_race_index_v2","run_id":"run","packet_sha256":H,"source_refresh_sha256":H,"publication_sha256":H,"state_sha256":H,"report_sha256":H}
+    values.update(changes); return OperationalIndexProvenance(**values)
 
 def setup(tmp_path):
     paths=[]
@@ -24,7 +28,7 @@ def setup(tmp_path):
     current_index=evidence_a/"shadow_autopilot_daemon_runtime"/"manual_prediction_current_race_index.json"
     cfg=WorkerConfig(python,Path(__file__).parents[2],{"latest-research":choice},tmp_path/"canonical.db",tmp_path/"output",(evidence_a,tmp_path/"evidence-b"),tmp_path/"requests",current_index,evidence_a,1,45.0,90.0,2)
     value=JobStore(tmp_path/"jobs.db",separate_from=(tmp_path/"canonical.db",tmp_path/"audit.db"))
-    inp=JobInput(RACE_ID,"2026-08-01T01:00:00+00:00",H,"latest-research","market_form_residual_v1",H,H,H,"manual-default",H,"auto",({"box":1,"name":"ALPHA","identity":"ALPHA"},))
+    inp=JobInput(RACE_ID,"2026-08-01T01:00:00+00:00",H,"latest-research","market_form_residual_v1",H,H,H,"manual-default",H,"auto",({"box":1,"name":"ALPHA","identity":"ALPHA"},),provenance())
     job=value.create(actor_identity="op",actor_level=2,operation="manual_prediction",idempotency_key="idempotency-key-1234",job_input=inp,now=NOW,confirm_audit=CONFIRM)
     job=value.transition(job.job_id,Phase.VALIDATED,now=NOW,status="VALID",reason="validated",confirm_audit=CONFIRM)
     job=value.transition(job.job_id,Phase.WAITING_FOR_CLAIM,now=NOW,status="WAITING",reason="ready",confirm_audit=CONFIRM)
@@ -59,6 +63,8 @@ def test_exact_argv_and_forbidden_surface(tmp_path):
     cfg,_,job=setup(tmp_path); argv=fixed_argv(job,cfg)
     assert argv[0:6]==(str(cfg.pinned_python),str(cfg.script),"--race-id",RACE_ID,"--model","latest-research")
     assert {"--race","--race-url","--replay-bundle","--list-configs","--current-time","--lock-path","--current-index-path"}.isdisjoint(argv)
+    provenance_value=json.loads(argv[argv.index("--operational-index-provenance")+1])
+    assert provenance_value==job.input.operational_index_provenance.fields()
 
 def test_worker_rejects_current_index_outside_primary_evidence_root(tmp_path):
     cfg,_,_=setup(tmp_path)
@@ -98,6 +104,15 @@ def test_descriptor_backed_python_preserves_venv_prefix_via_fixed_argv0(tmp_path
 def test_revalidation_missing_changed(tmp_path,races,reason):
     cfg,_,job=setup(tmp_path)
     with pytest.raises(WorkerRejected,match=reason):revalidate_current_race(job,cfg,now=NOW,reader=lambda **_:view(races))
+
+def test_index_turnover_after_admission_fails_before_claim_without_rewriting_provenance(tmp_path):
+    cfg,store,job=setup(tmp_path); admitted=job.input.operational_index_provenance
+    turned_over=replace(view(),run_id="later-run",publication_sha256="0"*64)
+    with pytest.raises(WorkerRejected,match="CURRENT_INDEX_PROVENANCE_CHANGED"):
+        run_once(store,job.job_id,cfg,now=lambda:NOW,confirm_audit=CONFIRM,popen=lambda *_a,**_k:None,reader=lambda **_:turned_over)
+    persisted=store.get(job.job_id)
+    assert not persisted.attempt_claimed
+    assert persisted.input.operational_index_provenance==admitted
 
 def test_identity_change_before_claim_prevents_launch(tmp_path):
     cfg,store,job=setup(tmp_path); cfg.choices["latest-research"].model_path.write_bytes(b"changed"); calls=[]

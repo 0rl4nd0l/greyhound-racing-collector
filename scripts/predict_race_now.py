@@ -72,6 +72,7 @@ from src.predictor.on_demand import (  # noqa: E402
     sha256_bytes,
     sha256_file,
     verify_bundle,
+    validate_operational_index_provenance,
     write_exact_bytes,
 )
 from utils.csv_metadata import canonical_thedogs_race_identity  # noqa: E402
@@ -919,6 +920,13 @@ def _run_prediction(
     if current_time.tzinfo is None or current_time.utcoffset() is None:
         raise PredictionBlocked("CURRENT_TIME_TIMEZONE_MISSING")
     job_id = _job_id(getattr(args, "job_id", None))
+    operational_index_provenance=None
+    if getattr(args,"operational_index_provenance",None) is not None:
+        try:
+            operational_index_provenance=json.loads(args.operational_index_provenance)
+        except (TypeError,json.JSONDecodeError) as exc:
+            raise PredictionBlocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH",field="operational_index_provenance") from exc
+        operational_index_provenance=validate_operational_index_provenance(operational_index_provenance)
     model = resolve_model(args.model)
     config, config_sha, config_raw = load_config(Path(args.config), model)
     from race_collection.synchronous_manual_capture import (
@@ -1005,7 +1013,7 @@ def _run_prediction(
         or getattr(args, "race_url", None)
     )
     request = {
-        "schema_version": "on_demand_prediction_request_v1",
+        "schema_version": "on_demand_prediction_request_v2" if operational_index_provenance is not None else "on_demand_prediction_request_v1",
         "prediction_id": state["prediction_id"],
         "job_id": state["job_id"],
         "race_query": race_selector,
@@ -1019,6 +1027,8 @@ def _run_prediction(
         "runners": state["runners"],
         "runner_set_sha256": state["runner_set_sha256"],
     }
+    if operational_index_provenance is not None:
+        request["operational_index_provenance"]=operational_index_provenance
     _write_canonical(bundle / "request.json", request)
     write_exact_bytes(bundle / "config.json", config_raw)
     _copy_exact(model.schema_path, bundle / "model" / "config.schema.json")
@@ -1419,6 +1429,7 @@ def build_parser() -> argparse.ArgumentParser:
     target.add_argument("--list-configs", action="store_true")
     parser.add_argument("--model", default="latest-research")
     parser.add_argument("--job-id")
+    parser.add_argument("--operational-index-provenance")
     parser.add_argument(
         "--config", type=Path, default=ROOT / "configs/prediction/manual-default.json"
     )

@@ -20,7 +20,7 @@ from flask import Flask
 from race_collection.synchronous_manual_capture import CaptureOneRejected, VerifiedCurrentRaceIndex, bounded_current_race_index
 from src.predictor.on_demand import PredictionBlocked
 from .api import register_level_1_provider
-from .job_store import JobInput, JobStore, Phase
+from .job_store import JobInput, JobStore, OperationalIndexProvenance, Phase
 from .foundation import JsonSerializationPolicy, JsonSource, OperatorEvidenceReader, RawSourceConfig, SourceConfig, TimestampSyntax
 from .live_adapters import InstalledUnits, LiveEvidenceAdapters, PredictionBundleSource, UpcomingRaceSource
 from .prediction_worker import ServerChoice, WorkerConfig, run_once
@@ -346,7 +346,8 @@ def _build_r3_services(app: Flask, profile: str) -> R3Services:
         if len(matches)!=1:raise R3Rejected("RACE_ID_MISSING_OR_AMBIGUOUS")
         race=matches[0]; runners=tuple(_runner(row) for row in race.get("runners",()))
         jump=race.get("jump_datetime",race.get("jump_timestamp"))
-        job_input=JobInput(str(race["race_id"]),str(jump),str(race["runner_set_sha256"]),model_id,resolved_model,model_sha,manifest_sha,schema_sha,config_id,choice.config_sha256,odds_source,runners)
+        provenance=OperationalIndexProvenance.from_verified_current_race_index(view)
+        job_input=JobInput(str(race["race_id"]),str(jump),str(race["runner_set_sha256"]),model_id,resolved_model,model_sha,manifest_sha,schema_sha,config_id,choice.config_sha256,odds_source,runners,provenance)
         job_input.fields()
         return ResolvedSubmission(job_input,runners)
     dispatcher=_FixedDispatcher(store,worker,clock)

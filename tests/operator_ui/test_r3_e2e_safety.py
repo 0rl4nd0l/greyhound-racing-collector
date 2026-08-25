@@ -16,7 +16,7 @@ from flask import Flask
 from werkzeug.security import generate_password_hash
 
 from race_collection.synchronous_manual_capture import VerifiedCurrentRaceIndex
-from src.operator_ui.job_store import JobInput, JobStore, Phase
+from src.operator_ui.job_store import JobInput, JobStore, OperationalIndexProvenance, Phase
 from src.operator_ui.prediction_worker import ServerChoice, WorkerConfig, run_once
 from src.operator_ui.r3_api import R3Services, ResolvedSubmission, install_r3_api
 from src.operator_ui.security import install_connected_mode
@@ -110,7 +110,8 @@ def test_one_authenticated_submission_reaches_real_worker_once_without_false_rea
     install_connected_mode(app)
     store = JobStore(tmp_path / "jobs.db", separate_from=(tmp_path / "audit.db", tmp_path / "canonical.db"))
     runners = ({"box": 1, "name": "ALPHA", "identity": "ALPHA"},)
-    inp = JobInput(RACE_ID, "2026-08-01T01:00:00+00:00", DIGEST, "latest-research", "market_form_residual_v1", DIGEST, DIGEST, DIGEST, "manual-default", DIGEST, "receipt", runners)
+    provenance=OperationalIndexProvenance("operator_ui_operational_index_admission_v1","collector_current_race_index_v2","run",DIGEST,DIGEST,DIGEST,DIGEST,DIGEST)
+    inp = JobInput(RACE_ID, "2026-08-01T01:00:00+00:00", DIGEST, "latest-research", "market_form_residual_v1", DIGEST, DIGEST, DIGEST, "manual-default", DIGEST, "receipt", runners, provenance)
     resolved = lambda selected, now: ResolvedSubmission(inp, runners)
     launches = []
 

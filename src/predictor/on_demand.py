@@ -208,6 +208,26 @@ def _exact_fields(value: Any, fields: set[str], label: str) -> Mapping[str, Any]
     return value
 
 
+OPERATIONAL_INDEX_PROVENANCE_FIELDS = {
+    "schema", "index_schema_version", "run_id", "packet_sha256",
+    "source_refresh_sha256", "publication_sha256", "state_sha256", "report_sha256",
+}
+
+
+def validate_operational_index_provenance(value: Any) -> dict[str, str]:
+    provenance = _exact_fields(value, OPERATIONAL_INDEX_PROVENANCE_FIELDS, "operational_index_provenance")
+    if provenance.get("schema") != "operator_ui_operational_index_admission_v1":
+        raise _blocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH", field="operational_index_provenance.schema")
+    for name in ("index_schema_version", "run_id"):
+        item=provenance.get(name)
+        if not isinstance(item,str) or not item or len(item.encode())>256 or any(ord(char)<32 or ord(char)==127 for char in item):
+            raise _blocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH", field=f"operational_index_provenance.{name}")
+    for name in OPERATIONAL_INDEX_PROVENANCE_FIELDS-{"schema","index_schema_version","run_id"}:
+        if not isinstance(provenance.get(name),str) or re.fullmatch(r"[0-9a-f]{64}",provenance[name]) is None:
+            raise _blocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH", field=f"operational_index_provenance.{name}")
+    return dict(provenance)
+
+
 def _timestamp(value: Any, label: str) -> datetime:
     if not isinstance(value, str):
         raise _blocked("PREDICTION_BUNDLE_INVALID", field=label)
@@ -496,17 +516,18 @@ def validate_prediction_result_v2(value: Any) -> dict[str, Any]:
 
 
 def _validate_request_binding(raw: bytes, result: Mapping[str, Any]) -> dict[str, Any]:
-    request = _exact_fields(
-        _canonical_json(raw, max_bytes=BUNDLE_CONTROL_MAX_BYTES, label="request"),
-        {
+    value=_canonical_json(raw, max_bytes=BUNDLE_CONTROL_MAX_BYTES, label="request")
+    schema=value.get("schema_version") if isinstance(value,Mapping) else None
+    fields={
             "schema_version", "prediction_id", "job_id", "race_query", "race_id", "jump_timestamp",
             "request_timestamp", "odds_source", "model", "config_sha256",
             "research_only", "runners", "runner_set_sha256",
-        },
-        "request",
-    )
-    if request["schema_version"] != "on_demand_prediction_request_v1":
+        }
+    if schema=="on_demand_prediction_request_v2":fields.add("operational_index_provenance")
+    request = _exact_fields(value,fields,"request")
+    if schema not in {"on_demand_prediction_request_v1","on_demand_prediction_request_v2"}:
         raise _blocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH", field="request.schema")
+    if schema=="on_demand_prediction_request_v2":validate_operational_index_provenance(request["operational_index_provenance"])
     _timestamp(request["jump_timestamp"], "request.jump_timestamp")
     _timestamp(request["request_timestamp"], "request.request_timestamp")
     _prediction_id(request["prediction_id"])
