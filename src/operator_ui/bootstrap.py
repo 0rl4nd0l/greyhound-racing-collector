@@ -24,7 +24,7 @@ from .job_store import JobInput, JobStore, Phase
 from .foundation import JsonSerializationPolicy, JsonSource, OperatorEvidenceReader, RawSourceConfig, SourceConfig, TimestampSyntax
 from .live_adapters import InstalledUnits, LiveEvidenceAdapters, PredictionBundleSource, UpcomingRaceSource
 from .prediction_worker import ServerChoice, WorkerConfig, run_once
-from .r3_api import R3Rejected, R3Services, ResolvedSubmission, build_verified_bundle_reader, install_r3_api
+from .r3_api import R3Rejected, R3Services, ResolvedSubmission, build_verified_bundle_reader, finalize_producer_bundle, install_r3_api
 
 CONFIG_KEY = "OPERATOR_UI_LIVE_EVIDENCE_ADAPTERS"
 R3_PROFILE_KEY = "OPERATOR_UI_R3_PROFILE"
@@ -258,8 +258,8 @@ def _runner(row: Mapping[str, Any]) -> dict[str, Any]:
 
 class _FixedDispatcher:
     """One fixed in-process dispatch lane; JobStore.claim_attempt owns execution."""
-    def __init__(self, store: JobStore, worker: WorkerConfig, clock, runner=None):
-        self._store,self._worker,self._clock,self._runner=store,worker,clock,runner or run_once
+    def __init__(self, store: JobStore, worker: WorkerConfig, clock, finalizer, runner=None):
+        self._store,self._worker,self._clock,self._runner,self._finalizer=store,worker,clock,runner or run_once,finalizer
         self._queue: queue.Queue[tuple[str,Any]] = queue.Queue(maxsize=256)
         self._pending:set[str]=set(); self._pending_lock=threading.Lock()
         self._thread=threading.Thread(target=self._serve,name="operator-ui-r3-dispatch",daemon=True)
@@ -275,7 +275,9 @@ class _FixedDispatcher:
     def _serve(self) -> None:
         while True:
             job_id,confirm=self._queue.get()
-            try:self._runner(self._store,job_id,self._worker,now=self._clock,confirm_audit=confirm)
+            try:
+                job=self._runner(self._store,job_id,self._worker,now=self._clock,confirm_audit=confirm)
+                if job.phase is Phase.PRODUCER_COMPLETED:self._finalizer(job,confirm)
             except BaseException as exc:
                 try:
                     job=self._store.get(job_id)
@@ -333,7 +335,8 @@ def _build_r3_services(app: Flask, profile: str) -> R3Services:
     choice=ServerChoice(config_path,"manual-default",_sha(config_path),resolved_model,model_sha,manifest_sha,schema_sha,model_path,manifest_path,schema_path)
     captures=(dirs["current_evidence"],) if profile=="repository-v1" else (dirs["current_evidence"],dirs["capture_evidence_a"],dirs["capture_evidence_b"])
     worker=WorkerConfig(layout["pinned_python"] if layout is not None else Path(sys.executable),product_root,{"latest-research":choice},paths["canonical.sqlite3"],dirs["prediction_bundles"],captures,dirs["collector_requests"],paths["current_index.json"],dirs["current_evidence"],1.0,45.0,90.0,2.0)
-    store=JobStore(paths["jobs.sqlite3"],separate_from=(paths["audit.sqlite3"],paths["canonical.sqlite3"]))
+    verifier_authority=object()
+    store=JobStore(paths["jobs.sqlite3"],separate_from=(paths["audit.sqlite3"],paths["canonical.sqlite3"]),verifier_authority=verifier_authority)
 
     def clock() -> datetime:return datetime.now(timezone.utc)
     def resolve(selected: Mapping[str,str], now: datetime) -> ResolvedSubmission:
@@ -349,8 +352,10 @@ def _build_r3_services(app: Flask, profile: str) -> R3Services:
         job_input=JobInput(str(race["race_id"]),str(jump),str(race["runner_set_sha256"]),model_id,resolved_model,model_sha,manifest_sha,schema_sha,config_id,choice.config_sha256,odds_source,runners)
         job_input.fields()
         return ResolvedSubmission(job_input,runners)
-    dispatcher=_FixedDispatcher(store,worker,clock)
-    return R3Services(store,resolve,dispatcher,build_verified_bundle_reader(dirs["prediction_bundles"],store),clock=clock)
+    def finalize(job: Job, confirm) -> Job:
+        return finalize_producer_bundle(dirs["prediction_bundles"],store,job,capability=verifier_authority,now=clock(),confirm_audit=confirm)
+    dispatcher=_FixedDispatcher(store,worker,clock,finalize)
+    return R3Services(store,resolve,dispatcher,finalize,build_verified_bundle_reader(dirs["prediction_bundles"],store),clock=clock)
 
 
 def bind_configured_r3(app: Flask) -> bool:

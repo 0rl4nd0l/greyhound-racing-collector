@@ -62,6 +62,7 @@ class R3Services:
     job_store: JobStore
     resolve_submission: Callable[[Mapping[str, str], datetime], ResolvedSubmission]
     launch_once: Callable[[str, Callable[[Mapping[str, Any]], Any]], None]
+    finalize_once: Callable[[Job, Callable[[Mapping[str, Any]], Any]], Job]
     read_verified_result: Callable[[Job], Mapping[str, Any] | None]
     clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc)
     rate_limit: int = 5
@@ -104,6 +105,71 @@ def build_verified_bundle_reader(root: Path, store: JobStore) -> Callable[[Job],
         except (OSError,ValueError,TypeError,JobStoreError,PredictionBlocked):
             return None
     return read
+
+
+def finalize_producer_bundle(root: Path, store: JobStore, job: Job, *, capability: object,
+                             now: datetime, confirm_audit) -> Job:
+    """Finalize one producer completion only from its verified indexed bundle."""
+    if job.phase is not Phase.PRODUCER_COMPLETED:
+        return job
+    events=list(store.events(job.job_id))
+    completed=[event for event in events if event["phase"]==Phase.PRODUCER_COMPLETED.value]
+    if len(completed)!=1:
+        raise JobStoreError("producer completion evidence is ambiguous")
+    producer=completed[0]["facts"]
+    prediction_id=producer.get("prediction_id")
+    producer_status=producer.get("predictor_status")
+    def fail(code: str) -> Job:
+        facts={
+            "prediction_id":prediction_id,"job_id":job.job_id,"race_id":job.input.race_id,
+            "jump_timestamp":job.input.jump_timestamp,"runner_set_sha256":job.input.runner_set_sha256,
+            "resolved_model_identity":job.input.resolved_model_identity,"model_sha256":job.input.model_sha256,
+            "model_manifest_sha256":job.input.model_manifest_sha256,"model_schema_sha256":job.input.model_schema_sha256,
+            "config_id":job.input.config_id,"config_sha256":job.input.config_sha256,
+            "producer_status":producer_status,"verification_status":"FAILED",
+            "blocker":{"code":code,"stage":"BUNDLE_VERIFICATION"},
+        }
+        return store.verifier_transition(job.job_id,Phase.FAILED,capability=capability,now=now,status="FAILED",reason="verification_failed",facts=facts,confirm_audit=confirm_audit)
+    try:view=verify_prediction_bundle_index(Path(root),return_verified_view=True)
+    except (OSError,ValueError,TypeError,PredictionBlocked):return fail("BUNDLE_INDEX_VERIFICATION_FAILED")
+    if not isinstance(view,VerifiedPredictionBundleIndex):
+        return fail("BUNDLE_INDEX_VERIFICATION_FAILED")
+    matches=[entry for entry in view.entries if entry.get("job_id")==job.job_id and entry.get("prediction_id")==prediction_id and entry.get("status")==producer_status]
+    if len(matches)!=1:
+        return fail("BUNDLE_IDENTITY_MISSING_OR_AMBIGUOUS")
+    try:bundle=verify_indexed_prediction_bundle(Path(root),matches[0])
+    except (OSError,ValueError,TypeError,PredictionBlocked):return fail("BUNDLE_VERIFICATION_FAILED")
+    result=bundle.result; entry=bundle.index_entry; manifest=bundle.manifest
+    if producer_status=="PREDICTION_READY":
+        if _verified_result(job,bundle,events) is None:
+            return fail("BUNDLE_JOB_IDENTITY_MISMATCH")
+        phase,status,reason,verification,blocker=Phase.PREDICTION_READY,"READY","verified","VERIFIED",None
+    elif producer_status=="PREDICTION_BLOCKED":
+        sealed_blocker=result.get("blocker")
+        stage=result.get("blocker_stage")
+        if not isinstance(sealed_blocker,Mapping) or set(sealed_blocker)!={"code"} or producer.get("producer_blocker")!={"code":sealed_blocker.get("code"),"stage":stage}:
+            return fail("BUNDLE_BLOCKER_IDENTITY_MISMATCH")
+        phase,status,reason,verification,blocker=Phase.REJECTED,"REJECTED","verification_rejected","REJECTED",{"code":sealed_blocker["code"],"stage":stage}
+    else:
+        raise JobStoreError("producer completion status is invalid")
+    files=manifest.get("files")
+    result_file=files.get("result.json") if isinstance(files,Mapping) else None
+    if not isinstance(result_file,Mapping):
+        return fail("BUNDLE_RESULT_IDENTITY_UNAVAILABLE")
+    facts={
+        "prediction_id":result["prediction_id"],"job_id":job.job_id,
+        "race_id":result["race"]["race_id"],"jump_timestamp":result["race"]["jump_timestamp"],
+        "runner_set_sha256":result["evidence"]["runner_set_sha256"],
+        "resolved_model_identity":result["model"]["resolved"],"model_sha256":result["model"]["artifact_sha256"],
+        "model_manifest_sha256":result["model"]["artifact_manifest_sha256"],"model_schema_sha256":result["model"]["schema_sha256"],
+        "config_id":job.input.config_id,"config_sha256":result["config"]["sha256"],
+        "index_sha256":view.sha256,"result_sha256":result_file["sha256"],
+        "manifest_sha256":entry["manifest_sha256"],"logical_bundle_sha256":entry["logical_bundle_sha256"],
+        "bundle_locator":bundle.directory,"producer_status":producer_status,
+        "research_only":result["research_only"],"production_persisted":result["production_persisted"],
+        "betting_output":result["betting_output"],"verification_status":verification,"blocker":blocker,
+    }
+    return store.verifier_transition(job.job_id,phase,capability=capability,now=now,status=status,reason=reason,facts=facts,confirm_audit=confirm_audit)
 
 
 def _bounded(value: Any, name: str, maximum: int = 256) -> str:
@@ -165,7 +231,7 @@ def _verified_result(job: Job, value: Any, events: list[Mapping[str,Any]] | None
 
 
 def _job_payload(store: JobStore, job: Job, result_reader: Callable[[Job], Mapping[str, Any] | None]) -> dict[str, Any]:
-    events = store.events(job.job_id)
+    events = list(store.events(job.job_id))
     timeline = [
         {"event_id": event["event_id"], "phase": event["phase"], "event_at": event["event_at"],
          "status": event["status"], "reason": event["reason"], "event_hash": event["event_hash"],
@@ -244,6 +310,9 @@ def install_r3_api(app: Flask, services: R3Services | None = None) -> bool:
         return resolve_audit_confirmation(intent, audit_hash)
 
     def dispatch_waiting(job: Job, confirm_audit) -> Job:
+        if job.phase is Phase.PRODUCER_COMPLETED:
+            try:return services.finalize_once(job,confirm_audit)
+            except Exception:return services.job_store.get(job.job_id)
         if job.phase is not Phase.WAITING_FOR_CLAIM or job.attempt_claimed:
             return job
         try:
@@ -341,4 +410,4 @@ def install_r3_api(app: Flask, services: R3Services | None = None) -> bool:
     return True
 
 
-__all__ = ["R3Rejected", "R3Services", "ResolvedSubmission", "install_r3_api"]
+__all__ = ["R3Rejected", "R3Services", "ResolvedSubmission", "finalize_producer_bundle", "install_r3_api"]
