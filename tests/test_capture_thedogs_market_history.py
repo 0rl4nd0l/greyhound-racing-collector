@@ -253,7 +253,13 @@ def mismatched_normal_api_payload() -> bytes:
 
 class FakeResponse:
     def __init__(
-        self, url: str, content: bytes, content_type: str, server_time: datetime
+        self,
+        url: str,
+        content: bytes,
+        content_type: str,
+        server_time: datetime,
+        *,
+        content_encoding: str | None = None,
     ):
         self.url = url
         self.content = content
@@ -263,6 +269,8 @@ class FakeResponse:
             "Date": format_datetime(server_time, usegmt=True),
             "X-Request-Id": "fixture-request",
         }
+        if content_encoding is not None:
+            self.headers["Content-Encoding"] = content_encoding
 
 
 class FakeSession:
@@ -275,6 +283,8 @@ class FakeSession:
         server_time: datetime | None = None,
         source_body: bytes | None = None,
         api_body: bytes | None = None,
+        odds_content_encoding: str | None = None,
+        api_content_encoding: str | None = None,
     ):
         self.provider = provider
         self.missing_runner = missing_runner
@@ -282,6 +292,8 @@ class FakeSession:
         self.mismatched_quote_id = mismatched_quote_id
         self.source_body = source_body or source_html()
         self.api_body = api_body
+        self.odds_content_encoding = odds_content_encoding
+        self.api_content_encoding = api_content_encoding
         self.calls: list[str] = []
         self.request_headers: list[dict[str, str]] = []
 
@@ -302,7 +314,11 @@ class FakeSession:
             )
         if url == ODDS_URL:
             return FakeResponse(
-                url, self.source_body, "text/html; charset=utf-8", self.server_time
+                url,
+                self.source_body,
+                "text/html; charset=utf-8",
+                self.server_time,
+                content_encoding=self.odds_content_encoding,
             )
         if "/api/runners/odds?" in url:
             return FakeResponse(
@@ -315,6 +331,7 @@ class FakeSession:
                     ),
                 "application/json; charset=utf-8",
                 self.server_time,
+                content_encoding=self.api_content_encoding,
             )
         raise AssertionError(url)
 
@@ -327,6 +344,32 @@ class FakeClock:
         value = self.value
         self.value += timedelta(milliseconds=100)
         return value
+
+
+def retained_primary_race_page(observed: datetime) -> TimedResponse:
+    return TimedResponse(
+        requested_url=RACE_URL,
+        request_start_utc=observed - timedelta(milliseconds=100),
+        request_end_utc=observed,
+        final_url=RACE_URL,
+        status_code=200,
+        headers={
+            "content-type": "text/html; charset=utf-8",
+            "date": format_datetime(observed, usegmt=True),
+        },
+        body=source_html(),
+    )
+
+
+def capture_primary_identity(session: FakeSession, observed: datetime):
+    return subject.capture_native_identity_from_retained_race_page(
+        session=session,
+        race_page=retained_primary_race_page(observed),
+        expected_active_runner_boxes=[("101", 1), ("102", 2)],
+        expected_jump_utc=JUMP,
+        current_time=observed + timedelta(seconds=1),
+        clock=FakeClock(observed + timedelta(milliseconds=100)),
+    )
 
 
 def plan(**overrides):
@@ -432,29 +475,13 @@ def test_complete_active_field_and_native_ids_are_captured(tmp_path):
 def test_retained_race_page_identity_binding_uses_exactly_two_requests():
     observed = JUMP - timedelta(minutes=20)
     session = FakeSession(server_time=observed)
-    race_page = TimedResponse(
-        requested_url=RACE_URL,
-        request_start_utc=observed - timedelta(milliseconds=100),
-        request_end_utc=observed,
-        final_url=RACE_URL,
-        status_code=200,
-        headers={
-            "content-type": "text/html; charset=utf-8",
-            "date": format_datetime(observed, usegmt=True),
-        },
-        body=source_html(),
-    )
-
-    evidence = subject.capture_native_identity_from_retained_race_page(
-        session=session,
-        race_page=race_page,
-        expected_active_runner_boxes=[("101", 1), ("102", 2)],
-        expected_jump_utc=JUMP,
-        current_time=observed + timedelta(seconds=1),
-        clock=FakeClock(observed + timedelta(milliseconds=100)),
-    )
+    evidence = capture_primary_identity(session, observed)
 
     assert session.calls == [ODDS_URL, subject._api_url(parse_source_runners(source_html()))]
+    assert [headers["Accept-Encoding"] for headers in session.request_headers] == [
+        "identity",
+        "identity",
+    ]
     assert evidence["source_native_race_id"] == "9001"
     assert evidence["active_native_runner_ids"] == ["101", "102"]
     assert evidence["request_accounting"] == {
@@ -462,6 +489,11 @@ def test_retained_race_page_identity_binding_uses_exactly_two_requests():
         "shared_session_max_attempts_per_request": 3,
         "worst_case_wire_attempts": 6,
     }
+    for field in ("odds_page_http", "odds_api_http"):
+        assert evidence[field]["request_headers"] == {
+            "accept-encoding": "identity"
+        }
+        assert evidence[field]["response_content_encoding"] is None
     assert evidence["evidence_sha256"] == sha256_bytes(
         canonical_json_bytes(
             {key: value for key, value in evidence.items() if key != "evidence_sha256"}
@@ -476,6 +508,94 @@ def test_primary_identity_request_accounting_matches_shared_retry_bound():
     assert retries.total == 2
     assert 1 + retries.total == 3
     assert 2 * (1 + retries.total) == 6
+
+
+@pytest.mark.parametrize("content_encoding", [None, "identity"])
+def test_primary_identity_accepts_only_unencoded_responses(content_encoding):
+    observed = JUMP - timedelta(minutes=20)
+    session = FakeSession(
+        server_time=observed,
+        odds_content_encoding=content_encoding,
+        api_content_encoding=content_encoding,
+    )
+    evidence = capture_primary_identity(session, observed)
+
+    assert session.calls == [ODDS_URL, subject._api_url(parse_source_runners(source_html()))]
+    assert evidence["odds_page_http"]["response_content_encoding"] == content_encoding
+    assert evidence["odds_api_http"]["response_content_encoding"] == content_encoding
+
+
+@pytest.mark.parametrize("content_encoding", ["gzip", "br", "deflate", "unknown"])
+def test_primary_identity_rejects_encoded_odds_without_retry(content_encoding):
+    observed = JUMP - timedelta(minutes=20)
+    session = FakeSession(
+        server_time=observed,
+        odds_content_encoding=content_encoding,
+    )
+
+    with pytest.raises(CaptureError, match="source_content_encoding_not_identity"):
+        capture_primary_identity(session, observed)
+
+    assert session.calls == [ODDS_URL]
+
+
+@pytest.mark.parametrize("content_encoding", ["gzip", "br", "deflate", "unknown"])
+def test_primary_identity_rejects_encoded_api_without_retry(content_encoding):
+    observed = JUMP - timedelta(minutes=20)
+    session = FakeSession(
+        server_time=observed,
+        api_content_encoding=content_encoding,
+    )
+
+    with pytest.raises(CaptureError, match="source_content_encoding_not_identity"):
+        capture_primary_identity(session, observed)
+
+    assert session.calls == [ODDS_URL, subject._api_url(parse_source_runners(source_html()))]
+
+
+@pytest.mark.parametrize(
+    ("field", "mutate", "reason"),
+    [
+        (
+            "odds_page_http",
+            lambda receipt: receipt.update(
+                {"request_headers": {"accept-encoding": "gzip"}}
+            ),
+            "odds_page_http_request_accept_encoding_invalid",
+        ),
+        (
+            "odds_api_http",
+            lambda receipt: receipt.update(
+                {"response_content_encoding": "identity"}
+            ),
+            "odds_api_http_response_content_encoding_mismatch",
+        ),
+    ],
+)
+def test_primary_identity_revalidation_rejects_transport_policy_tampering(
+    field,
+    mutate,
+    reason,
+):
+    observed = JUMP - timedelta(minutes=20)
+    evidence = capture_primary_identity(FakeSession(server_time=observed), observed)
+    mutate(evidence[field])
+    evidence["evidence_sha256"] = sha256_bytes(
+        canonical_json_bytes(
+            {key: value for key, value in evidence.items() if key != "evidence_sha256"}
+        )
+    )
+
+    valid, observed_reason = subject.validate_primary_native_identity_evidence(
+        evidence,
+        expected_race_url=RACE_URL,
+        expected_native_race_id="9001",
+        expected_active_runner_boxes=[("101", 1), ("102", 2)],
+        metadata_captured_at=evidence["odds_api_http"]["request_end_utc"],
+    )
+
+    assert valid is False
+    assert observed_reason == reason
 
 
 @pytest.mark.parametrize(

@@ -97,6 +97,7 @@ class TimedResponse:
     status_code: int
     headers: dict[str, str]
     body: bytes
+    request_headers: dict[str, str] | None = None
 
 
 def utc_now() -> datetime:
@@ -387,8 +388,11 @@ def timed_get(
     accept: str,
     clock: Callable[[], datetime],
     xhr: bool = False,
+    require_identity_encoding: bool = False,
 ) -> TimedResponse:
     headers = {"Accept": accept}
+    if require_identity_encoding:
+        headers["Accept-Encoding"] = "identity"
     if referer:
         headers.update(
             {
@@ -410,6 +414,11 @@ def timed_get(
         status_code=int(response.status_code),
         headers=bounded_receipt_headers(response.headers),
         body=body,
+        request_headers=(
+            {"accept-encoding": "identity"}
+            if require_identity_encoding
+            else None
+        ),
     )
 
 
@@ -721,6 +730,7 @@ def capture_native_identity_from_retained_race_page(
         referer=str(identity["race_url"]),
         accept=PAGE_HEADERS["Accept"],
         clock=clock,
+        require_identity_encoding=True,
     )
     validate_response(
         odds,
@@ -742,6 +752,7 @@ def capture_native_identity_from_retained_race_page(
         accept="application/json",
         clock=clock,
         xhr=True,
+        require_identity_encoding=True,
     )
     validate_response(
         api,
@@ -853,6 +864,10 @@ def validate_primary_native_identity_evidence(
         retained_url = urlparse(expected_race_url)
         canonical_race_url = retained_url._replace(query="", fragment="").geturl().rstrip("/")
         identity = exact_odds_identity(f"{canonical_race_url}/odds")
+        _validate_identity_transport_receipt(
+            evidence.get("odds_page_http"),
+            field="odds_page_http",
+        )
         odds = _stored_response(
             evidence.get("odds_page_http"),
             field="odds_page_http",
@@ -867,6 +882,10 @@ def validate_primary_native_identity_evidence(
         if active_ids != sorted(expected_ids):
             raise CaptureError("expected_native_runner_set_mismatch")
         api_url = _api_url(source_runners)
+        _validate_identity_transport_receipt(
+            evidence.get("odds_api_http"),
+            field="odds_api_http",
+        )
         api = _stored_response(
             evidence.get("odds_api_http"),
             field="odds_api_http",
@@ -938,6 +957,20 @@ def validate_primary_native_identity_evidence(
     return True, None
 
 
+def _validate_identity_transport_receipt(payload: Any, *, field: str) -> None:
+    if not isinstance(payload, Mapping):
+        raise CaptureError(f"{field}_receipt_missing")
+    if payload.get("request_headers") != {"accept-encoding": "identity"}:
+        raise CaptureError(f"{field}_request_accept_encoding_invalid")
+    headers = payload.get("headers")
+    if not isinstance(headers, Mapping):
+        raise CaptureError(f"{field}_headers_invalid")
+    if "response_content_encoding" not in payload:
+        raise CaptureError(f"{field}_response_content_encoding_missing")
+    if payload.get("response_content_encoding") != headers.get("content-encoding"):
+        raise CaptureError(f"{field}_response_content_encoding_mismatch")
+
+
 def _response_receipt(response: TimedResponse, *, include_body: bool) -> dict[str, Any]:
     payload = {
         "requested_url": response.requested_url,
@@ -949,6 +982,11 @@ def _response_receipt(response: TimedResponse, *, include_body: bool) -> dict[st
         "body_sha256": sha256_bytes(response.body),
         "body_bytes": len(response.body),
     }
+    if response.request_headers is not None:
+        payload["request_headers"] = dict(response.request_headers)
+        payload["response_content_encoding"] = response.headers.get(
+            "content-encoding"
+        )
     if include_body:
         payload["body_base64"] = base64.b64encode(response.body).decode("ascii")
     return payload
