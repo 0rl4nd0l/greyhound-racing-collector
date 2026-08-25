@@ -306,29 +306,33 @@ def test_primary_download_reallocates_duplicate_refetches_to_native_identity(
         <dt>Track Condition</dt><dd>Good</dd><dt>Weather</dt><dd>Fine</dd>
       </dl></section>
       <table class="race-runners">
-        <tbody data-content-url="/dogs/runner/159001/odds"><tr class="race-runner">
+        <tbody data-content-url="/dogs/runner/159001"><tr class="race-runner">
           <td class="race-runners__box"><sprite-svg name="rug_1"></sprite-svg></td>
-          <td><div class="race-runners__name__dog">Alpha Runner<span>29.1</span></div></td>
+          <td><div class="race-runners__name__dog">Alpha Runner<blackbook-dog data-dog-id="501"></blackbook-dog><span>29.1</span></div></td>
           <td><runner-odd data-runner-id="159001"></runner-odd></td>
         </tr></tbody>
-        <tbody data-content-url="/dogs/runner/159002/odds"><tr class="race-runner">
+        <tbody data-content-url="/dogs/runner/159002"><tr class="race-runner">
           <td class="race-runners__box"><sprite-svg name="rug_2"></sprite-svg></td>
-          <td><div class="race-runners__name__dog">Bravo Runner<span>29.2</span></div></td>
+          <td><div class="race-runners__name__dog">Bravo Runner<blackbook-dog data-dog-id="502"></blackbook-dog><span>29.2</span></div></td>
           <td><runner-odd data-runner-id="159002"></runner-odd></td>
         </tr></tbody>
-        <tbody data-content-url="/dogs/runner/159003/odds"><tr class="race-runner">
+        <tbody data-content-url="/dogs/runner/159003"><tr class="race-runner">
           <td class="race-runners__box"><sprite-svg name="rug_3"></sprite-svg></td>
-          <td><div class="race-runners__name__dog">Charlie Runner<span>29.3</span></div></td>
+          <td><div class="race-runners__name__dog">Charlie Runner<blackbook-dog data-dog-id="503"></blackbook-dog><span>29.3</span></div></td>
           <td><runner-odd data-runner-id="159003"></runner-odd></td>
         </tr></tbody>
-        <tbody data-content-url="/dogs/runner/159004/odds"><tr class="race-runner">
+        <tbody data-content-url="/dogs/runner/159004"><tr class="race-runner">
           <td class="race-runners__box"><sprite-svg name="rug_4"></sprite-svg></td>
-          <td><div class="race-runners__name__dog">Delta Runner<span>29.4</span></div></td>
+          <td><div class="race-runners__name__dog">Delta Runner<blackbook-dog data-dog-id="504"></blackbook-dog><span>29.4</span></div></td>
           <td><runner-odd data-runner-id="159004"></runner-odd></td>
         </tr></tbody>
       </table>
     </body></html>
     """.encode()
+    odds_html = race_html.replace(b'"/dogs/runner/159001"', b'"/dogs/runner/159001/odds"')
+    odds_html = odds_html.replace(b'"/dogs/runner/159002"', b'"/dogs/runner/159002/odds"')
+    odds_html = odds_html.replace(b'"/dogs/runner/159003"', b'"/dogs/runner/159003/odds"')
+    odds_html = odds_html.replace(b'"/dogs/runner/159004"', b'"/dogs/runner/159004/odds"')
     expert_html = f"""
     <html><body><a href="{export_url}">Download CSV</a>
       <div class="layout--sidebar--expert">
@@ -399,7 +403,7 @@ def test_primary_download_reallocates_duplicate_refetches_to_native_identity(
             if url == export_url:
                 return Response(url, csv_content.encode(), "text/csv")
             if url == odds_url:
-                return Response(url, race_html, "text/html; charset=utf-8")
+                return Response(url, odds_html, "text/html; charset=utf-8")
             if url.startswith(api_url_prefix):
                 return Response(url, api_body, "application/json; charset=utf-8")
             if url.startswith("https://api.open-meteo.com/v1/forecast?"):

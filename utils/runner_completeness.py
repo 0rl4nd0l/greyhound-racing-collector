@@ -697,28 +697,34 @@ def extract_canonical_runner_set_from_html(
         dog_name = _runner_row_name(row)
         into_box = _runner_row_into_box(row)
         runner_id_values = {
-            str(element.get("data-dog-id") or "").strip()
-            for element in row.select("[data-dog-id]")
-            if str(element.get("data-dog-id") or "").strip()
-        }
-        runner_id_values.update(
             str(element.get("data-runner-id") or "").strip()
             for element in row.select("[data-runner-id]")
             if str(element.get("data-runner-id") or "").strip()
-        )
+        }
+        corroborating_runner_ids: set[str] = set()
+        runner_identity_url_invalid = False
+        runner_identity_urls: list[str] = []
         runner_group = row.find_parent("tbody")
         if runner_group is not None:
+            runner_identity_urls.append(
+                str(runner_group.get("data-content-url") or "")
+            )
+        runner_identity_urls.extend(
+            str(anchor.get("href") or "") for anchor in row.select("a[href]")
+        )
+        for runner_identity_url in runner_identity_urls:
+            path = urlparse(runner_identity_url).path
+            if not path.lower().startswith("/dogs/runner/"):
+                continue
             match = re.fullmatch(
-                r"/dogs/runner/([0-9]+)/odds",
-                urlparse(str(runner_group.get("data-content-url") or "")).path,
+                r"/dogs/runner/([0-9]+)(?:/odds)?",
+                path,
                 flags=re.IGNORECASE,
             )
             if match:
-                runner_id_values.add(match.group(1))
-        for anchor in row.select("a[href]"):
-            parts = urlparse(str(anchor.get("href") or "")).path.split("/")
-            if len(parts) >= 3 and parts[1].lower() == "dogs" and parts[2].isdigit():
-                runner_id_values.add(parts[2])
+                corroborating_runner_ids.add(match.group(1))
+            else:
+                runner_identity_url_invalid = True
         numeric_runner_ids = {
             value
             for value in runner_id_values
@@ -726,7 +732,13 @@ def extract_canonical_runner_set_from_html(
         }
         source_native_runner_id = (
             next(iter(numeric_runner_ids))
-            if len(runner_id_values) == 1 and len(numeric_runner_ids) == 1
+            if (
+                len(runner_id_values) == 1
+                and len(numeric_runner_ids) == 1
+                and bool(corroborating_runner_ids)
+                and not runner_identity_url_invalid
+                and corroborating_runner_ids.issubset(numeric_runner_ids)
+            )
             else None
         )
         if original_box is not None and original_box > 8:
@@ -769,6 +781,17 @@ def extract_canonical_runner_set_from_html(
         ambiguous_reasons.append(
             "duplicate_canonical_active_boxes:"
             + ",".join(str(value) for value in duplicate_active_boxes)
+        )
+    active_native_runner_ids = [
+        row["source_native_runner_id"]
+        for row in active
+        if row.get("source_native_runner_id") is not None
+    ]
+    duplicate_active_native_runner_ids = _duplicates(active_native_runner_ids)
+    if duplicate_active_native_runner_ids:
+        native_identity_reasons.append(
+            "duplicate_active_source_native_runner_ids:"
+            + ",".join(duplicate_active_native_runner_ids)
         )
     if expected is not None and page_race_number is not None and expected != page_race_number:
         ambiguous_reasons.append(
