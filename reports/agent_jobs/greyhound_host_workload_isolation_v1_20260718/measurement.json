@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "result": "WORKING",
+  "root": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/reports/agent_jobs",
+  "operation": "rg fixed-string no-match over Markdown and JSON",
+  "limits": {
+    "workers": 1,
+    "timeout_seconds": 60,
+    "read_bytes_per_second": 1048576,
+    "read_iops": 16,
+    "device": "/dev/nvme0n1",
+    "device_id": "259:2",
+    "io_max": "259:2 rbps=1048576 wbps=max riops=16 wiops=max",
+    "io_weight": 1,
+    "cpu_weight": 8
+  },
+  "process_interval": {
+    "started_at": "2026-07-18T17:13:49.233927560+10:00",
+    "ended_at": "2026-07-18T17:14:15.709846793+10:00",
+    "elapsed_seconds": 26.475919233,
+    "rchar_delta_bytes": 311795,
+    "read_bytes_delta": 1318912,
+    "syscr_delta": 106
+  },
+  "device_interval": {
+    "sectors_read_delta": 2552,
+    "sector_size_assumed_bytes": 512,
+    "read_delta_bytes": 1306624,
+    "sectors_written_delta": 832,
+    "write_delta_bytes": 425984,
+    "process_vs_device_read_delta_bytes": 12288
+  },
+  "psi": {
+    "before_at": "2026-07-18T17:13:30.729854256+10:00",
+    "before_some_avg10": 2.32,
+    "before_full_avg10": 2.07,
+    "during_start_some_avg10": 14.35,
+    "during_start_full_avg10": 13.86,
+    "during_end_some_avg10": 39.89,
+    "during_end_full_avg10": 32.47,
+    "during_some_total_delta_us": 10984884,
+    "during_full_total_delta_us": 8378473,
+    "after_at": "2026-07-18T17:14:46.071606517+10:00",
+    "after_some_avg10": 17.91,
+    "after_full_avg10": 16.35
+  },
+  "execution": {
+    "exit_code": 1,
+    "exit_meaning": "expected no match",
+    "approximate_wall_seconds": 35,
+    "container_pids": 1,
+    "container_present_after": false,
+    "unbounded_baseline_run": false,
+    "interactive_probe_max_wall_seconds": 1.3
+  },
+  "collection_observation": {
+    "service": "shadow-autopilot-odds-capture.service",
+    "successful_natural_starts_aest": [
+      "2026-07-18T17:13:38+10:00",
+      "2026-07-18T17:14:04+10:00"
+    ],
+    "exec_main_status": 0,
+    "result": "success",
+    "timer_after": "active/waiting",
+    "completed_full_cycle_observed": false,
+    "service_mutation": false,
+    "database_access": false
+  }
+}

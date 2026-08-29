@@ -1,0 +1,22 @@
+{
+  "schema_version": "tenn_git_guard_preflight_v2",
+  "checked_at": "2026-07-18T07:16:49Z",
+  "repo_root": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-host-workload-isolation-v1-20260718",
+  "branch": "codex/host-workload-isolation-v1-20260718",
+  "head": "e669f9a9b24d74682d868ee28f12bbd782875bea",
+  "base": "origin/master",
+  "canonical_head": "c1dfd464cf6ecfb2034f96ac1a8d3ea58d4e6afa",
+  "merge_base": "c1dfd464cf6ecfb2034f96ac1a8d3ea58d4e6afa",
+  "control_contract_status": "V2",
+  "semantic_control_status": "ALLOW_NEW_SCOPE",
+  "registry_status": "PASS",
+  "decision_ledger_status": "PASS",
+  "decision_ledger_entries": 48,
+  "task_ledger_status": "DATA_MISSING",
+  "duplicate_work_classification": "DATA_MISSING_FALLBACK_CHECKED",
+  "duplicate_work_matches": [],
+  "substantive_work_permitted": true,
+  "report_write_permitted": true,
+  "final_decision": "warning",
+  "warning_reason": "committed and live task ledgers are absent; fallback sources were checked without a duplicate match"
+}

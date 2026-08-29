@@ -1,0 +1,40 @@
+Repository/control-plane:
+git fetch origin master
+python3 agent_job_contract.py validate docs/agent_tasks/greyhound_host_workload_isolation_v1_20260718.md
+python3 agent_job_registry.py claim docs/agent_tasks/greyhound_host_workload_isolation_v1_20260718.md --repo-root .
+python3 tenn_git_guard.py preflight --repo-root . --task-card docs/agent_tasks/greyhound_host_workload_isolation_v1_20260718.md --json
+python3 agent_job_registry.py heartbeat greyhound_host_workload_isolation_v1_20260718 --repo-root .
+
+Host support:
+systemd --version
+cat /sys/fs/cgroup/cgroup.controllers
+cat /sys/fs/cgroup/user.slice/user-1000.slice/user@1000.service/cgroup.controllers
+systemctl show user@1000.service -p Delegate
+docker info --format server/cgroup fields
+docker image inspect --format image ID alpine:3.20
+findmnt -J -T exact-root -o SOURCE,TARGET
+lsblk -ndo PKNAME /dev/nvme0n1p1
+ldd resolved-rg
+
+Focused checks:
+python3 -m unittest tests.test_run_bounded_offline
+python3 -m py_compile scripts/run_bounded_offline.py tests/test_run_bounded_offline.py
+git diff --check
+python3 scripts/run_bounded_offline.py --root /mnt tests
+python3 scripts/run_bounded_offline.py --root /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0 tests
+python3 scripts/run_bounded_offline.py --root <exact-task-card-root> hash --glob greyhound_host_workload_isolation_v1_20260718.md
+python3 scripts/run_bounded_offline.py --root <exact-tests-root> tests
+
+Representative bounded scan:
+python3 scripts/run_bounded_offline.py --root /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/reports/agent_jobs --timeout-seconds 60 --read-mib-per-sec 1 --read-iops 16 --include-generated rg __bounded_validation_no_match_20260718__ --glob '*.md' --glob '*.json'
+cat /proc/pressure/io
+cat /proc/<bounded-pid>/io
+cat /proc/<bounded-pid>/cgroup
+cat /sys/fs/cgroup/<bounded-cgroup>/io.max
+cat /sys/fs/cgroup/<bounded-cgroup>/io.weight
+cat /sys/fs/cgroup/<bounded-cgroup>/cpu.weight
+awk '$3 == "nvme0n1" {print}' /proc/diskstats
+docker stats --no-stream <bounded-container>
+systemctl --user show shadow-autopilot-odds-capture.timer/service selected read-only properties
+systemctl --user show shadow-autopilot-full.timer/service selected read-only properties
+docker ps -a --filter name=<bounded-container>
