@@ -750,6 +750,61 @@ def test_enabled_generator_rejects_unit_path_with_wrong_basename(tmp_path, monke
         generate_package(**values, enabled=True)
 
 
+@pytest.mark.parametrize("source_key", ["odds_report", "odds_refresh"])
+def test_generated_package_bootstraps_with_bounded_large_odds_reports(
+    real_startup_tmp_path, monkeypatch, source_key
+):
+    values = deployment_inputs(real_startup_tmp_path)
+    git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    report = Path(authority["sources"][source_key])
+    payload = json.loads(report.read_text())
+    payload["bounded_report_detail"] = ""
+    encoded = json.dumps(payload, sort_keys=True).encode()
+    payload["bounded_report_detail"] = "x" * (512 * 1024 - len(encoded))
+    report.write_text(json.dumps(payload, sort_keys=True))
+    assert report.stat().st_size == 512 * 1024
+
+    generate_package(**values, enabled=True)
+    generated = load_generated_environment(monkeypatch, values)
+    app = Flask(__name__)
+    app.config[bootstrap_module.R3_PROFILE_KEY] = generated["OPERATOR_UI_R3_PROFILE"]
+    load_connected_environment(app)
+    monkeypatch.setattr(bootstrap_module, "_REPOSITORY_ROOT", values["source_root"])
+    assert bootstrap_module.configure_r3_startup(app) is True
+
+
+@pytest.mark.parametrize("source_key, maximum", [
+    ("full_state", 512 * 1024),
+    ("full_report", 512 * 1024),
+    ("odds_state", 256 * 1024),
+    ("odds_report", 512 * 1024),
+    ("odds_refresh", 512 * 1024),
+    ("corpus_report", 256 * 1024),
+    ("corpus_manifest", 256 * 1024),
+    ("deployment_manifest", 256 * 1024),
+    ("model_catalog", 256 * 1024),
+])
+def test_generator_rejects_live_source_over_runtime_budget_before_writing_package(
+    tmp_path, monkeypatch, source_key, maximum
+):
+    values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    report = Path(authority["sources"][source_key])
+    payload = json.loads(report.read_text())
+    payload["bounded_report_detail"] = ""
+    encoded = json.dumps(payload, sort_keys=True).encode()
+    payload["bounded_report_detail"] = "x" * (maximum + 1 - len(encoded))
+    report.write_text(json.dumps(payload, sort_keys=True))
+    assert report.stat().st_size == maximum + 1
+
+    with pytest.raises(DeploymentRejected, match="oversized"):
+        generate_package(**values, enabled=True)
+
+    assert all(not target.exists() for target in generated_targets(values))
+
+
 @pytest.mark.parametrize("enabled, expected", [(False, False), (True, True)])
 def test_real_generated_package_startup_is_disabled_or_bootstraps_with_all_deployment_identity(
     real_startup_tmp_path, monkeypatch, enabled, expected

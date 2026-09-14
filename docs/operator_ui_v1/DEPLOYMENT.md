@@ -37,6 +37,14 @@ actual time those installed-unit and service-state observations were captured;
 the generator does not invent it. Regenerate after any authoritative producer
 or installed-unit observation changes.
 
+Package generation and startup share finite JSON source budgets: 512 KiB for
+full state, full report, odds report and odds refresh; 256 KiB for odds state
+and the remaining control/catalog reports. The evidence reader uses those same
+limits. An over-budget source rejects generation before any package outputs
+are written. This does not change raw-file budgets, identity, provenance or
+freshness checks. Do not truncate a producer report or substitute an older one
+to satisfy the limit.
+
 The sealed model-catalog observation in that deployment binding authenticates
 the normalized catalog and its fixed inputs; it is not a periodic publisher.
 Each models request re-reads those sealed bytes and publishes a current
@@ -109,7 +117,16 @@ Before any start, verify the unit with `systemd-analyze verify`, confirm the
 unit/config/binding hashes equal the accepted review packet, confirm the bind
 is the approved private address, and confirm the deployed source commit/tree,
 profile hash, five artifact hashes, Python, database, evidence, producer, and
-operations paths exactly match the binding. After an authorized start, inspect
+operations paths exactly match the binding. Also exercise the read-only live
+adapter composition under the pinned Python from the candidate source:
+
+```bash
+python -c 'from src.operator_ui.bootstrap import _configured_live, _repository_layout; _configured_live(_repository_layout())'
+```
+
+This supplements package/layout checks without importing the application,
+opening operations stores or launching a job. It is not a service-health or
+prediction acceptance test. After an authorized start, inspect
 the installed unit and process identity, confirm there is no wildcard/public
 listener, authenticate over the approved access path, verify the existing UI
 is still available, and inspect only Level-1/Level-2 read/audit behavior. This

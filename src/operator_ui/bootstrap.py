@@ -51,6 +51,7 @@ from .live_adapters import (
     UpcomingRaceSource,
 )
 from .prediction_worker import ServerChoice, WorkerConfig, run_once
+from .source_limits import CONTROL_BYTES, LIVE_SOURCE_MAX_BYTES
 from .r3_api import (
     R3Rejected,
     R3Services,
@@ -77,9 +78,7 @@ _GENERATOR_KEYS={"generator_id","schema_version","version"}
 _DEPLOYMENT_KEYS={"source_commit","source_tree","ui_version","profile_id"}
 _PROFILE_DEPLOYMENT_KEYS={"ui_version","profile_id"}
 _ARTIFACT_KEYS={"prediction_script","prediction_config","model_artifact","model_manifest","model_schema"}
-_MAX_CONTROL_BYTES=256*1024
-_MAX_FULL_SOURCE_BYTES=512*1024
-_FULL_SOURCE_KEYS={"full_state","full_report"}
+_MAX_CONTROL_BYTES=CONTROL_BYTES
 _DIGEST_ONLY_RAW_KEYS={"corpus_inventory_csv","corpus_inventory_jsonl"}
 _HEX40_RE=re.compile(r"^[0-9a-f]{40}$")
 _HEX64_RE=re.compile(r"^[0-9a-f]{64}$")
@@ -153,8 +152,7 @@ def _retained_read(path:Path,*,maximum:int=_MAX_CONTROL_BYTES)->bytes:
 
 
 def _retained_source_read(path:Path,key:str)->bytes:
-    maximum=_MAX_FULL_SOURCE_BYTES if key in _FULL_SOURCE_KEYS else _MAX_CONTROL_BYTES
-    return _retained_read(path,maximum=maximum)
+    return _retained_read(path,maximum=LIVE_SOURCE_MAX_BYTES[key])
 
 
 def _regular(path: Path) -> None:
@@ -256,7 +254,7 @@ def _configured_live(layout:Mapping[str,Any])->LiveEvidenceAdapters:
         evidence_root=layout["dirs"]["current_evidence"]
         allowlisted=sealed_root or (evidence_root if path.is_relative_to(evidence_root) else path.parent)
         serialization=(JsonSerializationPolicy.PRODUCER_COMPACT_CANONICAL_LINE if key=="model_catalog" else JsonSerializationPolicy.PRODUCER_PRETTY_SORTED)
-        max_bytes=_MAX_FULL_SOURCE_BYTES if key in _FULL_SOURCE_KEYS else _MAX_CONTROL_BYTES
+        max_bytes=LIVE_SOURCE_MAX_BYTES[key]
         sources[key]=SourceConfig(path,allowlisted,"producer_report",str(schema or "shadow_autopilot_refresh_report"),f"operator_ui.{key}",policy,"Exact producer evidence only.",JsonSource("schema_version" if schema else None,schema,tuple(payload),time_field,identity_fields=("schema_version",) if schema else (),max_items=100000,timestamp_syntax=TimestampSyntax.AWARE_ISO8601,serialization_policy=serialization,authority_observed_at=live["observed_at"] if key=="model_catalog" else None),max_bytes=max_bytes,expected_sha256=digest)
     raw_sources={}
     for key in live.get("raw_sources",{}):

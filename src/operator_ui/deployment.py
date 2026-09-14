@@ -16,6 +16,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterator
 
+from .source_limits import LIVE_SOURCE_MAX_BYTES
+
 
 class DeploymentRejected(RuntimeError):
     """The requested package cannot safely bind the repository deployment."""
@@ -43,10 +45,7 @@ _ARTIFACTS = {
     "model_manifest": "artifacts/frozen_models/market_form_residual_v1/manifest.json",
     "model_schema": "configs/prediction/schemas/market_form_residual_v1.schema.json",
 }
-_LIVE_JSON_KEYS = {
-    "full_state", "full_report", "odds_state", "odds_report", "odds_refresh",
-    "corpus_report", "corpus_manifest", "deployment_manifest", "model_catalog",
-}
+_LIVE_JSON_KEYS = frozenset(LIVE_SOURCE_MAX_BYTES)
 _LIVE_RAW_KEYS = {
     "corpus_inventory_csv", "corpus_inventory_jsonl", "corpus_scorecard_csv",
     "corpus_scorecard_jsonl", "corpus_report_bytes", "corpus_summary",
@@ -416,7 +415,8 @@ def _live_authority(path: Path) -> dict[str, Any]:
                 digest, byte_count = _retained_file_digest(file_path)
                 sealed[group][name] = {"path": str(file_path), "sha256": digest, "bytes": byte_count, "authentication": "sha256_size_only_v1"}
             else:
-                raw = _retained_file_read(file_path, 16 * 1024 * 1024)
+                maximum = LIVE_SOURCE_MAX_BYTES[name] if group == "sources" else 16 * 1024 * 1024
+                raw = _retained_file_read(file_path, maximum)
                 snapshots[(group, name)] = raw
                 sealed[group][name] = {"path": str(file_path), "sha256": hashlib.sha256(raw).hexdigest()}
     try:
