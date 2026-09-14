@@ -907,9 +907,16 @@ def scheduled_exact_receipt(
     return protocol, value, paths, source_attempt
 
 
+@pytest.mark.parametrize("source_query", ["", "?trial=false"])
 def test_scheduled_exact_receipt_reuses_while_capture_authority_is_busy(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, source_query: str,
 ):
+    original_race = race
+    def source_race(race_time: str = "13:00") -> dict[str, Any]:
+        value = original_race(race_time)
+        value["url"] += source_query
+        return value
+    monkeypatch.setattr(sys.modules[__name__], "race", source_race)
     protocol, value, paths, _ = scheduled_exact_receipt(tmp_path)
 
     calls = {"capture": 0, "score": 0}
@@ -950,6 +957,17 @@ def test_scheduled_exact_receipt_reuses_while_capture_authority_is_busy(
         for path in bundle.rglob("*")
         if path.is_file() and path.name != "bundle_manifest.json"
     }
+    for suffix in ("?trial=true", "?trial=false&results=true", "/different-race"):
+        changed = json.loads(contents["protocol/collector_exact_receipt.json"])
+        changed["sealed_handoff"]["race"]["url"] = original_race()["url"] + suffix
+        changed_raw = canonical_bytes(changed)
+        changed_result = json.loads(canonical_bytes(result))
+        changed_result["evidence"]["protocol_chain"]["collector_exact_receipt_sha256"] = sha256_bytes(changed_raw)
+        with pytest.raises(PredictionBlocked) as wrong_url:
+            on_demand._validate_sealed_protocol(
+                {**contents, "protocol/collector_exact_receipt.json": changed_raw}, changed_result
+            )
+        assert wrong_url.value.details == {"field": "protocol.collector_exact_receipt.handoff"}
     tampered = json.loads(contents["protocol/collector_exact_receipt.json"])
     tampered["collector_run_id"] = "substituted-run"
     contents["protocol/collector_exact_receipt.json"] = canonical_bytes(tampered)
@@ -995,6 +1013,17 @@ def test_scheduled_exact_receipt_reuses_while_capture_authority_is_busy(
     }
     with pytest.raises(ProtocolRejected):
         protocol.snapshot_collector_exact_handoff(public_handoff)
+
+
+@pytest.mark.parametrize("suffix", ["?trial=true", "?trial=false&results=true", "/different-race"])
+def test_scheduled_receipt_rejects_unsafe_or_different_target_url(tmp_path: Path, suffix: str):
+    protocol, _, _, _ = scheduled_exact_receipt(tmp_path)
+    deps = dependencies()
+    target = race()
+    target["url"] += suffix
+    deps.schedule = lambda *_: [target]
+    with pytest.raises(PredictionBlocked, match="EXACT_RACE_IDENTITY_UNAVAILABLE|RECEIPT_INVALID"):
+        run_prediction(args(tmp_path, collector_request_root=protocol.root), deps)
 
 
 def test_scheduled_source_report_rejects_mismatched_source_identity(

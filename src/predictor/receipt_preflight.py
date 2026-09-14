@@ -16,6 +16,7 @@ from race_collection.manual_prediction_collector_request import (
     runner_set_sha256,
 )
 from src.predictor.on_demand import PredictionBlocked, receipt_from_handoff
+from utils.csv_metadata import canonical_thedogs_race_identity
 from utils.race_identity_equivalence import (
     configured_venue_identity,
     race_id_parts,
@@ -210,12 +211,24 @@ def discover_exact_receipt_ready(
         raise PredictionBlocked("RECEIPT_INVALID")
     if selected.get("schema_version") == "on_demand_verified_collector_capture_v2":
         source_race = selected.get("race")
+        source_url_identity = canonical_thedogs_race_identity(
+            source_race.get("url") if isinstance(source_race, Mapping) else None
+        )
         if (
             not isinstance(source_race, Mapping)
             or not race_identity_equivalent(
                 race_id, source_race.get("race_id"), source_url=source_race.get("url")
             )
-            or source_race.get("url") != race_url
+            or source_url_identity is None
+            or source_url_identity != canonical_thedogs_race_identity(race_url)
+            or source_race.get("url") not in {
+                source_url_identity["canonical_url"],
+                source_url_identity["canonical_url"] + "?trial=false",
+            }
+            or race_url not in {
+                source_url_identity["canonical_url"],
+                source_url_identity["canonical_url"] + "?trial=false",
+            }
             or source_race.get("jump_timestamp") != jump.isoformat()
             or selected.get("runner_set_sha256") != expected_runner_hash
         ):

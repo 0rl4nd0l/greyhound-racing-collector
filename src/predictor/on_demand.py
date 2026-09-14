@@ -625,6 +625,22 @@ def _validate_collector_exact_protocol(
             field="protocol.collector_exact_receipt",
         )
     handoff = receipt.get("sealed_handoff")
+    handoff_race = handoff.get("race") if isinstance(handoff, Mapping) else None
+    source_url_identity = canonical_thedogs_race_identity(
+        handoff_race.get("url") if isinstance(handoff_race, Mapping) else None
+    )
+    # Compare the existing canonical race identity while retaining the exact,
+    # hash-bound source URL in the receipt. Only the non-trial query is an
+    # equivalent spelling here; trial=true must not become a racing receipt.
+    canonical_handoff_race = (
+        {**handoff_race, "url": source_url_identity["canonical_url"]}
+        if isinstance(handoff_race, Mapping) and source_url_identity is not None
+        and handoff_race.get("url") in {
+            source_url_identity["canonical_url"],
+            source_url_identity["canonical_url"] + "?trial=false",
+        }
+        else None
+    )
     result_race = {
         key: result["race"][key]
         for key in (
@@ -637,7 +653,7 @@ def _validate_collector_exact_protocol(
         or set(handoff) != handoff_keys
         or handoff.get("schema_version") != "on_demand_verified_collector_capture_v2"
         or handoff.get("race_id") != result["race"]["race_id"]
-        or handoff.get("race") != result_race
+        or canonical_handoff_race != result_race
         or handoff.get("runner_set_sha256")
         != runner_set_sha256(result["prediction"]["predictions"])
         or handoff.get("capture_attempt_sha256")

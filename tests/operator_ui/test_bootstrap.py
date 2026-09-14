@@ -7,7 +7,7 @@ import tempfile
 import threading
 import time
 from dataclasses import replace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -239,7 +239,7 @@ def test_repository_profile_finalizes_one_verified_worker_bundle_before_disclosi
         {"box_number":2,"display_name":"BETA","identity":"BETA","source_native_runner_id":"dog-2"},
     )
     race={"race_id":RACE_ID,"jump_datetime":"2026-08-01T01:00:00+00:00","runner_set_sha256":H,"runners":runners}
-    current_view=VerifiedCurrentRaceIndex("collector_current_race_index_v2","run","2026-08-01T00:00:00Z",H,b"{}",(race,),"source.json",H,H,H,H)
+    current_view=VerifiedCurrentRaceIndex("collector_current_race_index_v2","run",datetime.now(timezone.utc).isoformat(),H,b"{}",(race,),"source.json",H,H,H,H)
     monkeypatch.setattr(bootstrap_module,"bounded_current_race_index",lambda **_:current_view)
     monkeypatch.setattr(bootstrap_module,"preflight_race_receipt",lambda race,**_:ReceiptAdmission(str(race["race_id"]),str(race["jump_datetime"]),READY,None))
     receipt_revalidations=[]
@@ -293,6 +293,82 @@ def test_repository_profile_finalizes_one_verified_worker_bundle_before_disclosi
     assert holder["argv"][holder["argv"].index("--odds-source")+1]=="receipt"
     assert canonical.read_bytes()==b"canonical-read-only"
     assert holder["store"].verify()
+
+
+@pytest.mark.parametrize("index_age,receipt_seconds,accepted", [
+    (1201, 0, False),
+    (1199, 2, False),
+    (1200, 0, True),
+])
+def test_repository_admission_rejects_expired_index_before_allocating_job(
+    tmp_path, monkeypatch, index_age, receipt_seconds, accepted,
+):
+    _, _, _, operations, _ = repository_binding_fixture(tmp_path, monkeypatch)
+    now = datetime(2026, 8, 3, 1, 2, 4, tzinfo=timezone.utc)
+    clock = {"now": now}
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return clock["now"].astimezone(tz)
+
+    monkeypatch.setattr(bootstrap_module, "datetime", Clock)
+    digest = hashlib.sha256(b"fixture-runners").hexdigest()
+    race = {
+        "race_id": "race-fixture", "jump_datetime": (now + timedelta(hours=1)).isoformat(),
+        "runner_set_sha256": digest,
+        "runners": [{"box": 1, "display_name": "ALPHA", "identity": "ALPHA",
+                     "source_native_runner_id": "dog-1"}],
+    }
+    view = VerifiedCurrentRaceIndex(
+        "collector_current_race_index_v2", "run",
+        (now - timedelta(seconds=index_age)).isoformat(), digest, b"{}", (race,),
+        "source.json", digest, digest, digest, digest,
+    )
+    # Verified-view reads deliberately preserve stale but authentic packets.
+    monkeypatch.setattr(bootstrap_module, "bounded_current_race_index", lambda **_: view)
+
+    def ready_receipt(race, **_):
+        clock["now"] += timedelta(seconds=receipt_seconds)
+        return ReceiptAdmission(race["race_id"], race["jump_datetime"], READY, None)
+
+    monkeypatch.setattr(bootstrap_module, "preflight_race_receipt", ready_receipt)
+    dispatched = []
+    monkeypatch.setattr(bootstrap_module, "_FixedDispatcher",
+                        lambda *_: lambda job_id, confirm: dispatched.append(job_id))
+    app = Flask(__name__)
+    app.config.update(TESTING=True, OPERATOR_UI_CONNECTED_MODE=True,
+                      OPERATOR_UI_SECRET_KEY="repository-secret-" + "x" * 40,
+                      OPERATOR_UI_USERNAME="viewer",
+                      OPERATOR_UI_PASSWORD_HASH=generate_password_hash("correct horse"),
+                      OPERATOR_UI_LEVEL=2, OPERATOR_UI_DEPLOYED_COMMIT="21e7b02e60e82da9c4dbbb796ea435bc120e9862",
+                      OPERATOR_UI_DEPLOYED_TREE="2cfc75cd8a2af1a9e5da4986c969cb668b93af62",
+                      OPERATOR_UI_DEPLOYED_VERSION="operator-ui-v1", OPERATOR_UI_DEPLOYED_PROFILE="repository-v1")
+    app.config[R3_PROFILE_KEY] = "repository-v1"
+    assert bootstrap_module.configure_r3_startup(app)
+    install_connected_mode(app)
+    assert bind_configured_r3(app)
+    services = app.extensions["operator_ui_r3_services"]
+    client = app.test_client()
+    token = client.get("/operator-ui/login", base_url="https://localhost").get_json()["csrf_token"]
+    token = client.post("/operator-ui/login", base_url="https://localhost",
+                        data={"username": "viewer", "password": "correct horse", "csrf_token": token}).get_json()["csrf_token"]
+    request = {"race_id": "race-fixture", "model_id": "latest-research", "config_id": "manual-default",
+               "odds_source_id": "receipt", "idempotency_key": "12345678-1234-4123-8123-123456789abc"}
+    response = client.post("/operator-ui/api/v1/prediction-jobs", base_url="https://localhost",
+                           headers={"X-CSRF-Token": token}, json=request)
+    if accepted:
+        assert response.status_code == 202, response.get_json()
+        assert dispatched == [response.get_json()["job_id"]]
+    else:
+        assert response.status_code == 409, response.get_json()
+        assert response.get_json()["classification"] == "CURRENT_INDEX_STALE"
+        assert services.job_store.find_by_idempotency(
+            actor_identity="viewer", operation="manual_prediction",
+            idempotency_key=request["idempotency_key"],
+        ) is None
+        assert dispatched == []
+    assert list((operations / "artifacts/on_demand_prediction_runs").iterdir()) == []
 
 
 def test_repository_profile_schema_evidence_identities_pass_api_validation(tmp_path,monkeypatch):
@@ -445,7 +521,7 @@ def test_finite_testing_fixture_profile_builds_real_repository_composition(tmp_p
     digest=hashlib.sha256(b"fixture-runners").hexdigest()
     race={"race_id":"race-fixture","jump_datetime":"2026-08-01T01:00:00+00:00","runner_set_sha256":digest,
           "runners":[{"box_number":1,"display_name":"ALPHA","identity":"alpha","source_native_runner_id":"dog-1"}]}
-    view=VerifiedCurrentRaceIndex("collector_current_race_index_v2","run","2026-08-01T00:00:00Z",digest,b"{}",(race,),"source.json",digest,digest,digest,digest)
+    view=VerifiedCurrentRaceIndex("collector_current_race_index_v2","run",datetime.now(timezone.utc).isoformat(),digest,b"{}",(race,),"source.json",digest,digest,digest,digest)
     monkeypatch.setattr(bootstrap_module,"bounded_current_race_index",lambda **_:view)
     receipt_state={"value":PENDING_RECEIPT}
     def receipt_preflight(race,**_):

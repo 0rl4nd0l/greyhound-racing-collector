@@ -1,7 +1,7 @@
 from __future__ import annotations
 import hashlib,io,json,os,sqlite3,subprocess,sys,threading,time,venv
 from dataclasses import replace
-from datetime import datetime,timezone
+from datetime import datetime,timedelta,timezone
 from pathlib import Path
 import pytest
 from race_collection.synchronous_manual_capture import VerifiedCurrentRaceIndex
@@ -66,6 +66,26 @@ class Process:
         return self.returncode
     def terminate(self):self.terminated=True
     def poll(self):return None if self.running else self.returncode
+
+@pytest.mark.parametrize("initial_age,receipt_seconds", [(1201, 0), (1199, 2)])
+def test_expired_index_never_consumes_worker_attempt(tmp_path, monkeypatch, initial_age, receipt_seconds):
+    cfg, store, job = setup(tmp_path)
+    clock = {"now": NOW + timedelta(seconds=initial_age)}
+    def receipt_preflight(*_args, **_kwargs):
+        clock["now"] += timedelta(seconds=receipt_seconds)
+    monkeypatch.setattr("src.operator_ui.prediction_worker.validate_receipt_before_claim", receipt_preflight)
+    launched = []
+    def popen(*args, **kwargs):
+        launched.append(args)
+        return Process(ready(job))
+    with pytest.raises(WorkerRejected, match="CURRENT_INDEX_STALE"):
+        run_once(store, job.job_id, cfg, now=lambda: clock["now"], confirm_audit=CONFIRM,
+                 popen=popen, reader=lambda **_: view())
+    assert not store.get(job.job_id).attempt_claimed
+    assert store.get(job.job_id).phase is Phase.WAITING_FOR_CLAIM
+    assert launched == []
+    assert not cfg.output_root.exists()
+
 
 def test_exact_argv_and_forbidden_surface(tmp_path):
     cfg,_,job=setup(tmp_path); argv=fixed_argv(job,cfg)
