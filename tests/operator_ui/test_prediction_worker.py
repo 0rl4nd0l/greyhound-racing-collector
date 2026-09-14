@@ -67,20 +67,26 @@ class Process:
     def terminate(self):self.terminated=True
     def poll(self):return None if self.running else self.returncode
 
-@pytest.mark.parametrize("initial_age,receipt_seconds", [(1201, 0), (1199, 2)])
-def test_expired_index_never_consumes_worker_attempt(tmp_path, monkeypatch, initial_age, receipt_seconds):
+@pytest.mark.parametrize("initial_age,receipt_seconds,final_read_seconds", [(1201, 0, 0), (1199, 2, 0), (1199.8, 0, 0.4)])
+def test_expired_index_never_consumes_worker_attempt(tmp_path, monkeypatch, initial_age, receipt_seconds, final_read_seconds):
     cfg, store, job = setup(tmp_path)
     clock = {"now": NOW + timedelta(seconds=initial_age)}
     def receipt_preflight(*_args, **_kwargs):
         clock["now"] += timedelta(seconds=receipt_seconds)
     monkeypatch.setattr("src.operator_ui.prediction_worker.validate_receipt_before_claim", receipt_preflight)
+    reads = []
+    def reader(**_kwargs):
+        reads.append(True)
+        if len(reads) == 2:
+            clock["now"] += timedelta(seconds=final_read_seconds)
+        return view()
     launched = []
     def popen(*args, **kwargs):
         launched.append(args)
         return Process(ready(job))
     with pytest.raises(WorkerRejected, match="CURRENT_INDEX_STALE"):
         run_once(store, job.job_id, cfg, now=lambda: clock["now"], confirm_audit=CONFIRM,
-                 popen=popen, reader=lambda **_: view())
+                 popen=popen, reader=reader)
     assert not store.get(job.job_id).attempt_claimed
     assert store.get(job.job_id).phase is Phase.WAITING_FOR_CLAIM
     assert launched == []

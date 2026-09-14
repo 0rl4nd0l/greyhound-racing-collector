@@ -117,7 +117,10 @@ HTTP integration reproduced a 1,201-second index receiving 202 and a job ID.
 Worker integration reproduced an expired index consuming an attempt, including
 expiry during receipt validation. Admission now checks the frozen 1,200-second
 limit before creating a job and after receipt validation; the worker checks
-again before claiming. Exactly 1,200 seconds remains admissible. No freshness
+again before claiming, using the clock after the final index read completes.
+Independent review identified that last read-time boundary; a regression first
+reproduced an attempt at age 1,200.2 seconds after a read began at 1,199.8 seconds.
+Exactly 1,200 seconds remains admissible. No freshness
 configuration or experiment rule was changed.
 
 Scheduling remains a separate availability constraint. The full timer waits
@@ -136,7 +139,43 @@ Regression tests reproduce the old failures and check rejection before job or
 attempt allocation, expiry during preflight, the exact age boundary, and full
 scheduled-receipt prediction-to-verifier integration. Negative URL tests cover
 trial/result queries, different race paths and rehashed contradictory receipts.
-Final command results are recorded in the accompanying handoff.
+Final focused command, using the installed Python 3.11.15 environment:
+
+```bash
+python -m pytest -q -o addopts= --no-cov \
+  tests/operator_ui/test_bootstrap.py \
+  tests/operator_ui/test_prediction_worker.py \
+  tests/test_predict_race_now.py \
+  tests/test_forward_prediction_journal.py --tb=short
+```
+
+Result: **197 passed, 1 failed**, 181.08 seconds, with a dedicated disposable
+`--basetemp`. Every new receipt and index-boundary regression passed. The one
+failure is the existing stalled-pipe cleanup test's three-second wall-clock
+limit: 3.206 seconds in the suite, 3.162 seconds isolated. Loading the exact
+`fb2c545f` worker module into memory and running the same unchanged test also
+failed at 3.160 seconds. This establishes a baseline-reproduced timing failure,
+not a green suite; its bound was not relaxed.
+
+Earlier baseline coverage passed 371 tests. A broader candidate run reached
+419 passes and two failures before interruption after 17 minutes in unchanged
+residual-model code. Its journal receipt failure did not recur in the final
+sequential suite; the cleanup timing failure did. Full portability completion
+is **not** claimed. No deployment gate is waived by these results.
+
+## Standards
+
+Independent standards review found no material violations.
+
+## Spec
+
+Independent spec review identified the final-read expiry gap described above;
+the completion-clock repair and regression address it. Deployment and complete
+future records remain outside the verified result.
+
+Initial findings: Standards 0; Spec 1 (pre-attempt final-read freshness).
+
+## Remaining operational transition
 
 This is source implementation and offline verification only. No merge,
 deployment, fresh live prediction or new result closure occurred. Deployment
