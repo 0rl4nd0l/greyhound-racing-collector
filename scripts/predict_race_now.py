@@ -22,6 +22,7 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -614,6 +615,7 @@ def _request_race(
     }
     if (
         not race_date or not venue or identity is None
+        or urlsplit(url).query.lower() == "trial=true"
         or identity["race_date"] != race_date[:10]
         or identity["race_number"] != race_number
         or url_venue is None
