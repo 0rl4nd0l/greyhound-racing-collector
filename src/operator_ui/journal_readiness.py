@@ -99,12 +99,12 @@ class ResultAcquisitionReadiness:
                 or any(not isinstance(row, dict) for row in (*predictions, *features))
             ):
                 raise ValueError("invalid shadow precursor")
+            collector.ingest.assert_no_result_fields(predictions)
+            collector.ingest.assert_no_result_fields(features)
             rows = [r for r in predictions if r.get("race_id") == job_input.race_id]
             feature_rows = [r for r in features if r.get("race_id") == job_input.race_id]
             if not rows or not feature_rows:
                 raise ValueError("race not collector-owned")
-            collector.ingest.assert_no_result_fields(rows)
-            collector.ingest.assert_no_result_fields(feature_rows)
             first = feature_rows[0]
             source = Path(first["source_csv"])
             if not source.is_absolute():

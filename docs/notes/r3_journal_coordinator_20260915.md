@@ -141,8 +141,8 @@ one complete integrity scan per historical job.
    passing end-to-end acceptance. Review recurring activation separately.
 
 Rollback: regenerate without `--journal-activation` and, with the separately
-approved operational action, restore the known-good #177 package/source
-`d8e4efe1ebeb44fff8193c3fcd7e7d8d55d7d182`, or disable R3 through its generated
+approved operational action, restore the retained default-off #178 package/source
+`0869ada06fc7a16b716253c279d3fa9a1634de53`, or disable R3 through its generated
 gate if required. Keep every operations directory, job, attempt, audit chain,
 activation and closure. Never edit the retained cutoff to force another run.
 

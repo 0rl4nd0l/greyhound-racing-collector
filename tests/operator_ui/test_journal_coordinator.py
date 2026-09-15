@@ -115,6 +115,7 @@ def test_activation_is_future_only_and_cannot_be_replaced_on_restart(tmp_path):
         "result_uncovered",
         "changed_native_runner",
         "outcome_contaminated",
+        "other_race_contaminated",
         "missing_csv",
         "wrong_csv",
         "fifo_csv",
@@ -211,7 +212,7 @@ def test_single_cycle_admits_once_and_restart_does_not_retry_failed_race(tmp_pat
         ),
         clock=lambda: clock[0],
     )
-    if outcome == "outcome_contaminated":
+    if outcome in {"outcome_contaminated", "other_race_contaminated"}:
         import json
 
         feature_path = (
@@ -219,7 +220,10 @@ def test_single_cycle_admits_once_and_restart_does_not_retry_failed_race(tmp_pat
             / "collector-evidence/daily_race_ingest_shadow_collector-run_daemon_autopilot/shadow_feature_rows.json"
         )
         payload = json.loads(feature_path.read_bytes())
-        payload[0]["finish_position"] = 1
+        if outcome == "outcome_contaminated":
+            payload[0]["finish_position"] = 1
+        else:
+            payload.append({"race_id": "another-race", "finish_position": 1})
         feature_path.write_text(json.dumps(payload))
     source_csv = tmp_path / "collector-evidence/source.csv"
     if outcome in {"missing_csv", "fifo_csv"}:
@@ -251,6 +255,7 @@ def test_single_cycle_admits_once_and_restart_does_not_retry_failed_race(tmp_pat
         "result_uncovered",
         "changed_native_runner",
         "outcome_contaminated",
+        "other_race_contaminated",
         "missing_csv",
         "wrong_csv",
         "fifo_csv",
