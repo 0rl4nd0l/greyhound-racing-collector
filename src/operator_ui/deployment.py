@@ -11,6 +11,7 @@ import stat
 import subprocess
 import sys
 import time
+from datetime import datetime, timezone
 from contextlib import contextmanager
 from functools import lru_cache
 from pathlib import Path
@@ -665,7 +666,8 @@ def generate_package(*, source_root: Path, pinned_python: Path, evidence_root: P
                      secrets_file: Path, output_dir: Path, source_commit: str,
                      source_tree: str, ui_version: str, profile_id: str,
                      bind_address: str = "127.0.0.1", port: int = 5055,
-                     live_authority: Path | None = None, enabled: bool = False) -> dict[str, Any]:
+                     live_authority: Path | None = None, enabled: bool = False,
+                     journal_activation: Path | None = None) -> dict[str, Any]:
     """Validate every authority input, then write one finite generated package."""
     if not _COMMIT.fullmatch(source_commit) or not _COMMIT.fullmatch(source_tree):
         raise DeploymentRejected("source commit/tree identity is invalid")
@@ -739,12 +741,37 @@ def generate_package(*, source_root: Path, pinned_python: Path, evidence_root: P
         raise DeploymentRejected("enabled package requires live authority observation")
     if live is not None:
         binding["live_evidence"] = live
+    journal_bytes = None
+    journal_target = source / "var/operator_ui/generated/journal-activation.json"
+    if journal_activation is not None:
+        from .journal import JournalActivation
+        from .job_store import canonical
+        if not active:
+            raise DeploymentRejected("journal requires enabled R3")
+        try:
+            activation = JournalActivation.from_fields(_strict_json(
+                _retained_file_read(_safe_existing(journal_activation, directory=False), 65536)))
+            if (activation.source_commit != source_commit
+                    or activation.model_sha256 != binding["artifacts"]["model_artifact"]
+                    or activation.config_sha256 != binding["artifacts"]["prediction_config"]):
+                raise ValueError("release/model/config mismatch")
+            journal_bytes = canonical(activation.fields())
+            retained = operations / "artifacts/research_journal" / activation.activation_id / "activation.json"
+            if retained.exists():
+                if _retained_file_read(_safe_existing(retained, directory=False), 65536) != journal_bytes:
+                    raise ValueError("persisted activation differs")
+            elif datetime.now(timezone.utc) >= activation.not_before:
+                raise ValueError("new activation requires future cutoff")
+        except (ValueError, TypeError, KeyError, AttributeError) as exc:
+            raise DeploymentRejected("invalid journal activation: " + str(exc)) from exc
+        _validate_target(journal_target, source)
     environment = "\n".join((
         f"OPERATOR_UI_CONNECTED_MODE={int(active)}",
         f"OPERATOR_UI_LEVEL={2 if active else 1}",
         f"OPERATOR_UI_R3_PROFILE={'repository-v1' if active else 'disabled'}",
         f"OPERATOR_UI_DEPLOYED_COMMIT={source_commit}", f"OPERATOR_UI_DEPLOYED_TREE={source_tree}",
         f"OPERATOR_UI_DEPLOYED_VERSION={ui_version}", f"OPERATOR_UI_DEPLOYED_PROFILE={profile_id}",
+        *(("OPERATOR_UI_R3_JOURNAL_SHA256=" + hashlib.sha256(journal_bytes).hexdigest(),) if journal_bytes is not None else ()),
         "ENABLE_SCRAPING_DEFAULT=0", "ENABLE_LIVE_SCRAPING=0", "ENABLE_RESULTS_SCRAPERS=0", "TGR_ENABLED=0", "PREDICTION_IMPORT_MODE=prediction_only", ""))
     service = "\n".join((
         "[Unit]", "Description=Greyhound Operator UI R3 (generated, private)", "After=network-online.target", "Wants=network-online.target", "",
@@ -775,6 +802,7 @@ by hand and does not alter the canonical database `{database}`.
         (environment_target, environment.encode(), 0o600),
         (service_target, service.encode(), 0o644),
         (rollback_target, rollback.encode(), 0o644),
+        *(((journal_target, journal_bytes, 0o600),) if journal_bytes is not None else ()),
     ))
     return {"enabled": active, "binding": str(binding_target), "service": str(service_target)}
 
@@ -789,6 +817,7 @@ def _parser() -> argparse.ArgumentParser:
     generate.add_argument("--ui-version", default="operator-ui-v1"); generate.add_argument("--profile-id", default="repository-v1")
     generate.add_argument("--bind-address", default="127.0.0.1"); generate.add_argument("--port", type=int, default=5055); generate.add_argument("--enable", action="store_true", dest="enabled")
     generate.add_argument("--live-authority", type=Path)
+    generate.add_argument("--journal-activation", type=Path)
     manual = commands.add_parser("generate-manual")
     for name in (
         "source-root", "pinned-python", "manual-root", "browser-profile-root",

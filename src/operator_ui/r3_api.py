@@ -73,6 +73,7 @@ class R3Services:
     clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc)
     rate_limit: int = 5
     rate_window_seconds: int = 60
+    observe_current_races: Callable[[], tuple[Mapping[str, Any], ...]] | None = None
 
 
 class _ActorRateLimit:
@@ -272,6 +273,120 @@ def _job_payload(store: JobStore, job: Job, result_reader: Callable[[Job], Mappi
     return payload
 
 
+def verified_prediction_result(services: R3Services, job: Job):
+    """Authenticate the sealed bundle against the same job/event contract as HTTP."""
+    bundle = services.read_verified_result(job)
+    if _verified_result(job, bundle, list(services.job_store.events(job.job_id))) is None:
+        return None
+    return bundle
+
+
+def confirm_prediction_operation(services: R3Services, audit, intent: Mapping[str, Any], *,
+                                 session_identifier: str, client_identity: str):
+    operation = str(intent["operation"])
+    proposed = intent["proposed_event"]
+    input_value = intent["input"]
+    provenance_value=input_value.get("operational_index_provenance")
+    provenance_hashes=(
+        {str(value) for name,value in provenance_value.items() if name.endswith("sha256")}
+        if isinstance(provenance_value,Mapping) else set()
+    )
+    event = OperationAuditEvent(
+        event_id=str(uuid.uuid4()), event_time_utc=services.clock().astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z"),
+        actor_identity=str(intent["actor_identity"]), actor_level=2,
+        session_identifier=session_identifier, request_identifier=str(uuid.uuid4()),
+        client_identity=client_identity, operation=f"manual_prediction_{operation}",
+        idempotency_key_sha256=str(intent["idempotency_key_sha256"]), job_id=str(intent["job_id"]),
+        race_id=str(input_value["race_id"]), runner_set_sha256=str(input_value["runner_set_sha256"]),
+        model_identity=str(input_value["resolved_model_identity"]), model_sha256=str(input_value["model_sha256"]),
+        config_id=str(input_value["config_id"]), config_sha256=str(input_value["config_sha256"]),
+        input_identity_sha256=str(intent["input_identity_sha256"]), prior_state=str(intent["prior_state"]),
+        new_state=str(proposed["phase"]), status=str(proposed["status"]), reason=str(proposed["reason"]),
+        reference_hashes=tuple(sorted({
+            str(input_value["model_manifest_sha256"]),str(input_value["model_schema_sha256"]),
+            *provenance_hashes,
+        })),
+    )
+    audit_hash = audit.append_operation_and_confirm(event)
+    return resolve_audit_confirmation(intent, audit_hash)
+
+def dispatch_prediction(services: R3Services, job: Job, confirm_audit) -> Job:
+    if job.phase is Phase.PRODUCER_COMPLETED:
+        try:return services.finalize_once(job,confirm_audit)
+        except Exception:return services.job_store.get(job.job_id)
+    if job.phase is not Phase.WAITING_FOR_CLAIM or job.attempt_claimed:
+        return job
+    try:
+        services.launch_once(job.job_id, confirm_audit)
+    except Exception as exc:
+        current = services.job_store.get(job.job_id)
+        if current.phase is Phase.WAITING_FOR_CLAIM and not current.attempt_claimed:
+            return services.job_store.transition(current.job_id, Phase.FAILED, now=services.clock(), status="FAILED", reason="DISPATCH_FAILED", facts={"error": type(exc).__name__}, confirm_audit=confirm_audit)
+        return current
+    return services.job_store.get(job.job_id)
+
+def submit_prediction(services: R3Services, selected: Mapping[str, str], *,
+                      identity: str, confirm_audit, input_guard=None) -> tuple[Job, bool]:
+    """Shared audited admission for HTTP and the server-owned journal caller."""
+    if set(selected) != SUBMISSION_FIELDS:
+        raise R3Rejected("INVALID_REQUEST_SCHEMA", 400)
+    selected = {name: _bounded(selected[name], name) for name in SUBMISSION_FIELDS}
+    now = services.clock()
+    persisted = services.job_store.find_by_idempotency(
+        actor_identity=identity, operation="manual_prediction",
+        idempotency_key=selected["idempotency_key"],
+    )
+    persisted_selection_matches = persisted is not None and (
+        persisted.input.race_id == selected["race_id"]
+        and persisted.input.model_selector == selected["model_id"]
+        and persisted.input.config_id == selected["config_id"]
+        and persisted.input.odds_source == selected["odds_source_id"]
+    )
+    if persisted_selection_matches:
+        if persisted.input.operational_index_provenance is None:
+            raise R3Rejected("RACE_EVIDENCE_INVALID")
+        job = persisted
+        newly_observed = False
+    else:
+        resolved = services.resolve_submission(selected, now)
+        if type(resolved) is not ResolvedSubmission or type(resolved.job_input) is not JobInput or not resolved.ordered_runners:
+            raise R3Rejected("RACE_EVIDENCE_INVALID")
+        if resolved.job_input.operational_index_provenance is None:
+            raise R3Rejected("RACE_EVIDENCE_INVALID")
+        ordered_runners = tuple(dict(runner) for runner in resolved.ordered_runners)
+        if resolved.job_input.ordered_runners:
+            if resolved.job_input.fields()["ordered_runners"] != [dict(runner) for runner in ordered_runners]:
+                raise R3Rejected("RUNNER_SET_BINDING_MISMATCH")
+            job_input = resolved.job_input
+        else:
+            job_input = replace(resolved.job_input, ordered_runners=ordered_runners)
+        if input_guard is not None:
+            input_guard(job_input)
+        job = services.job_store.create(actor_identity=identity, actor_level=2, operation="manual_prediction",
+            idempotency_key=selected["idempotency_key"], job_input=job_input, now=now, confirm_audit=confirm_audit)
+        newly_observed = job.phase is Phase.SUBMITTED
+    launch_eligible = False
+    if job.phase is Phase.SUBMITTED:
+        try:
+            job = services.job_store.transition(job.job_id, Phase.VALIDATED, now=services.clock(), status="VALID", reason="validated", confirm_audit=confirm_audit)
+        except IllegalTransition:
+            job = services.job_store.get(job.job_id)
+    if job.phase is Phase.VALIDATED:
+        try:
+            job = services.job_store.transition(job.job_id, Phase.WAITING_FOR_CLAIM, now=services.clock(), status="WAITING", reason="ready", confirm_audit=confirm_audit)
+            launch_eligible = True
+        except IllegalTransition:
+            job = services.job_store.get(job.job_id)
+    # WAITING is the durable dispatch queue.  Every observation may
+    # notify the fixed dispatcher; claim_attempt remains the sole,
+    # atomic owner of the one permitted worker attempt/process.
+    if job.phase is Phase.WAITING_FOR_CLAIM and not job.attempt_claimed:
+        launch_eligible = True
+    if launch_eligible:
+        job = dispatch_prediction(services, job, confirm_audit)
+    return job, newly_observed
+
+
 def install_r3_api(app: Flask, services: R3Services | None = None) -> bool:
     """Install R3 only when explicitly composed with server-owned services."""
     if services is None:
@@ -304,47 +419,9 @@ def install_r3_api(app: Flask, services: R3Services | None = None) -> bool:
         return jsonify(schema="operator_ui_r3_capability_v1", authorized=True, runtime_configured=True, level=2)
 
     def confirm(intent: Mapping[str, Any], session_identifier: str):
-        operation = str(intent["operation"])
-        proposed = intent["proposed_event"]
-        input_value = intent["input"]
-        provenance_value=input_value.get("operational_index_provenance")
-        provenance_hashes=(
-            {str(value) for name,value in provenance_value.items() if name.endswith("sha256")}
-            if isinstance(provenance_value,Mapping) else set()
-        )
-        event = OperationAuditEvent(
-            event_id=str(uuid.uuid4()), event_time_utc=services.clock().astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z"),
-            actor_identity=str(intent["actor_identity"]), actor_level=2,
-            session_identifier=session_identifier, request_identifier=str(uuid.uuid4()),
-            client_identity="same-origin-authenticated-session", operation=f"manual_prediction_{operation}",
-            idempotency_key_sha256=str(intent["idempotency_key_sha256"]), job_id=str(intent["job_id"]),
-            race_id=str(input_value["race_id"]), runner_set_sha256=str(input_value["runner_set_sha256"]),
-            model_identity=str(input_value["resolved_model_identity"]), model_sha256=str(input_value["model_sha256"]),
-            config_id=str(input_value["config_id"]), config_sha256=str(input_value["config_sha256"]),
-            input_identity_sha256=str(intent["input_identity_sha256"]), prior_state=str(intent["prior_state"]),
-            new_state=str(proposed["phase"]), status=str(proposed["status"]), reason=str(proposed["reason"]),
-            reference_hashes=tuple(sorted({
-                str(input_value["model_manifest_sha256"]),str(input_value["model_schema_sha256"]),
-                *provenance_hashes,
-            })),
-        )
-        audit_hash = audit.append_operation_and_confirm(event)
-        return resolve_audit_confirmation(intent, audit_hash)
-
-    def dispatch_waiting(job: Job, confirm_audit) -> Job:
-        if job.phase is Phase.PRODUCER_COMPLETED:
-            try:return services.finalize_once(job,confirm_audit)
-            except Exception:return services.job_store.get(job.job_id)
-        if job.phase is not Phase.WAITING_FOR_CLAIM or job.attempt_claimed:
-            return job
-        try:
-            services.launch_once(job.job_id, confirm_audit)
-        except Exception as exc:
-            current = services.job_store.get(job.job_id)
-            if current.phase is Phase.WAITING_FOR_CLAIM and not current.attempt_claimed:
-                return services.job_store.transition(current.job_id, Phase.FAILED, now=services.clock(), status="FAILED", reason="DISPATCH_FAILED", facts={"error": type(exc).__name__}, confirm_audit=confirm_audit)
-            return current
-        return services.job_store.get(job.job_id)
+        return confirm_prediction_operation(services, audit, intent,
+            session_identifier=session_identifier,
+            client_identity="same-origin-authenticated-session")
 
     @app.post(f"{API_PREFIX}/prediction-jobs", endpoint="operator_ui_r3_submit")
     @csrf
@@ -370,56 +447,8 @@ def install_r3_api(app: Flask, services: R3Services | None = None) -> bool:
         session_identifier = str(session["operator_session_id"])
         confirm_audit = lambda intent: confirm(intent, session_identifier)
         try:
-            persisted = services.job_store.find_by_idempotency(
-                actor_identity=identity, operation="manual_prediction",
-                idempotency_key=selected["idempotency_key"],
-            )
-            persisted_selection_matches = persisted is not None and (
-                persisted.input.race_id == selected["race_id"]
-                and persisted.input.model_selector == selected["model_id"]
-                and persisted.input.config_id == selected["config_id"]
-                and persisted.input.odds_source == selected["odds_source_id"]
-            )
-            if persisted_selection_matches:
-                if persisted.input.operational_index_provenance is None:
-                    raise R3Rejected("RACE_EVIDENCE_INVALID")
-                job = persisted
-                newly_observed = False
-            else:
-                resolved = services.resolve_submission(selected, now)
-                if type(resolved) is not ResolvedSubmission or type(resolved.job_input) is not JobInput or not resolved.ordered_runners:
-                    raise R3Rejected("RACE_EVIDENCE_INVALID")
-                if resolved.job_input.operational_index_provenance is None:
-                    raise R3Rejected("RACE_EVIDENCE_INVALID")
-                ordered_runners = tuple(dict(runner) for runner in resolved.ordered_runners)
-                if resolved.job_input.ordered_runners:
-                    if resolved.job_input.fields()["ordered_runners"] != [dict(runner) for runner in ordered_runners]:
-                        raise R3Rejected("RUNNER_SET_BINDING_MISMATCH")
-                    job_input = resolved.job_input
-                else:
-                    job_input = replace(resolved.job_input, ordered_runners=ordered_runners)
-                job = services.job_store.create(actor_identity=identity, actor_level=2, operation="manual_prediction",
-                    idempotency_key=selected["idempotency_key"], job_input=job_input, now=now, confirm_audit=confirm_audit)
-                newly_observed = job.phase is Phase.SUBMITTED
-            launch_eligible = False
-            if job.phase is Phase.SUBMITTED:
-                try:
-                    job = services.job_store.transition(job.job_id, Phase.VALIDATED, now=services.clock(), status="VALID", reason="validated", confirm_audit=confirm_audit)
-                except IllegalTransition:
-                    job = services.job_store.get(job.job_id)
-            if job.phase is Phase.VALIDATED:
-                try:
-                    job = services.job_store.transition(job.job_id, Phase.WAITING_FOR_CLAIM, now=services.clock(), status="WAITING", reason="ready", confirm_audit=confirm_audit)
-                    launch_eligible = True
-                except IllegalTransition:
-                    job = services.job_store.get(job.job_id)
-            # WAITING is the durable dispatch queue.  Every observation may
-            # notify the fixed dispatcher; claim_attempt remains the sole,
-            # atomic owner of the one permitted worker attempt/process.
-            if job.phase is Phase.WAITING_FOR_CLAIM and not job.attempt_claimed:
-                launch_eligible = True
-            if launch_eligible:
-                job = dispatch_waiting(job, confirm_audit)
+            job, newly_observed = submit_prediction(
+                services, selected, identity=identity, confirm_audit=confirm_audit)
             return jsonify(_job_payload(services.job_store, job, services.read_verified_result)), 202 if newly_observed else 200
         except IdempotencyConflict:
             return response_error("IDEMPOTENCY_CONFLICT", 409)
@@ -443,7 +472,7 @@ def install_r3_api(app: Flask, services: R3Services | None = None) -> bool:
             if job.actor_identity != identity:
                 return response_error("JOB_NOT_FOUND", 404)
             session_identifier = str(session["operator_session_id"])
-            job = dispatch_waiting(job, lambda intent: confirm(intent, session_identifier))
+            job = dispatch_prediction(services, job, lambda intent: confirm(intent, session_identifier))
             return jsonify(_job_payload(services.job_store, job, services.read_verified_result))
         except (R3Rejected, JobStoreError):
             return response_error("JOB_NOT_FOUND", 404)
