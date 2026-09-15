@@ -159,6 +159,32 @@ def test_snapshot_rejects_exact_receipt_directory_replacement(tmp_path,monkeypat
         store.snapshot_authenticated_handoff(handoff)
 
 
+def test_snapshot_measures_ancestor_change_during_retained_read(tmp_path, monkeypatch):
+    """Reproduce the mechanism; this does not diagnose an earlier uninstrumented run."""
+    store, handoff = completed_snapshot_protocol(tmp_path)
+    original_read = os.read
+    directory_fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    measurements = []
+
+    def changing_read(descriptor, size):
+        if not measurements:
+            before = os.fstat(directory_fd)
+            (tmp_path / "concurrent-fixture-output").mkdir()
+            after = os.fstat(directory_fd)
+            measurements.append((before, after))
+        return original_read(descriptor, size)
+
+    monkeypatch.setattr(os, "read", changing_read)
+    try:
+        with pytest.raises(ProtocolRejected, match="PROTOCOL_DIRECTORY_CHANGED"):
+            store.snapshot_authenticated_handoff(handoff)
+    finally:
+        os.close(directory_fd)
+    before, after = measurements[0]
+    assert (before.st_dev, before.st_ino) == (after.st_dev, after.st_ino)
+    assert (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns)
+
+
 def test_snapshot_rejects_ambiguous_authenticated_matches(tmp_path):
     store,handoff=completed_snapshot_protocol(tmp_path)
     second="00000000-0000-4000-8000-000000000002"
