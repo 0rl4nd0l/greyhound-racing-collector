@@ -232,7 +232,7 @@ class JournalCoordinator:
 
     def _cycle(self, now):
         store = self.services.job_store
-        jobs = [store.get(identifier) for identifier in store.recorded_job_ids()]
+        jobs = store.recorded_jobs()
         actor = "r3-journal:" + self.activation.activation_id
         owned = [job for job in jobs if job.actor_identity == actor]
         report = {
@@ -240,6 +240,7 @@ class JournalCoordinator:
             "jobs": [job.job_id for job in owned],
             "admissions": {},
             "closures": {},
+            "recovery": {},
         }
         # Reconcile the original queue, never claim or re-launch a consumed attempt.
         for job in owned:
@@ -247,7 +248,11 @@ class JournalCoordinator:
                 job.phase in {Phase.SUBMITTED, Phase.VALIDATED, Phase.WAITING_FOR_CLAIM}
                 and not job.attempt_claimed
             ):
-                self._guard(job.input)
+                try:
+                    self._guard(job.input)
+                except R3Rejected as exc:
+                    report["recovery"][job.job_id] = exc.classification
+                    continue
                 submit_prediction(
                     self.services,
                     self._selection(job.input.race_id),
@@ -261,6 +266,9 @@ class JournalCoordinator:
         for job in owned:
             if job.phase is Phase.PREDICTION_READY:
                 report["closures"][job.job_id] = self._close(job, now)
+        if report["recovery"]:
+            report["state"] = "STOPPED_UNCLAIMED_ADMISSION"
+            return report
         if any(job.phase in TERMINAL_PHASES - {Phase.PREDICTION_READY} for job in owned):
             report["state"] = "STOPPED_AFTER_FAILURE"
             return report

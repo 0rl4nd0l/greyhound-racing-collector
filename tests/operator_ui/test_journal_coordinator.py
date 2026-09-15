@@ -48,7 +48,7 @@ def test_activation_is_future_only_and_cannot_be_replaced_on_restart(tmp_path):
         late.tick()
 
 
-@pytest.mark.parametrize("outcome", ["failed", "claimed", "stale_index"])
+@pytest.mark.parametrize("outcome", ["failed", "claimed", "stale_index", "expired_unclaimed"])
 def test_single_cycle_admits_once_and_restart_does_not_retry_failed_race(tmp_path, outcome):
     from src.operator_ui.journal import JournalActivation
     from src.operator_ui.job_store import JobInput, JobStore, Phase
@@ -95,6 +95,8 @@ def test_single_cycle_admits_once_and_restart_does_not_retry_failed_race(tmp_pat
         return ResolvedSubmission(job_input, runners)
 
     def launch(job_id, confirm):
+        if outcome == "expired_unclaimed":
+            return
         _, attempt = store.claim_attempt(job_id, now=clock[0], confirm_audit=confirm)
         if outcome == "claimed":
             return
@@ -140,6 +142,14 @@ def test_single_cycle_admits_once_and_restart_does_not_retry_failed_race(tmp_pat
     admitted = coordinator.tick()
     assert len(admitted["jobs"]) == 1
     job = store.get(admitted["jobs"][0])
+    if outcome == "expired_unclaimed":
+        clock[0] += timedelta(hours=2)
+        recovered = JournalCoordinator(**args).tick()
+        assert recovered["state"] == "STOPPED_UNCLAIMED_ADMISSION"
+        assert recovered["recovery"][job.job_id] == "OUTSIDE_FUTURE_ADMISSION_WINDOW"
+        assert not store.get(job.job_id).attempt_claimed
+        assert len(store.events(job.job_id)) == 3
+        return
     if outcome == "claimed":
         assert job.attempt_claimed and job.phase is Phase.CLAIMED
         assert JournalCoordinator(**args).tick()["state"] == "PREDICTION_PENDING"
@@ -153,7 +163,17 @@ def test_single_cycle_admits_once_and_restart_does_not_retry_failed_race(tmp_pat
 
 @pytest.mark.parametrize(
     "result_case",
-    ["complete", "native_id", "early_timestamp", "name", "dead_heat", "duplicate", "busy_source"],
+    [
+        "complete",
+        "native_id",
+        "early_timestamp",
+        "name",
+        "dead_heat",
+        "duplicate",
+        "busy_source",
+        "null_timestamp",
+        "expired_queue",
+    ],
 )
 def test_verified_fixture_prediction_closes_once_from_collector_rows(tmp_path, result_case):
     import hashlib
@@ -218,7 +238,7 @@ def test_verified_fixture_prediction_closes_once_from_collector_rows(tmp_path, r
         "12345678-1234-4123-8123-123456789abc",
         NOW,
         NOW + timedelta(hours=2),
-        1,
+        2 if result_case == "expired_queue" else 1,
         "a" * 40,
         "b" * 64,
         inp.model_sha256,
@@ -364,6 +384,8 @@ def test_verified_fixture_prediction_closes_once_from_collector_rows(tmp_path, r
         result_rows[0]["source_native_runner_id"] = "different-native-id"
     if result_case == "early_timestamp":
         race_row["captured_at"] = NOW.isoformat()
+    if result_case == "null_timestamp":
+        race_row["start_datetime"] = None
     if result_case == "name":
         result_rows[0]["dog_name"] = "OTHER DOG"
     if result_case == "dead_heat":
@@ -381,7 +403,7 @@ def test_verified_fixture_prediction_closes_once_from_collector_rows(tmp_path, r
         )
     if result_case == "busy_source":
         results_db.with_name(results_db.name + "-wal").write_bytes(b"retained-live-sidecar")
-    if result_case != "complete":
+    if result_case not in {"complete", "expired_queue"}:
         closure_state = coordinator.tick()["closures"][job_id]
         assert (
             closure_state == "RESULT_PENDING"
@@ -390,7 +412,33 @@ def test_verified_fixture_prediction_closes_once_from_collector_rows(tmp_path, r
         )
         assert not (tmp_path / "journal" / f"{job_id}.closure.json").exists()
         assert {p: p.read_bytes() for p in bundles.rglob("*") if p.is_file()} == original
-        assert len(store.recorded_job_ids()) == 1 and store.get(job_id).attempt_claimed
+        assert len(store.recorded_jobs()) == 1 and store.get(job_id).attempt_claimed
+        return
+    if result_case == "expired_queue":
+        from src.operator_ui.r3_api import confirm_prediction_operation
+
+        saved_clock = clock[0]
+        clock[0] = NOW
+        queued = store.create(
+            actor_identity="r3-journal:" + activation.activation_id,
+            actor_level=2,
+            operation="manual_prediction",
+            idempotency_key="22345678-1234-4123-8123-123456789abc",
+            job_input=replace(inp, race_id="expired-queued-race"),
+            now=NOW,
+            confirm_audit=lambda intent: confirm_prediction_operation(
+                services,
+                audit,
+                intent,
+                session_identifier=activation.activation_id,
+                client_identity="server-owned-r3-journal",
+            ),
+        )
+        clock[0] = saved_clock
+        recovered = JournalCoordinator(**coordinator_args).tick()
+        assert recovered["state"] == "STOPPED_UNCLAIMED_ADMISSION"
+        assert not store.get(queued.job_id).attempt_claimed
+        assert recovered["closures"][job_id] == "CLOSED"
         return
     assert coordinator.tick()["closures"][job_id] == "CLOSED"
     closure = (tmp_path / "journal" / f"{job_id}.closure.json").read_bytes()

@@ -29,6 +29,9 @@ No existing journal, cohort, attempt, result or model is migrated or rewritten.
   Recorded races cannot receive another job. Missing receipts allocate nothing.
   A consumed attempt is never relaunched. Recover unclaimed queue entries and
   producer-completed verification through the same R3 operations.
+- An unclaimed entry that is no longer admissible remains unchanged and is
+  reported as `STOPPED_UNCLAIMED_ADMISSION`; it cannot prevent existing verified
+  jobs closing or prevent the web process starting. No attempt is consumed.
 - Any terminal unsuccessful job stops further admission for this activation.
   Unresolved attempts also prevent further admission. Existing successful jobs
   can still receive result closure. No replacement race after failure.
@@ -67,6 +70,8 @@ prediction failure and not a claim that the official source can never correct it
 Already-closed records are preserved if source rechecking becomes unavailable;
 the observation then reports `CLOSURE_RECHECK_PENDING`, not a new closure.
 Job reconciliation fails closed above 10,000 stored jobs; no silent truncation.
+Initial reconciliation is one integrity-verified transactional snapshot, not
+one complete integrity scan per historical job.
 
 ## Controlled rollout, only after approval
 

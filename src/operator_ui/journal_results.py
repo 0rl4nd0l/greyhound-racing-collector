@@ -105,7 +105,14 @@ class OfficialResultSource:
             expected["venue"]
         ):
             raise ValueError("OFFICIAL_RESULT_VENUE_MISMATCH")
-        parse = lambda value: datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+        def parse(value):
+            if not isinstance(value, str):
+                raise ValueError("OFFICIAL_RESULT_TIMESTAMP_INVALID")
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            utc_text(parsed)
+            return parsed
+
         jump = parse(job.input.jump_timestamp)
         captured = parse(race["captured_at"])
         utc_text(captured)
