@@ -1,0 +1,21 @@
+Pinned environment:
+TRACE_MALLOC=0 PYTHONDONTWRITEBYTECODE=1
+/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-python311-20260803-9d58f340/bin/python
+
+Commands and results:
+
+TRACE_MALLOC=0 PYTHONDONTWRITEBYTECODE=1 /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-python311-20260803-9d58f340/bin/python -m pytest -q tests/operator_ui/test_journal_coordinator.py -k 'readiness_accepts_declared_source_race_aliases or readiness_rejects_alias_with_cross_venue_source_url'
+3 passed, 33 deselected in 0.54s
+
+TRACE_MALLOC=0 PYTHONDONTWRITEBYTECODE=1 /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-python311-20260803-9d58f340/bin/python -m pytest -q tests/operator_ui/test_journal_coordinator.py
+36 passed in 7.73s
+
+TRACE_MALLOC=0 PYTHONDONTWRITEBYTECODE=1 /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-python311-20260803-9d58f340/bin/python -m pytest -q tests/test_autonomous_live_odds_capture.py -k 'primary_capture_plan_preserves_bounded_index_aliases_through_refresh'
+1 passed, 42 deselected in 0.52s
+
+git diff --check
+passed
+
+Executed-candidate source/test blob hashes:
+91c7d4cb4643c2a5b9b5563d5c08d70c5d17ff9f9caf64229e5efc53783105ee  src/operator_ui/journal_readiness.py
+73326f7b8b1fd0e2875eab19acee3325381f957a30e709d9677995bc357ad2a1  tests/operator_ui/test_journal_coordinator.py
