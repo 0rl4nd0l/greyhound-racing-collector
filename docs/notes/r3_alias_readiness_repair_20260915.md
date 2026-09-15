@@ -22,7 +22,7 @@ Validation used only the pinned Python and synthetic fixtures at the public
 seam. Full commands and results are retained in `repair-evidence/`.
 
 - Alias regression plus cross-venue rejection: 3 passed, 33 deselected.
-- Existing coordinator/readiness matrix: 36 passed.
+- Existing coordinator/readiness matrix plus ambiguity/cross-race coverage: 40 passed.
 - Affected bounded-alias integration guard: 1 passed, 42 deselected.
 - `git diff --check`: passed.
 

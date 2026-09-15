@@ -168,6 +168,105 @@ def test_readiness_rejects_alias_with_cross_venue_source_url(tmp_path):
         readiness.require(job_input, now=datetime(2026, 9, 14, 23, 0, tzinfo=timezone.utc))
 
 
+@pytest.mark.parametrize("precursor", ["predictions", "features"])
+def test_readiness_rejects_mixed_equivalent_precursor_ids(tmp_path, precursor):
+    import json
+    from types import SimpleNamespace
+
+    from src.operator_ui.r3_api import R3Rejected
+    from tests.operator_ui.test_r3_api import provenance
+
+    requested = "Race 1 - SHEP - 2026-09-15"
+    source = "Race 1 - SHEPPARTON - 2026-09-15"
+    race_url = "https://www.thedogs.com.au/racing/shepparton/2026-09-15/1/test-race"
+    runners = tuple(
+        {
+            "box": box,
+            "name": name,
+            "identity": name,
+            "source_native_runner_id": str(100 + box),
+        }
+        for box, name in enumerate(("ALPHA", "BRAVO", "CHARLIE", "DELTA"), 1)
+    )
+    job_input = SimpleNamespace(
+        race_id=requested,
+        jump_timestamp="2026-09-15T10:10:00+10:00",
+        runner_set_sha256="f" * 64,
+        ordered_runners=runners,
+        operational_index_provenance=provenance(),
+    )
+    readiness = collector_readiness(
+        tmp_path,
+        job_input,
+        source_race_id=source,
+        index_race_id=requested,
+        race_url=race_url,
+    )
+    shadow_dir = (
+        tmp_path
+        / "collector-evidence"
+        / "daily_race_ingest_shadow_collector-run_daemon_autopilot"
+    )
+    if precursor == "predictions":
+        path = shadow_dir / "stage2_shadow_predictions.jsonl"
+        rows = [json.loads(line) for line in path.read_text().splitlines()]
+        rows[0]["race_id"] = requested
+        path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    else:
+        path = shadow_dir / "shadow_feature_rows.json"
+        rows = json.loads(path.read_text())
+        rows[0]["race_id"] = requested
+        path.write_text(json.dumps(rows))
+
+    with pytest.raises(R3Rejected, match="RESULT_ACQUISITION_NOT_READY") as rejected:
+        readiness.require(job_input, now=datetime(2026, 9, 14, 23, 0, tzinfo=timezone.utc))
+    assert str(rejected.value.__cause__) == "ambiguous race identity"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "Race 1 - SHEPPARTON - 2026-09-16",
+        "Race 2 - SHEPPARTON - 2026-09-15",
+    ],
+)
+def test_readiness_rejects_alias_cross_date_or_race_number(tmp_path, source):
+    from types import SimpleNamespace
+
+    from src.operator_ui.r3_api import R3Rejected
+    from tests.operator_ui.test_r3_api import provenance
+
+    requested = "Race 1 - SHEP - 2026-09-15"
+    race_url = "https://www.thedogs.com.au/racing/shepparton/2026-09-15/1/test-race"
+    runners = tuple(
+        {
+            "box": box,
+            "name": name,
+            "identity": name,
+            "source_native_runner_id": str(100 + box),
+        }
+        for box, name in enumerate(("ALPHA", "BRAVO", "CHARLIE", "DELTA"), 1)
+    )
+    job_input = SimpleNamespace(
+        race_id=requested,
+        jump_timestamp="2026-09-15T10:10:00+10:00",
+        runner_set_sha256="f" * 64,
+        ordered_runners=runners,
+        operational_index_provenance=provenance(),
+    )
+    readiness = collector_readiness(
+        tmp_path,
+        job_input,
+        source_race_id=source,
+        index_race_id=requested,
+        race_url=race_url,
+    )
+
+    with pytest.raises(R3Rejected, match="RESULT_ACQUISITION_NOT_READY") as rejected:
+        readiness.require(job_input, now=datetime(2026, 9, 14, 23, 0, tzinfo=timezone.utc))
+    assert str(rejected.value.__cause__) == "race not collector-owned"
+
+
 def test_recurrence_stops_after_terminal_coordinator_state(monkeypatch):
     from src.operator_ui import journal as journal_module
 

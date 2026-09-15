@@ -1,0 +1,26 @@
+Coverage-only follow-up to commit 809cca72df63dddaebfc0940871037a4690cd9a3.
+No production source changed; the existing readiness guard was retained.
+
+Added public `ResultAcquisitionReadiness.require` regressions:
+- equivalent spellings split across prediction rows -> wrapped cause `ambiguous race identity`
+- equivalent spellings split across feature rows -> wrapped cause `ambiguous race identity`
+- equivalent source alias with cross-date identity -> native helper rejection
+- equivalent source alias with cross-race-number identity -> native helper rejection
+
+Command:
+TRACE_MALLOC=0 PYTHONDONTWRITEBYTECODE=1 /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-python311-20260803-9d58f340/bin/python -m pytest -q tests/operator_ui/test_journal_coordinator.py -k 'mixed_equivalent_precursor_ids or alias_cross_date_or_race_number'
+Result: 4 passed, 36 deselected in 0.54s
+
+Command:
+TRACE_MALLOC=0 PYTHONDONTWRITEBYTECODE=1 /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-python311-20260803-9d58f340/bin/python -m pytest -q tests/operator_ui/test_journal_coordinator.py
+Result: 40 passed in 7.48s
+
+Reused unchanged from commit 809cca72 (not rerun):
+tests/test_autonomous_live_odds_capture.py -k 'primary_capture_plan_preserves_bounded_index_aliases_through_refresh'
+Result: 1 passed, 42 deselected in 0.52s
+
+git diff --check: passed
+
+Final candidate blob hashes before this commit:
+91c7d4cb4643c2a5b9b5563d5c08d70c5d17ff9f9caf64229e5efc53783105ee  src/operator_ui/journal_readiness.py
+8e6155c775f0c475eb32c1848833e737e8f146d90fb088baf1fa0a9051d7487e  tests/operator_ui/test_journal_coordinator.py
