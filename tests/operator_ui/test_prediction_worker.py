@@ -372,6 +372,25 @@ def worker_threads(monkeypatch):
     return threads
 
 
+@pytest.fixture
+def cleanup_reap_observations(monkeypatch, cleanup_observations):
+    from src.operator_ui.prediction_worker import _LifetimeOwner
+    original = _LifetimeOwner.cleanup
+    observations = []
+    def observe(owner, **kwargs):
+        result = original(owner, **kwargs)
+        # Before any test-side poll/wait can reap an exited child for the worker.
+        try:
+            os.waitpid(owner.process.pid, os.WNOHANG)
+        except ChildProcessError:
+            observations.append(True)
+        else:
+            observations.append(False)
+        return result
+    monkeypatch.setattr(_LifetimeOwner, "cleanup", observe)
+    return observations
+
+
 def assert_cleanup_finished(observations, threads):
     assert observations and all(end-start < 3.0 for start,end in observations)
     assert threads
@@ -425,7 +444,7 @@ def test_lifetime_reader_error_matrix_is_bounded_truthful_and_closes_every_pipe(
                  popen=lambda *a,**k:pytest.fail("consumed attempt relaunched"),reader=lambda **_:view())
 
 
-def test_real_child_timeout_reaps_closes_pipes_and_terminates_readers(tmp_path,cleanup_observations,worker_threads):
+def test_real_child_timeout_reaps_closes_pipes_and_terminates_readers(tmp_path,cleanup_observations,worker_threads,cleanup_reap_observations):
     cfg,store,job=setup(tmp_path)
     cfg=replace(cfg,process_timeout_seconds=.05)
     children=[]
@@ -441,10 +460,8 @@ def test_real_child_timeout_reaps_closes_pipes_and_terminates_readers(tmp_path,c
         assert result.phase is Phase.TIMED_OUT and result.attempt_claimed
         assert len(children)==1
         child=children[0]
-        assert child.poll() is not None and child.stdout.closed and child.stderr.closed
-        # OS-level proof of wait/reap, not merely a mocked return code.
-        with pytest.raises(ChildProcessError):
-            os.waitpid(child.pid,os.WNOHANG)
+        assert cleanup_reap_observations == [True]
+        assert child.returncode is not None and child.stdout.closed and child.stderr.closed
         assert_cleanup_finished(cleanup_observations,worker_threads)
         with pytest.raises(WorkerRejected,match="JOB_NOT_CLAIMABLE"):
             run_once(store,job.job_id,cfg,now=lambda:NOW,confirm_audit=CONFIRM,

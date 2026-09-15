@@ -74,6 +74,13 @@ An added slow-audit case demonstrates why unrelated pre-spawn audit latency
 must not consume the cleanup measurement. Whole-job elapsed time is retained
 as diagnostic evidence, not silently discarded.
 
+The real-child reaping probe runs immediately when cleanup returns, before
+any test-side `poll()` or `wait()` can reap for the worker. An OS wait that
+returns an unreaped child (or reports it still running) is recorded as failure;
+only `ChildProcessError` proves there was no child left to reap. An independent
+negative probe that lies about process status without reaping is rejected.
+Test finalizers are not counted as worker cleanup evidence.
+
 Final exact-commit pytest, review, package and CI evidence is appended to the
 host ledger `greyhound-r3-180-correction-evidence-20260915.ik8sFN/REVIEW_AND_VALIDATION.md`
 and summarized on PR #180. This note grants no release or live authority.
