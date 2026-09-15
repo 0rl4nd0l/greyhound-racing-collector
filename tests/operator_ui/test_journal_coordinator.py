@@ -139,6 +139,7 @@ def test_readiness_rejects_alias_with_cross_venue_source_url(tmp_path):
     from types import SimpleNamespace
 
     from src.operator_ui.r3_api import R3Rejected
+    from utils.race_identity_equivalence import race_identity_equivalent
     from tests.operator_ui.test_r3_api import provenance
 
     runners = tuple(
@@ -157,11 +158,17 @@ def test_readiness_rejects_alias_with_cross_venue_source_url(tmp_path):
         ordered_runners=runners,
         operational_index_provenance=provenance(),
     )
+    race_url = "https://www.thedogs.com.au/racing/ladbrokes-q-straight/2026-09-15/1/test-race"
+    assert race_identity_equivalent(
+        "Race 1 - QOT - 2026-09-15",
+        "Race 1 - QOT - 2026-09-15",
+        source_url=race_url,
+    )
     readiness = collector_readiness(
         tmp_path,
         job_input,
         source_race_id="Race 1 - SHEPPARTON - 2026-09-15",
-        race_url="https://www.thedogs.com.au/racing/q-straight/2026-09-15/1/test-race",
+        race_url=race_url,
     )
 
     with pytest.raises(R3Rejected, match="RESULT_ACQUISITION_NOT_READY"):
