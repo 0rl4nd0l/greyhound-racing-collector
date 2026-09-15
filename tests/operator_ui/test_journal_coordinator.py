@@ -7,6 +7,63 @@ from dataclasses import replace
 import pytest
 
 
+def collector_readiness(tmp_path, job_input, *, changed_native=False):
+    """Real, outcome-free filesystem evidence for the existing collector lane."""
+    import hashlib
+    import json
+    from src.operator_ui.journal_readiness import ResultAcquisitionReadiness
+    from tests.test_autonomous_official_result_capture import (
+        _write_shadow_run,
+        _write_shadow_source_csv,
+    )
+
+    evidence = tmp_path / "collector-evidence"
+    evidence.mkdir()
+    source = evidence / "source.csv"
+    _write_shadow_source_csv(source)
+    _write_shadow_run(
+        evidence,
+        source_csv=source,
+        race_id=job_input.race_id,
+        race_time_minutes=610,
+        dirname="daily_race_ingest_shadow_collector-run_daemon_autopilot",
+    )
+    collector = tmp_path / "collector"
+    collector.mkdir()
+    unit = tmp_path / "full.service"
+    unit.write_text(
+        f"[Service]\nWorkingDirectory={collector}\n"
+        f"ExecStart=/python {collector}/scripts/shadow_autopilot_daemon.py run-once "
+        f"--evidence-root {evidence} --enable-autonomous-result-capture\n"
+    )
+    authority = {
+        "working_directory": str(collector),
+        "units": {
+            "full_service": {
+                "path": str(unit),
+                "sha256": hashlib.sha256(unit.read_bytes()).hexdigest(),
+            }
+        },
+    }
+    race = {
+        "race_id": job_input.race_id,
+        "jump_datetime": job_input.jump_timestamp,
+        "race_url": "https://www.thedogs.com.au/racing/wentworth-park/2026-09-15/1/test-race",
+        "runner_set_sha256": job_input.runner_set_sha256,
+        "runners": [
+            {
+                "box_number": r["box"],
+                "dog_name": r["name"],
+                "source_native_runner_id": r["source_native_runner_id"],
+            }
+            for r in job_input.ordered_runners
+        ],
+    }
+    if changed_native:
+        race["runners"][0]["source_native_runner_id"] = "999"
+    return ResultAcquisitionReadiness(evidence, authority=authority, races=lambda: (race,))
+
+
 def test_disabled_tick_does_not_construct_stores_or_read_sources(tmp_path):
     coordinator = JournalCoordinator()
     assert coordinator.tick() == {"state": "DISABLED"}
@@ -48,7 +105,25 @@ def test_activation_is_future_only_and_cannot_be_replaced_on_restart(tmp_path):
         late.tick()
 
 
-@pytest.mark.parametrize("outcome", ["failed", "claimed", "stale_index", "expired_unclaimed"])
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        "failed",
+        "claimed",
+        "stale_index",
+        "expired_unclaimed",
+        "result_uncovered",
+        "changed_native_runner",
+        "outcome_contaminated",
+        "other_race_contaminated",
+        "missing_csv",
+        "wrong_csv",
+        "fifo_csv",
+        "oversized_csv",
+        "unit_drift",
+        "recovery_unready",
+    ],
+)
 def test_single_cycle_admits_once_and_restart_does_not_retry_failed_race(tmp_path, outcome):
     from src.operator_ui.journal import JournalActivation
     from src.operator_ui.job_store import JobInput, JobStore, Phase
@@ -70,9 +145,12 @@ def test_single_cycle_admits_once_and_restart_does_not_retry_failed_race(tmp_pat
         (),
     )
     store, audit = JobStore(tmp_path / "jobs.db"), AuditStore(tmp_path / "audit.db")
-    runners = ({"box": 1, "name": "ALPHA", "identity": "ALPHA"},)
+    runners = tuple(
+        {"box": box, "name": name, "identity": name, "source_native_runner_id": str(100 + box)}
+        for box, name in enumerate(("ALPHA", "BRAVO", "CHARLIE", "DELTA"), 1)
+    )
     job_input = JobInput(
-        "future-race",
+        "Race 1 - WPK - 2026-09-15",
         (now + timedelta(minutes=10)).isoformat(),
         "e" * 64,
         "latest-research",
@@ -95,7 +173,7 @@ def test_single_cycle_admits_once_and_restart_does_not_retry_failed_race(tmp_pat
         return ResolvedSubmission(job_input, runners)
 
     def launch(job_id, confirm):
-        if outcome == "expired_unclaimed":
+        if outcome in {"expired_unclaimed", "recovery_unready"}:
             return
         _, attempt = store.claim_attempt(job_id, now=clock[0], confirm_audit=confirm)
         if outcome == "claimed":
@@ -117,7 +195,7 @@ def test_single_cycle_admits_once_and_restart_does_not_retry_failed_race(tmp_pat
     def races():
         if outcome == "stale_index":
             raise R3Rejected("CURRENT_INDEX_STALE")
-        return ({"race_id": "future-race", "jump_datetime": job_input.jump_timestamp},)
+        return ({"race_id": job_input.race_id, "jump_datetime": job_input.jump_timestamp},)
 
     args = dict(
         activation=activation,
@@ -125,8 +203,41 @@ def test_single_cycle_admits_once_and_restart_does_not_retry_failed_race(tmp_pat
         services=services,
         audit=audit,
         races=races,
+        result_readiness=(
+            None
+            if outcome == "result_uncovered"
+            else collector_readiness(
+                tmp_path, job_input, changed_native=outcome == "changed_native_runner"
+            )
+        ),
         clock=lambda: clock[0],
     )
+    if outcome in {"outcome_contaminated", "other_race_contaminated"}:
+        import json
+
+        feature_path = (
+            tmp_path
+            / "collector-evidence/daily_race_ingest_shadow_collector-run_daemon_autopilot/shadow_feature_rows.json"
+        )
+        payload = json.loads(feature_path.read_bytes())
+        if outcome == "outcome_contaminated":
+            payload[0]["finish_position"] = 1
+        else:
+            payload.append({"race_id": "another-race", "finish_position": 1})
+        feature_path.write_text(json.dumps(payload))
+    source_csv = tmp_path / "collector-evidence/source.csv"
+    if outcome in {"missing_csv", "fifo_csv"}:
+        source_csv.rename(source_csv.with_suffix(".retained"))
+        if outcome == "fifo_csv":
+            import os
+
+            os.mkfifo(source_csv)
+    if outcome == "wrong_csv":
+        source_csv.write_text("Dog Name,Box\n1. OTHER,1\n2. Bravo,2\n3. Charlie,3\n4. Delta,4\n")
+    if outcome == "oversized_csv":
+        source_csv.write_bytes(b"x" * (2 * 1024 * 1024 + 1))
+    if outcome == "unit_drift":
+        (tmp_path / "full.service").write_text("[Service]\nExecStart=/other\n")
     coordinator = JournalCoordinator(**args)
     coordinator.tick()
     clock[0] += timedelta(seconds=2)
@@ -136,12 +247,37 @@ def test_single_cycle_admits_once_and_restart_does_not_retry_failed_race(tmp_pat
         assert pending["reason"] == "CURRENT_INDEX_STALE"
         assert pending["jobs"] == []
         return
-    assert pending["admissions"] == {"future-race": "PENDING_RECEIPT"}
+    assert pending["admissions"] == {job_input.race_id: "PENDING_RECEIPT"}
     assert pending["jobs"] == []
     receipt[0] = True
     admitted = coordinator.tick()
+    if outcome in {
+        "result_uncovered",
+        "changed_native_runner",
+        "outcome_contaminated",
+        "other_race_contaminated",
+        "missing_csv",
+        "wrong_csv",
+        "fifo_csv",
+        "oversized_csv",
+        "unit_drift",
+    }:
+        assert admitted["admissions"] == {job_input.race_id: "RESULT_ACQUISITION_NOT_READY"}
+        assert admitted["jobs"] == []
+        assert store.recorded_jobs() == ()
+        assert audit.verify_chain() and store.verify()
+        return
     assert len(admitted["jobs"]) == 1
     job = store.get(admitted["jobs"][0])
+    if outcome == "recovery_unready":
+        source_csv.rename(source_csv.with_suffix(".retained"))
+        original_events = store.events(job.job_id)
+        recovered = JournalCoordinator(**args).tick()
+        assert recovered["state"] == "STOPPED_UNCLAIMED_ADMISSION"
+        assert recovered["recovery"][job.job_id] == "RESULT_ACQUISITION_NOT_READY"
+        assert not store.get(job.job_id).attempt_claimed
+        assert store.events(job.job_id) == original_events
+        return
     if outcome == "expired_unclaimed":
         clock[0] += timedelta(hours=2)
         recovered = JournalCoordinator(**args).tick()
@@ -345,8 +481,29 @@ def test_verified_fixture_prediction_closes_once_from_collector_rows(tmp_path, r
     coordinator = JournalCoordinator(**coordinator_args)
     coordinator.tick()
     clock[0] = NOW
-    report = coordinator.tick()
-    job_id = report["jobs"][0]
+    # Model a previously admitted job. Missing new-admission readiness must
+    # never suppress closure of this existing, immutable prediction.
+    from src.operator_ui.r3_api import submit_prediction, confirm_prediction_operation
+
+    job, _ = submit_prediction(
+        services,
+        {
+            "race_id": inp.race_id,
+            "model_id": "latest-research",
+            "config_id": "manual-default",
+            "odds_source_id": "receipt",
+            "idempotency_key": "22345678-1234-4123-8123-123456789abc",
+        },
+        identity="r3-journal:" + activation.activation_id,
+        confirm_audit=lambda intent: confirm_prediction_operation(
+            services,
+            audit,
+            intent,
+            session_identifier=activation.activation_id,
+            client_identity="server-owned-r3-journal",
+        ),
+    )
+    job_id = job.job_id
     original = {p: p.read_bytes() for p in bundles.rglob("*") if p.is_file()}
     assert coordinator.tick()["closures"][job_id] == "RESULT_PENDING"
     clock[0] = NOW + timedelta(hours=1, minutes=5)
@@ -423,7 +580,7 @@ def test_verified_fixture_prediction_closes_once_from_collector_rows(tmp_path, r
             actor_identity="r3-journal:" + activation.activation_id,
             actor_level=2,
             operation="manual_prediction",
-            idempotency_key="22345678-1234-4123-8123-123456789abc",
+            idempotency_key="32345678-1234-4123-8123-123456789abc",
             job_input=replace(inp, race_id="expired-queued-race"),
             now=NOW,
             confirm_audit=lambda intent: confirm_prediction_operation(

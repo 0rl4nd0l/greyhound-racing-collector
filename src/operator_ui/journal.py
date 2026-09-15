@@ -155,11 +155,13 @@ class JournalCoordinator:
         audit=None,
         races=None,
         results=None,
+        result_readiness=None,
         clock=lambda: datetime.now(timezone.utc),
     ):
         self.activation, self.root, self.clock = activation, root, clock
         self.services, self.audit, self.races = services, audit, races
         self.results = results
+        self.result_readiness = result_readiness
 
     def tick(self):
         if self.activation is None:
@@ -228,6 +230,13 @@ class JournalCoordinator:
         if not self.activation.not_before <= now < self.activation.admit_until or jump <= max(
             now, self.activation.not_before
         ):
+            raise R3Rejected("OUTSIDE_FUTURE_ADMISSION_WINDOW")
+        if self.result_readiness is None:
+            raise R3Rejected("RESULT_ACQUISITION_NOT_READY")
+        self.result_readiness.require(job_input, now=now)
+        # Source inspection must not carry an otherwise valid job past cutoff.
+        completed = self.clock()
+        if not self.activation.not_before <= completed < self.activation.admit_until or jump <= completed:
             raise R3Rejected("OUTSIDE_FUTURE_ADMISSION_WINDOW")
 
     def _cycle(self, now):

@@ -422,6 +422,7 @@ def bind_configured_r3(app: Flask) -> bool:
             raise RuntimeError("journal requires a generated repository-v1 activation")
         from .journal import JournalActivation, JournalCoordinator, start_journal_coordinator
         from .journal_results import OfficialResultSource
+        from .journal_readiness import ResultAcquisitionReadiness
         layout = _repository_layout()
         raw = _retained_read(layout["source_root"] / "var/operator_ui/generated/journal-activation.json")
         if hashlib.sha256(raw).hexdigest() != digest:
@@ -435,6 +436,8 @@ def bind_configured_r3(app: Flask) -> bool:
             root=layout["base"] / "artifacts/research_journal" / activation.activation_id,
             services=services, audit=app.extensions["operator_ui_audit"],
             races=services.observe_current_races, results=OfficialResultSource(layout["paths"]["canonical.sqlite3"]),
+            result_readiness=ResultAcquisitionReadiness(layout["dirs"]["current_evidence"],
+                authority=layout["live_evidence"], races=services.observe_current_races),
             clock=services.clock)
         app.extensions["operator_ui_journal"] = coordinator
         app.extensions["operator_ui_journal_stop"] = start_journal_coordinator(coordinator, app.logger)

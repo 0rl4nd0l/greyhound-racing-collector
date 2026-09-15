@@ -256,6 +256,7 @@ def test_generated_journal_binds_only_existing_r3_lane_without_starting_predicti
     try:
         coordinator = app.extensions["operator_ui_journal"]
         assert coordinator.services is app.extensions["operator_ui_r3_services"]
+        assert coordinator.result_readiness is not None
         assert coordinator.tick()["state"] == "WAITING_START"
         assert coordinator.services.job_store.recorded_jobs() == ()
         assert canonical.read_bytes() == b"canonical-read-only"

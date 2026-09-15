@@ -50,6 +50,48 @@ No existing journal, cohort, attempt, result or model is migrated or rewritten.
 
 ## Operational limitations and denominators
 
+### Result-acquisition prerequisite (follow-up to #178)
+
+Before allocating a journal job, or dispatching an unclaimed journal job after
+restart, require an outcome-blind collector precursor. Missing readiness reports
+`RESULT_ACQUISITION_NOT_READY`: zero new jobs and zero consumed attempts. Existing
+sealed predictions can still close; historical inputs and events are unchanged.
+
+The supported proof is deliberately narrow: the verified index's run ID selects
+`daily_race_ingest_shadow_<run_id>_daemon_autopilot` directly under the bound
+collector evidence root. Its direct stage-2 predictions and feature rows must
+identify the exact race, canonical URL, jump time and complete runner set, with
+a matching source CSV inside that root. It reuses the collector's runner/CSV
+completeness, race identity, time and result-field guards, without executing its
+post-jump candidate loader or its network-capable "dry run". The current index
+must still match the JobInput, including native runner IDs and runner digest.
+The pinned full-service definition must still match its deployment digest and
+configure the existing autonomous result-capture entry point and evidence root.
+
+At most three source files plus the unit definition are read, each at most 2 MiB;
+JSON row counts are bounded. Symlinks, non-regular files, changed files and
+result-contaminated JSON fail closed. No directory scan, result-table lookup,
+network access, enrollment, snapshot creation or alternative collector is added.
+The source-read bounds are byte/row bounds, **not a wall-clock latency guarantee**.
+Admission rechecks its future cutoff after all readiness inspection finishes.
+
+This is a necessary source prerequisite, **not a reservation or proof of future
+result delivery**. Snapshot-only, legacy-only and manifest/checkout-relative
+fallback sources remain pending in this first implementation. Do not fabricate
+a supported precursor to increase coverage. Timer activity, lock contention,
+live-odds backlog eligibility, lookback/selection limits, official-source
+availability and eventual canonical ingestion remain separate operational gates.
+The preflight does not access outcomes to predict whether closure will succeed.
+
+Release this follow-up only from its reviewed exact merged commit/tree, with a
+regenerated default-off package. The deployed #178 release
+`0869ada06fc7a16b716253c279d3fa9a1634de53` is the rollback source for this follow-up;
+retain its package and all operations stores. Neither package installation nor
+this documentation authorizes journal activation. Before the separately approved
+future-only one-job acceptance, revalidate collector recurrence/backlog settings
+and protocol authority. A pending precursor consumes no opportunity; a pending
+official result after prediction is not a passing complete-record acceptance.
+
 `jobs` in a tick report are durable opportunities in this activation, not every
 race seen in the index. `admissions` describes that observation's preflight or
 allocation decision, not a cumulative denominator. Count consumed attempts from
@@ -99,8 +141,8 @@ one complete integrity scan per historical job.
    passing end-to-end acceptance. Review recurring activation separately.
 
 Rollback: regenerate without `--journal-activation` and, with the separately
-approved operational action, restore the known-good #177 package/source
-`d8e4efe1ebeb44fff8193c3fcd7e7d8d55d7d182`, or disable R3 through its generated
+approved operational action, restore the retained default-off #178 package/source
+`0869ada06fc7a16b716253c279d3fa9a1634de53`, or disable R3 through its generated
 gate if required. Keep every operations directory, job, attempt, audit chain,
 activation and closure. Never edit the retained cutoff to force another run.
 
