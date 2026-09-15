@@ -58,6 +58,7 @@ COMMANDS = (
         "-q",
         "tests/operator_ui/test_foundation.py",
         "tests/operator_ui/test_job_store.py",
+        "tests/operator_ui/test_journal_coordinator.py",
         "tests/operator_ui/test_prediction_worker.py",
         "tests/operator_ui/test_security.py",
         "tests/operator_ui/test_r3_api.py",

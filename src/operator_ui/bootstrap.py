@@ -373,27 +373,30 @@ def _build_r3_services(app: Flask, profile: str) -> R3Services:
     store=JobStore(paths["jobs.sqlite3"],separate_from=(paths["audit.sqlite3"],paths["canonical.sqlite3"]),verifier_authority=verifier_authority)
 
     def clock() -> datetime:return datetime.now(timezone.utc)
-    def resolve(selected: Mapping[str,str], now: datetime) -> ResolvedSubmission:
-        model_id, config_id, odds_source = _R3_ALLOWED_SELECTION
-        if (selected.get("model_id"),selected.get("config_id"),selected.get("odds_source_id")) != _R3_ALLOWED_SELECTION:raise R3Rejected("SELECTION_NOT_ALLOWLISTED")
+    def require_fresh_index(view, observed):
+        generated=datetime.fromisoformat(view.source_generated_at.replace("Z","+00:00"))
+        if not 0 <= (observed-generated).total_seconds() <= config["bundle"]["current_index_max_age_seconds"]:
+            raise R3Rejected("CURRENT_INDEX_STALE")
+    def current_index(now):
         index_max_age=config["bundle"]["current_index_max_age_seconds"]
         try:view=bounded_current_race_index(current_time=now,timeout_seconds=1.0,index_path=paths["current_index.json"],evidence_root=dirs["current_evidence"],max_age_seconds=index_max_age,return_verified_view=True)
         except (CaptureOneRejected,PredictionBlocked) as exc:raise R3Rejected(getattr(exc,"code","RACE_EVIDENCE_INVALID")) from exc
         if not isinstance(view,VerifiedCurrentRaceIndex):raise R3Rejected("RACE_EVIDENCE_INVALID")
         # Verified views retain authentic stale packets for display. Admission
         # must enforce the frozen predictor's age limit before creating a job.
-        generated=datetime.fromisoformat(view.source_generated_at.replace("Z","+00:00"))
-        def require_fresh_index(observed: datetime) -> None:
-            if not 0 <= (observed-generated).total_seconds() <= index_max_age:
-                raise R3Rejected("CURRENT_INDEX_STALE")
-        require_fresh_index(now)
+        require_fresh_index(view, max(now, clock()))
+        return view
+    def resolve(selected: Mapping[str,str], now: datetime) -> ResolvedSubmission:
+        model_id, config_id, odds_source = _R3_ALLOWED_SELECTION
+        if (selected.get("model_id"),selected.get("config_id"),selected.get("odds_source_id")) != _R3_ALLOWED_SELECTION:raise R3Rejected("SELECTION_NOT_ALLOWLISTED")
+        view=current_index(now)
         matches=[row for row in view.races if row.get("race_id")==selected.get("race_id")]
         if len(matches)!=1:raise R3Rejected("RACE_ID_MISSING_OR_AMBIGUOUS")
         race=matches[0]; runners=tuple(_runner(row) for row in race.get("runners",()))
         receipt_admission=preflight_race_receipt(race,protocol=receipt_protocol,current_time=now,policy=receipt_policy,completion_clock=clock)
         if receipt_admission.state!=READY:
             raise R3Rejected(PENDING_RECEIPT if receipt_admission.state==PENDING_RECEIPT else receipt_admission.reason or "PREFLIGHT_EXCLUDED")
-        require_fresh_index(max(now,clock()))
+        require_fresh_index(view, max(now,clock()))
         jump=race.get("jump_datetime",race.get("jump_timestamp"))
         provenance=OperationalIndexProvenance.from_verified_current_race_index(view)
         job_input=JobInput(str(race["race_id"]),str(jump),str(race["runner_set_sha256"]),model_id,resolved_model,model_sha,manifest_sha,schema_sha,config_id,choice.config_sha256,odds_source,runners,provenance)
@@ -402,7 +405,8 @@ def _build_r3_services(app: Flask, profile: str) -> R3Services:
     def finalize(job: Job, confirm) -> Job:
         return finalize_producer_bundle(dirs["prediction_bundles"],store,job,capability=verifier_authority,now=clock(),confirm_audit=confirm)
     dispatcher=_FixedDispatcher(store,worker,clock,finalize)
-    return R3Services(store,resolve,dispatcher,finalize,build_verified_bundle_reader(dirs["prediction_bundles"],store),clock=clock)
+    return R3Services(store,resolve,dispatcher,finalize,build_verified_bundle_reader(dirs["prediction_bundles"],store),clock=clock,
+                      observe_current_races=lambda: current_index(clock()).races)
 
 
 def bind_configured_r3(app: Flask) -> bool:
@@ -410,7 +414,31 @@ def bind_configured_r3(app: Flask) -> bool:
     if selector in (False,None,"","disabled"):return False
     if selector is True:selector="repository-v1"
     if not isinstance(selector,str) or selector not in _PROFILES:raise ValueError("unknown finite R3 profile")
-    return install_r3_api(app,_build_r3_services(app,selector))
+    services = _build_r3_services(app,selector)
+    installed = install_r3_api(app,services)
+    digest = os.environ.get("OPERATOR_UI_R3_JOURNAL_SHA256", "disabled")
+    if digest != "disabled":
+        if selector != "repository-v1" or not _HEX64_RE.fullmatch(digest):
+            raise RuntimeError("journal requires a generated repository-v1 activation")
+        from .journal import JournalActivation, JournalCoordinator, start_journal_coordinator
+        from .journal_results import OfficialResultSource
+        layout = _repository_layout()
+        raw = _retained_read(layout["source_root"] / "var/operator_ui/generated/journal-activation.json")
+        if hashlib.sha256(raw).hexdigest() != digest:
+            raise RuntimeError("journal activation digest mismatch")
+        activation = JournalActivation.from_fields(json.loads(raw))
+        if (activation.source_commit != layout["deployment"]["source_commit"]
+                or activation.model_sha256 != _sha(layout["artifacts"]["model"])
+                or activation.config_sha256 != _sha(layout["artifacts"]["config"])):
+            raise RuntimeError("journal activation release/model/config mismatch")
+        coordinator = JournalCoordinator(activation=activation,
+            root=layout["base"] / "artifacts/research_journal" / activation.activation_id,
+            services=services, audit=app.extensions["operator_ui_audit"],
+            races=services.observe_current_races, results=OfficialResultSource(layout["paths"]["canonical.sqlite3"]),
+            clock=services.clock)
+        app.extensions["operator_ui_journal"] = coordinator
+        app.extensions["operator_ui_journal_stop"] = start_journal_coordinator(coordinator, app.logger)
+    return installed
 
 
 def configure_r3_startup(app: Flask) -> bool:

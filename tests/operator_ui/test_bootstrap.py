@@ -186,6 +186,7 @@ def test_repository_profile_binds_authoritative_sources_and_separate_operations_
     worker=app.extensions["operator_ui_r3_services"].launch_once._worker
     assert worker.repository_root==repo and worker.current_index_evidence_root==evidence and worker.output_root==operations/"artifacts/on_demand_prediction_runs"
     assert worker.canonical_db==canonical and worker.collector_request_root==evidence/"manual_prediction_collector_requests_v1"
+    assert "operator_ui_journal" not in app.extensions
     assert canonical.read_bytes()==before and legacy.read_bytes()==legacy_before and not (operations/"canonical.sqlite3").exists()
     live=app.config[bootstrap_module.CONFIG_KEY]
     source_limits={key:config.max_bytes for key,config in live._reader._sources.items()}
@@ -226,6 +227,41 @@ def test_repository_profile_binds_authoritative_sources_and_separate_operations_
     assert refresh_payload["generated_at"]=="2026-08-03T01:02:03Z"
     catalog_envelope,_=live._reader.read_payload("model_catalog")
     assert catalog_envelope.observed_at=="2026-08-03T01:02:03Z"
+
+
+def test_generated_journal_binds_only_existing_r3_lane_without_starting_predictions(tmp_path, monkeypatch):
+    from src.operator_ui.journal import JournalActivation
+    from src.operator_ui.job_store import canonical as canonical_bytes
+    repo, evidence, producer, operations, canonical = repository_binding_fixture(tmp_path, monkeypatch)
+    now = datetime.now(timezone.utc)
+    activation = JournalActivation("12345678-1234-4123-8123-123456789abc",
+        now + timedelta(hours=1), now + timedelta(hours=2), 1,
+        "21e7b02e60e82da9c4dbbb796ea435bc120e9862", "a" * 64,
+        hashlib.sha256((repo / "artifacts/frozen_models/market_form_residual_v1/model.json").read_bytes()).hexdigest(),
+        hashlib.sha256((repo / "configs/prediction/manual-default.json").read_bytes()).hexdigest(), ())
+    raw = canonical_bytes(activation.fields())
+    (repo / "var/operator_ui/generated/journal-activation.json").write_bytes(raw)
+    monkeypatch.setenv("OPERATOR_UI_R3_JOURNAL_SHA256", hashlib.sha256(raw).hexdigest())
+    app = Flask(__name__)
+    app.config.update(TESTING=True, OPERATOR_UI_CONNECTED_MODE=True,
+        OPERATOR_UI_SECRET_KEY="repository-secret-" + "x" * 40,
+        OPERATOR_UI_USERNAME="operator", OPERATOR_UI_PASSWORD_HASH=generate_password_hash("correct horse"),
+        OPERATOR_UI_LEVEL=2, OPERATOR_UI_DEPLOYED_COMMIT=activation.source_commit,
+        OPERATOR_UI_DEPLOYED_TREE="2cfc75cd8a2af1a9e5da4986c969cb668b93af62",
+        OPERATOR_UI_DEPLOYED_VERSION="operator-ui-v1", OPERATOR_UI_DEPLOYED_PROFILE="repository-v1")
+    app.config[R3_PROFILE_KEY] = "repository-v1"
+    bootstrap_module.configure_r3_startup(app)
+    install_connected_mode(app)
+    assert bind_configured_r3(app)
+    try:
+        coordinator = app.extensions["operator_ui_journal"]
+        assert coordinator.services is app.extensions["operator_ui_r3_services"]
+        assert coordinator.tick()["state"] == "WAITING_START"
+        assert coordinator.services.job_store.recorded_jobs() == ()
+        assert canonical.read_bytes() == b"canonical-read-only"
+        assert (operations / "artifacts/research_journal" / activation.activation_id / "activation.json").read_bytes() == raw
+    finally:
+        app.extensions["operator_ui_journal_stop"].set()
 
 
 def test_repository_profile_finalizes_one_verified_worker_bundle_before_disclosing_probabilities(tmp_path,monkeypatch):

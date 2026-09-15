@@ -158,6 +158,32 @@ def generated_targets(values: dict[str, object]) -> tuple[Path, ...]:
     )
 
 
+def test_journal_requires_explicit_future_release_bound_manifest(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from src.operator_ui.journal import JournalActivation
+    values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
+    source = values["source_root"]
+    now = datetime.now(timezone.utc)
+    activation = JournalActivation("12345678-1234-4123-8123-123456789abc",
+        now + timedelta(hours=1), now + timedelta(hours=2), 1, COMMIT, "a" * 64,
+        hashlib.sha256((source / "artifacts/frozen_models/market_form_residual_v1/model.json").read_bytes()).hexdigest(),
+        hashlib.sha256((source / "configs/prediction/manual-default.json").read_bytes()).hexdigest(), ())
+    path = tmp_path / "approved-activation.json"
+    path.write_text(json.dumps(activation.fields()))
+    with pytest.raises(DeploymentRejected, match="journal requires enabled R3"):
+        generate_package(**values, journal_activation=path)
+    assert not any(target.exists() for target in generated_targets(values))
+    result = generate_package(**values, enabled=True, journal_activation=path)
+    assert result["enabled"] is True
+    retained = source / "var/operator_ui/generated/journal-activation.json"
+    raw = retained.read_bytes()
+    assert json.loads(raw) == activation.fields()
+    env = (values["output_dir"] / "operator-ui-r3.env").read_text()
+    assert "OPERATOR_UI_R3_JOURNAL_SHA256=" + hashlib.sha256(raw).hexdigest() in env
+    assert not (values["operations_root"] / "artifacts/research_journal").exists()
+
+
 def replace_during_authority_read(monkeypatch, victim: Path, *, component: bool) -> None:
     identity = (victim.stat().st_dev, victim.stat().st_ino)
     real_read = os.read
