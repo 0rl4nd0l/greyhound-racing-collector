@@ -338,8 +338,54 @@ class FaultPipe(io.BytesIO):
         if self.fault=="close": raise OSError("close failed")
         return super().close()
 
-@pytest.mark.parametrize("fault",["read","start","join","close","stall"])
-def test_lifetime_reader_error_matrix_is_bounded_truthful_and_closes_every_pipe(tmp_path,monkeypatch,fault):
+@pytest.fixture
+def cleanup_observations(monkeypatch):
+    # Observe the real cleanup through run_once; do not replace cleanup or its clock.
+    from src.operator_ui.prediction_worker import _LifetimeOwner
+    original = _LifetimeOwner.cleanup
+    observations = []
+    def observe(owner, **kwargs):
+        began = time.monotonic()
+        try:
+            return original(owner, **kwargs)
+        finally:
+            observations.append((began, time.monotonic()))
+    monkeypatch.setattr(_LifetimeOwner, "cleanup", observe)
+    return observations
+
+
+@pytest.fixture
+def worker_threads(monkeypatch):
+    threads = []
+    real_thread = threading.Thread
+    class ObservedThread(real_thread):
+        finished_at = None
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            threads.append(self)
+        def run(self):
+            try:
+                super().run()
+            finally:
+                self.finished_at = time.monotonic()
+    monkeypatch.setattr("src.operator_ui.prediction_worker.threading.Thread", ObservedThread)
+    return threads
+
+
+def assert_cleanup_finished(observations, threads):
+    assert observations and all(end-start < 3.0 for start,end in observations)
+    assert threads
+    for thread in threads:
+        assert not thread.is_alive()
+        if thread.ident is not None:  # Failed start is truthful, not a leaked reader.
+            assert thread.finished_at is not None
+            assert thread.finished_at < observations[0][0] + 3.0
+
+
+@pytest.mark.parametrize("fault,audit_delay", [
+    pytest.param(fault, 0, id=fault) for fault in ("read", "start", "join", "close", "stall")
+] + [pytest.param("stall", 1.1, id="stall-slow-audit")])
+def test_lifetime_reader_error_matrix_is_bounded_truthful_and_closes_every_pipe(tmp_path,monkeypatch,fault,audit_delay,cleanup_observations,worker_threads,request):
     cfg,store,job=setup(tmp_path); proc=Process(ready(job)); proc.stdout=FaultPipe(ready(job),fault if fault in {"read","close","stall"} else None); proc.stderr=FaultPipe()
     real=threading.Thread; constructed=[]
     if fault in {"start","join"}:
@@ -354,17 +400,66 @@ def test_lifetime_reader_error_matrix_is_bounded_truthful_and_closes_every_pipe(
             def is_alive(self): return self.inner.is_alive()
         def factory(*args,**kwargs): constructed.append(kwargs.get("name")); return Wrapped(*args,**kwargs)
         monkeypatch.setattr("src.operator_ui.prediction_worker.threading.Thread",factory)
-    began=time.monotonic(); result=run_once(store,job.job_id,cfg,now=lambda:NOW,confirm_audit=CONFIRM,popen=lambda *a,**k:proc,reader=lambda **_:view()); elapsed=time.monotonic()-began
-    assert elapsed<3.0 and result.phase is Phase.FAILED
+    def confirm(intent):
+        if audit_delay and intent["operation"] == "claim":
+            time.sleep(audit_delay)  # External audit latency, before process ownership.
+        return CONFIRM(intent)
+    began=time.monotonic(); result=run_once(store,job.job_id,cfg,now=lambda:NOW,confirm_audit=confirm,popen=lambda *a,**k:proc,reader=lambda **_:view()); elapsed=time.monotonic()-began
+    request.node.user_properties.extend([
+        ("whole_job_seconds", elapsed),
+        ("cleanup_seconds", [end-start for start,end in cleanup_observations]),
+    ])
+    # DEC-GHU-035C4/C6: a shared cleanup deadline, not a whole-job latency SLA.
+    assert_cleanup_finished(cleanup_observations, worker_threads)
+    assert result.phase is Phase.FAILED and result.attempt_claimed
+    assert proc.poll() == 0
     assert proc.stdout.close_attempts>=1 and proc.stderr.close_attempts>=1
+    assert proc.stderr.closed and proc.stdout.closed == (fault != "close")
     with sqlite3.connect(store.path) as db: facts=json.loads(db.execute("SELECT facts_json FROM job_events ORDER BY sequence DESC LIMIT 1").fetchone()[0])
     expected={"read":"READ_ERROR","start":"START_ERROR","join":"JOIN_ERROR","close":"CLOSE_ERROR","stall":"INCOMPLETE"}[fault]
     assert facts["stdout_reader_error"]==expected or fault=="start" and facts["stderr_reader_error"]==expected
     assert facts["stdout_complete"] is False or facts["stderr_complete"] is False
     assert "stdout_length" not in facts if facts["stdout_complete"] is False else True
+    with pytest.raises(WorkerRejected, match="JOB_NOT_CLAIMABLE"):
+        run_once(store,job.job_id,cfg,now=lambda:NOW,confirm_audit=CONFIRM,
+                 popen=lambda *a,**k:pytest.fail("consumed attempt relaunched"),reader=lambda **_:view())
+
+
+def test_real_child_timeout_reaps_closes_pipes_and_terminates_readers(tmp_path,cleanup_observations,worker_threads):
+    cfg,store,job=setup(tmp_path)
+    cfg=replace(cfg,process_timeout_seconds=.05)
+    children=[]
+    def spawn(*args, **kwargs):
+        # Harmless offline child, never the predictor or collector.
+        child=subprocess.Popen([str(cfg.pinned_python),"-I","-c","import time; time.sleep(30)"],
+                               stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+        children.append(child)
+        return child
+    try:
+        result=run_once(store,job.job_id,cfg,now=lambda:NOW,confirm_audit=CONFIRM,
+                        popen=spawn,reader=lambda **_:view())
+        assert result.phase is Phase.TIMED_OUT and result.attempt_claimed
+        assert len(children)==1
+        child=children[0]
+        assert child.poll() is not None and child.stdout.closed and child.stderr.closed
+        # OS-level proof of wait/reap, not merely a mocked return code.
+        with pytest.raises(ChildProcessError):
+            os.waitpid(child.pid,os.WNOHANG)
+        assert_cleanup_finished(cleanup_observations,worker_threads)
+        with pytest.raises(WorkerRejected,match="JOB_NOT_CLAIMABLE"):
+            run_once(store,job.job_id,cfg,now=lambda:NOW,confirm_audit=CONFIRM,
+                     popen=lambda *a,**k:pytest.fail("consumed attempt relaunched"),reader=lambda **_:view())
+    finally:
+        # Test failure must not orphan the fixture child; not acceptance evidence.
+        for child in children:
+            if child.poll() is None:
+                child.terminate()
+                child.wait(timeout=2)
+            child.stdout.close()
+            child.stderr.close()
 
 @pytest.mark.parametrize("role,method,expected",[("reader","is_alive","INCOMPLETE"),("closer","join","CLOSE_ERROR"),("closer","is_alive","CLOSE_ERROR")])
-def test_cleanup_helper_observation_exceptions_are_bounded_and_durable(tmp_path,monkeypatch,role,method,expected):
+def test_cleanup_helper_observation_exceptions_are_bounded_and_durable(tmp_path,monkeypatch,role,method,expected,cleanup_observations,worker_threads):
     cfg,store,job=setup(tmp_path); proc=Process(ready(job)); real=threading.Thread
     class Wrapped:
         def __init__(self,*args,**kwargs): self.inner=real(*args,**kwargs); self.role="closer" if kwargs.get("name","").endswith("-close") else "reader"
@@ -376,8 +471,9 @@ def test_cleanup_helper_observation_exceptions_are_bounded_and_durable(tmp_path,
             if self.role==role and method=="is_alive": raise RuntimeError(f"{role} is_alive failed")
             return self.inner.is_alive()
     monkeypatch.setattr("src.operator_ui.prediction_worker.threading.Thread",Wrapped)
-    began=time.monotonic(); result=run_once(store,job.job_id,cfg,now=lambda:NOW,confirm_audit=CONFIRM,popen=lambda *a,**k:proc,reader=lambda **_:view())
-    assert time.monotonic()-began<3.0 and result.phase is Phase.FAILED
+    result=run_once(store,job.job_id,cfg,now=lambda:NOW,confirm_audit=CONFIRM,popen=lambda *a,**k:proc,reader=lambda **_:view())
+    assert_cleanup_finished(cleanup_observations,worker_threads)
+    assert result.phase is Phase.FAILED
     with sqlite3.connect(store.path) as db: facts=json.loads(db.execute("SELECT facts_json FROM job_events ORDER BY sequence DESC LIMIT 1").fetchone()[0])
     assert facts["stdout_reader_error"]==expected or facts["stderr_reader_error"]==expected
     assert proc.poll()==0
