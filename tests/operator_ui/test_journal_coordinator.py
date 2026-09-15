@@ -151,6 +151,33 @@ def test_activation_is_future_only_and_cannot_be_replaced_on_restart(tmp_path):
         late.tick()
 
 
+def test_expired_empty_activation_stops_without_observing_sources(tmp_path):
+    import logging
+    from src.operator_ui.journal import JournalActivation, start_journal_coordinator
+    from src.operator_ui.job_store import JobStore
+    from types import SimpleNamespace
+
+    now = datetime(2026, 9, 15, tzinfo=timezone.utc)
+    activation = JournalActivation("12345678-1234-4123-8123-123456789abc",
+        now + timedelta(minutes=1), now + timedelta(minutes=2), 1,
+        "a" * 40, "b" * 64, "c" * 64, "d" * 64, ())
+    clock = [now]
+    def forbidden():
+        pytest.fail("expired activation observed new-admission source")
+    coordinator = JournalCoordinator(activation=activation, root=tmp_path / "journal",
+        services=SimpleNamespace(job_store=JobStore(tmp_path / "jobs.db")),
+        races=forbidden, clock=lambda: clock[0])
+    coordinator.tick()
+    clock[0] = now + timedelta(minutes=3)
+    stop = start_journal_coordinator(coordinator, logging.getLogger(__name__))
+    was_stopped = stop.is_set()
+    stop.set()  # Always clean up a faulty background thread in the red proof.
+    assert was_stopped
+    # A clock adjustment on restart must not reopen a durably expired activation.
+    clock[0] = now + timedelta(minutes=1)
+    assert coordinator.tick()["state"] == "STOPPED_ADMISSION_EXPIRED"
+
+
 @pytest.mark.parametrize(
     "outcome",
     [
@@ -358,10 +385,15 @@ def test_single_cycle_admits_once_and_restart_does_not_retry_failed_race(tmp_pat
         "busy_source",
         "null_timestamp",
         "expired_queue",
+        "failed_with_pending",
         "deadline_expired",
+        "deadline_tampered",
+        "deadline_during_tick",
+        "interrupted_closure",
+        "verification_lost",
     ],
 )
-def test_verified_fixture_prediction_closes_once_from_collector_rows(tmp_path, result_case, request):
+def test_verified_fixture_prediction_closes_once_from_collector_rows(tmp_path, result_case, request, monkeypatch):
     import hashlib
     import json
     import shutil
@@ -383,28 +415,39 @@ def test_verified_fixture_prediction_closes_once_from_collector_rows(tmp_path, r
     from tests.test_predict_race_now import args, dependencies, scheduled_exact_receipt, NOW
     from tests.operator_ui.test_r3_api import provenance
 
-    # The protocol deliberately retains every ancestor directory identity.
-    # pytest's shared /tmp tree is mutable while the full fixture is running,
-    # so use a private stable parent for collector evidence and clean it up
-    # through pytest. This changes only fixture placement, never validation.
+    config_path = Path(__file__).resolve().parents[2] / "configs/prediction/manual-default.json"
+
+    if result_case == "complete":
+        readonly_cwd = tmp_path / "readonly-cwd"
+        readonly_cwd.mkdir(mode=0o500)
+        request.addfinalizer(lambda: readonly_cwd.chmod(0o700))
+        monkeypatch.chdir(readonly_cwd)
+
+    # Isolate fixture-owned writes during each retained snapshot, independently
+    # of a writable checkout/cwd. Foreign ancestor churn remains a hypothesis
+    # for the historical failure, not something this relocation proves.
+    import os
+    fixture_parent = Path(os.environ.get(
+        "PYTEST_R3_RECEIPT_ROOT", Path.home() / ".cache/greyhound-r3-receipt-tests"
+    )).resolve()
+    fixture_parent.mkdir(parents=True, exist_ok=True)
     evidence_root = Path(
-        tempfile.mkdtemp(prefix=".greyhound-r3-receipt-", dir=Path.cwd())
+        tempfile.mkdtemp(prefix="receipt-", dir=fixture_parent)
     )
-    request.addfinalizer(lambda: shutil.rmtree(evidence_root, ignore_errors=True))
+    request.addfinalizer(lambda: shutil.rmtree(evidence_root))
 
     # Fixture producer output, not live inference: real sealing and verification,
     # deterministic feature/scoring dependencies from the native predictor tests.
     # Keep the immutable receipt evidence outside the prediction output root.
-    # The collector protocol validates directory identities; placing both
-    # under one fixture root makes later bundle creation an invalidating write,
-    # not a product defect.
+    # Directory identity is checked within each snapshot call, not between
+    # separate calls. Later bundle creation alone does not invalidate a receipt.
     prototype = tmp_path / "prototype"
     prototype.mkdir()
     prototype_receipts = evidence_root / "prototype-receipts"
     prototype_receipts.mkdir()
     protocol, *_ = scheduled_exact_receipt(prototype_receipts)
     sample = run_prediction(
-        args(prototype, odds_source="receipt", collector_request_root=protocol.root), dependencies()
+        args(prototype, config=str(config_path), odds_source="receipt", collector_request_root=protocol.root), dependencies()
     )
     assert sample["status"] == "PREDICTION_READY"
     value = sample["race"]
@@ -442,12 +485,13 @@ def test_verified_fixture_prediction_closes_once_from_collector_rows(tmp_path, r
         "12345678-1234-4123-8123-123456789abc",
         NOW,
         NOW + (timedelta(hours=1) if result_case == "complete" else timedelta(hours=2)),
-        2 if result_case == "expired_queue" else 1,
+        2 if result_case in {"expired_queue", "failed_with_pending"} else 1,
         "a" * 40,
         "b" * 64,
         inp.model_sha256,
         inp.config_sha256,
         (),
+        result_observation_grace_seconds=600 if result_case.startswith("deadline_") else None,
     )
     authority = object()
     store = JobStore(tmp_path / "jobs.db", verifier_authority=authority)
@@ -472,6 +516,7 @@ def test_verified_fixture_prediction_closes_once_from_collector_rows(tmp_path, r
         result = run_prediction(
             args(
                 producer,
+                config=str(config_path),
                 odds_source="receipt",
                 collector_request_root=producer_protocol.root,
                 job_id=job_id,
@@ -548,11 +593,6 @@ def test_verified_fixture_prediction_closes_once_from_collector_rows(tmp_path, r
         races=lambda: ({"race_id": inp.race_id, "jump_datetime": inp.jump_timestamp},),
         clock=lambda: clock[0],
         results=OfficialResultSource(results_db),
-        result_observation_deadline=(
-            NOW + timedelta(hours=1, minutes=10)
-            if result_case == "deadline_expired"
-            else None
-        ),
     )
     coordinator = JournalCoordinator(**coordinator_args)
     coordinator.tick()
@@ -584,24 +624,92 @@ def test_verified_fixture_prediction_closes_once_from_collector_rows(tmp_path, r
     first_recovery = coordinator.tick()
     if job_id not in first_recovery["closures"]:
         first_recovery = coordinator.tick()
-    if result_case == "deadline_expired":
+    if result_case == "verification_lost":
+        manifest = next(path for path in original if path.name == "bundle_manifest.json")
+        manifest.write_bytes(b"damaged fixture bundle")
+        assert coordinator.tick()["state"] == "STOPPED_AFTER_FAILURE"
+        manifest.write_bytes(original[manifest])
+        # Restoring availability cannot reopen a terminally failed observation.
+        restarted = JournalCoordinator(**coordinator_args).tick()
+        assert restarted["state"] == "STOPPED_AFTER_FAILURE"
+        assert restarted["closures"][job_id] == "PREDICTION_VERIFICATION_FAILED"
+        assert store.get(job_id).attempt_claimed
+        assert len(store.recorded_jobs()) == 1
+        return
+    if result_case.startswith("deadline_"):
         assert first_recovery["closures"][job_id] == "RESULT_PENDING"
+        if result_case == "deadline_during_tick":
+            class NoLateRead:
+                def read(self, *args, **kwargs):
+                    pytest.fail("observation deadline passed before source access")
+            times = iter((NOW + timedelta(hours=1, minutes=5),
+                          NOW + timedelta(hours=1, minutes=15)))
+            coordinator.clock = lambda: next(times)
+            coordinator.results = NoLateRead()
+            report = coordinator.tick()
+            assert report["closures"][job_id] == "RESULT_OBSERVATION_EXPIRED"
+            return
+        for changed_cap in (None, 172800):
+            changed_args = {**coordinator_args, "activation": replace(
+                activation, result_observation_grace_seconds=changed_cap)}
+            with pytest.raises(ValueError, match="persisted activation differs"):
+                JournalCoordinator(**changed_args).tick()
+        clock[0] = NOW + timedelta(hours=1, minutes=5)
+        assert JournalCoordinator(**coordinator_args).tick()["state"] == "RESULT_PENDING"
+        observation_path = tmp_path / "journal" / f"{job_id}.observation.json"
+        observation = json.loads(observation_path.read_bytes())
+        assert datetime.fromisoformat(observation["deadline"].replace("Z", "+00:00")) == NOW + timedelta(hours=1, minutes=10)
+        if result_case == "deadline_tampered":
+            from src.operator_ui.job_store import canonical
+            observation["deadline"] = (NOW + timedelta(hours=3)).isoformat()
+            observation_path.write_bytes(canonical(observation))
+            with pytest.raises(ValueError, match="deadline differs from activation"):
+                JournalCoordinator(**coordinator_args).tick()
+            return
+        class NoExpiredResultAccess:
+            def read(self, *args, **kwargs):
+                pytest.fail("expired observation opened official result source")
+        coordinator.results = NoExpiredResultAccess()
         clock[0] = NOW + timedelta(hours=1, minutes=15)
         expired = coordinator.tick()
         assert expired["state"] == "STOPPED_AFTER_CLOSURE"
         assert expired["closures"][job_id] == "RESULT_OBSERVATION_EXPIRED"
         terminal = (tmp_path / "journal" / f"{job_id}.terminal.json").read_bytes()
         restarted_args = dict(coordinator_args)
-        restarted_args["result_observation_deadline"] = None
+        restarted_args["results"] = NoExpiredResultAccess()
+        clock[0] = NOW + timedelta(hours=1, minutes=6)
         restarted = JournalCoordinator(**restarted_args).tick()
         assert restarted["state"] == "STOPPED_AFTER_CLOSURE"
         assert restarted["closures"][job_id] == "RESULT_OBSERVATION_EXPIRED"
         assert (tmp_path / "journal" / f"{job_id}.terminal.json").read_bytes() == terminal
         return
     assert first_recovery["closures"].get(job_id) == "RESULT_PENDING", first_recovery
+    if result_case in {"expired_queue", "failed_with_pending"}:
+        confirm = lambda intent: confirm_prediction_operation(
+            services, audit, intent, session_identifier=activation.activation_id,
+            client_identity="server-owned-r3-journal")
+        queued = store.create(
+            actor_identity="r3-journal:" + activation.activation_id, actor_level=2,
+            operation="manual_prediction",
+            idempotency_key="32345678-1234-4123-8123-123456789abc",
+            job_input=replace(inp, race_id="other-owned-race"), now=NOW,
+            confirm_audit=confirm)
+        if result_case == "failed_with_pending":
+            for phase, status, reason in (
+                (Phase.VALIDATED, "VALID", "validated"),
+                (Phase.WAITING_FOR_CLAIM, "WAITING", "ready"),
+            ):
+                store.transition(queued.job_id, phase, now=NOW, status=status,
+                    reason=reason, facts={}, confirm_audit=confirm)
+            _, failed_attempt = store.claim_attempt(queued.job_id, now=NOW, confirm_audit=confirm)
+            store.transition(queued.job_id, Phase.FAILED, now=NOW, status="FAILED",
+                reason="PROCESS_LAUNCH_FAILED", facts={"attempt_id": failed_attempt, "error": "OSError"}, confirm_audit=confirm)
     clock[0] = NOW + timedelta(hours=1, minutes=5)
     expired_admission = coordinator.tick()
     assert expired_admission["closures"][job_id] == "RESULT_PENDING"
+    if result_case in {"expired_queue", "failed_with_pending"}:
+        assert expired_admission["state"] == "RESULT_PENDING"
+        assert JournalCoordinator(**coordinator_args).tick()["state"] == "RESULT_PENDING"
     if result_case == "complete":
         assert expired_admission["state"] == "RESULT_PENDING"
         restarted_pending = JournalCoordinator(**coordinator_args).tick()
@@ -648,18 +756,51 @@ def test_verified_fixture_prediction_closes_once_from_collector_rows(tmp_path, r
         result_rows[1]["finish_position"] = 1
     if result_case == "duplicate":
         result_rows.append(dict(result_rows[0]))
-    with sqlite3.connect(results_db) as db:
-        db.execute(
-            "INSERT INTO autonomous_official_result_evidence_races VALUES (?,?)",
-            (inp.race_id, json.dumps(race_row)),
-        )
-        db.executemany(
-            "INSERT INTO autonomous_official_result_evidence_runners VALUES (?,?)",
-            [(inp.race_id, json.dumps(row)) for row in result_rows],
-        )
+    def publish_offline_result():
+        with sqlite3.connect(results_db) as db:
+            db.execute(
+                "INSERT INTO autonomous_official_result_evidence_races VALUES (?,?)",
+                (inp.race_id, json.dumps(race_row)),
+            )
+            db.executemany(
+                "INSERT INTO autonomous_official_result_evidence_runners VALUES (?,?)",
+                [(inp.race_id, json.dumps(row)) for row in result_rows],
+            )
+
+    if result_case == "complete":
+        # Real recurrence and real coordinator, with only scheduling and result
+        # arrival simulated. Initial restart sees an expired admission + pending
+        # result; arrival on the next 60-second poll must close and stop.
+        import logging
+        from src.operator_ui import journal as journal_module
+        class ScheduledEvent:
+            stopped = False
+            polls = 0
+            def set(self):
+                self.stopped = True
+            def wait(self, seconds):
+                assert seconds == 60
+                self.polls += 1
+                assert self.polls == 1
+                publish_offline_result()
+                return False
+        class ScheduledThread:
+            def __init__(self, *, target, **kwargs):
+                self.target = target
+            def start(self):
+                self.target()
+        event = ScheduledEvent()
+        with monkeypatch.context() as scheduler:
+            scheduler.setattr(journal_module.threading, "Event", lambda: event)
+            scheduler.setattr(journal_module.threading, "Thread", ScheduledThread)
+            journal_module.start_journal_coordinator(
+                JournalCoordinator(**coordinator_args), logging.getLogger(__name__))
+        assert event.stopped and event.polls == 1
+    else:
+        publish_offline_result()
     if result_case == "busy_source":
         results_db.with_name(results_db.name + "-wal").write_bytes(b"retained-live-sidecar")
-    if result_case not in {"complete", "expired_queue"}:
+    if result_case not in {"complete", "expired_queue", "failed_with_pending", "interrupted_closure"}:
         closure_state = coordinator.tick()["closures"][job_id]
         assert (
             closure_state == "RESULT_PENDING"
@@ -670,35 +811,42 @@ def test_verified_fixture_prediction_closes_once_from_collector_rows(tmp_path, r
         assert {p: p.read_bytes() for p in bundles.rglob("*") if p.is_file()} == original
         assert len(store.recorded_jobs()) == 1 and store.get(job_id).attempt_claimed
         return
-    if result_case == "expired_queue":
-        from src.operator_ui.r3_api import confirm_prediction_operation
-
-        saved_clock = clock[0]
-        clock[0] = NOW
-        queued = store.create(
-            actor_identity="r3-journal:" + activation.activation_id,
-            actor_level=2,
-            operation="manual_prediction",
-            idempotency_key="32345678-1234-4123-8123-123456789abc",
-            job_input=replace(inp, race_id="expired-queued-race"),
-            now=NOW,
-            confirm_audit=lambda intent: confirm_prediction_operation(
-                services,
-                audit,
-                intent,
-                session_identifier=activation.activation_id,
-                client_identity="server-owned-r3-journal",
-            ),
-        )
-        clock[0] = saved_clock
+    if result_case in {"expired_queue", "failed_with_pending"}:
         recovered = JournalCoordinator(**coordinator_args).tick()
-        assert recovered["state"] == "STOPPED_UNCLAIMED_ADMISSION"
-        assert not store.get(queued.job_id).attempt_claimed
+        assert recovered["state"] == (
+            "STOPPED_UNCLAIMED_ADMISSION" if result_case == "expired_queue"
+            else "STOPPED_AFTER_FAILURE")
+        assert store.get(queued.job_id).attempt_claimed is (result_case == "failed_with_pending")
         assert recovered["closures"][job_id] == "CLOSED"
         return
-    assert coordinator.tick()["closures"][job_id] == "CLOSED"
+    if result_case == "interrupted_closure":
+        original_link = os.link
+        def interrupt_terminal(source, target, *args, **kwargs):
+            if str(target).endswith(".terminal.json"):
+                raise OSError("fixture crash before terminal publication")
+            return original_link(source, target, *args, **kwargs)
+        with monkeypatch.context() as faults:
+            faults.setattr(os, "link", interrupt_terminal)
+            with pytest.raises(OSError, match="fixture crash"):
+                coordinator.tick()
+    else:
+        assert coordinator.tick()["closures"][job_id] == "CLOSED"
     closure = (tmp_path / "journal" / f"{job_id}.closure.json").read_bytes()
-    assert JournalCoordinator(**coordinator_args).tick()["closures"][job_id] == "CLOSED"
+    # Once closure is durable, neither source availability nor restart grants
+    # another official-result read. An attempted read would fail this test.
+    class NoFurtherResultAccess:
+        def read(self, *args, **kwargs):
+            pytest.fail("terminal closure reopened official-result access")
+
+    coordinator_args["results"] = NoFurtherResultAccess()
+    restarted = JournalCoordinator(**coordinator_args).tick()
+    if result_case == "interrupted_closure":
+        assert restarted["state"] == "STOPPED_AFTER_FAILURE"
+        assert restarted["closures"][job_id] == "CLOSURE_TERMINAL_PROOF_MISSING"
+        assert (tmp_path / "journal" / f"{job_id}.closure.json").read_bytes() == closure
+        return
+    assert restarted["state"] == "STOPPED_AFTER_CLOSURE"
+    assert restarted["closures"][job_id] == "CLOSED"
     assert (tmp_path / "journal" / f"{job_id}.closure.json").read_bytes() == closure
     assert {p: p.read_bytes() for p in bundles.rglob("*") if p.is_file()} == original
     assert audit.verify_chain() and store.verify()

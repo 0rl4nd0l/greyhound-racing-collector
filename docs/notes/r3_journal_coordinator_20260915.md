@@ -22,6 +22,13 @@ No existing journal, cohort, attempt, result or model is migrated or rewritten.
 - Initial activation must occur before its declared cutoff. Its exact immutable
   manifest is retained under `operations/artifacts/research_journal/<UUID>`.
   Restart cannot move the cutoff, enlarge the allowance or change the contract.
+  The optional `result_observation_grace_seconds` is a strictly positive integer
+  in this same digest-pinned activation. Omission preserves the legacy uncapped
+  contract; no value is supplied by default. The deadline is immutable job jump
+  plus that duration, not startup time or admission end. Activation retention
+  precedes any admission, so restarting before the first result poll cannot
+  change or remove the policy. Package generation and bootstrap use this same
+  schema and reject changed retained activations.
 - Every 60 seconds, observe at most 64 index rows; select by jump then race ID;
   admit at most one receipt-qualified future race. Use only `latest-research`,
   `manual-default`, `receipt`. Existing index/receipt and worker gates still apply.
@@ -42,9 +49,15 @@ No existing journal, cohort, attempt, result or model is migrated or rewritten.
   rejected evidence; it is not silently counted as a complete record.
 - Closures are separate immutable files referencing the activation, JobInput,
   prediction and logical bundle hashes, plus retained official rows and their
-  hash. The original prediction bundle never changes. Rechecking a closure
-  re-verifies its bundle and compares its official rows with the independent
-  canonical source; a self-rehashed local file is insufficient evidence.
+  hash. The original prediction bundle never changes. A new successful closure
+  has a separate immutable terminal record binding its complete byte hash and
+  activation/job/input/prediction/logical-bundle identity. Restart verifies the
+  sealed prediction and that retained proof, without opening the official source.
+  A self-rehashed closure without its original matching proof is rejected.
+  A legacy closure or a crash between closure and terminal publication is
+  `CLOSURE_TERMINAL_PROOF_MISSING`: preserve both records and stop that job for
+  inspection, without recertifying it or automatically reopening results.
+  This conservative failure is not a successful end-to-end acceptance.
 - `CLOSED` means a scoreable research evidence join, **not a computed score**.
   There are no interim metrics, model comparisons, EV, staking or betting outputs.
 
@@ -52,8 +65,10 @@ No existing journal, cohort, attempt, result or model is migrated or rewritten.
 
 ### Result-acquisition prerequisite (follow-up to #178)
 
-Before allocating a journal job, or dispatching an unclaimed journal job after
-restart, require an outcome-blind collector precursor. Missing readiness reports
+Before allocating a new journal job, require an outcome-blind collector precursor.
+Existing-job recovery does not repeat mutable new-admission readiness; immutable
+job/model/config identity, pre-jump expiry, receipt validation and claim-once
+dispatch protections still apply. Missing new-admission readiness reports
 `RESULT_ACQUISITION_NOT_READY`: zero new jobs and zero consumed attempts. Existing
 sealed predictions can still close; historical inputs and events are unchanged.
 
@@ -109,11 +124,52 @@ a separately verified read-only snapshot/read path, not an identity relaxation.
 
 Malformed/contradictory result evidence is `RESULT_REJECTED`, not a consumed
 prediction failure and not a claim that the official source can never correct it.
-Already-closed records are preserved if source rechecking becomes unavailable;
-the observation then reports `CLOSURE_RECHECK_PENDING`, not a new closure.
+Successful terminal closures never recheck the official source automatically.
+Source unavailability therefore cannot reopen an already closed job. Independent
+source rechecking would require separate authority outside routine startup.
 Job reconciliation fails closed above 10,000 stored jobs; no silent truncation.
 Initial reconciliation is one integrity-verified transactional snapshot, not
 one complete integrity scan per historical job.
+
+### Bounded observation and terminal stopping (#180 repair)
+
+An expired activation with no owned jobs durably records
+`STOPPED_ADMISSION_EXPIRED` and stops its journal thread. Admission expiry never
+ends result observation for an owned pending prediction. A failed or expired
+unclaimed job closes admissions, but all other owned pending jobs continue
+through verification and closure or their configured observation deadline.
+Only after no owned job can progress does the coordinator stop recurrence.
+The service itself is not stopped or restarted by these terminal states.
+Prediction verification loss or missing terminal closure proof produces a
+durable observation-failure marker bound to activation and immutable JobInput.
+Restart cannot reopen observation merely because the missing file reappears.
+Other owned pending jobs are still reconciled. No JobStore history is changed.
+
+`RESULT_OBSERVATION_EXPIRED` is a terminal non-success, even though the aggregate
+report uses `STOPPED_AFTER_CLOSURE` to mean closure observation has ended. It does
+not count as a completed prediction-to-result join. The retained marker prevents
+restart, including a clock adjustment, from reopening that result observation.
+
+For a proposed one-job trial, `"result_observation_grace_seconds": 172800`
+would mean jump plus 48 hours. This is only proposed configuration wording,
+not an approved or activated value and not a measured publication guarantee.
+Collector lookback, cadence and backlog bounds describe opportunities to
+acquire a result, not a result-availability SLA. A finite admission window and
+the already-admitted job's result-observation deadline are separate controls.
+
+### Fixture diagnosis correction
+
+The historical directory-identity failure was not instrumented with before/after
+metadata for the failing retained descriptor; its cause remains unproven.
+Passing a focused rerun or measuring directories afterward does not establish
+an environmental cause. The new source-protocol fixture records descriptor
+metadata around an injected ancestor write within one snapshot and demonstrates
+`PROTOCOL_DIRECTORY_CHANGED` with unchanged device/inode and changed size/mtime.
+This proves a reachable mechanism, not attribution of the historical failure.
+Creating a bundle after a snapshot completes does not itself invalidate that
+earlier call. Receipt fixtures now use a private writable cache parent (override:
+`PYTEST_R3_RECEIPT_ROOT`), not cwd; the completion scenario runs with read-only
+cwd. Production path, receipt, provenance and freshness validation are unchanged.
 
 ## Controlled rollout, only after approval
 

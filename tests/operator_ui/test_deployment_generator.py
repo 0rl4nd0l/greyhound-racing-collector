@@ -158,7 +158,8 @@ def generated_targets(values: dict[str, object]) -> tuple[Path, ...]:
     )
 
 
-def test_journal_requires_explicit_future_release_bound_manifest(tmp_path, monkeypatch):
+@pytest.mark.parametrize("cap", [None, 172800, 0, -1, True, 1.5, "172800", 10**20])
+def test_journal_requires_explicit_future_release_bound_manifest(tmp_path, monkeypatch, cap):
     from datetime import datetime, timedelta, timezone
     from src.operator_ui.journal import JournalActivation
     values = deployment_inputs(tmp_path)
@@ -170,18 +171,57 @@ def test_journal_requires_explicit_future_release_bound_manifest(tmp_path, monke
         hashlib.sha256((source / "artifacts/frozen_models/market_form_residual_v1/model.json").read_bytes()).hexdigest(),
         hashlib.sha256((source / "configs/prediction/manual-default.json").read_bytes()).hexdigest(), ())
     path = tmp_path / "approved-activation.json"
-    path.write_text(json.dumps(activation.fields()))
+    fields = activation.fields()
+    if cap is not None:
+        fields["result_observation_grace_seconds"] = cap
+    path.write_text(json.dumps(fields))
     with pytest.raises(DeploymentRejected, match="journal requires enabled R3"):
         generate_package(**values, journal_activation=path)
     assert not any(target.exists() for target in generated_targets(values))
+    if cap is not None and (type(cap) is not int or cap <= 0 or cap == 10**20):
+        with pytest.raises(DeploymentRejected, match="invalid result observation grace"):
+            generate_package(**values, enabled=True, journal_activation=path)
+        assert not any(target.exists() for target in generated_targets(values))
+        return
     result = generate_package(**values, enabled=True, journal_activation=path)
     assert result["enabled"] is True
     retained = source / "var/operator_ui/generated/journal-activation.json"
     raw = retained.read_bytes()
-    assert json.loads(raw) == activation.fields()
+    assert json.loads(raw) == fields
     env = (values["output_dir"] / "operator-ui-r3.env").read_text()
     assert "OPERATOR_UI_R3_JOURNAL_SHA256=" + hashlib.sha256(raw).hexdigest() in env
     assert not (values["operations_root"] / "artifacts/research_journal").exists()
+    # Exercise generated environment -> real R3 binding -> coordinator startup,
+    # not a constructor-only deadline injection. Sources are synthetic fixtures.
+    from src.operator_ui.security import install_connected_mode
+    from werkzeug.security import generate_password_hash
+
+    generated = load_generated_environment(monkeypatch, values)
+    monkeypatch.setattr(bootstrap_module, "_REPOSITORY_ROOT", source)
+    app = Flask(__name__)
+    app.config[bootstrap_module.R3_PROFILE_KEY] = generated["OPERATOR_UI_R3_PROFILE"]
+    load_connected_environment(app)
+    app.config.update(OPERATOR_UI_SECRET_KEY="fixture-secret-" + "x" * 40,
+                      OPERATOR_UI_USERNAME="operator", OPERATOR_UI_LEVEL=2,
+                      OPERATOR_UI_PASSWORD_HASH=generate_password_hash("fixture-password"))
+    assert bootstrap_module.configure_r3_startup(app)
+    install_connected_mode(app)
+    assert bootstrap_module.bind_configured_r3(app)
+    try:
+        coordinator = app.extensions["operator_ui_journal"]
+        assert coordinator.activation.fields() == fields
+        assert coordinator.services.job_store.recorded_jobs() == ()
+        assert coordinator.tick()["state"] == "WAITING_START"
+        root = values["operations_root"] / "artifacts/research_journal" / activation.activation_id
+        assert json.loads((root / "activation.json").read_bytes()) == fields
+        # No approved policy can be removed or extended even before admission.
+        from dataclasses import replace
+        from src.operator_ui.journal import JournalCoordinator
+        changed = replace(coordinator.activation, result_observation_grace_seconds=259200)
+        with pytest.raises(ValueError, match="persisted activation differs"):
+            JournalCoordinator(activation=changed, root=root).tick()
+    finally:
+        app.extensions["operator_ui_journal_stop"].set()
 
 
 def replace_during_authority_read(monkeypatch, victim: Path, *, component: bool) -> None:

@@ -10,7 +10,7 @@ import tempfile
 import threading
 import uuid
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .job_store import Phase, RaceAlreadyRecorded, TERMINAL_PHASES, canonical, utc_text
@@ -36,12 +36,16 @@ class JournalActivation:
     model_sha256: str
     config_sha256: str
     excluded_race_ids: tuple[str, ...]
+    result_observation_grace_seconds: int | None = None
 
     @classmethod
     def from_fields(cls, value):
         if (
             not isinstance(value, dict)
-            or set(value) != set(cls.__dataclass_fields__) | {"schema"}
+            or set(value) not in (
+                set(cls.__dataclass_fields__) | {"schema"},
+                (set(cls.__dataclass_fields__) - {"result_observation_grace_seconds"}) | {"schema"},
+            )
             or value["schema"] != "operator_ui_journal_activation_v1"
         ):
             raise ValueError("invalid activation schema")
@@ -82,13 +86,25 @@ class JournalActivation:
             or any(not isinstance(r, str) or not r for r in self.excluded_race_ids)
         ):
             raise ValueError("invalid retained race exclusions")
-        return {
+        fields = {
             **asdict(self),
             "not_before": start,
             "admit_until": end,
             "excluded_race_ids": list(self.excluded_race_ids),
             "schema": "operator_ui_journal_activation_v1",
         }
+        grace = self.result_observation_grace_seconds
+        if grace is None:
+            # Preserve the exact identity of historical, uncapped activations.
+            fields.pop("result_observation_grace_seconds")
+        else:
+            if type(grace) is not int or grace <= 0:
+                raise ValueError("invalid result observation grace")
+            try:
+                self.admit_until + timedelta(seconds=grace)
+            except OverflowError as exc:
+                raise ValueError("invalid result observation grace") from exc
+        return fields
 
 
 def _publish(path: Path, value: dict) -> None:
@@ -131,6 +147,7 @@ def start_journal_coordinator(coordinator, logger):
         "STOPPED_AFTER_CLOSURE",
         "STOPPED_AFTER_FAILURE",
         "STOPPED_UNCLAIMED_ADMISSION",
+        "STOPPED_ADMISSION_EXPIRED",
     }
     if initial.get("state") in terminal_states:
         stop.set()
@@ -167,14 +184,12 @@ class JournalCoordinator:
         races=None,
         results=None,
         result_readiness=None,
-        result_observation_deadline=None,
         clock=lambda: datetime.now(timezone.utc),
     ):
         self.activation, self.root, self.clock = activation, root, clock
         self.services, self.audit, self.races = services, audit, races
         self.results = results
         self.result_readiness = result_readiness
-        self.result_observation_deadline = result_observation_deadline
 
     def tick(self):
         if self.activation is None:
@@ -270,6 +285,19 @@ class JournalCoordinator:
             "closures": {},
             "recovery": {},
         }
+        expiry_path = Path(self.root) / "admission-expired.json"
+        expiry = {
+            "schema": "operator_ui_admission_expired_v1",
+            "activation_sha256": hashlib.sha256(canonical(self.activation.fields())).hexdigest(),
+            "state": "STOPPED_ADMISSION_EXPIRED",
+        }
+        if expiry_path.exists() and _read(expiry_path) != expiry:
+            raise ValueError("admission expiry identity differs")
+        if not owned and (now >= self.activation.admit_until or expiry_path.exists()):
+            if not expiry_path.exists():
+                _publish(expiry_path, expiry)
+            report["state"] = "STOPPED_ADMISSION_EXPIRED"
+            return report
         # Reconcile the original queue, never claim or re-launch a consumed attempt.
         for job in owned:
             if (
@@ -293,23 +321,30 @@ class JournalCoordinator:
         for job in owned:
             if job.phase is Phase.PREDICTION_READY:
                 report["closures"][job.job_id] = self._close(job, now)
+        closure_failures = {"CLOSURE_TERMINAL_PROOF_MISSING", "PREDICTION_VERIFICATION_FAILED"}
+        finished_closures = {"CLOSED", "RESULT_OBSERVATION_EXPIRED"} | closure_failures
+        # Failure closes admissions, not the observation obligation for another
+        # owned job. Reconcile every pending prediction/result before stopping.
+        if any(value not in finished_closures for value in report["closures"].values()):
+            report["state"] = "RESULT_PENDING"
+            return report
+        if any(
+            job.phase not in TERMINAL_PHASES and job.job_id not in report["recovery"]
+            for job in owned
+        ):
+            report["state"] = "PREDICTION_PENDING"
+            return report
         if report["recovery"]:
             report["state"] = "STOPPED_UNCLAIMED_ADMISSION"
             return report
-        if any(job.phase in TERMINAL_PHASES - {Phase.PREDICTION_READY} for job in owned):
+        if (
+            any(job.phase in TERMINAL_PHASES - {Phase.PREDICTION_READY} for job in owned)
+            or any(value in closure_failures for value in report["closures"].values())
+        ):
             report["state"] = "STOPPED_AFTER_FAILURE"
             return report
         if report["closures"]:
-            if all(
-                value in {"CLOSED", "RESULT_OBSERVATION_EXPIRED"}
-                for value in report["closures"].values()
-            ) and all(job.phase in TERMINAL_PHASES for job in owned):
-                report["state"] = "STOPPED_AFTER_CLOSURE"
-            else:
-                report["state"] = "RESULT_PENDING"
-            return report
-        if any(job.phase not in TERMINAL_PHASES for job in owned):
-            report["state"] = "PREDICTION_PENDING"
+            report["state"] = "STOPPED_AFTER_CLOSURE"
             return report
         if now >= self.activation.admit_until or len(owned) >= self.activation.maximum_jobs:
             report["state"] = "ADMISSION_CLOSED"
@@ -364,22 +399,61 @@ class JournalCoordinator:
 
     def _close(self, job, now):
         path = Path(self.root) / f"{job.job_id}.closure.json"
-        bundle = verified_prediction_result(self.services, job)
-        if bundle is None:
-            return "PREDICTION_VERIFICATION_FAILED"
         identity = {
             "job_id": job.job_id,
             "race_id": job.input.race_id,
             "activation_sha256": hashlib.sha256(canonical(self.activation.fields())).hexdigest(),
             "input_identity_sha256": job.input.identity_sha256,
+        }
+        failure_path = Path(self.root) / f"{job.job_id}.observation-failure.json"
+        failure = {"schema": "operator_ui_observation_failure_v1", "identity": identity}
+        if failure_path.exists():
+            retained = _read(failure_path)
+            if (
+                set(retained) != {"schema", "identity", "state"}
+                or any(retained.get(key) != value for key, value in failure.items())
+                or retained.get("state") not in {"PREDICTION_VERIFICATION_FAILED", "CLOSURE_TERMINAL_PROOF_MISSING"}
+            ):
+                raise ValueError("observation failure identity differs")
+            return retained["state"]
+        bundle = verified_prediction_result(self.services, job)
+        if bundle is None:
+            _publish(failure_path, {**failure, "state": "PREDICTION_VERIFICATION_FAILED"})
+            return "PREDICTION_VERIFICATION_FAILED"
+        identity = {
+            **identity,
             "logical_bundle_sha256": bundle.index_entry["logical_bundle_sha256"],
             "prediction_id": bundle.result["prediction_id"],
         }
         terminal_path = Path(self.root) / f"{job.job_id}.terminal.json"
         deadline_path = Path(self.root) / f"{job.job_id}.observation.json"
         jump = datetime.fromisoformat(job.input.jump_timestamp.replace("Z", "+00:00"))
+        bound_deadline = (
+            jump + timedelta(seconds=self.activation.result_observation_grace_seconds)
+            if self.activation.result_observation_grace_seconds is not None else None
+        )
         if terminal_path.exists():
             terminal = _read(terminal_path)
+            if terminal.get("state") == "CLOSED":
+                if (
+                    set(terminal) != {"schema", "identity", "closure_sha256", "state"}
+                    or terminal["schema"] != "operator_ui_result_terminal_v1"
+                    or terminal["identity"] != identity
+                ):
+                    raise ValueError("terminal identity differs")
+                retained = _read(path)
+                if (
+                    hashlib.sha256(canonical(retained)).hexdigest() != terminal["closure_sha256"]
+                    or any(retained.get(key) != value for key, value in identity.items())
+                    or retained.get("schema") != "operator_ui_research_closure_v1"
+                    or retained.get("research_only") is not True
+                    or retained.get("metrics_computed") is not False
+                    or retained.get("evaluation_eligible") is not True
+                    or retained.get("official_result_sha256")
+                    != hashlib.sha256(canonical(retained.get("official_result"))).hexdigest()
+                ):
+                    raise ValueError("closure official evidence differs")
+                return "CLOSED"
             if (
                 set(terminal) != {"schema", "identity", "deadline", "state"}
                 or terminal["schema"] != "operator_ui_result_terminal_v1"
@@ -393,23 +467,14 @@ class JournalCoordinator:
             utc_text(terminal_deadline)
             if terminal_deadline <= jump:
                 raise ValueError("terminal deadline precedes race jump")
+            if bound_deadline is not None and terminal_deadline != bound_deadline:
+                raise ValueError("terminal deadline differs from activation")
             return terminal["state"]
         if path.exists():
-            retained = _read(path)
-            if (
-                any(retained.get(key) != value for key, value in identity.items())
-                or retained.get("official_result_sha256")
-                != hashlib.sha256(canonical(retained.get("official_result"))).hexdigest()
-            ):
-                raise ValueError("closure identity differs")
-            if self.results is None:
-                return "CLOSURE_RECHECK_PENDING"
-            observed = self.results.read(job, bundle, now=now)
-            if observed["state"] != "RESULT_AVAILABLE":
-                return "CLOSURE_RECHECK_PENDING:" + observed["reason"]
-            if retained["official_result"] != observed["evidence"]:
-                raise ValueError("closure official evidence differs")
-            return "CLOSED"
+            # Legacy closure or interrupted two-file publication: preserve it,
+            # never self-certify or regain result access on restart.
+            _publish(failure_path, {**failure, "state": "CLOSURE_TERMINAL_PROOF_MISSING"})
+            return "CLOSURE_TERMINAL_PROOF_MISSING"
         if now <= jump:
             return "RESULT_PENDING"
         if deadline_path.exists():
@@ -426,8 +491,12 @@ class JournalCoordinator:
             utc_text(deadline)
             if deadline <= jump:
                 raise ValueError("observation deadline precedes race jump")
-        elif self.result_observation_deadline is not None:
-            deadline = self.result_observation_deadline
+            if bound_deadline is not None and deadline != bound_deadline:
+                raise ValueError("observation deadline differs from activation")
+        elif self.activation.result_observation_grace_seconds is not None:
+            # Both inputs were durably bound before dispatch: activation.json
+            # precedes admission, and jump belongs to immutable JobInput.
+            deadline = jump + timedelta(seconds=self.activation.result_observation_grace_seconds)
             utc_text(deadline)
             if deadline <= jump:
                 raise ValueError("observation deadline precedes race jump")
@@ -441,6 +510,11 @@ class JournalCoordinator:
             )
         else:
             deadline = None
+        # Reconciliation and bundle verification may have consumed time since
+        # tick began. Never start an official-source read on that stale clock.
+        observed_at = self.clock()
+        utc_text(observed_at)
+        now = max(now, observed_at)
         if deadline is not None:
             if now >= deadline:
                 _publish(
@@ -462,17 +536,21 @@ class JournalCoordinator:
                 if result["state"] == "RESULT_REJECTED"
                 else "RESULT_PENDING"
             )
-        _publish(
-            path,
-            {
-                **identity,
-                "schema": "operator_ui_research_closure_v1",
-                "closed_at": utc_text(now),
-                "research_only": True,
-                "metrics_computed": False,
-                "evaluation_eligible": True,
-                "official_result": result["evidence"],
-                "official_result_sha256": result["evidence_sha256"],
-            },
-        )
+        closure = {
+            **identity,
+            "schema": "operator_ui_research_closure_v1",
+            "closed_at": utc_text(now),
+            "research_only": True,
+            "metrics_computed": False,
+            "evaluation_eligible": True,
+            "official_result": result["evidence"],
+            "official_result_sha256": result["evidence_sha256"],
+        }
+        _publish(path, closure)
+        _publish(terminal_path, {
+            "schema": "operator_ui_result_terminal_v1",
+            "identity": identity,
+            "state": "CLOSED",
+            "closure_sha256": hashlib.sha256(canonical(closure)).hexdigest(),
+        })
         return "CLOSED"
