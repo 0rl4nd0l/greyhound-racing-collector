@@ -125,14 +125,25 @@ def start_journal_coordinator(coordinator, logger):
     if coordinator.activation is None:
         return None
     # Persist the future-only identity before starting any recurring observation.
-    coordinator.tick()
+    initial = coordinator.tick()
     stop = threading.Event()
+    terminal_states = {
+        "STOPPED_AFTER_CLOSURE",
+        "STOPPED_AFTER_FAILURE",
+        "STOPPED_UNCLAIMED_ADMISSION",
+    }
+    if initial.get("state") in terminal_states:
+        stop.set()
+        return stop
 
     def observe():
         while not stop.wait(60):
             try:
                 report = coordinator.tick()
                 logger.info("R3 journal observation: %s", json.dumps(report, sort_keys=True))
+                if report.get("state") in terminal_states:
+                    stop.set()
+                    return
             except R3Rejected as exc:
                 logger.info("R3 journal source pending: %s", exc.classification)
             except Exception as exc:
@@ -156,12 +167,14 @@ class JournalCoordinator:
         races=None,
         results=None,
         result_readiness=None,
+        result_observation_deadline=None,
         clock=lambda: datetime.now(timezone.utc),
     ):
         self.activation, self.root, self.clock = activation, root, clock
         self.services, self.audit, self.races = services, audit, races
         self.results = results
         self.result_readiness = result_readiness
+        self.result_observation_deadline = result_observation_deadline
 
     def tick(self):
         if self.activation is None:
@@ -216,6 +229,19 @@ class JournalCoordinator:
         }
 
     def _guard(self, job_input):
+        self._recovery_guard(job_input)
+        if self.result_readiness is None:
+            raise R3Rejected("RESULT_ACQUISITION_NOT_READY")
+        now = self.clock()
+        self.result_readiness.require(job_input, now=now)
+        # Source inspection must not carry an otherwise valid job past cutoff.
+        completed = self.clock()
+        if not self.activation.not_before <= completed < self.activation.admit_until or datetime.fromisoformat(
+            job_input.jump_timestamp.replace("Z", "+00:00")
+        ) <= completed:
+            raise R3Rejected("OUTSIDE_FUTURE_ADMISSION_WINDOW")
+
+    def _recovery_guard(self, job_input):
         jump = datetime.fromisoformat(job_input.jump_timestamp.replace("Z", "+00:00"))
         now = self.clock()
         if (
@@ -230,13 +256,6 @@ class JournalCoordinator:
         if not self.activation.not_before <= now < self.activation.admit_until or jump <= max(
             now, self.activation.not_before
         ):
-            raise R3Rejected("OUTSIDE_FUTURE_ADMISSION_WINDOW")
-        if self.result_readiness is None:
-            raise R3Rejected("RESULT_ACQUISITION_NOT_READY")
-        self.result_readiness.require(job_input, now=now)
-        # Source inspection must not carry an otherwise valid job past cutoff.
-        completed = self.clock()
-        if not self.activation.not_before <= completed < self.activation.admit_until or jump <= completed:
             raise R3Rejected("OUTSIDE_FUTURE_ADMISSION_WINDOW")
 
     def _cycle(self, now):
@@ -258,7 +277,7 @@ class JournalCoordinator:
                 and not job.attempt_claimed
             ):
                 try:
-                    self._guard(job.input)
+                    self._recovery_guard(job.input)
                 except R3Rejected as exc:
                     report["recovery"][job.job_id] = exc.classification
                     continue
@@ -267,7 +286,6 @@ class JournalCoordinator:
                     self._selection(job.input.race_id),
                     identity=actor,
                     confirm_audit=self._confirm,
-                    input_guard=self._guard,
                 )
             elif job.phase is Phase.PRODUCER_COMPLETED:
                 dispatch_prediction(self.services, job, self._confirm)
@@ -280,6 +298,15 @@ class JournalCoordinator:
             return report
         if any(job.phase in TERMINAL_PHASES - {Phase.PREDICTION_READY} for job in owned):
             report["state"] = "STOPPED_AFTER_FAILURE"
+            return report
+        if report["closures"]:
+            if all(
+                value in {"CLOSED", "RESULT_OBSERVATION_EXPIRED"}
+                for value in report["closures"].values()
+            ) and all(job.phase in TERMINAL_PHASES for job in owned):
+                report["state"] = "STOPPED_AFTER_CLOSURE"
+            else:
+                report["state"] = "RESULT_PENDING"
             return report
         if any(job.phase not in TERMINAL_PHASES for job in owned):
             report["state"] = "PREDICTION_PENDING"
@@ -348,6 +375,25 @@ class JournalCoordinator:
             "logical_bundle_sha256": bundle.index_entry["logical_bundle_sha256"],
             "prediction_id": bundle.result["prediction_id"],
         }
+        terminal_path = Path(self.root) / f"{job.job_id}.terminal.json"
+        deadline_path = Path(self.root) / f"{job.job_id}.observation.json"
+        jump = datetime.fromisoformat(job.input.jump_timestamp.replace("Z", "+00:00"))
+        if terminal_path.exists():
+            terminal = _read(terminal_path)
+            if (
+                set(terminal) != {"schema", "identity", "deadline", "state"}
+                or terminal["schema"] != "operator_ui_result_terminal_v1"
+                or terminal.get("identity") != identity
+                or terminal.get("state") != "RESULT_OBSERVATION_EXPIRED"
+            ):
+                raise ValueError("terminal identity differs")
+            terminal_deadline = datetime.fromisoformat(
+                terminal["deadline"].replace("Z", "+00:00")
+            )
+            utc_text(terminal_deadline)
+            if terminal_deadline <= jump:
+                raise ValueError("terminal deadline precedes race jump")
+            return terminal["state"]
         if path.exists():
             retained = _read(path)
             if (
@@ -364,8 +410,50 @@ class JournalCoordinator:
             if retained["official_result"] != observed["evidence"]:
                 raise ValueError("closure official evidence differs")
             return "CLOSED"
-        jump = datetime.fromisoformat(job.input.jump_timestamp.replace("Z", "+00:00"))
-        if now <= jump or self.results is None:
+        if now <= jump:
+            return "RESULT_PENDING"
+        if deadline_path.exists():
+            observation = _read(deadline_path)
+            if (
+                set(observation) != {"schema", "identity", "deadline"}
+                or observation["schema"] != "operator_ui_result_observation_v1"
+                or observation.get("identity") != identity
+            ):
+                raise ValueError("observation identity differs")
+            deadline = datetime.fromisoformat(
+                observation["deadline"].replace("Z", "+00:00")
+            )
+            utc_text(deadline)
+            if deadline <= jump:
+                raise ValueError("observation deadline precedes race jump")
+        elif self.result_observation_deadline is not None:
+            deadline = self.result_observation_deadline
+            utc_text(deadline)
+            if deadline <= jump:
+                raise ValueError("observation deadline precedes race jump")
+            _publish(
+                deadline_path,
+                {
+                    "schema": "operator_ui_result_observation_v1",
+                    "identity": identity,
+                    "deadline": utc_text(deadline),
+                },
+            )
+        else:
+            deadline = None
+        if deadline is not None:
+            if now >= deadline:
+                _publish(
+                    terminal_path,
+                    {
+                        "schema": "operator_ui_result_terminal_v1",
+                        "identity": identity,
+                        "deadline": utc_text(deadline),
+                        "state": "RESULT_OBSERVATION_EXPIRED",
+                    },
+                )
+                return "RESULT_OBSERVATION_EXPIRED"
+        if self.results is None:
             return "RESULT_PENDING"
         result = self.results.read(job, bundle, now=now)
         if result["state"] != "RESULT_AVAILABLE":
