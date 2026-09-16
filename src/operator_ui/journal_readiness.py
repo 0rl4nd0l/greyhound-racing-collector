@@ -17,6 +17,7 @@ from datetime import datetime
 from pathlib import Path
 
 from utils.csv_metadata import canonical_thedogs_race_identity
+from utils.race_identity_equivalence import race_identity_equivalent
 from utils.runner_completeness import analyze_csv_text_runner_completeness, normalise_runner_name
 from .r3_api import R3Rejected
 
@@ -101,10 +102,38 @@ class ResultAcquisitionReadiness:
                 raise ValueError("invalid shadow precursor")
             collector.ingest.assert_no_result_fields(predictions)
             collector.ingest.assert_no_result_fields(features)
-            rows = [r for r in predictions if r.get("race_id") == job_input.race_id]
-            feature_rows = [r for r in features if r.get("race_id") == job_input.race_id]
+            races = tuple(self.races())
+            if len(races) > 64:
+                raise ValueError("current race unavailable")
+            matches = [r for r in races if r.get("race_id") == job_input.race_id]
+            if len(matches) != 1:
+                raise ValueError("current race unavailable")
+            race = matches[0]
+            url = canonical_thedogs_race_identity(race["race_url"])
+            rows = [
+                r
+                for r in predictions
+                if race_identity_equivalent(
+                    job_input.race_id,
+                    r.get("race_id"),
+                    source_url=url["canonical_url"],
+                )
+            ]
+            feature_rows = [
+                r
+                for r in features
+                if race_identity_equivalent(
+                    job_input.race_id,
+                    r.get("race_id"),
+                    source_url=url["canonical_url"],
+                )
+            ]
             if not rows or not feature_rows:
                 raise ValueError("race not collector-owned")
+            if len({r.get("race_id") for r in rows}) != 1 or len(
+                {r.get("race_id") for r in feature_rows}
+            ) != 1:
+                raise ValueError("ambiguous race identity")
             first = feature_rows[0]
             source = Path(first["source_csv"])
             if not source.is_absolute():
@@ -128,12 +157,6 @@ class ResultAcquisitionReadiness:
                 or len(feature_rows) != len(expected)
             ):
                 raise ValueError("collector participant mismatch")
-            races = tuple(self.races())
-            matches = [r for r in races if r.get("race_id") == job_input.race_id]
-            if len(races) > 64 or len(matches) != 1:
-                raise ValueError("current race unavailable")
-            race = matches[0]
-            url = canonical_thedogs_race_identity(race["race_url"])
             if url is None or any(
                 canonical_thedogs_race_identity(r.get("target_metadata_source_url")) != url
                 for r in feature_rows
