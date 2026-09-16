@@ -51,7 +51,7 @@ from .live_adapters import (
     UpcomingRaceSource,
 )
 from .prediction_worker import ServerChoice, WorkerConfig, run_once
-from .source_limits import CONTROL_BYTES, LIVE_SOURCE_MAX_BYTES
+from .source_limits import CONTROL_BYTES, LIVE_SOURCE_MAX_BYTES, LIVE_SOURCE_MAX_STRING_BYTES
 from .r3_api import (
     R3Rejected,
     R3Services,
@@ -255,7 +255,7 @@ def _configured_live(layout:Mapping[str,Any])->LiveEvidenceAdapters:
         allowlisted=sealed_root or (evidence_root if path.is_relative_to(evidence_root) else path.parent)
         serialization=(JsonSerializationPolicy.PRODUCER_COMPACT_CANONICAL_LINE if key=="model_catalog" else JsonSerializationPolicy.PRODUCER_PRETTY_SORTED)
         max_bytes=LIVE_SOURCE_MAX_BYTES[key]
-        sources[key]=SourceConfig(path,allowlisted,"producer_report",str(schema or "shadow_autopilot_refresh_report"),f"operator_ui.{key}",policy,"Exact producer evidence only.",JsonSource("schema_version" if schema else None,schema,tuple(payload),time_field,identity_fields=("schema_version",) if schema else (),max_items=100000,timestamp_syntax=TimestampSyntax.AWARE_ISO8601,serialization_policy=serialization,authority_observed_at=live["observed_at"] if key=="model_catalog" else None),max_bytes=max_bytes,expected_sha256=digest)
+        sources[key]=SourceConfig(path,allowlisted,"producer_report",str(schema or "shadow_autopilot_refresh_report"),f"operator_ui.{key}",policy,"Exact producer evidence only.",JsonSource("schema_version" if schema else None,schema,tuple(payload),time_field,identity_fields=("schema_version",) if schema else (),max_items=100000,max_string_bytes=LIVE_SOURCE_MAX_STRING_BYTES.get(key,4096),timestamp_syntax=TimestampSyntax.AWARE_ISO8601,serialization_policy=serialization,authority_observed_at=live["observed_at"] if key=="model_catalog" else None),max_bytes=max_bytes,expected_sha256=digest)
     raw_sources={}
     for key in live.get("raw_sources",{}):
         path,digest,_=entry("raw_sources",key);policy="P-CATALOG-60" if key.startswith("model_") else "P-REPORT-24H"
