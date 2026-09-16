@@ -3,9 +3,12 @@ from __future__ import annotations
 import inspect
 import hashlib
 import json
+import os
+import stat
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import pytest
 from flask import Flask
@@ -54,9 +57,22 @@ def canonical(value):
     return json.dumps(value, allow_nan=False, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
 
 
+@pytest.fixture
+def fixed_source_root():
+    # The fixed-path reader rejects foreign-owned group-writable ancestors,
+    # including this host's root-owned /tmp (1777). Do not relax that policy.
+    repository = Path(__file__).resolve().parents[2]
+    with TemporaryDirectory(prefix=".pytest-fixed-source-", dir=repository) as raw:
+        root = Path(raw)
+        assert root == root.resolve()
+        assert root.stat().st_uid == os.geteuid()
+        assert stat.S_IMODE(root.stat().st_mode) == 0o700
+        yield root
+
+
 @pytest.mark.parametrize("source_key", ["full_state", "full_report"])
-def test_full_sources_have_hard_512_kib_retained_read_ceiling(tmp_path, source_key):
-    path = tmp_path / f"{source_key}.json"
+def test_full_sources_have_hard_512_kib_retained_read_ceiling(fixed_source_root, source_key):
+    path = fixed_source_root / f"{source_key}.json"
     at_limit = b"{}" + b" " * (512 * 1024 - 2)
     path.write_bytes(at_limit)
     assert bootstrap_module._retained_source_read(path, source_key) == at_limit
@@ -67,8 +83,8 @@ def test_full_sources_have_hard_512_kib_retained_read_ceiling(tmp_path, source_k
 
 
 @pytest.mark.parametrize("source_key", ["odds_state", "model_catalog"])
-def test_non_full_sources_retain_default_256_kib_ceiling(tmp_path, source_key):
-    path = tmp_path / f"{source_key}.json"
+def test_non_full_sources_retain_default_256_kib_ceiling(fixed_source_root, source_key):
+    path = fixed_source_root / f"{source_key}.json"
     at_limit = b"{}" + b" " * (256 * 1024 - 2)
     path.write_bytes(at_limit)
     assert bootstrap_module._retained_source_read(path, source_key) == at_limit
