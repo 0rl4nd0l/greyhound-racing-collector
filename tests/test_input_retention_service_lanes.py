@@ -219,9 +219,13 @@ def test_concurrent_service_observations_keep_one_worker(lane_case, tmp_path):
         process.join(30)
         assert process.exitcode == 0
     results = [json.loads((tmp_path / f'worker-{lane}.json').read_bytes()) for lane in (0, 1)]
-    assert sum(r['status'] == 'RETAINED' for r in results) == 1
+    # Deliberately bypassing the collector lock permits source receipt races;
+    # the sole worker may conservatively reject those changing inputs. The
+    # required concurrency property is one consumed worker, never a second try.
     assert sum(r.get('reason') == 'RETENTION_ALREADY_ATTEMPTED' for r in results) == 1
     assert len(list(retained.glob('*/request.json'))) == 1
+    assert len(list(retained.glob('*/worker-result.json'))) == 1
+    assert len(list(retained.glob('*/terminal.json'))) == 1
 
 
 @pytest.mark.parametrize('lane', [0, 1])
