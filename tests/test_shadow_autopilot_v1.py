@@ -6839,3 +6839,26 @@ def test_odds_capture_command_auto_fails_closed_without_browser_deps_or_uv(monke
         assert "odds_capture_dependencies_missing_and_uv_unavailable" in str(exc)
     else:
         raise AssertionError("expected missing odds capture dependencies to fail closed")
+
+
+
+def test_input_retention_capture_command_is_optional_and_lossless(tmp_path):
+    config = tmp_path / "input retention.json"
+    kwargs = dict(
+        input_dirs=[tmp_path / "upcoming"],
+        evidence_root=tmp_path,
+        capture_dir=tmp_path / "capture",
+        db_path=tmp_path / "synthetic.db",
+        current_time="2026-10-02T10:00:00+10:00",
+        limit=4,
+        execute=True,
+        allow_auto_scrape_odds=True,
+    )
+    default = autopilot.autonomous_live_odds_capture_command(**kwargs)
+    enabled = autopilot.autonomous_live_odds_capture_command(
+        **kwargs, input_retention_config=config
+    )
+    assert enabled == default + ["--input-retention-config", str(config)]
+    assert "--input-retention-config" not in default
+    args = autopilot.parse_args(["--input-retention-config", str(config)])
+    assert args.input_retention_config == config

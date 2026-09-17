@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from race_collection.prospective_input_retention import RetentionRejected, retain_inputs
+from race_collection.prospective_input_retention import RetentionRejected, failure_code, retain_inputs
 
 
 def main() -> int:
@@ -21,6 +21,8 @@ def main() -> int:
     parser.add_argument('--inventory', required=True, type=Path)
     parser.add_argument('--inventory-sha256', required=True)
     parser.add_argument('--destination', required=True, type=Path)
+    parser.add_argument('--generate-features', action='store_true')
+    parser.add_argument('--max-bundle-bytes', type=int)
     args = parser.parse_args()
     try:
         raw = args.inventory.read_bytes()
@@ -40,10 +42,12 @@ def main() -> int:
             jump_at=datetime.fromisoformat(plan['jump_at']),
             history_source=Path(plan['history_source']),
             files={role: (Path(spec['path']), spec['sha256']) for role, spec in plan['files'].items()},
+            generate_features=args.generate_features,
+            max_bundle_bytes=args.max_bundle_bytes,
         )
     except Exception as error:
         # No source values, SQL, exception details, historical rows or labels.
-        reason = str(error) if isinstance(error, RetentionRejected) else 'RETENTION_PROCESSING_FAILED'
+        reason = failure_code(error)
         print(json.dumps({'status': 'INPUT_RETENTION_FAILED', 'reason': reason, 'predictions_generated': False}))
         return 1
     print(json.dumps({'status': 'INPUTS_RETAINED_NOT_QUALIFIED', 'predictions_generated': False}))

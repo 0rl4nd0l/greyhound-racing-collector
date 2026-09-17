@@ -632,6 +632,7 @@ def autonomous_live_odds_capture_command(
     forward_corpus_root: Path | None = None,
     forward_current_race_index_path: Path | None = None,
     forward_baseline_config: Path | None = None,
+    input_retention_config: Path | None = None,
     command_prefix: Sequence[str] | None = None,
 ) -> list[str]:
     command = list(command_prefix or odds_capture_command_prefix())
@@ -696,6 +697,8 @@ def autonomous_live_odds_capture_command(
         command.extend(
             ["--forward-baseline-config", str(forward_baseline_config)]
         )
+    if input_retention_config is not None:
+        command.extend(["--input-retention-config", str(input_retention_config)])
     if manual_request_id is not None:
         if manual_request_root is None or collector_run_id is None:
             raise ValueError("manual_request_collector_authority_missing")
@@ -6947,6 +6950,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
                 else None
             ),
             forward_baseline_config=args.forward_baseline_config,
+            input_retention_config=args.input_retention_config,
         )
         autonomous_odds_step = step_command(
             name="autonomous_live_odds_capture",
@@ -8591,6 +8595,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--current-race-index-state-path", type=Path)
     parser.add_argument("--forward-corpus-root", type=Path)
     parser.add_argument("--forward-baseline-config", type=Path)
+    parser.add_argument("--input-retention-config", type=Path)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--current-time")
     parser.add_argument("--db", type=Path, default=ROOT / "greyhound_racing_data.db")

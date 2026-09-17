@@ -280,6 +280,7 @@ def test_run_once_exception_writes_terminal_daemon_report(tmp_path, monkeypatch)
             Path("forward-corpus")
         )
         assert "--forward-baseline-config" not in command
+        assert command[command.index("--input-retention-config") + 1] == "retention.json"
         raise RuntimeError("synthetic daemon failure")
 
     monkeypatch.setattr(daemon, "run_command", failing_run_command)
@@ -306,6 +307,8 @@ def test_run_once_exception_writes_terminal_daemon_report(tmp_path, monkeypatch)
             "runtime/odds-capture-state.json",
             "--forward-corpus-root",
             "forward-corpus",
+            "--input-retention-config",
+            "retention.json",
         ]
     )
 
@@ -317,6 +320,7 @@ def test_run_once_exception_writes_terminal_daemon_report(tmp_path, monkeypatch)
     assert report["exception_type"] == "RuntimeError"
     assert report["exception_message"] == "synthetic daemon failure"
     assert written["runtime_action"] == "CHECK_DAEMON_EXCEPTION"
+    assert generated["input_retention_config"] == Path("retention.json")
     assert generated["pause_path"] == (
         launch_dir / "shared-runtime" / "pause-heavy-scheduling"
     )
@@ -11015,3 +11019,75 @@ def test_full_service_generator_rejects_control_corpus_root(tmp_path, path):
             forward_corpus_root=Path(path),
             forward_baseline_config=Path("/runtime/forward-baseline.json"),
         )
+
+
+@pytest.mark.parametrize(
+    "writer,service_name,command",
+    [
+        (daemon.write_service_files, daemon.SERVICE_NAME, "run-once"),
+        (
+            daemon.write_odds_capture_service_files,
+            daemon.ODDS_CAPTURE_SERVICE_NAME,
+            "run-odds-capture-once",
+        ),
+    ],
+)
+def test_input_retention_service_opt_in_round_trips(
+    tmp_path, writer, service_name, command
+):
+    config = tmp_path / "input retention.json"
+    service_dir = tmp_path / "systemd"
+    result = writer(
+        service_dir=service_dir, repo_path=tmp_path, input_retention_config=config
+    )
+    service = (service_dir / service_name).read_text()
+    exec_start = next(
+        line.removeprefix("ExecStart=")
+        for line in service.splitlines()
+        if line.startswith("ExecStart=")
+    )
+    args = daemon.parse_args(shlex.split(exec_start)[2:])
+    assert args.command == command
+    assert args.input_retention_config == config
+    assert result["input_retention_config"] == str(config)
+    if command == "run-once":
+        fragments = daemon.expected_service_exec_fragments_for_run(args)
+        assert fragments[fragments.index("--input-retention-config") + 1] == str(config)
+
+
+@pytest.mark.parametrize(
+    "renderer", [daemon.service_file_text, daemon.odds_capture_service_file_text]
+)
+def test_input_retention_absent_service_unchanged(tmp_path, renderer):
+    assert renderer(repo_path=tmp_path, timeout_seconds=600) == renderer(
+        repo_path=tmp_path, timeout_seconds=600, input_retention_config=None
+    )
+    assert "--input-retention-config" not in renderer(
+        repo_path=tmp_path, timeout_seconds=600
+    )
+
+
+def test_input_retention_odds_only_command_reaches_autopilot_parser(tmp_path):
+    from scripts import shadow_autopilot_v1 as autopilot
+
+    config = tmp_path / "input retention.json"
+    kwargs = dict(
+        run_id="synthetic",
+        evidence_root=tmp_path,
+        lock_path=tmp_path / "lock",
+        current_time="2026-10-02T10:00:00+10:00",
+        db_path=tmp_path / "synthetic.db",
+        days_ahead=1,
+        refresh_limit=4,
+        odds_capture_min_minutes=0.0,
+        odds_capture_max_minutes=60.0,
+        odds_capture_refresh_limit=4,
+        timeout_seconds=600,
+    )
+    default = daemon.odds_capture_only_autopilot_command(**kwargs)
+    enabled = daemon.odds_capture_only_autopilot_command(
+        **kwargs, input_retention_config=config
+    )
+    assert enabled == default + ["--input-retention-config", str(config)]
+    assert autopilot.parse_args(enabled[2:]).input_retention_config == config
+    assert autopilot.parse_args(default[2:]).input_retention_config is None
