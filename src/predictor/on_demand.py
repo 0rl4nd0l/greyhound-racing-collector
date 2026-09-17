@@ -1400,6 +1400,7 @@ def seal_history_database(
     target_race_id: str,
     cutoff: datetime,
     runner_names: Sequence[str],
+    runner_scope_only: bool = False,
 ) -> dict[str, Any]:
     if not source.is_file() or source.is_symlink() or target.exists():
         raise PredictionBlocked("HISTORY_DATABASE_UNAVAILABLE")
@@ -1543,6 +1544,15 @@ def seal_history_database(
             )
 
         dog_rows = rows_for_safe_ids("dog_race_data")
+        if runner_scope_only:
+            # Match the feature loader's name semantics, not a new identity rule.
+            from scripts.run_feature_recovery_execution_v1 import clean_name
+
+            wanted = {clean_name(name) for name in runner_names}
+            loader_name_column = "dog_name" if "dog_name" in dog_columns else "dog_clean_name"
+            dog_rows = [row for row in dog_rows if clean_name(row.get(loader_name_column)) in wanted]
+            retained_ids = {str(row["race_id"]) for row in dog_rows}
+            safe_metadata = [row for row in safe_metadata if str(row["race_id"]) in retained_ids]
         sqlite_phase = "target"
         insert_rows("race_metadata", race_columns, safe_metadata)
         insert_rows("dog_race_data", dog_columns, dog_rows)

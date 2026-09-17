@@ -1199,13 +1199,15 @@ def test_execute_capture_plan_defaults_to_report_only(tmp_path):
     }
 
 
+@pytest.mark.parametrize("retention_failure", [False, True])
 def test_execute_capture_plan_appends_after_exact_sportsbet_validation(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, retention_failure
 ):
     input_dir = tmp_path / "upcoming"
     _write_capture_input(input_dir)
     appended = {}
     published = []
+    retained = []
 
     def fake_fetch(db_path, venue, race_number, race_date, allow_auto_scrape_odds):
         win_rows = [
@@ -1274,6 +1276,15 @@ def test_execute_capture_plan_appends_after_exact_sportsbet_validation(
     def reject_forward_corpus(**_values):
         raise RuntimeError("fixture corpus unavailable")
 
+    def retain_input(**values):
+        assert published
+        assert values['receipt_publish']['status'] == 'PUBLISHED'
+        assert values['attempt']['status'] == 'APPENDED'
+        retained.append(values['plan_item']['race_id'])
+        if retention_failure:
+            raise RuntimeError('private fixture history must not reach report')
+        return {'status': 'RETAINED', 'predictions_generated': False}
+
     report = capture.execute_capture_plan(
         _plan(input_dir),
         db_path=tmp_path / "odds.db",
@@ -1283,9 +1294,16 @@ def test_execute_capture_plan_appends_after_exact_sportsbet_validation(
         current_time_provider=lambda: datetime.fromisoformat("2026-06-10T14:40:00+10:00"),
         receipt_publisher=publish_receipt,
         forward_corpus_admitter=reject_forward_corpus,
+        input_retainer=retain_input,
     )
 
     assert report["final_status"] == "AUTONOMOUS_LIVE_ODDS_CAPTURE_APPENDED"
+    assert len(retained) == 1
+    assert report["input_retention_result_count"] == 1
+    assert report["input_retention_retained_count"] == int(not retention_failure)
+    assert report["input_retention_rejected_count"] == int(retention_failure)
+    assert report['attempts'][0]['input_retention']['status'] == ('REJECTED' if retention_failure else 'RETAINED')
+    assert 'private fixture history' not in json.dumps(report)
     assert report["candidate_count"] == 1
     assert report["completed_count"] == 1
     assert report["appended_attempt_count"] == 1

@@ -1258,6 +1258,7 @@ def service_file_text(
     odds_capture_state_path: Path | None = None,
     forward_corpus_root: Path | None = None,
     forward_baseline_config: Path | None = None,
+    input_retention_config: Path | None = None,
     pause_path: Path | None = DEFAULT_HEAVY_SCHEDULING_PAUSE_PATH,
 ) -> str:
     require_forward_baseline_binding(forward_corpus_root, forward_baseline_config)
@@ -1286,6 +1287,14 @@ def service_file_text(
                 systemd_exec_argument(str(forward_baseline_config)),
             ]
             if forward_baseline_config is not None
+            else []
+        ),
+        *(
+            [
+                "--input-retention-config",
+                systemd_exec_argument(str(input_retention_config)),
+            ]
+            if input_retention_config is not None
             else []
         ),
     ]
@@ -1363,6 +1372,7 @@ def odds_capture_service_file_text(
     state_path: Path | None = None,
     forward_corpus_root: Path | None = None,
     forward_baseline_config: Path | None = None,
+    input_retention_config: Path | None = None,
     refresh_limit: int = DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT,
 ) -> str:
     require_forward_baseline_binding(forward_corpus_root, forward_baseline_config)
@@ -1388,6 +1398,14 @@ def odds_capture_service_file_text(
                 systemd_exec_argument(str(forward_baseline_config)),
             ]
             if forward_baseline_config is not None
+            else []
+        ),
+        *(
+            [
+                "--input-retention-config",
+                systemd_exec_argument(str(input_retention_config)),
+            ]
+            if input_retention_config is not None
             else []
         ),
     ]
@@ -1459,6 +1477,7 @@ def write_service_files(
     odds_capture_state_path: Path | None = None,
     forward_corpus_root: Path | None = None,
     forward_baseline_config: Path | None = None,
+    input_retention_config: Path | None = None,
     pause_path: Path | None = DEFAULT_HEAVY_SCHEDULING_PAUSE_PATH,
 ) -> dict[str, Any]:
     service_dir.mkdir(parents=True, exist_ok=True)
@@ -1478,6 +1497,7 @@ def write_service_files(
             odds_capture_state_path=odds_capture_state_path,
             forward_corpus_root=forward_corpus_root,
             forward_baseline_config=forward_baseline_config,
+            input_retention_config=input_retention_config,
             pause_path=pause_path,
         ),
     )
@@ -1506,6 +1526,11 @@ def write_service_files(
             str(forward_baseline_config)
             if forward_baseline_config is not None
             else None
+        ),
+        **(
+            {"input_retention_config": str(input_retention_config)}
+            if input_retention_config is not None
+            else {}
         ),
         "pause_path": str(pause_path) if pause_path is not None else None,
     }
@@ -1625,6 +1650,7 @@ def write_odds_capture_service_files(
     state_path: Path | None = None,
     forward_corpus_root: Path | None = None,
     forward_baseline_config: Path | None = None,
+    input_retention_config: Path | None = None,
     refresh_limit: int = DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT,
 ) -> dict[str, Any]:
     service_dir.mkdir(parents=True, exist_ok=True)
@@ -1642,6 +1668,7 @@ def write_odds_capture_service_files(
             state_path=state_path,
             forward_corpus_root=forward_corpus_root,
             forward_baseline_config=forward_baseline_config,
+            input_retention_config=input_retention_config,
             refresh_limit=refresh_limit,
         ),
     )
@@ -1667,6 +1694,11 @@ def write_odds_capture_service_files(
             str(forward_baseline_config)
             if forward_baseline_config is not None
             else None
+        ),
+        **(
+            {"input_retention_config": str(input_retention_config)}
+            if input_retention_config is not None
+            else {}
         ),
         "refresh_limit": refresh_limit,
     }
@@ -1898,6 +1930,9 @@ def expected_service_exec_fragments_for_run(args: argparse.Namespace) -> list[st
             "--forward-baseline-config", args.forward_baseline_config
         )
     )
+    fragments.extend(
+        optional_path_cli_args("--input-retention-config", args.input_retention_config)
+    )
     return fragments
 
 
@@ -1917,6 +1952,7 @@ def odds_capture_only_autopilot_command(
     state_path: Path | None = None,
     forward_corpus_root: Path | None = None,
     forward_baseline_config: Path | None = None,
+    input_retention_config: Path | None = None,
     refresh_command_mode: str = "auto",
     require_safe_refresh_metadata: bool = True,
 ) -> list[str]:
@@ -1975,6 +2011,9 @@ def odds_capture_only_autopilot_command(
         command.extend(
             ["--forward-baseline-config", str(forward_baseline_config)]
         )
+    command.extend(
+        optional_path_cli_args("--input-retention-config", input_retention_config)
+    )
     return command
 
 
@@ -3910,6 +3949,7 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
             state_path=args.state_path,
             forward_corpus_root=args.forward_corpus_root,
             forward_baseline_config=args.forward_baseline_config,
+            input_retention_config=args.input_retention_config,
             refresh_command_mode=args.refresh_command_mode,
             require_safe_refresh_metadata=args.require_safe_refresh_metadata,
         )
@@ -9531,6 +9571,7 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             forward_baseline_config=args.forward_baseline_config
             if args.enable_forward_official_result_observer
             else None,
+            input_retention_config=args.input_retention_config,
             pause_path=lock_path.parent / "pause-heavy-scheduling",
         )
         service_path = run_service_dir / SERVICE_NAME
@@ -9841,6 +9882,9 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
                     str(args.forward_baseline_config),
                 ]
             )
+        autopilot_command.extend(
+            optional_path_cli_args("--input-retention-config", args.input_retention_config)
+        )
         steps.append(
             run_command(
                 name="autopilot_cycle",
@@ -13457,6 +13501,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     run_parser.add_argument("--forward-corpus-root", type=Path)
     run_parser.add_argument("--forward-baseline-config", type=Path)
+    run_parser.add_argument("--input-retention-config", type=Path)
     run_parser.add_argument(
         "--result-backlog-limit",
         type=int,
@@ -13534,6 +13579,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     odds_parser.add_argument("--state-path", type=Path, default=DEFAULT_ODDS_CAPTURE_ONLY_STATE_PATH)
     odds_parser.add_argument("--forward-corpus-root", type=Path)
     odds_parser.add_argument("--forward-baseline-config", type=Path)
+    odds_parser.add_argument("--input-retention-config", type=Path)
 
     capture_one_parser = subparsers.add_parser(
         "capture-one",
@@ -13575,6 +13621,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     service_parser.add_argument("--odds-capture-state-path", type=Path)
     service_parser.add_argument("--forward-corpus-root", type=Path)
     service_parser.add_argument("--forward-baseline-config", type=Path)
+    service_parser.add_argument("--input-retention-config", type=Path)
     service_parser.add_argument(
         "--pause-path",
         type=Path,
@@ -13600,6 +13647,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     odds_service_parser.add_argument("--state-path", type=Path)
     odds_service_parser.add_argument("--forward-corpus-root", type=Path)
     odds_service_parser.add_argument("--forward-baseline-config", type=Path)
+    odds_service_parser.add_argument("--input-retention-config", type=Path)
     odds_service_parser.add_argument(
         "--refresh-limit",
         type=int,
@@ -13673,6 +13721,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             odds_capture_state_path=args.odds_capture_state_path,
             forward_corpus_root=args.forward_corpus_root,
             forward_baseline_config=args.forward_baseline_config,
+            input_retention_config=args.input_retention_config,
             pause_path=args.pause_path,
         )
         print(json.dumps(result, indent=2, sort_keys=True))
@@ -13689,6 +13738,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             state_path=args.state_path,
             forward_corpus_root=args.forward_corpus_root,
             forward_baseline_config=args.forward_baseline_config,
+            input_retention_config=args.input_retention_config,
             refresh_limit=args.refresh_limit,
         )
         print(json.dumps(result, indent=2, sort_keys=True))

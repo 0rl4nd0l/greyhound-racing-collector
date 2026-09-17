@@ -2589,6 +2589,7 @@ def execute_capture_plan(
     progress_dir: Path | None = None,
     receipt_publisher: Callable[..., Mapping[str, Any]] | None = None,
     forward_corpus_admitter: Callable[..., Mapping[str, Any]] | None = None,
+    input_retainer: Callable[..., Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     time_provider = current_time_provider or (lambda: datetime.now().astimezone())
     attempts: list[dict[str, Any]] = []
@@ -2797,6 +2798,18 @@ def execute_capture_plan(
                     "status": "REJECTED",
                     "reason": type(exc).__name__,
                 }
+            if input_retainer is not None:
+                if attempt["collector_exact_receipt_publish"].get("status") == "PUBLISHED":
+                    try:
+                        attempt["input_retention"] = dict(input_retainer(
+                            plan_item=item, attempt=sealed_attempt,
+                            receipt_publish=attempt["collector_exact_receipt_publish"],
+                        ))
+                    except Exception:
+                        # Never serialize history-bearing exception details.
+                        attempt["input_retention"] = {"status": "REJECTED", "reason": "RETENTION_PROCESSING_FAILED"}
+                else:
+                    attempt["input_retention"] = {"status": "REJECTED", "reason": "EXACT_RECEIPT_UNAVAILABLE"}
             if (
                 attempt["collector_exact_receipt_publish"].get("status")
                 == "PUBLISHED"
@@ -2883,6 +2896,7 @@ def execute_capture_plan(
         final_status,
         blocked_attempt_count=len(blocked_attempts),
     )
+    retention_results = [a["input_retention"] for a in attempts if "input_retention" in a]
     return {
         "schema_version": "autonomous_live_odds_capture_report_v1",
         "generated_at": current_time.isoformat(),
@@ -2910,6 +2924,11 @@ def execute_capture_plan(
         "collector_exact_receipt_publish_failure_count": (
             receipt_publish_failure_count
         ),
+        **({
+            "input_retention_result_count": len(retention_results),
+            "input_retention_retained_count": sum(r.get("status") == "RETAINED" for r in retention_results),
+            "input_retention_rejected_count": sum(r.get("status") != "RETAINED" for r in retention_results),
+        } if input_retainer is not None else {}),
         "forward_corpus_admission_success_count": forward_corpus_success_count,
         "forward_corpus_admission_failure_count": (
             len(forward_corpus_results) - forward_corpus_success_count
@@ -3026,6 +3045,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--forward-corpus-root", type=Path)
     parser.add_argument("--forward-current-race-index-path", type=Path)
     parser.add_argument("--forward-baseline-config", type=Path)
+    parser.add_argument("--input-retention-config", type=Path)
     return parser.parse_args(argv)
 
 
@@ -3164,6 +3184,18 @@ def main(
     elif args.forward_baseline_config is not None:
         raise ValueError("forward_baseline_config_requires_forward_corpus")
 
+    input_retainer = None
+    if args.input_retention_config is not None:
+        if receipt_protocol is None or not args.collector_run_id:
+            raise ValueError("input_retention_requires_existing_receipt_publisher")
+        from race_collection.scheduled_input_retention import ScheduledInputRetention
+
+        input_retainer = ScheduledInputRetention(
+            config_path=args.input_retention_config, evidence_root=evidence_root,
+            protocol_root=args.collector_receipt_root,
+            collector_run_id=args.collector_run_id, history_source=args.db,
+        )
+
     report = execute_capture_plan(
         plan,
         db_path=args.db,
@@ -3174,6 +3206,7 @@ def main(
         progress_dir=output_dir,
         receipt_publisher=receipt_publisher,
         forward_corpus_admitter=forward_corpus_admitter,
+        input_retainer=input_retainer,
     )
     report = {
         **capture_report_identity_fields(output_dir),
