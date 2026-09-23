@@ -9,6 +9,33 @@ _session_lock = threading.Lock()
 _shared_session: Optional[requests.Session] = None
 
 
+class AccessDenialAwareRetry(Retry):
+    """Expose access stops to callers even when urllib3 sees Retry-After.
+
+    A retry header is timing guidance, not permission to hide a source denial
+    behind an adapter retry. Existing transient-server-error retries remain.
+    """
+
+    def is_retry(self, method, status_code, has_retry_after=False):
+        if status_code in {401, 403, 429}:
+            return False
+        return super().is_retry(method, status_code, has_retry_after)
+
+
+def source_retry_headers(headers):
+    """Retain bounded retry metadata without cookies, credentials or URLs."""
+    allowed = {
+        "retry-after", "date", "ratelimit-limit", "ratelimit-remaining",
+        "ratelimit-reset", "x-ratelimit-limit", "x-ratelimit-remaining",
+        "x-ratelimit-reset",
+    }
+    return {
+        str(key).lower(): str(value)[:256].replace("\r", "").replace("\n", "")
+        for key, value in (headers or {}).items()
+        if str(key).lower() in allowed
+    }
+
+
 def get_shared_session() -> requests.Session:
     """Return a process-wide shared requests.Session configured with a larger
     connection pool and light retries. Safe for concurrent use.
@@ -20,7 +47,7 @@ def get_shared_session() -> requests.Session:
         if _shared_session is not None:
             return _shared_session
         s = requests.Session()
-        retry = Retry(
+        retry = AccessDenialAwareRetry(
             total=2,
             backoff_factor=0.1,
             status_forcelist=(500, 502, 503, 504),

@@ -162,7 +162,15 @@ class BrowserNetworkAccounting:
                         host == domain or host.endswith("." + domain)
                         for domain in ("sportsbet.com.au", "thedogs.com.au")
                     ):
-                        self.value["source_access_denied"] = {"host": host, "status": response["status"]}
+                        from datetime import datetime, timezone
+                        from utils.http_client import source_retry_headers
+
+                        self.value.setdefault("source_access_denied", {
+                            "host": host,
+                            "status": response["status"],
+                            "observed_at": datetime.now(timezone.utc).isoformat(),
+                            "retry_headers": source_retry_headers(response.get("headers")),
+                        })
                 if event.get("method") != "Network.requestWillBeSent":
                     continue
                 params = event["params"]

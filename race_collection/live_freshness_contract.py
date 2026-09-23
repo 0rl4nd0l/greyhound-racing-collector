@@ -403,6 +403,14 @@ def install_request_guard(scope):
         response = original(session, method, url, **kwargs)
         if getattr(response, "status_code", None) in {401, 403, 429}:
             scope.stop("SOURCE_ACCESS_DENIED")
+            from utils.http_client import source_retry_headers
+
+            atomic_json(scope.session / ("source-access-denied-" + str(os.getpid()) + ".json"), {
+                "host": host,
+                "status": response.status_code,
+                "observed_at": datetime.now(timezone.utc).isoformat(),
+                "retry_headers": source_retry_headers(getattr(response, "headers", {})),
+            })
             raise ValueError("source_access_denied")
         return response
 
