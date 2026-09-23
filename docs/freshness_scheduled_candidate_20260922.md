@@ -322,3 +322,26 @@ before installation. The reviewer confirmed these fixes, including the follow-up
 test that an unobserved old exit cannot classify later ticks as active forever.
 Review totals: standards 1 corrected; specification 3 corrected. Sustained live
 availability and multi-capture throughput remain unproven, not review passes.
+
+## September 23 authorized integration continuation
+
+The 12:45 launch failed before acquisition on an invalid absent-evidence reader
+configuration and restored at 12:45:01. Its original package and consumed launch
+remain intact. Fix `a22dcc2f` is now exercised through the exported package's
+actual supervisor `main`, native reader, monitor, real synthetic reconciliation,
+publication chain and restoration. Five isolated scenarios passed: empty startup,
+first valid publication, unavailable through the 180-second index deadline,
+stale evidence, and malformed index evidence. The publication scenario also
+checks the transition of both native index and collector readiness to fresh.
+Only systemd, time and synthetic evidence delivery are substituted. Network and
+retained-data reads are denied. These tests establish preparation behavior, not
+source timing or live acceptance; earlier focused validation is reused.
+
+The user authorizes one 90-minute live observation under the retained ceiling of
+24,000 logical refresh requests and one reconciled capture attempt. Up to two
+pre-acquisition preparation relaunches are allowed only with evidence that no
+source acquisition or capture began. Every launch has a separate immutable
+identity. Once acquisition begins, the clock, budgets, claims and original stop
+conditions cannot be reset. Exact paired restoration and unchanged R3 remain
+required. No permanent deployment, prediction, research activation or protected
+outcome access is included.
