@@ -1408,3 +1408,20 @@ def test_generator_digest_only_inventory_mutation_fails_closed(tmp_path, monkeyp
     replace_during_authority_read(monkeypatch, path, component=False)
     with pytest.raises(DeploymentRejected, match="authority.*changed|identity"):
         generate_package(**values, enabled=True)
+
+
+def test_generated_retained_binding_is_default_off_and_exact(tmp_path, monkeypatch):
+    values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
+    retained = values['evidence_root'] / 'synthetic-retained'
+    retained.mkdir()
+    value = {'Race 1 - WAR - 2030-01-01': {'path': str(retained), 'manifest_sha256':'a'*64}}
+    binding = tmp_path / 'retained-bindings.json'
+    binding.write_text(json.dumps(value))
+    result = generate_package(**values, retained_input_bindings=binding)
+    assert result['enabled'] is False
+    generated = json.loads((values['source_root'] / 'var/operator_ui/generated/repository-v1.binding.json').read_bytes())
+    assert generated['retained_inputs'] == value
+    monkeypatch.setattr(bootstrap_module, '_REPOSITORY_ROOT', values['source_root'])
+    assert bootstrap_module._repository_layout()['retained_inputs'] == value
+    assert 'OPERATOR_UI_R3_PROFILE=disabled' in (values['output_dir']/'operator-ui-r3.env').read_text()

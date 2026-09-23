@@ -74,6 +74,7 @@ class R3Services:
     rate_limit: int = 5
     rate_window_seconds: int = 60
     observe_current_races: Callable[[], tuple[Mapping[str, Any], ...]] | None = None
+    observe_current_index: Callable[[], Any] | None = None
 
 
 class _ActorRateLimit:
@@ -119,6 +120,8 @@ def _sealed_request_matches_job(job: Job, value: Any) -> bool:
         return False
     request=value.request; provenance=job.input.operational_index_provenance
     if provenance is None or request.get("schema_version")!="on_demand_prediction_request_v2" or request.get("operational_index_provenance")!=provenance.fields():
+        return False
+    if request.get("retained_input_manifest_sha256") != job.input.retained_input_manifest_sha256:
         return False
     model=request.get("model",{})
     if (request.get("job_id"),request.get("race_id"),request.get("jump_timestamp"),request.get("runner_set_sha256"),request.get("odds_source"),request.get("config_sha256")) != (job.job_id,job.input.race_id,job.input.jump_timestamp,job.input.runner_set_sha256,job.input.odds_source,job.input.config_sha256):

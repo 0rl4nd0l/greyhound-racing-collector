@@ -1167,16 +1167,11 @@ def test_run_once_non_deferred_validates_run_owned_service_files(
         "release_lock",
         lambda *args, **kwargs: {"status": "RELEASED"},
     )
-    monkeypatch.setattr(
-        daemon,
-        "run_command",
-        lambda **kwargs: {
-            "name": kwargs["name"],
-            "returncode": 0,
-            "timed_out": False,
-            "status": "PASS",
-        },
-    )
+    commands = {}
+    def recorded_command(**kwargs):
+        commands[kwargs["name"]] = kwargs["command"]
+        return {"name": kwargs["name"], "returncode": 0, "timed_out": False, "status": "PASS"}
+    monkeypatch.setattr(daemon, "run_command", recorded_command)
     monkeypatch.setattr(
         daemon,
         "rejoin_pending_shadow_runs",
@@ -1212,6 +1207,12 @@ def test_run_once_non_deferred_validates_run_owned_service_files(
         assert source_timer.read_text(encoding="utf-8") == (
             "reviewed timer template\n"
         )
+        from scripts import shadow_autopilot_v1 as autopilot
+        child = autopilot.parse_args(commands["autopilot_cycle"][2:])
+        assert child.r3_job_store == tmp_path / "r3-jobs.db"
+        assert child.r3_prediction_bundles == tmp_path / "r3-bundles"
+        assert child.skip_shadow_run and child.enable_autonomous_result_capture
+        assert "--skip-shadow-run" in service_path.read_text()
         raise ServiceValidationReached
 
     monkeypatch.setattr(daemon, "systemd_verify", verify_run_owned_service_files)
@@ -1219,6 +1220,9 @@ def test_run_once_non_deferred_validates_run_owned_service_files(
     args = daemon.parse_args(
         [
             "run-once",
+            "--enable-autonomous-result-capture", "--skip-shadow-run",
+            "--r3-job-store", str(tmp_path / "r3-jobs.db"),
+            "--r3-prediction-bundles", str(tmp_path / "r3-bundles"),
             "--run-id",
             "validation",
             "--evidence-root",

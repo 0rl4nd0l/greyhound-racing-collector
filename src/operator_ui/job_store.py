@@ -337,6 +337,7 @@ class JobInput:
     model_schema_sha256:str; config_id:str; config_sha256:str; odds_source:str
     ordered_runners:tuple[Mapping[str,Any],...]=()
     operational_index_provenance:OperationalIndexProvenance|None=None
+    retained_input_manifest_sha256:str|None=None
     def __post_init__(self):
         if isinstance(self.ordered_runners,list): object.__setattr__(self,"ordered_runners",tuple(self.ordered_runners))
         if isinstance(self.operational_index_provenance,Mapping):
@@ -344,6 +345,7 @@ class JobInput:
     def fields(self)->dict[str,Any]:
         values={n:getattr(self,n) for n in self.__dataclass_fields__}
         provenance=values.pop("operational_index_provenance")
+        retained_digest=values.pop("retained_input_manifest_sha256")
         for n,v in values.items():
             if n == "ordered_runners": continue
             _hash(v,n) if n.endswith("sha256") else _identifier(v,n)
@@ -363,6 +365,9 @@ class JobInput:
         if provenance is not None:
             if not isinstance(provenance,OperationalIndexProvenance): raise ValueError("invalid operational index provenance")
             values["operational_index_provenance"]=provenance.fields()
+        if retained_digest is not None:
+            values["retained_input_manifest_sha256"]=_hash(retained_digest,"retained_input_manifest_sha256")
+            if self.odds_source != "receipt": raise ValueError("retained inputs require exact receipt")
         parsed=datetime.fromisoformat(self.jump_timestamp.replace("Z","+00:00"))
         if parsed.tzinfo is None or parsed.utcoffset() is None: raise ValueError("jump_timestamp must be timezone aware")
         return values
@@ -372,8 +377,9 @@ class JobInput:
 
 def _job_input_from_mapping(value:Any)->JobInput:
     if not isinstance(value,Mapping): raise ValueError("invalid input shape")
-    keys=set(JobInput.__dataclass_fields__); legacy=keys-{"operational_index_provenance"}
-    if set(value) not in {frozenset(keys),frozenset(legacy)}: raise ValueError("invalid input shape")
+    keys=set(JobInput.__dataclass_fields__)
+    allowed={frozenset(keys),frozenset(keys-{"retained_input_manifest_sha256"}),frozenset(keys-{"retained_input_manifest_sha256","operational_index_provenance"})}
+    if frozenset(value) not in allowed: raise ValueError("invalid input shape")
     return JobInput(**value)
 
 @dataclass(frozen=True,slots=True)
@@ -392,8 +398,15 @@ class JobStore:
       "attempts_no_update":"BEFORE UPDATE ON job_attempts", "attempts_no_delete":"BEFORE DELETE ON job_attempts",
       "anchor_no_delete":"BEFORE DELETE ON store_anchor",
     }
-    def __init__(self,path:Path,*,separate_from:tuple[Path,...]=(),verifier_authority:object|None=None):
-        self.path=Path(path).absolute(); self._separate_from=tuple(Path(p).absolute() for p in separate_from); self._identity=None; self._verifier_authority=verifier_authority; self._initialize()
+    def __init__(self,path:Path,*,separate_from:tuple[Path,...]=(),verifier_authority:object|None=None,readonly:bool=False):
+        self._readonly=readonly
+        self.path=Path(path).absolute(); self._separate_from=tuple(Path(p).absolute() for p in separate_from); self._identity=None; self._verifier_authority=verifier_authority
+        if readonly:
+            try: st=self.path.lstat()
+            except OSError as exc: raise JobStoreError("job store path unavailable") from exc
+            self._identity=(st.st_dev,st.st_ino); self._validate_path()
+            if not self.verify(): raise JobStoreError("job store integrity invalid")
+        else: self._initialize()
     def _validate_separation(self,identity):
         for other in self._separate_from:
             try: st=other.stat(); oid=(st.st_dev,st.st_ino)
@@ -407,7 +420,14 @@ class JobStore:
         self._validate_separation(identity)
     def _connect(self):
         if self._identity is not None:self._validate_path()
-        db=sqlite3.connect(self.path,timeout=10,isolation_level=None); db.row_factory=sqlite3.Row
+        if self._readonly:
+            if any(Path(str(self.path)+suffix).exists() for suffix in ("-wal","-shm","-journal")):
+                raise JobStoreError("job store snapshot busy")
+            # Read-only observers never initialize, migrate, chmod, or open a WAL.
+            db=sqlite3.connect(self.path.as_uri()+"?mode=ro",uri=True,timeout=10,isolation_level=None)
+            db.execute("PRAGMA query_only=ON")
+        else: db=sqlite3.connect(self.path,timeout=10,isolation_level=None)
+        db.row_factory=sqlite3.Row
         db.execute("PRAGMA foreign_keys=ON"); db.execute("PRAGMA busy_timeout=10000"); return db
     def _initialize(self):
         self.path.parent.mkdir(parents=True,exist_ok=True,mode=0o700)

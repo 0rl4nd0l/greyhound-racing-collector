@@ -878,6 +878,10 @@ def _run_prediction(
         except (TypeError,json.JSONDecodeError) as exc:
             raise PredictionBlocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH",field="operational_index_provenance") from exc
         operational_index_provenance=validate_operational_index_provenance(operational_index_provenance)
+    retained_root = getattr(args, "retained_input_bundle", None)
+    retained_digest = getattr(args, "retained_input_manifest_sha256", None)
+    if bool(retained_root) != bool(retained_digest) or (retained_root and args.odds_source != "receipt"):
+        raise PredictionBlocked("RETAINED_INPUT_INVALID")
     model = resolve_model(args.model)
     config, config_sha, config_raw = load_config(Path(args.config), model)
     from race_collection.synchronous_manual_capture import (
@@ -978,6 +982,8 @@ def _run_prediction(
         "runners": state["runners"],
         "runner_set_sha256": state["runner_set_sha256"],
     }
+    if retained_root is not None:
+        request["retained_input_manifest_sha256"] = retained_digest
     if operational_index_provenance is not None:
         request["operational_index_provenance"]=operational_index_provenance
     _write_canonical(bundle / "request.json", request)
@@ -1039,7 +1045,16 @@ def _run_prediction(
     runner_names = [str(row["dog_name"]) for row in receipt["markets"]["win"]]
     sealed_db = bundle / "features" / "sealed_history.db"
     history_path = bundle / "features" / "history_seal.json"
-    if not sealed_db.exists():
+    retained = None
+    if retained_root is not None:
+        from src.predictor.retained_inputs import consume_retained_inputs
+        retained = consume_retained_inputs(
+            root=retained_root, expected_manifest_sha256=retained_digest, bundle=bundle,
+            race_id=race_id, jump=jump, now=dependencies.now(), model=model,
+            config_sha256=config_sha, ready_receipt=ready_receipt, repository_root=ROOT,
+        )
+        history = retained["history"]
+    elif not sealed_db.exists():
         history = seal_history_database(
             source=Path(args.db),
             target=sealed_db,
@@ -1079,6 +1094,9 @@ def _run_prediction(
                 "FEATURE_SEAL_FAILED", error=type(exc).__name__
             ) from exc
         feature_rows = json.loads(Path(sealed["feature_rows"]).read_bytes())
+        if retained is not None:
+            from src.predictor.retained_inputs import verify_retained_features
+            verify_retained_features(retained, feature_rows, bundle / "model/model.json")
         unsafe_rows = [
             row
             for row in feature_rows
@@ -1149,6 +1167,8 @@ def _run_prediction(
     completed_time = dependencies.now()
     if completed_time.tzinfo is None or completed_time.utcoffset() is None:
         raise PredictionBlocked("CURRENT_TIME_TIMEZONE_MISSING")
+    if retained is not None and completed_time >= retained["cutoff"]:
+        raise PredictionBlocked("RETAINED_INPUT_INVALID")
     if completed_time >= jump:
         raise PredictionBlocked(
             "POST_JUMP", race_id=race_id, completed_at=completed_time.isoformat()
@@ -1371,6 +1391,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--odds-source", choices=("auto", "receipt", "capture"), default="auto"
     )
+    parser.add_argument("--retained-input-bundle", type=Path)
+    parser.add_argument("--retained-input-manifest-sha256")
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--current-time")

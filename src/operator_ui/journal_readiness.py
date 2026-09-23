@@ -1,8 +1,8 @@
 """Outcome-blind admission prerequisite, not a result fetcher or reservation.
 
-Only the current index run's collector-owned shadow precursor is supported.
-Snapshot-only and older/fallback runs stay pending: do not scan the research
-corpus, inspect result tables, or manufacture evidence to gain admission.
+The opt-in R3 result lane follows verified durable jobs and their sealed output.
+Its admission precursor is the exact verified collector publication. Legacy
+deployments still require their shadow precursor; neither path fetches outcomes.
 """
 
 from __future__ import annotations
@@ -23,15 +23,61 @@ from .r3_api import R3Rejected
 
 
 class ResultAcquisitionReadiness:
-    def __init__(self, evidence_root, *, authority, races):
+    def __init__(self, evidence_root, *, authority, races, verified_index=None,
+                 result_job_store=None, result_prediction_bundles=None):
         self.root = Path(evidence_root).absolute()
         self.authority, self.races = authority, races
+        self.verified_index = verified_index
+        self.result_job_store = result_job_store
+        self.result_prediction_bundles = result_prediction_bundles
+
+    def _require_r3_publication(self, job_input, command, *, now):
+        from race_collection.synchronous_manual_capture import VerifiedCurrentRaceIndex
+        from .job_store import OperationalIndexProvenance
+
+        for flag, expected in (
+            ("--r3-job-store", self.result_job_store),
+            ("--r3-prediction-bundles", self.result_prediction_bundles),
+        ):
+            if (expected is None or not Path(expected).is_absolute()
+                    or command.count(flag) != 1
+                    or command[command.index(flag) + 1] != str(expected)):
+                raise ValueError("R3 result consumer binding mismatch")
+        if self.verified_index is None:
+            raise ValueError("verified collector publication unavailable")
+        view = self.verified_index()
+        if (not isinstance(view, VerifiedCurrentRaceIndex)
+                or OperationalIndexProvenance.from_verified_current_race_index(view)
+                != job_input.operational_index_provenance):
+            raise ValueError("collector publication changed during admission")
+        observed = datetime.fromisoformat(view.source_generated_at.replace("Z", "+00:00"))
+        if not 0 <= (now - observed).total_seconds() <= 300:
+            raise ValueError("collector publication stale")
+        matches = [r for r in view.races if r.get("race_id") == job_input.race_id]
+        if len(matches) != 1:
+            raise ValueError("current race unavailable")
+        race = matches[0]
+        jump = datetime.fromisoformat(job_input.jump_timestamp.replace("Z", "+00:00"))
+        url = canonical_thedogs_race_identity(race["race_url"])
+        if (url is None or jump <= now
+                or not race_identity_equivalent(job_input.race_id, race["race_id"],
+                                               source_url=url["canonical_url"])
+                or datetime.fromisoformat(race["jump_datetime"].replace("Z", "+00:00")) != jump
+                or race["runner_set_sha256"] != job_input.runner_set_sha256):
+            raise ValueError("collector race identity mismatch")
+        actual = tuple((r["box"], r["display_name"], r["identity"], r["source_native_runner_id"])
+                       for r in race["runners"])
+        expected = tuple((r["box"], r["name"], r["identity"], r["source_native_runner_id"])
+                         for r in job_input.ordered_runners)
+        if actual != expected or not actual or any(not row[3] for row in actual):
+            raise ValueError("collector native runner identity mismatch")
 
     def require(self, job_input, *, now):
-        """Fail before allocation unless retained collector precursors match.
+        """Fail before allocation unless the configured result lane covers R3.
 
-        Reads at most three source files (2 MiB each) and the pinned service
-        definition. No directory enumeration, database access, or acquisition.
+        Reuse bounded native index verification for the R3 lane; legacy reads
+        at most three precursor files (2 MiB each). Both read the pinned unit
+        without enumerating result artifacts, opening a DB or acquiring data.
         """
         from scripts import autonomous_official_result_capture as collector
         from .live_adapters import _unit
@@ -81,6 +127,12 @@ class ResultAcquisitionReadiness:
                 or command[command.index("--evidence-root") + 1] != str(self.root)
             ):
                 raise ValueError("result acquisition not configured")
+            if any(arg.startswith(("--r3-job-store", "--r3-prediction-bundles")) for arg in command):
+                self._require_r3_publication(job_input, command, now=now)
+                for path, before in retained:
+                    if path.resolve(strict=True) != path or identity(path.stat()) != identity(before):
+                        raise ValueError("source changed during admission")
+                return
             run_id = job_input.operational_index_provenance.run_id
             if not re.fullmatch(r"[A-Za-z0-9_+-]{1,128}", run_id):
                 raise ValueError("unsafe run identity")
