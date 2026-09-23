@@ -1,5 +1,7 @@
 # Sportsbet resumption finding — 23 September 2026
 
+Historical finding at e8e2833e. The subsequent [durable coordination repair](collector_sportsbet_coordination_20260923.md) supersedes its runtime state and next-action section; retained evidence below is unchanged.
+
 Status: **BLOCKED; no acquisition resumed.** PR #184 remains draft and permanent
 rollout is held. This continues campaign `collector-integration-20260923-01a0ccec`;
 no new campaign, allowance, launch, or attempt was created.

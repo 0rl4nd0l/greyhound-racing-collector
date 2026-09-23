@@ -217,3 +217,55 @@ time.sleep(300)
         if parent.poll() is None:
             parent.terminate()
         parent.wait(timeout=3)
+
+
+def test_queued_denial_is_drained_before_navigation(tmp_path, monkeypatch):
+    import threading
+    from types import SimpleNamespace
+    from tests.fixtures.freshness_transport.fake_cdp import BrowserTransport
+    from utils.sportsbet_access import SportsbetAccess, SportsbetAccessBlocked, SourceOperation
+    from utils.sportsbet_browser import create_sportsbet_driver
+
+    monkeypatch.setenv('GREYHOUND_SPORTSBET_ACCESS_STATE', str(tmp_path / 'access.json'))
+    SportsbetAccess().initialize(access_basis={'status': 'permitted', 'reference': 'fabricated fixture'})
+    processing, release, navigated = threading.Event(), threading.Event(), threading.Event()
+    original = SourceOperation.response
+    def paused_response(self, *args):
+        processing.set()
+        assert release.wait(3)
+        return original(self, *args)
+    monkeypatch.setattr(SourceOperation, 'response', paused_response)
+    transport = BrowserTransport()
+    driver = SimpleNamespace(service=SimpleNamespace(process=transport.process),
+        start_devtools=lambda: (None, transport), get=lambda url: navigated.set(),
+        get_log=lambda name: [], quit=transport.quit)
+    driver = create_sportsbet_driver(lambda: driver)
+    errors = []
+    def navigate():
+        try:
+            driver.get('https://www.sportsbet.com.au/next')
+        except SportsbetAccessBlocked as error:
+            errors.append(error)
+    worker = threading.Thread(target=navigate)
+    try:
+        transport.response('https://www.sportsbet.com.au/previous', 429)
+        assert processing.wait(2)
+        worker.start()
+        assert not navigated.wait(.1)
+        release.set()
+        worker.join(timeout=3)
+        assert not worker.is_alive() and len(errors) == 1 and not navigated.is_set()
+    finally:
+        release.set()
+        driver.quit()
+
+
+def test_http_date_guidance_preserves_server_interval_and_unknown_reset_holds(tmp_path):
+    from utils.sportsbet_access import SportsbetAccess
+    gate = SportsbetAccess(tmp_path / 'access.json', clock=lambda: 1000)
+    gate.initialize(access_basis={'status': 'permitted', 'reference': 'fabricated fixture'})
+    gate.retain_denial(429, {'Date': 'Thu, 01 Jan 1970 00:00:00 GMT',
+                            'Retry-After': 'Thu, 01 Jan 1970 03:00:00 GMT'})
+    assert gate.read()['not_before'] == 11800
+    gate.retain_denial(429, {'X-RateLimit-Reset': 'unclear-units'})
+    assert gate.read()['phase'] == 'STOP'
