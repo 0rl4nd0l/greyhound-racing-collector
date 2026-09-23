@@ -8,6 +8,7 @@ function is called.
 
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
 import time
@@ -430,6 +431,8 @@ def fetch_odds_for_target_race(
     race_number: int | None,
     race_date: Any = None,
     allow_auto_scrape_odds: bool | None = None,
+    request_metrics_path=None,
+    validate_result=None,
 ) -> dict[str, Any]:
     """Fetch current Sportsbet odds for a target race without writing DB rows."""
 
@@ -467,11 +470,31 @@ def fetch_odds_for_target_race(
         allow_auto_scrape_odds=True,
         setup_database=False,
     )
+    network_accounting = None
     try:
         if not integrator.setup_driver():
             summary["warnings"].append("selenium driver unavailable")
             return summary
         driver = integrator.driver
+        if request_metrics_path is not None and os.environ.get("GREYHOUND_LIVE_EXECUTION"):
+            from race_collection.live_execution import BrowserNetworkAccounting
+
+            network_accounting = BrowserNetworkAccounting(driver, request_metrics_path)
+        elif request_metrics_path is not None:
+            from race_collection.live_phase_checkpoint import atomic_json
+            navigation_count = 0
+            navigate = driver.get
+
+            def counted_navigation(url):
+                nonlocal navigation_count
+                navigation_count += 1
+                atomic_json(request_metrics_path, {
+                    "browser_navigation_attempts": navigation_count,
+                    "subresource_requests": "UNMEASURED",
+                })
+                return navigate(url)
+
+            driver.get = counted_navigation
         driver.get(integrator.greyhound_url)
 
         time.sleep(5)
@@ -521,9 +544,15 @@ def fetch_odds_for_target_race(
         summary["success"] = summary["win_count"] > 0
         if not summary["success"]:
             summary["warnings"].append("race found but no win odds extracted")
+        if validate_result is not None and validate_result(summary):
+            driver.sportsbet_accept_validated_data()
         return summary
     finally:
-        integrator.close_driver()
+        try:
+            if network_accounting is not None:
+                network_accounting.drain()
+        finally:
+            integrator.close_driver()
 
 
 def ensure_odds_for_target_race(

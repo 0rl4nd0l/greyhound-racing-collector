@@ -3069,7 +3069,10 @@ def test_stale_lock_probe_replaces_dead_pid(tmp_path):
     assert report["stale_lock_cleaned"] is True
 
 
-def test_run_odds_capture_once_uses_lock_and_writes_compact_report(tmp_path, monkeypatch):
+@pytest.mark.parametrize("publication_status", ["PUBLISHED", "REJECTED", "SKIPPED", None])
+def test_run_odds_capture_once_uses_lock_and_writes_compact_report(
+    tmp_path, monkeypatch, publication_status
+):
     evidence_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
     output_dir = evidence_root / "shadow_autopilot_daemonization_v1_odds_only"
     db_path = tmp_path / "greyhound_racing_data.db"
@@ -3079,6 +3082,11 @@ def test_run_odds_capture_once_uses_lock_and_writes_compact_report(tmp_path, mon
     lock_path = launch_dir / "runtime" / "shadow.lock"
     state_path = evidence_root / "shadow_autopilot_daemon_runtime/odds_capture_state.json"
     autopilot_dir = evidence_root / "shadow_autopilot_v1_odds_only_autopilot"
+    publication = {
+        "schema_version": "collector_current_race_index_publish_v2",
+        "status": publication_status,
+        "source_refresh_report_path": str(autopilot_dir / "odds_capture_refresh_report.json"),
+    }
 
     monkeypatch.setattr(daemon, "ROOT", tmp_path)
     monkeypatch.chdir(launch_dir)
@@ -3114,6 +3122,8 @@ def test_run_odds_capture_once_uses_lock_and_writes_compact_report(tmp_path, mon
             for path in running_manifest["files"]
         )
         autopilot_dir.mkdir(parents=True)
+        if publication_status is not None:
+            daemon.write_json(autopilot_dir / "current_race_index_publish.json", publication)
         daemon.write_json(
             autopilot_dir / "autonomous_live_odds_capture_status.json",
             {
@@ -3214,11 +3224,11 @@ def test_run_odds_capture_once_uses_lock_and_writes_compact_report(tmp_path, mon
         "AUTONOMOUS_LIVE_ODDS_CAPTURE_NO_ELIGIBLE_WINDOWS"
     )
     assert report["allowed_write_scope"] == "append_only_live_odds_rows_when_validation_passes"
-    assert report["current_race_index_publish"] == {
+    assert report["current_race_index_publish"] == (publication if publication_status else {
         "schema_version": "collector_current_race_index_publish_v2",
-        "status": "SKIPPED",
-        "reason": "odds_capture_only_does_not_publish_candidate_index",
-    }
+        "status": "UNAVAILABLE",
+        "reason": "autopilot_publication_report_missing",
+    })
     assert not lock_path.exists()
     assert not (state_path.parent / "manual_prediction_current_race_index.json").exists()
     written = json.loads((output_dir / "odds_capture_only_daemon_report.json").read_text())

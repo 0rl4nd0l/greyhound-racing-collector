@@ -80,7 +80,7 @@ DEFAULT_FULL_DAEMON_RESULT_BACKLOG_LIMIT = 8
 DEFAULT_FULL_DAEMON_RESULT_BACKLOG_SHADOW_RUN_LIMIT = 16
 DEFAULT_FULL_DAEMON_RESULT_BACKLOG_LOOKBACK_DAYS = 2
 DEFAULT_HEAVY_SCHEDULING_PAUSE_PATH = DEFAULT_RUNTIME_DIR / "pause-heavy-scheduling"
-DEFAULT_ODDS_CAPTURE_ONLY_PREFLIGHT_MAX_AGE_SECONDS = 30 * 60
+DEFAULT_ODDS_CAPTURE_ONLY_PREFLIGHT_MAX_AGE_SECONDS = 10 * 60
 DEFAULT_ODDS_CAPTURE_ONLY_PREFLIGHT_RESUME_BUFFER_SECONDS = 5 * 60
 DEFAULT_FULL_DAEMON_ODDS_DEFER_HORIZON_SECONDS = 8 * 60
 MAX_CONSECUTIVE_ODDS_PRIORITY_FULL_DEFERRALS = 1
@@ -487,6 +487,7 @@ def acquire_lock(
     run_id: str,
     stale_after_seconds: int,
     output_dir: Path,
+    allow_stale_cleanup: bool = True,
 ) -> dict[str, Any]:
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -503,7 +504,7 @@ def acquire_lock(
         except FileExistsError:
             existing = read_lock(lock_path)
             reason = lock_stale_reason(existing, stale_after_seconds=stale_after_seconds)
-            if reason:
+            if reason and allow_stale_cleanup:
                 try:
                     lock_path.unlink()
                 except FileNotFoundError:
@@ -705,6 +706,7 @@ def acquire_lock_with_odds_capture_retry(
     output_dir: Path,
     retry_seconds: int | None = None,
     poll_seconds: int | None = None,
+    allow_stale_cleanup: bool = True,
 ) -> dict[str, Any]:
     retry_seconds = (
         DEFAULT_FULL_DAEMON_ODDS_LOCK_RETRY_SECONDS
@@ -729,6 +731,7 @@ def acquire_lock_with_odds_capture_retry(
                     run_id=run_id,
                     stale_after_seconds=stale_after_seconds,
                     output_dir=output_dir,
+                    **({"allow_stale_cleanup": False} if not allow_stale_cleanup else {}),
                 )
             except LockBusy as exc:
                 attempt_count += 1
@@ -1093,6 +1096,19 @@ def probe_stale_lock_cleanup(output_dir: Path) -> dict[str, Any]:
     }
 
 
+def process_group_has_running_members(group_id: int) -> bool:
+    for directory in Path("/proc").iterdir():
+        if not directory.name.isdecimal():
+            continue
+        try:
+            fields = (directory / "stat").read_text().rsplit(")", 1)[1].split()
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+        if int(fields[2]) == group_id and fields[0] not in {"Z", "X"}:
+            return True
+    return False
+
+
 def run_command(
     *,
     name: str,
@@ -1100,7 +1116,40 @@ def run_command(
     output_dir: Path,
     timeout_seconds: int,
     cwd: Path = ROOT,
+    wait_for_descendants: bool = False,
 ) -> dict[str, Any]:
+    if wait_for_descendants:
+        # Adopt descendants that detach into their own process group. The phase
+        # owns these children and must drain them before releasing its lock.
+        import ctypes
+
+        if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
+            raise RuntimeError("phase_child_subreaper_unavailable")
+
+    def reap_owned_children():
+        nonlocal timed_out, returncode
+        while True:
+            try:
+                child_pid, _ = os.waitpid(-1, os.WNOHANG)
+            except ChildProcessError:
+                return
+            except InterruptedError:
+                continue
+            if child_pid:
+                continue
+            if time.monotonic() - started_monotonic >= timeout_seconds:
+                timed_out = True
+                returncode = -signal.SIGKILL
+                # These are unreaped direct/adopted children, not arbitrary PIDs
+                # found by name. Apply the existing phase timeout to their cleanup.
+                children = Path(f"/proc/self/task/{os.getpid()}/children").read_text().split()
+                for child in children:
+                    try:
+                        os.kill(int(child), signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+            time.sleep(0.05)
+
     started = datetime.now().astimezone()
     started_monotonic = time.monotonic()
     log_dir = output_dir / "logs"
@@ -1110,6 +1159,7 @@ def run_command(
     running_path = log_dir / f"{name}.running.json"
     finished_path = log_dir / f"{name}.finished.json"
     timed_out = False
+    interrupted = False
     returncode: int | None = None
     log_dir.mkdir(parents=True, exist_ok=True)
     timeout_deadline_at = started + timedelta(seconds=timeout_seconds)
@@ -1175,6 +1225,33 @@ def run_command(
                 returncode = process.wait()
             if returncode == 0:
                 returncode = -signal.SIGTERM
+        except InterruptedError:
+            if not wait_for_descendants:
+                raise
+            interrupted = True
+            process.wait()
+            # Continue through owned-child cleanup and the durable finished record.
+            # Returning FAIL lets the caller charge the interrupted phase duration
+            # and seal its consumed reservation instead of losing that interval.
+            returncode = -signal.SIGINT
+        except BaseException:
+            if wait_for_descendants:
+                process.wait()
+                reap_owned_children()
+                while process_group_has_running_members(process.pid):
+                    time.sleep(0.05)
+            raise
+        if wait_for_descendants:
+            reap_owned_children()
+            while process_group_has_running_members(process.pid):
+                if time.monotonic() - started_monotonic >= timeout_seconds:
+                    timed_out = True
+                    returncode = -signal.SIGKILL
+                    try:
+                        os.killpg(process.pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                time.sleep(0.05)
     duration = time.monotonic() - started_monotonic
     finished_at = datetime.now().astimezone()
     step_result = {
@@ -1187,6 +1264,7 @@ def run_command(
         "timeout_seconds": timeout_seconds,
         "timeout_deadline_at": timeout_deadline_at.isoformat(),
         "timed_out": timed_out,
+        "interrupted": interrupted,
         "returncode": returncode,
         "status": "PASS" if returncode == 0 and not timed_out else "FAIL",
         "stdout_path": relpath(stdout_path),
@@ -1245,6 +1323,24 @@ def require_forward_baseline_binding(
         raise ValueError("forward_baseline_config requires forward_corpus_root")
 
 
+def sportsbet_service_conditions(repo_path, python_path):
+    from utils.sportsbet_access import state_path
+
+    return [
+        "Environment=" + systemd_exec_argument("GREYHOUND_SPORTSBET_ACCESS_STATE=" + str(state_path())),
+        "ExecCondition=" + systemd_exec_argument(str(python_path)) + " "
+        + systemd_exec_argument(str(Path(repo_path) / "scripts/check_sportsbet_access.py")),
+    ]
+
+
+def live_profile_segment(enabled, profile, contract):
+    if profile is None and contract is None:
+        return ""
+    if not enabled or profile != "bounded80-v1" or contract is None:
+        raise ValueError("live_profile_requires_opt_in_and_contract")
+    return f"--live-freshness-profile {profile} --live-freshness-contract {systemd_exec_argument(str(contract))} "
+
+
 def service_file_text(
     *,
     repo_path: Path,
@@ -1263,11 +1359,23 @@ def service_file_text(
     r3_prediction_bundles: Path | None = None,
     skip_shadow_run: bool = False,
     pause_path: Path | None = DEFAULT_HEAVY_SCHEDULING_PAUSE_PATH,
+    live_freshness: bool = False,
+    live_freshness_profile: str | None = None,
+    live_freshness_contract: Path | None = None,
 ) -> str:
     if (r3_job_store is None) != (r3_prediction_bundles is None):
         raise ValueError("R3 result discovery requires both bindings")
     require_forward_baseline_binding(forward_corpus_root, forward_baseline_config)
-    script_path = repo_path / "scripts/shadow_autopilot_daemon.py"
+    if live_freshness and (input_retention_config is not None or forward_baseline_config is not None):
+        raise ValueError("live_freshness_requires_disabled_experiments")
+    profile_segment = live_profile_segment(live_freshness, live_freshness_profile, live_freshness_contract)
+    if live_freshness_profile and forward_corpus_root is not None:
+        raise ValueError("live_profile_forbids_result_and_research_access")
+    script_path = repo_path / (
+        "scripts/run_freshness_service.py"
+        if live_freshness_profile
+        else "scripts/shadow_autopilot_daemon.py"
+    )
     service_python = python_path or Path("/usr/bin/python3")
     evidence_root_segment = " ".join(optional_path_cli_args("--evidence-root", evidence_root))
     evidence_root_segment = f"{evidence_root_segment} " if evidence_root_segment else ""
@@ -1315,23 +1423,35 @@ def service_file_text(
             "Description=Greyhound shadow autopilot evidence collection",
             "Wants=network-online.target",
             "After=network-online.target",
-            *( [f"ConditionPathExists=!{pause_path}"] if pause_path is not None else [] ),
+            *([f"ConditionPathExists=!{pause_path}"] if pause_path is not None else []),
             "",
             "[Service]",
             "Type=oneshot",
             f"WorkingDirectory={repo_path}",
             "Environment=PYTHONUNBUFFERED=1",
+            *sportsbet_service_conditions(repo_path, python_path),
             "Environment=GREYHOUND_ALLOW_TGR=0",
+            *(
+                [
+                    "Environment=TZ=Australia/Melbourne",
+                    "Environment=PYTHONNOUSERSITE=1",
+                    "Environment=UV_OFFLINE=1",
+                    "Environment=PIP_NO_INDEX=1",
+                ]
+                if live_freshness_profile
+                else []
+            ),
             "Environment=PATH=/home/l4nd0/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             (
                 f"ExecStart={service_python} {script_path} run-once "
+                f"{'--live-freshness ' if live_freshness else ''}{profile_segment}"
                 f"{evidence_root_segment}"
                 f"--days-ahead 1 --refresh-limit {DEFAULT_FULL_DAEMON_REFRESH_LIMIT} "
                 f"{explicit_path_segment}"
                 "--enable-autonomous-odds-capture "
                 "--execute-autonomous-odds-capture "
                 "--allow-auto-scrape-odds "
-                "--enable-autonomous-result-capture "
+                f"{'--enable-autonomous-result-capture ' if not live_freshness_profile else ''}"
                 "--require-safe-refresh-metadata "
                 f"--rejoin-pending-limit {DEFAULT_REJOIN_PENDING_LIMIT} "
                 f"--autonomous-odds-capture-limit {DEFAULT_FULL_DAEMON_AUTONOMOUS_ODDS_CAPTURE_LIMIT} "
@@ -1382,9 +1502,21 @@ def odds_capture_service_file_text(
     forward_baseline_config: Path | None = None,
     input_retention_config: Path | None = None,
     refresh_limit: int = DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT,
+    live_freshness: bool = False,
+    live_freshness_profile: str | None = None,
+    live_freshness_contract: Path | None = None,
 ) -> str:
     require_forward_baseline_binding(forward_corpus_root, forward_baseline_config)
-    script_path = repo_path / "scripts/shadow_autopilot_daemon.py"
+    if live_freshness and (input_retention_config is not None or forward_baseline_config is not None):
+        raise ValueError("live_freshness_requires_disabled_experiments")
+    profile_segment = live_profile_segment(live_freshness, live_freshness_profile, live_freshness_contract)
+    if live_freshness_profile and forward_corpus_root is not None:
+        raise ValueError("live_profile_forbids_result_and_research_access")
+    script_path = repo_path / (
+        "scripts/run_freshness_service.py"
+        if live_freshness_profile
+        else "scripts/shadow_autopilot_daemon.py"
+    )
     service_python = python_path or Path("/usr/bin/python3")
     evidence_root_segment = " ".join(optional_path_cli_args("--evidence-root", evidence_root))
     evidence_root_segment = f"{evidence_root_segment} " if evidence_root_segment else ""
@@ -1431,10 +1563,22 @@ def odds_capture_service_file_text(
             "Type=oneshot",
             f"WorkingDirectory={repo_path}",
             "Environment=PYTHONUNBUFFERED=1",
+            *sportsbet_service_conditions(repo_path, python_path),
             "Environment=GREYHOUND_ALLOW_TGR=0",
+            *(
+                [
+                    "Environment=TZ=Australia/Melbourne",
+                    "Environment=PYTHONNOUSERSITE=1",
+                    "Environment=UV_OFFLINE=1",
+                    "Environment=PIP_NO_INDEX=1",
+                ]
+                if live_freshness_profile
+                else []
+            ),
             "Environment=PATH=/home/l4nd0/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             (
                 f"ExecStart={service_python} {script_path} run-odds-capture-once "
+                f"{'--live-freshness ' if live_freshness else ''}{profile_segment}"
                 f"{evidence_root_segment}"
                 "--days-ahead 1 "
                 f"--refresh-limit {refresh_limit} "
@@ -1452,14 +1596,18 @@ def odds_capture_service_file_text(
     )
 
 
-def odds_capture_timer_file_text() -> str:
+def odds_capture_timer_file_text(live_freshness: bool = False) -> str:
     return "\n".join(
         [
             "[Unit]",
-            "Description=Run greyhound autonomous live odds capture except full-daemon minutes",
+            (
+                "Description=Run greyhound autonomous live odds capture every minute"
+                if live_freshness
+                else "Description=Run greyhound autonomous live odds capture except full-daemon minutes"
+            ),
             "",
             "[Timer]",
-            f"OnCalendar={DEFAULT_ODDS_CAPTURE_ONLY_TIMER_ON_CALENDAR}",
+            f"OnCalendar={'*:*' if live_freshness else DEFAULT_ODDS_CAPTURE_ONLY_TIMER_ON_CALENDAR}",
             f"AccuracySec={DEFAULT_ODDS_CAPTURE_ONLY_TIMER_ACCURACY}",
             "Persistent=true",
             f"Unit={ODDS_CAPTURE_SERVICE_NAME}",
@@ -1490,6 +1638,9 @@ def write_service_files(
     r3_prediction_bundles: Path | None = None,
     skip_shadow_run: bool = False,
     pause_path: Path | None = DEFAULT_HEAVY_SCHEDULING_PAUSE_PATH,
+    live_freshness: bool = False,
+    live_freshness_profile: str | None = None,
+    live_freshness_contract: Path | None = None,
 ) -> dict[str, Any]:
     service_dir.mkdir(parents=True, exist_ok=True)
     service_path = service_dir / SERVICE_NAME
@@ -1513,6 +1664,9 @@ def write_service_files(
             r3_prediction_bundles=r3_prediction_bundles,
             skip_shadow_run=skip_shadow_run,
             pause_path=pause_path,
+            live_freshness=live_freshness,
+            live_freshness_profile=live_freshness_profile,
+            live_freshness_contract=live_freshness_contract,
         ),
     )
     write_text(timer_path, timer_file_text())
@@ -1669,6 +1823,9 @@ def write_odds_capture_service_files(
     forward_baseline_config: Path | None = None,
     input_retention_config: Path | None = None,
     refresh_limit: int = DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT,
+    live_freshness: bool = False,
+    live_freshness_profile: str | None = None,
+    live_freshness_contract: Path | None = None,
 ) -> dict[str, Any]:
     service_dir.mkdir(parents=True, exist_ok=True)
     service_path = service_dir / ODDS_CAPTURE_SERVICE_NAME
@@ -1687,14 +1844,17 @@ def write_odds_capture_service_files(
             forward_baseline_config=forward_baseline_config,
             input_retention_config=input_retention_config,
             refresh_limit=refresh_limit,
+            live_freshness=live_freshness,
+            live_freshness_profile=live_freshness_profile,
+            live_freshness_contract=live_freshness_contract,
         ),
     )
-    write_text(timer_path, odds_capture_timer_file_text())
+    write_text(timer_path, odds_capture_timer_file_text(live_freshness=live_freshness))
     return {
         "service_path": relpath(service_path),
         "timer_path": relpath(timer_path),
-        "timer_frequency": DEFAULT_ODDS_CAPTURE_ONLY_TIMER_FREQUENCY,
-        "timer_calendar": DEFAULT_ODDS_CAPTURE_ONLY_TIMER_ON_CALENDAR,
+        "timer_frequency": "1min" if live_freshness else DEFAULT_ODDS_CAPTURE_ONLY_TIMER_FREQUENCY,
+        "timer_calendar": "*:*" if live_freshness else DEFAULT_ODDS_CAPTURE_ONLY_TIMER_ON_CALENDAR,
         "timer_accuracy": DEFAULT_ODDS_CAPTURE_ONLY_TIMER_ACCURACY,
         "repo_path": str(repo_path),
         "timeout_seconds": timeout_seconds,
@@ -3780,7 +3940,9 @@ def publish_full_daemon_odds_capture_state(
         "next_meaningful_action_at": fixed_window_schedule.get(
             "next_meaningful_action_at"
         ),
-        "window_state_source_updated_at": generated_at.isoformat(),
+        "window_state_source_updated_at": (
+            refresh_report.get("generated_at") or generated_at.isoformat()
+        ),
         "source_report_path": relpath(refresh_report_path),
     }
     write_json(state_path, state_payload)
@@ -3830,6 +3992,10 @@ def publish_full_daemon_odds_capture_state(
 
 
 def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
+    if getattr(args, "live_freshness", False):
+        from scripts.live_collection_cycle import run_live_collection_cycle
+
+        return run_live_collection_cycle(args, odds_only=True)
     generated_at = datetime.now().astimezone()
     current_time = args.current_time or generated_at.isoformat()
     current_dt = parse_datetime_value(current_time, default_tz=generated_at.tzinfo) or generated_at
@@ -3955,6 +4121,8 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
             output_dir=output_dir,
             fixed_window_schedule=pre_lock_fixed_window_schedule,
         )
+        if args.current_time is None:
+            current_time = wall_clock_now().isoformat()
         command = odds_capture_only_autopilot_command(
             run_id=f"{run_id}_autopilot",
             evidence_root=evidence_root,
@@ -4073,9 +4241,17 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
     t2_lock_skip_fields["t2_miss_cause_counts"] = t2_miss_cause_counts
     current_race_index_publish: dict[str, Any] = {
         "schema_version": "collector_current_race_index_publish_v2",
-        "status": "SKIPPED",
-        "reason": "odds_capture_only_does_not_publish_candidate_index",
+        "status": "UNAVAILABLE" if steps else "SKIPPED",
+        "reason": "autopilot_output_unavailable" if steps else "autopilot_not_run",
     }
+    if autopilot_output_dir is not None:
+        current_race_index_publish = load_json(
+            autopilot_output_dir / "current_race_index_publish.json"
+        ) or {
+            "schema_version": "collector_current_race_index_publish_v2",
+            "status": "UNAVAILABLE",
+            "reason": "autopilot_publication_report_missing",
+        }
 
     report = {
         "schema_version": "shadow_autopilot_odds_capture_only_daemon_report_v1",
@@ -9491,6 +9667,10 @@ def build_final_summary(
 
 
 def run_once(args: argparse.Namespace) -> dict[str, Any]:
+    if getattr(args, "live_freshness", False):
+        from scripts.live_collection_cycle import run_live_collection_cycle
+
+        return run_live_collection_cycle(args, odds_only=False)
     generated_at = wall_clock_now()
     run_id = args.run_id or now_id(generated_at)
     evidence_root = args.evidence_root
@@ -9819,6 +9999,8 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             "PASS" if recovery_validation["timeout_probe"].get("status") == "PASS" else "FAIL"
         )
 
+        if args.current_time is None:
+            current_time = wall_clock_now().isoformat()
         autopilot_run_id = f"{run_id}_daemon"
         autopilot_command = [
             sys.executable,
@@ -9940,9 +10122,10 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
         post_primary_autonomous_live_odds_capture_status = (
             autonomous_live_odds_capture_status_from_autopilot(autopilot_output_dir)
         )
+        post_primary_current_dt = current_dt if args.current_time is not None else wall_clock_now()
         odds_capture_state_publish = publish_full_daemon_odds_capture_state(
             state_path=args.odds_capture_state_path,
-            generated_at=current_dt,
+            generated_at=post_primary_current_dt,
             run_id=run_id,
             output_dir=output_dir,
             autopilot_output_dir=autopilot_output_dir,
@@ -9954,7 +10137,7 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
         )
         post_primary_release_decision = post_primary_odds_capture_release_decision(
             odds_capture_state_publish,
-            current_time=current_dt,
+            current_time=post_primary_current_dt,
         )
         write_json(
             output_dir / "post_primary_odds_capture_release_decision.json",
@@ -13468,6 +13651,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
     run_parser = subparsers.add_parser("run-once", help="Run one timer-safe daemon cycle")
     run_parser.add_argument("--run-id")
+    run_parser.add_argument("--live-freshness", action="store_true")
+    run_parser.add_argument("--verify-live-runtime", action="store_true")
+    run_parser.add_argument("--live-freshness-profile", choices=("bounded80-v1",))
+    run_parser.add_argument("--live-freshness-contract", type=Path)
     run_parser.add_argument("--evidence-root", type=Path, default=DEFAULT_EVIDENCE_ROOT)
     run_parser.add_argument("--output-dir", type=Path)
     run_parser.add_argument("--current-time")
@@ -13559,6 +13746,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Run one locked autonomous live-odds capture cycle",
     )
     odds_parser.add_argument("--run-id")
+    odds_parser.add_argument("--live-freshness", action="store_true")
+    odds_parser.add_argument("--verify-live-runtime", action="store_true")
+    odds_parser.add_argument("--live-freshness-profile", choices=("bounded80-v1",))
+    odds_parser.add_argument("--live-freshness-contract", type=Path)
     odds_parser.add_argument("--evidence-root", type=Path, default=DEFAULT_EVIDENCE_ROOT)
     odds_parser.add_argument("--output-dir", type=Path)
     odds_parser.add_argument("--current-time")
@@ -13637,6 +13828,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
 
     service_parser = subparsers.add_parser("write-service-files", help="Write systemd unit templates")
+    service_parser.add_argument("--live-freshness", action="store_true")
+    service_parser.add_argument("--live-freshness-profile", choices=("bounded80-v1",))
+    service_parser.add_argument("--live-freshness-contract", type=Path)
     service_parser.add_argument("--service-dir", type=Path, default=DEFAULT_SERVICE_DIR)
     service_parser.add_argument("--repo-path", type=Path, default=Path("/home/l4nd0/greyhound_racing_collector"))
     service_parser.add_argument("--timeout-seconds", type=int, default=DEFAULT_TIMEOUT_SECONDS)
@@ -13665,6 +13859,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Write systemd unit templates for the odds-capture-only lane",
     )
     odds_service_parser.add_argument("--service-dir", type=Path, default=DEFAULT_SERVICE_DIR)
+    odds_service_parser.add_argument("--live-freshness", action="store_true")
+    odds_service_parser.add_argument("--live-freshness-profile", choices=("bounded80-v1",))
+    odds_service_parser.add_argument("--live-freshness-contract", type=Path)
     odds_service_parser.add_argument("--repo-path", type=Path, default=Path("/home/l4nd0/greyhound_racing_collector"))
     odds_service_parser.add_argument(
         "--timeout-seconds",
@@ -13710,6 +13907,41 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
+    live_profile_segment(
+        getattr(args, "live_freshness", False),
+        getattr(args, "live_freshness_profile", None),
+        getattr(args, "live_freshness_contract", None),
+    )
+    if getattr(args, "live_freshness_profile", None) and args.command in {
+        "run-once",
+        "run-odds-capture-once",
+    }:
+        from race_collection.live_execution import configure_profile_execution
+
+        configure_profile_execution(args.live_freshness_contract)
+        if args.verify_live_runtime:
+            command = [
+                *autopilot.odds_capture_command_prefix("pinned"),
+                str(ROOT / "scripts/autonomous_live_odds_capture.py"),
+                "--verify-live-runtime",
+                "--input-dir",
+                str(ROOT / "preflight-unused"),
+                "--live-freshness-contract",
+                str(args.live_freshness_contract),
+            ]
+            result = subprocess.run(command, text=True, capture_output=True)
+            if result.returncode:
+                raise ValueError("capture_preflight_failed: " + result.stderr[-3000:])
+            print(result.stdout.strip())
+            return 0
+    if getattr(args, "live_freshness", False) and args.command in {
+        "run-once", "run-odds-capture-once"
+    }:
+        process_fields = Path("/proc/self/stat").read_text().rsplit(")", 1)[1].split()
+        process_start = int(process_fields[19]) / os.sysconf("SC_CLK_TCK")
+        args.live_started_monotonic = time.monotonic() - (
+            time.clock_gettime(time.CLOCK_BOOTTIME) - process_start
+        )
     if args.command == "capture-one":
         with contextlib.redirect_stdout(sys.stderr):
             from race_collection.synchronous_manual_capture import (
@@ -13741,6 +13973,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "run-odds-capture-once":
         result = run_odds_capture_once(args)
         print(json.dumps(result, indent=2, sort_keys=True))
+        if args.live_freshness:
+            return 0 if result.get("runtime_action") == "LIVE_COLLECTION_COMPLETE" else 2
         return 0 if result.get("final_status") != "ODDS_CAPTURE_ONLY_FAILED" else 2
     if args.command == "write-service-files":
         result = write_service_files(
@@ -13761,6 +13995,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             r3_prediction_bundles=getattr(args, "r3_prediction_bundles", None),
             skip_shadow_run=args.skip_shadow_run,
             pause_path=args.pause_path,
+            live_freshness=args.live_freshness,
+            live_freshness_profile=args.live_freshness_profile,
+            live_freshness_contract=args.live_freshness_contract,
         )
         print(json.dumps(result, indent=2, sort_keys=True))
         return 0
@@ -13778,11 +14015,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             forward_baseline_config=args.forward_baseline_config,
             input_retention_config=args.input_retention_config,
             refresh_limit=args.refresh_limit,
+            live_freshness=args.live_freshness,
+            live_freshness_profile=args.live_freshness_profile,
+            live_freshness_contract=args.live_freshness_contract,
         )
         print(json.dumps(result, indent=2, sort_keys=True))
         return 0
     result = run_once(args)
     print(json.dumps(result, indent=2, sort_keys=True))
+    if args.live_freshness:
+        return 0 if result.get("runtime_action") == "LIVE_COLLECTION_COMPLETE" else 2
     if args.enable_forward_official_result_observer and result.get(
         "forward_official_result_observer", {}
     ).get("status") not in FORWARD_OBSERVER_CONTINUABLE_STATUSES:

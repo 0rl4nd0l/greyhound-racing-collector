@@ -14,8 +14,11 @@ import json
 import os
 import re
 import sys
+import time
 from collections import Counter
+from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime, timedelta
+from multiprocessing import get_context
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
@@ -33,6 +36,7 @@ from utils.race_lifecycle import melbourne_now  # noqa: E402
 from scripts.capture_thedogs_market_history import (  # noqa: E402
     validate_primary_native_identity_evidence,
 )
+from race_collection.refresh_request_timing import RefreshRequestTiming  # noqa: E402
 
 
 def parse_current_time(value: str | None) -> datetime:
@@ -586,9 +590,9 @@ def sidecar_metadata_coverage(
 ) -> dict[str, Any]:
     """Summarise source-safe weather/track/expert-form sidecar coverage."""
 
-    csv_records = [
-        _metadata_record_for_csv(path) for path in sorted(upcoming_dir.glob("*.csv"))
-    ]
+    csv_paths = sorted(upcoming_dir.glob("*.csv"))
+    csv_paths.extend(sorted((upcoming_dir / "workers").glob("*/*.csv")))
+    csv_records = [_metadata_record_for_csv(path) for path in csv_paths]
     by_url = {
         str(record["race_url"]): record
         for record in csv_records
@@ -807,23 +811,126 @@ def current_index_metadata_selection(
     }
 
 
+def download_selected_race(task: Mapping[str, Any]) -> dict[str, Any]:
+    if task["deadline"] is not None and time.monotonic() >= task["deadline"]:
+        return {
+            "race_url": task["race_url"],
+            "success": False,
+            "reason": "refresh_budget_exhausted",
+        }
+    restore_guard = None
+    if task.get("live_freshness_contract"):
+        from race_collection.live_freshness_contract import FreshnessContract, install_request_guard
+        scope = FreshnessContract.load(task["live_freshness_contract"])
+        scope.admit(datetime.now().astimezone(), seconds=0)
+        restore_guard = install_request_guard(scope)
+    previous = os.environ.get("UPCOMING_RACES_DIR")
+    os.environ["UPCOMING_RACES_DIR"] = str(task["directory"])
+    try:
+        timing = RefreshRequestTiming(task["directory"]) if task.get("trace_requests") else None
+        browser = _refresh_browser(timing)
+        result = _timed_call(
+            timing,
+            "download",
+            browser.download_race_csv,
+            task["race_url"],
+            race_info_hint=task["hint"],
+        )
+        return {
+            "race_url": task["race_url"],
+            "success": bool(result.get("success")) if isinstance(result, dict) else False,
+            "result": result,
+        }
+    finally:
+        if restore_guard:
+            restore_guard()
+        if previous is None:
+            os.environ.pop("UPCOMING_RACES_DIR", None)
+        else:
+            os.environ["UPCOMING_RACES_DIR"] = previous
+
+
+def _timed_call(timing, kind, function, *args, **kwargs):
+    if timing is None:
+        return function(*args, **kwargs)
+    return timing.call(kind, function, *args, **kwargs)
+
+
+def _browser_type():
+    from upcoming_race_browser import UpcomingRaceBrowser
+
+    return UpcomingRaceBrowser
+
+
+def _refresh_browser(timing, browser_type=None):
+    if browser_type is None:
+        browser_type = _timed_call(timing, "browser_import", _browser_type)
+    browser = _timed_call(timing, "browser_startup", browser_type)
+    if timing is not None:
+        timing.attach(browser)
+    return browser
+
+
+def _download_tasks(tasks):
+    with ProcessPoolExecutor(max_workers=2, mp_context=get_context("spawn")) as executor:
+        return list(executor.map(download_selected_race, tasks))
+
+
+def bounded_discovery_days_ahead(
+    *, now: datetime, wall_now: datetime, max_minutes: float, requested_days_ahead: int
+) -> int:
+    if now.date() != wall_now.date() or now.utcoffset() != wall_now.utcoffset():
+        return requested_days_ahead
+    last_date = (now + timedelta(minutes=max_minutes)).date()
+    return min(requested_days_ahead, max(0, (last_date - now.date()).days))
+
+
 def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
+    started = time.monotonic()
+    budget = getattr(args, "refresh_budget_seconds", None)
+    deadline = started + budget if budget is not None else None
+    workers = getattr(args, "workers", 1)
+    if workers not in (1, 2) or (budget is not None and budget <= 0):
+        raise ValueError("invalid_refresh_worker_budget")
     upcoming_dir = Path(args.upcoming_dir)
     if not upcoming_dir.is_absolute():
         upcoming_dir = ROOT / upcoming_dir
     upcoming_dir.mkdir(parents=True, exist_ok=True)
     os.environ["UPCOMING_RACES_DIR"] = str(upcoming_dir)
 
-    from upcoming_race_browser import UpcomingRaceBrowser
-
+    timing = RefreshRequestTiming(upcoming_dir) if getattr(args, "trace_requests", False) else None
+    browser_type = _timed_call(timing, "browser_import", _browser_type)
     now = parse_current_time(getattr(args, "current_time", None))
-    browser = UpcomingRaceBrowser()
-    races = browser.get_upcoming_races(days_ahead=int(args.days_ahead))
+    if getattr(args, "live_freshness_contract", None):
+        from race_collection.live_freshness_contract import FreshnessContract, install_request_guard
+        scope = FreshnessContract.load(args.live_freshness_contract)
+        scope.admit(datetime.now().astimezone(), seconds=80)
+        if now.date().isoformat() != scope.value["source_date"] or now.utcoffset() != datetime.now().astimezone().utcoffset():
+            raise ValueError("discovery_clock_scope_mismatch")
+        install_request_guard(scope)  # This CLI process exits after the refresh.
+    browser = _refresh_browser(timing, browser_type)
+    discovery_days_ahead = int(args.days_ahead)
+    if budget is not None:
+        discovery_days_ahead = bounded_discovery_days_ahead(
+            now=now,
+            wall_now=datetime.now().astimezone(),
+            max_minutes=float(args.max_minutes),
+            requested_days_ahead=discovery_days_ahead,
+        )
+    if getattr(args, "live_freshness_contract", None) and discovery_days_ahead != 0:
+        raise ValueError("two_date_refresh_not_authorized")
+    races = _timed_call(
+        timing, "discovery", browser.get_upcoming_races, days_ahead=discovery_days_ahead
+    )
+    discovery_finished = time.monotonic()
     excluded_race_ids = load_excluded_race_ids(
         values=list(args.exclude_race_id or []),
         file_path=args.exclude_race_ids_file,
     )
-    selected, records = select_prejump_races(
+    selected, records = _timed_call(
+        timing,
+        "selection",
+        select_prejump_races,
         races,
         now=now,
         min_minutes=float(args.min_minutes),
@@ -834,22 +941,41 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
     )
 
     downloads: list[dict[str, Any]] = []
+    tasks = []
     if not args.dry_run:
         selected_record_by_url = {
             str(record.get("race_url") or ""): record
             for record in records
             if record.get("selected") is True and record.get("race_url")
         }
-        for race in selected:
+        if len({race["url"] for race in selected}) != len(selected):
+            raise ValueError("duplicate_refresh_race_url")
+        for number, race in enumerate(selected):
             race_url = str(race["url"])
             selected_record = selected_record_by_url.get(race_url, {})
-            result = browser.download_race_csv(
+            hint = {
+                **dict(race),
+                "race_discovery_key": selected_record.get("race_id"),
+                "jump_datetime": selected_record.get("jump_datetime"),
+            }
+            if workers == 2:
+                tasks.append(
+                    {
+                        "race_url": race_url,
+                        "hint": hint,
+                        "deadline": deadline,
+                        "directory": str(upcoming_dir / "workers" / str(number)),
+                        "trace_requests": timing is not None,
+                        "live_freshness_contract": str(args.live_freshness_contract) if getattr(args, "live_freshness_contract", None) else None,
+                    }
+                )
+                continue
+            result = _timed_call(
+                timing,
+                "download",
+                browser.download_race_csv,
                 race_url,
-                race_info_hint={
-                    **dict(race),
-                    "race_discovery_key": selected_record.get("race_id"),
-                    "jump_datetime": selected_record.get("jump_datetime"),
-                },
+                race_info_hint=hint,
             )
             downloads.append(
                 {
@@ -858,12 +984,22 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
                     "result": result,
                 }
             )
+        if tasks:
+            downloads.extend(_timed_call(timing, "worker_pool_including_cleanup", _download_tasks, tasks))
 
+    downloads_finished = time.monotonic()
     bucket_counts = Counter(record["bucket"] for record in records)
     artifact_counts = _artifact_counts(upcoming_dir)
+    for directory in (upcoming_dir / "workers").glob("*"):
+        if directory.is_dir():
+            for key, value in _artifact_counts(directory).items():
+                artifact_counts[key] += value
     selected_records = list(selected_prejump_records(records, limit=int(args.limit)))
-    metadata_coverage = sidecar_metadata_coverage(upcoming_dir, selected_records)
-    current_index_races, current_index_selection = current_index_metadata_selection(
+    metadata_coverage = _timed_call(timing, "sidecar_validation", sidecar_metadata_coverage, upcoming_dir, selected_records)
+    current_index_races, current_index_selection = _timed_call(
+        timing,
+        "index_metadata_selection",
+        current_index_metadata_selection,
         selected_records,
         metadata_coverage,
         source_generated_at=now,
@@ -874,6 +1010,7 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
         "generated_at": now.isoformat(),
         "upcoming_dir": str(upcoming_dir),
         "days_ahead": int(args.days_ahead),
+        "discovery_days_ahead": discovery_days_ahead,
         "window": {
             "min_minutes": float(args.min_minutes),
             "max_minutes": float(args.max_minutes),
@@ -883,22 +1020,22 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
         "excluded_race_ids": sorted(excluded_race_ids),
         "excluded_count": sum(1 for record in records if record.get("excluded_reason")),
         "priority_race_id": getattr(args, "priority_race_id", None),
-        "priority_race_selected": any(
-            getattr(args, "priority_race_id", None)
-            in set(record.get("race_id_aliases") or [record.get("race_id")])
-            for record in selected_records
-        )
-        if getattr(args, "priority_race_id", None)
-        else None,
+        "priority_race_selected": (
+            any(
+                getattr(args, "priority_race_id", None)
+                in set(record.get("race_id_aliases") or [record.get("race_id")])
+                for record in selected_records
+            )
+            if getattr(args, "priority_race_id", None)
+            else None
+        ),
         "bucket_counts": dict(bucket_counts),
         "next_preferred_window": refresh_timing_summary(
             records,
             min_minutes=float(args.min_minutes),
             max_minutes=float(args.max_minutes),
         ),
-        "selected_races": list(
-            selected_records
-        ),
+        "selected_races": list(selected_records),
         "current_index_race_count": len(current_index_races),
         "current_index_races": current_index_races,
         "current_index_metadata_selection": current_index_selection,
@@ -913,22 +1050,50 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
         "no_label_write": True,
         "no_retrain_or_promotion": True,
     }
+    if timing is not None:
+        report["request_timing"] = {
+            "discovery_path": str(timing.path),
+            "worker_paths": [str(Path(task["directory"]) / "refresh-request-timing.jsonl") for task in tasks],
+            "semantics": "logical_calls_include_client_retries; nested_parallel_spans_are_not_additive",
+        }
     if (
         bool(getattr(args, "require_safe_metadata", False))
         and current_index_selection.get("status") == "INCOMPLETE"
     ):
         report["status"] = "METADATA_COVERAGE_INCOMPLETE"
         report["reason"] = metadata_coverage.get("reason") or "safe_metadata_incomplete"
+    if budget is not None:
+        finished = time.monotonic()
+        report["refresh_elapsed_seconds"] = finished - started
+        report["refresh_phase_seconds"] = {
+            "discovery_and_browser_startup": discovery_finished - started,
+            "selection_and_downloads": downloads_finished - discovery_finished,
+            "metadata_validation": finished - downloads_finished,
+        }
+        report["refresh_budget_seconds"] = budget
+        report["refresh_workers"] = workers
+        if report["refresh_elapsed_seconds"] > budget:
+            report["status"] = "REFRESH_BUDGET_EXCEEDED"
+            report["reason"] = "completed_source_acquisition_exceeded_budget"
     return report
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--trace-requests",
+        action="store_true",
+        default=os.environ.get("GREYHOUND_REFRESH_TRACE_REQUESTS") == "1",
+        help="Retain request/phase timings without changing acquisition policy",
+    )
     parser.add_argument("--upcoming-dir", default="upcoming_races")
     parser.add_argument("--days-ahead", type=int, default=0)
     parser.add_argument("--min-minutes", type=float, default=20.0)
     parser.add_argument("--max-minutes", type=float, default=160.0)
     parser.add_argument("--limit", type=int, default=16)
+    parser.add_argument("--workers", type=int, choices=(1, 2), default=1)
+    parser.add_argument("--refresh-budget-seconds", type=float)
+    parser.add_argument("--live-freshness-contract", type=Path)
     parser.add_argument("--priority-race-id")
     parser.add_argument(
         "--exclude-race-id",
