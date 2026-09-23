@@ -120,6 +120,7 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
 
     plan = {
         "sportsbet_access_state": str(state_path()),
+        "baseline_source_coordination_verified": False,
         **({"campaign_root": str(campaign.root),
             "campaign_authorization_sha256": digest(campaign.value)} if campaign else {}),
         "schema_version": "freshness_scheduled_rehearsal_plan_v1",
@@ -167,7 +168,7 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
             "unapproved_lock_owner",
             "unattributed_or_overbudget_timer_dispatch",
         ],
-        "restoration": "exact four collector files and previous timer activity; no enable-state or R3 changes; natural drain and reserved-window closure before old timers restart; fixed cleanup deadline otherwise RESTORATION_PENDING",
+        "restoration": "exact four collector files; natural drain and reserved-window closure; keep only collector timers inactive and disabled while source is held or baseline source coordination is unverified; never change R3; record previous timer states",
     }
     create_once(output / "plan.json", plan)
     return {

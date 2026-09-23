@@ -100,8 +100,15 @@ def install():
             # The actual production driver factory must supply explicit binaries.
             assert kwargs["service"].path == os.environ["GREYHOUND_CHROMEDRIVER"]
             assert kwargs["options"].binary_location == os.environ["GREYHOUND_CHROME_BINARY"]
+            from fake_cdp import BrowserTransport
+            self.transport = BrowserTransport()
+            self.service = kwargs["service"]
+            self.service.process = self.transport.process
             self.logs = []
             super().__init__(BeautifulSoup("", "html.parser"))
+
+        def start_devtools(self):
+            return None, self.transport
 
         def get(self, url):
             assert url.startswith("https://www.sportsbet.com.au/")
@@ -132,6 +139,7 @@ def install():
                     "headers": {"Retry-After": "60"} if status == 429 else {},
                 }},
             }})})
+            self.transport.response(url, status, {"Retry-After": "60"} if status == 429 else {})
             if fixture["scenario"] == "expired_append" and "/race-" in url:
                 expire_capture_clock()
             if fixture["scenario"] == "interrupted":
@@ -151,6 +159,7 @@ def install():
             return logs
 
         def quit(self):
+            self.transport.quit()
             Path(fixture["cleanup_marker"]).write_text(str(os.getpid()))
 
         def save_screenshot(self, path):

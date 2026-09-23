@@ -116,6 +116,7 @@ class Clock:
 
 class Control:
     active = {timer: True for timer in run.TIMERS}
+    enabled = {timer: "enabled" for timer in run.TIMERS}
 
     def show(self, name):
         return {
@@ -140,7 +141,9 @@ class Control:
         if action in {"start", "stop"}:
             self.active[args[0]] = action == "start"
         elif action == "is-enabled":
-            return "enabled\n"
+            return self.enabled[args[0]] + "\n"
+        elif action in {"enable", "disable"}:
+            self.enabled[args[0]] = "enabled" if action == "enable" else "disabled"
         elif action == "show":
             return "LastTriggerUSecMonotonic=0\nNextElapseUSecMonotonic=0\nNextElapseUSecRealtime=0\nActiveState=active\n"
         elif action != "daemon-reload":
@@ -191,7 +194,8 @@ if SCENARIO == "malformed":
     assert samples[-1]["index_status"] == "INVALID/INTEGRITY_FAILED", samples[-1]
 restored = json.loads((PACKAGE / "restored.json").read_bytes())
 assert restored["hashes"] == PLAN["baseline_unit_sha256"]
-assert all(control.active[timer] for timer in run.TIMERS)
+assert not any(control.active[timer] for timer in run.TIMERS)
+assert all(control.enabled[timer] == "disabled" for timer in run.TIMERS)
 scope = FreshnessContract(json.loads((PACKAGE / "contract.json").read_bytes()))
 assert not (scope.session / "capture-reservation.json").exists()
 assert not (scope.session / "request-count.json").exists()

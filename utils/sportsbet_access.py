@@ -55,14 +55,18 @@ class SportsbetAccess:
     def read(self):
         try:
             value = json.loads(self.path.read_bytes())
-            assert value["schema"] == "sportsbet_access_v1"
-            assert value["access_basis"]["status"] in {"permitted", "unresolved", "prohibited"}
-            assert value["access_basis"]["reference"]
-            assert value["phase"] in {"OPEN", "COOLDOWN", "RECOVERY", "STOP"}
-            assert type(value["recovery_attempts"]) is int and 0 <= value["recovery_attempts"] <= 1
-            assert isinstance(value["denials"], list)
-            assert math.isfinite(value["not_before"])
-            assert value["active"] is None or isinstance(value["active"], str)
+            valid = (
+                value["schema"] == "sportsbet_access_v1"
+                and value["access_basis"]["status"] in {"permitted", "unresolved", "prohibited"}
+                and bool(value["access_basis"]["reference"])
+                and value["phase"] in {"OPEN", "COOLDOWN", "RECOVERY", "STOP"}
+                and type(value["recovery_attempts"]) is int and 0 <= value["recovery_attempts"] <= 1
+                and isinstance(value["denials"], list)
+                and math.isfinite(value["not_before"])
+                and (value["active"] is None or isinstance(value["active"], str))
+            )
+            if not valid:
+                raise ValueError("invalid_source_state")
             return value
         except (OSError, ValueError, TypeError, KeyError, AssertionError) as error:
             raise SportsbetAccessBlocked("sportsbet_access_state_missing_or_invalid") from error
@@ -111,13 +115,13 @@ class SportsbetAccess:
                     (self.clock() < value["not_before"] or value["recovery_attempts"]))):
             raise SportsbetAccessBlocked("sportsbet_source_hold")
 
-    def retain_denial(self, status, headers=None, *, reason="source_response"):
+    def retain_denial(self, status, headers=None, *, reason="retained_evidence", observed_at=None):
         """Import retained operational evidence without making a source request."""
         with self.locked():
             value = self.read()
-            self._denial(value, status, headers, reason)
+            self._denial(value, status, headers, reason, observed_at=observed_at)
 
-    def _denial(self, value, status, headers, reason):
+    def _denial(self, value, status, headers, reason, *, observed_at):
         from utils.http_client import source_retry_headers
 
         now = self.clock()
@@ -144,12 +148,14 @@ class SportsbetAccess:
         fallback = min(FALLBACK_CAP_SECONDS, FALLBACK_SECONDS * 2 ** min(len(value["denials"]), 2))
         value["not_before"] = max(value["not_before"], now + fallback, deadline or 0)
         value["denials"].append({
-            "observed_at_epoch": now, "status": status, "retry_headers": guidance,
+            "observed_at_epoch": observed_at, "recorded_at_epoch": now,
+            "status": status, "retry_headers": guidance,
             "provider_not_before_epoch": deadline, "fallback_seconds": fallback,
             "reason": reason,
         })
+        unclear_reset = any(key in guidance for key in ("ratelimit-reset", "x-ratelimit-reset"))
         value["phase"] = (
-            "STOP" if status != 429 or value["recovery_attempts"] or value["phase"] == "STOP"
+            "STOP" if status != 429 or value["recovery_attempts"] or value["phase"] == "STOP" or unclear_reset
             else "COOLDOWN"
         )
         self.write(value)
@@ -195,8 +201,11 @@ class SourceOperation:
             raise SportsbetAccessBlocked("sportsbet_source_hold")
 
     def response(self, status, headers):
-        if status in {401, 403, 429}:
-            self.gate._denial(self.value, status, headers, "source_response")
+        from utils.http_client import source_retry_headers
+        guidance = source_retry_headers(headers)
+        instructed = any(key in guidance for key in ("retry-after", "ratelimit-reset", "x-ratelimit-reset"))
+        if status in {401, 403, 429} or (status >= 400 and instructed):
+            self.gate._denial(self.value, status, headers, "source_response", observed_at=self.gate.clock())
         elif 200 <= status < 300:
             self.success = True
         elif self.recovery:

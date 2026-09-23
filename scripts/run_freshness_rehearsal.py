@@ -167,11 +167,16 @@ def restore(output, plan, control, *, clock=time.monotonic, sleep=time.sleep):
     if plan.get("sportsbet_access_state"):
         from utils.sportsbet_access import SportsbetAccess
         source_hold = SportsbetAccess(plan["sportsbet_access_state"]).blocks_restoration()
+    legacy_unverified = bool(plan.get("sportsbet_access_state")) and not plan.get("baseline_source_coordination_verified", False)
+    triggers_held = source_hold or legacy_unverified
     for timer in TIMERS:
-        if source_hold:
+        if triggers_held:
             control.command("disable", timer)
-        elif backup["active"][timer]:
-            control.command("start", timer)
+        else:
+            if backup["enabled"][timer] in {"enabled", "disabled"} and control.command("is-enabled", timer).strip() != backup["enabled"][timer]:
+                control.command("enable" if backup["enabled"][timer] == "enabled" else "disable", timer)
+            if backup["active"][timer]:
+                control.command("start", timer)
     for name, expected in backup["hashes"].items():
         if (
             hashlib.sha256((Path(plan["installed_dir"]) / name).read_bytes()).hexdigest()
@@ -179,18 +184,19 @@ def restore(output, plan, control, *, clock=time.monotonic, sleep=time.sleep):
         ):
             raise ValueError("restored_unit_hash_mismatch")
     for timer in TIMERS:
-        if (control.show(timer)["ActiveState"] == "active") != (backup["active"][timer] and not source_hold):
+        if (control.show(timer)["ActiveState"] == "active") != (backup["active"][timer] and not triggers_held):
             raise ValueError("restored_timer_activity_mismatch")
-        expected_enabled = "disabled" if source_hold else backup["enabled"][timer]
+        expected_enabled = "disabled" if triggers_held else backup["enabled"][timer]
         if control.command("is-enabled", timer).strip() != expected_enabled:
             raise ValueError("restored_timer_enablement_mismatch")
     if control.show("greyhound-operator-ui-r3.service")["MainPID"] != backup["r3_pid"]:
         raise ValueError("r3_process_changed")
     atomic_json(
         output / "restored.json",
-        {"status": "RESTORED_COLLECTOR_TRIGGERS_HELD" if source_hold else "RESTORED",
+        {"status": "RESTORED_COLLECTOR_TRIGGERS_HELD" if triggers_held else "RESTORED",
          "at": now().isoformat(), "hashes": backup["hashes"],
-         "sportsbet_hold": source_hold, "paused_timers": list(TIMERS) if source_hold else []},
+         "sportsbet_hold": source_hold, "baseline_source_coordination_unverified": legacy_unverified,
+         "paused_timers": list(TIMERS) if triggers_held else []},
     )
 
 

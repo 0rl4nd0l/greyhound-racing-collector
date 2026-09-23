@@ -176,6 +176,18 @@ def test_actual_packaged_service_capture(tmp_path, scenario, campaign_mode, monk
     monitor = Path(__file__).parent / "fixtures/freshness_capture_monitor.py"
     before = subprocess.run([sys.executable, str(monitor), str(package), "startup"], text=True, capture_output=True, timeout=20)
     assert before.returncode == 0, before.stdout + before.stderr
+    if scenario.startswith("source_denial"):
+        # Both generated entrypoints contend with a real durable owner in another
+        # process. Neither may construct a browser or consume a race/window.
+        with SportsbetAccess(access).operation("fabricated_source_owner"):
+            peers = []
+            for name in ("shadow-autopilot.service", "shadow-autopilot-odds-capture.service"):
+                peer_command, peer_cwd, _ = service_command(package / "units" / name)
+                peers.append(subprocess.Popen([sys.executable, "-c", launcher, *peer_command], cwd=peer_cwd, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE))
+            for peer in peers:
+                stdout, stderr = peer.communicate(timeout=20)
+                assert peer.returncode != 0 and "sportsbet_source_hold" in stderr, stdout + stderr
+        assert allowance.claims() == []
     with (tmp_path / "service.log").open("w") as log:
         process = subprocess.Popen(
             [sys.executable, "-c", launcher, *command],

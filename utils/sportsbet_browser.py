@@ -1,119 +1,231 @@
-"""Keep source ownership until browser cleanup, including its asynchronous work."""
-
+"""Independent CDP denial observation while WebDriver navigation is pending."""
+import os
 import json
+import queue
+from pathlib import Path
+import signal
 import threading
+import time
 
 from utils.sportsbet_access import SportsbetAccess, SportsbetAccessBlocked, is_sportsbet
 
 
-def create_sportsbet_driver(factory, **kwargs):
-    admission = SportsbetAccess().operation("browser")
-    operation = admission.__enter__()
+def cdp(method, params=None):
+    result = yield {"method": method, "params": params or {}}
+    return result
+
+
+def process_identity(pid):
+    fields = (Path('/proc') / str(pid) / 'stat').read_text().rsplit(')', 1)[1].split()
+    return int(fields[1]), fields[19]
+
+
+def owned_processes(pid, birth):
+    """Snapshot descendants while the service parent still proves ownership."""
     try:
-        driver = factory(**kwargs)
-    except BaseException:
-        import sys
-        admission.__exit__(*sys.exc_info())
-        raise
-    navigate, get_log, quit_driver = driver.get, driver.get_log, driver.quit
-    buffered = []
+        if process_identity(pid)[1] != birth:
+            return {}
+    except FileNotFoundError:
+        return {}
+    identities = {}
+    for entry in Path('/proc').iterdir():
+        if entry.name.isdigit():
+            try:
+                identities[int(entry.name)] = process_identity(int(entry.name))
+            except (OSError, ValueError):
+                pass
+    owned = [pid]
+    for parent in owned:
+        owned.extend(child for child, (ppid, _) in identities.items()
+                     if ppid == parent and child not in owned)
+    return {child: identities[child][1] for child in owned if child in identities}
+
+
+def stop_owned_processes(pid, birth, retained=None):
+    """Retained birth identities survive reparenting without a host-wide kill."""
+    identities = dict(retained or {})
+    identities.update(owned_processes(pid, birth))
+    def alive(child, expected):
+        try:
+            fields = (Path('/proc') / str(child) / 'stat').read_text().rsplit(')', 1)[1].split()
+            return fields[19] == expected and fields[0] != 'Z'
+        except FileNotFoundError:
+            return False
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        for child, expected in reversed(list(identities.items())):
+            try:
+                if alive(child, expected):
+                    os.kill(child, sig)
+            except ProcessLookupError:
+                pass
+        deadline = time.monotonic() + .5
+        while time.monotonic() < deadline:
+            if not any(alive(child, expected) for child, expected in identities.items()):
+                return
+            time.sleep(.01)
+    if any(alive(child, expected) for child, expected in identities.items()):
+        raise RuntimeError('owned_browser_cleanup_incomplete')
+
+
+def create_sportsbet_driver(factory, **kwargs):
+    admission = SportsbetAccess().operation('browser')
+    operation = admission.__enter__()
+    driver = connection = None
+    expected_disconnect = threading.Event()
+    observation_failed = threading.Event()
+    state_lock = threading.RLock()
+    channel_lock = threading.Lock()
+    events = queue.Queue()
     navigations = 0
     closed = False
-    drain_lock = threading.RLock()
-    command_lock = threading.RLock()
-    stopping = threading.Event()
-    if hasattr(driver, "execute"):
-        execute = driver.execute
+    descendants = {}
 
-        def serialized_execute(*args, **kwargs):
-            with command_lock:
-                return execute(*args, **kwargs)
+    def channel(method, params=None):
+        with channel_lock:
+            return connection.execute(cdp(method, params))
 
-        driver.execute = serialized_execute
-
-    def drain():
-        with drain_lock:
-            read_responses()
-
-    def read_responses():
+    def lost_observation(*args):
+        if expected_disconnect.is_set() or observation_failed.is_set():
+            return
+        observation_failed.set()
         try:
-            rows = get_log("performance")
-            buffered.extend(rows)
-            for row in rows:
-                event = json.loads(row["message"])["message"]
-                if event.get("method") == "Network.responseReceived":
-                    response = event["params"]["response"]
-                    if is_sportsbet(response.get("url", "")):
-                        if response["status"] in {401, 403, 429} or event["params"].get("type") == "Document":
-                            operation.response(response["status"], response.get("headers", {}))
-            if operation.value["phase"] in {"COOLDOWN", "STOP"}:
-                driver.execute_cdp_cmd("Network.setBlockedURLs", {"urls": ["*://*.sportsbet.com.au/*", "*://sportsbet.com.au/*"]})
-                driver.execute_cdp_cmd("Page.stopLoading", {})
-        except Exception:
-            operation.failed = True
-            raise
+            with state_lock:
+                operation.failed = True
+                operation.value['phase'] = 'STOP'
+                operation.gate.write(operation.value)
+        finally:
+            stop_owned_processes(owner_pid, owner_birth, descendants)
+
+    def monitor():
+        while True:
+            params = events.get()
+            try:
+                if params is None:
+                    return
+                source = params['response']
+                if not is_sportsbet(source.get('url', '')):
+                    continue
+                status = source['status']
+                with state_lock:
+                    if status >= 400 or params.get('type') == 'Document':
+                        operation.response(status, source.get('headers', {}))
+                    held = operation.value['phase'] in {'COOLDOWN', 'STOP'}
+                if held and not expected_disconnect.is_set():
+                    channel('Network.setBlockedURLs', {'urls': ['*://*.sportsbet.com.au/*', '*://sportsbet.com.au/*']})
+                    channel('Page.stopLoading')
+            except Exception:
+                lost_observation()
+            finally:
+                events.task_done()
+
+    try:
+        driver = factory(**kwargs)
+        owner_pid = driver.service.process.pid
+        if owner_pid == os.getpid():
+            raise RuntimeError('invalid_browser_process_owner')
+        owner_birth = process_identity(owner_pid)[1]
+        descendants.update(owned_processes(owner_pid, owner_birth))
+        _, connection = driver.start_devtools()
+        # Selenium owns this independent WebSocket. Loss cannot fall back to an
+        # unobserved browser; callbacks do not share WebDriver's command queue.
+        connection._ws.on_close = lost_observation
+        connection._ws.on_error = lost_observation
+        original_message = connection._ws.on_message
+        def received(ws, message):
+            original_message(ws, message)
+            try:
+                event = json.loads(message)
+                if event.get('method') == 'Network.responseReceived':
+                    events.put(event['params'])
+            except Exception:
+                lost_observation()
+        connection._ws.on_message = received
+        # The pinned Selenium transport exposes no public disconnect callback or
+        # response timeout setter. Keep these adapter details isolated here.
+        connection._response_wait_timeout = 2
+        watcher = threading.Thread(target=monitor, name='sportsbet-source-observer', daemon=True)
+        watcher.start()
+        channel('Network.enable')
+    except BaseException:
+        import sys
+        failure = sys.exc_info()
+        expected_disconnect.set()
+        try:
+            if driver is not None:
+                driver.quit()
+        finally:
+            if connection is not None:
+                connection._ws.close()
+                connection.close()
+            if 'watcher' in locals():
+                events.join()
+                events.put(None)
+                watcher.join()
+            admission.__exit__(*failure)
+        raise
+
+    navigate, get_log, quit_driver = driver.get, driver.get_log, driver.quit
 
     def get(url):
         nonlocal navigations
-        drain()
-        operation.check()
-        if not is_sportsbet(url):
-            operation.failed = True
-            raise SportsbetAccessBlocked("sportsbet_browser_route_changed")
-        if operation.recovery and navigations >= 2:
-            operation.failed = True
-            raise SportsbetAccessBlocked("sportsbet_recovery_navigation_cap")
-        navigations += 1
-        try:
-            return navigate(url)
-        except BaseException:
-            operation.failed = True
-            raise
-        finally:
-            drain()
+        events.join()
+        descendants.update(owned_processes(owner_pid, owner_birth))
+        with state_lock:
             operation.check()
+            if not is_sportsbet(url):
+                operation.failed = True
+                raise SportsbetAccessBlocked('sportsbet_browser_route_changed')
+            if operation.recovery and navigations >= 2:
+                operation.failed = True
+                raise SportsbetAccessBlocked('sportsbet_recovery_navigation_cap')
+            navigations += 1
+        try:
+            result = navigate(url)
+        except BaseException:
+            with state_lock:
+                # A known denial remains a cooldown, not an ambiguous crash.
+                if operation.value['phase'] not in {'COOLDOWN', 'STOP'}:
+                    operation.failed = True
+            raise
+        events.join()
+        descendants.update(owned_processes(owner_pid, owner_birth))
+        with state_lock:
+            operation.check()
+        return result
 
     def logs(name):
-        if name != "performance":
+        try:
             return get_log(name)
-        with drain_lock:
-            drain()
-            result = list(buffered)
-            buffered.clear()
-            return result
-
-    def monitor():
-        while not stopping.wait(0.1):
-            try:
-                drain()
-                if operation.value["phase"] in {"COOLDOWN", "STOP"}:
-                    return
-            except Exception:
-                operation.failed = True
-                operation.value["phase"] = "STOP"
-                operation.gate.write(operation.value)
-                return
-
-    watcher = threading.Thread(target=monitor, name="sportsbet-response-monitor", daemon=True)
+        except Exception:
+            lost_observation()
+            raise
 
     def quit():
         nonlocal closed
         if closed:
             return
         closed = True
-        stopping.set()
-        watcher.join()
+        expected_disconnect.set()
         try:
-            drain()
+            quit_driver()
+        except BaseException:
+            operation.failed = True
+            stop_owned_processes(owner_pid, owner_birth, descendants)
+            raise
         finally:
             try:
-                quit_driver()
+                connection._ws.close()
+                connection.close()
+                events.join()
+                events.put(None)
+                watcher.join()
             except BaseException:
                 operation.failed = True
+                stop_owned_processes(owner_pid, owner_birth, descendants)
                 raise
             finally:
-                admission.__exit__(None, None, None)
+                with state_lock:
+                    admission.__exit__(None, None, None)
 
     driver.get, driver.get_log, driver.quit = get, logs, quit
-    watcher.start()
     return driver

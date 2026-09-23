@@ -33,8 +33,8 @@ class Control:
             self.active[args[0]] = command == 'start'
         elif command == 'is-enabled':
             return self.enabled[args[0]] + '\n'
-        elif command == 'disable':
-            self.enabled[args[0]] = 'disabled'
+        elif command in {'enable', 'disable'}:
+            self.enabled[args[0]] = 'enabled' if command == 'enable' else 'disabled'
         elif command == 'show':
             return 'LastTriggerUSecMonotonic=0\nNextElapseUSecMonotonic=0\nNextElapseUSecRealtime=0\nActiveState=active\n'
         elif command != 'daemon-reload':
@@ -64,7 +64,7 @@ else:
     supervisor.restore(package, plan, control)
     assert json.loads((package / 'restored.json').read_bytes())['hashes'] == plan['baseline_unit_sha256']
     from utils.sportsbet_access import SportsbetAccess
-    if SportsbetAccess(plan['sportsbet_access_state']).blocks_restoration():
+    if SportsbetAccess(plan['sportsbet_access_state']).blocks_restoration() or not plan.get('baseline_source_coordination_verified'):
         assert not any(control.active.values())
         assert set(control.enabled.values()) == {'disabled'}
         assert json.loads((package / 'restored.json').read_bytes())['status'] == 'RESTORED_COLLECTOR_TRIGGERS_HELD'
