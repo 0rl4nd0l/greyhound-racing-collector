@@ -283,6 +283,17 @@ print('BOTH_ALIASES_VERIFIED')
         assert metrics["browser_navigation_attempts"] == 2
         assert metrics["observed_provider_requests"] == 2
         assert metrics["observed_other_requests"] == 0
+        if campaign:
+            second = json.loads(json.dumps(data).replace("Race 9", "Race 10").replace("race-9-", "race-10-").replace("/9/", "/10/").replace('"race_number": 9', '"race_number": 10'))
+            fixture.write_text(json.dumps(second))
+            next_capture = subprocess.run([sys.executable, "-c", launcher, *odds_command], cwd=odds_cwd, env=env, text=True, capture_output=True, timeout=60)
+            assert next_capture.returncode == 0, next_capture.stdout + next_capture.stderr
+            all_claims = allowance.claims()
+            assert len(all_claims) == 2
+            with sqlite3.connect(db) as conn:
+                assert conn.execute("SELECT COUNT(*) FROM live_odds").fetchone()[0] == 16
+            with campaign.ledger() as ledger:
+                assert len(ledger["attempts"]) == 2 and ledger["logical_requests"] == 4
 
     else:
         assert rows == [], log
