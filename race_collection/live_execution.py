@@ -68,6 +68,7 @@ def configure_profile_execution(contract_path):
             str(path)
         )
     os.environ["GREYHOUND_LIVE_EXECUTION"] = "bounded80-v1"
+    os.environ["GREYHOUND_LIVE_CONTRACT"] = str(contract_path)
     os.environ["GREYHOUND_RUNTIME_MANIFEST"] = str(manifest)
     global _installer_guard_installed
     if not _installer_guard_installed:
@@ -129,6 +130,18 @@ class BrowserNetworkAccounting:
             self.value["blocked_navigation"] = host
             self.write(self.output, self.value)
             raise ValueError("unexpected_browser_navigation")
+        contract = os.environ.get("GREYHOUND_LIVE_CONTRACT")
+        if contract:
+            from datetime import datetime, timezone
+            from race_collection.live_freshness_contract import FreshnessContract
+            scope = FreshnessContract.load(contract)
+            scope.admit(datetime.now(timezone.utc), seconds=0)
+            if scope.campaign:
+                try:
+                    scope.campaign.request()
+                except ValueError:
+                    scope.stop("CAMPAIGN_REQUEST_CAP_EXHAUSTED")
+                    raise
         self.value["browser_navigation_attempts"] += 1
         self.write(self.output, self.value)
         try:

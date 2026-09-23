@@ -726,9 +726,28 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                     checkpoint.value["pending"][0] = replacement
             if scope and kind == "capture":
                 # Reservation is consumed before subprocess launch, even if launch fails.
-                inputs["reservation_path"] = str(
-                    allowance.reserve(inputs, now=daemon.wall_clock_now())
-                )
+                try:
+                    # Fund the entire bounded capture, including child startup, before
+                    # consuming. A stale queued item never becomes a later window.
+                    allowance.check_window(inputs, now=daemon.wall_clock_now(), required_seconds=50)
+                    inputs["reservation_path"] = str(
+                        allowance.reserve(inputs, now=daemon.wall_clock_now())
+                    )
+                except ValueError as error:
+                    if str(error) not in {
+                        "capture_reservation_expired", "capture_reservation_not_open",
+                        "capture_window_insufficient_time",
+                    }:
+                        raise
+                    checkpoint.value["pending"].pop(0)
+                    checkpoint.value.setdefault("exclusions", []).append({
+                        "race_id": inputs["race_id"],
+                        "capture_window_minutes": inputs["capture_window_minutes"],
+                        "reason": str(error),
+                        "observed_at": daemon.wall_clock_now().isoformat(),
+                    })
+                    atomic_json(checkpoint.path, checkpoint.value)
+                    return "excluded"
             started = time.monotonic()
             record = checkpoint.begin(kind, inputs, daemon.wall_clock_now().isoformat())
             phase_id = f"{run_id}_phase_{record['number']}"

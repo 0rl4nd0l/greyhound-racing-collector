@@ -59,11 +59,18 @@ class FreshnessContract:
         if (
             local_start.date().isoformat() != value["source_date"]
             or local_end.date() != local_start.date()
-            or value["cleanup_seconds"] != 1200
-            or local_end + timedelta(seconds=1200) > cutoff
+            or value["cleanup_seconds"] != (1860 if value.get("campaign_root") else 1200)
+            or local_end + timedelta(seconds=value["cleanup_seconds"]) > cutoff
         ):
             raise ValueError("one_date_scope_required")
-        if value["max_capture_attempts"] != 1 or not 0 < value["max_logical_requests"] <= 24000:
+        self.campaign = None
+        if value.get("campaign_root"):
+            from race_collection.freshness_campaign import Campaign
+            self.campaign = Campaign(value["campaign_root"])
+            if digest(self.campaign.value) != value["campaign_authorization_sha256"]:
+                raise ValueError("campaign_authorization_changed")
+        if (value["max_capture_attempts"] != (12 if self.campaign else 1)
+                or not 0 < value["max_logical_requests"] <= (48000 if self.campaign else 24000)):
             raise ValueError("invalid_scope_allowance")
         for key in ("lock_path", "evidence_root", "db_path"):
             if not Path(value[key]).is_absolute():
@@ -94,6 +101,8 @@ class FreshnessContract:
             != self.value["source_date"]
         ):
             raise ValueError("one_date_scope_required")
+        if self.campaign:
+            self.campaign.admit(self.value["rehearsal_id"], now + timedelta(seconds=seconds))
         if (self.session / "STOP.json").exists():
             raise ValueError("operating_scope_stopped")
 
@@ -141,7 +150,7 @@ class AttemptAllowance:
 
     def available(self):
         self._accounting()
-        return not self.claim.exists()
+        return self.scope.campaign.available() if self.scope.campaign else not self.claim.exists()
 
     @staticmethod
     def key(item):
@@ -154,22 +163,50 @@ class AttemptAllowance:
     def consumed(self, item):
         key = self.key(item)
         keys = {(alias, key[1]) for alias in item.get("race_id_aliases", [key[0]])} | {key}
+        if self.scope.campaign:
+            with self.scope.campaign.ledger() as ledger:
+                if any(row["window"] == key[1] and any((alias, key[1]) in keys for alias in row["aliases"])
+                       for row in ledger["attempts"]):
+                    return True
         return any(self.key(row) in keys for row in self._accounting()["consumed"]) or any(
             (self.scope.root / "windows" / (digest(list(candidate)) + ".json")).exists()
             for candidate in keys
         )
 
+    @staticmethod
+    def check_window(item, *, now, required_seconds=0):
+        """Planner opens at target; the original next-window boundary is exclusive."""
+        _, window = AttemptAllowance.key(item)
+        jump = datetime.fromisoformat(item["race_identity"]["jump_datetime"])
+        opens = jump - timedelta(minutes=window)
+        closes = jump - timedelta(minutes=max((w for w in (60, 30, 10, 2) if w < window), default=0))
+        if now.utcoffset() is None or jump.utcoffset() is None:
+            raise ValueError("capture_window_timezone_required")
+        if now < opens:
+            raise ValueError("capture_reservation_not_open")
+        if now >= closes:
+            raise ValueError("capture_reservation_expired")
+        if now + timedelta(seconds=required_seconds) >= closes:
+            raise ValueError("capture_window_insufficient_time")
+        return closes
+
     def reserve(self, item, *, now):
         self.scope.admit(now, seconds=155)
         if not self.available() or self.consumed(item):
             raise ValueError("capture_allowance_consumed")
+        closes = self.check_window(item, now=now)
         claim = {
+            "expires_at": closes.isoformat(),
             "schema_version": "freshness_capture_reservation_v1",
             "contract_sha256": digest(self.scope.value),
             "item": item,
             "reserved_at": now.isoformat(),
             "status": "CONSUMED",
         }
+        if self.scope.campaign:
+            import uuid
+            self.claim = self.scope.session / "captures" / uuid.uuid4().hex / "capture-reservation.json"
+            self.scope.campaign.consume(self.claim, item)
         create_once(self.claim, claim)
         # If this second write fails, the session is still spent; never substitute.
         key = self.key(item)
@@ -177,6 +214,24 @@ class AttemptAllowance:
         for candidate in sorted(keys):
             create_once(self.scope.root / "windows" / (digest(list(candidate)) + ".json"), claim)
         return self.claim
+
+    def claims(self):
+        if self.scope.campaign:
+            return sorted(self.scope.session.glob("captures/*/capture-reservation.json"))
+        return [self.claim] if self.claim.exists() else []
+
+    def select_claim(self, path):
+        candidate = Path(path).resolve()
+        if self.scope.campaign:
+            if (candidate.parent.parent != (self.scope.session / "captures").resolve()
+                    or candidate.name != "capture-reservation.json"):
+                raise ValueError("capture_reservation_path_mismatch")
+            with self.scope.campaign.ledger() as ledger:
+                if not any(row["claim"] == str(candidate) for row in ledger["attempts"]):
+                    raise ValueError("capture_campaign_reservation_missing")
+            self.claim = candidate
+        elif candidate != self.claim.resolve():
+            raise ValueError("capture_reservation_path_mismatch")
 
     def bind_capture_plan(self, claim_path, plan):
         """Authenticate a native planner alias, then carry the reserved canonical ID.
@@ -188,8 +243,7 @@ class AttemptAllowance:
         from race_collection.synchronous_manual_capture import runner_set_sha256
         from utils.runner_completeness import normalise_runner_name
 
-        if Path(claim_path).resolve() != self.claim.resolve():
-            raise ValueError("capture_reservation_path_mismatch")
+        self.select_claim(claim_path)
         claim = json.loads(self.claim.read_bytes())
         if claim["contract_sha256"] != digest(self.scope.value):
             raise ValueError("capture_reservation_identity_changed")
@@ -250,8 +304,7 @@ class AttemptAllowance:
         return {**plan, "races": [item]}
 
     def start_fetch(self, claim_path, item, *, now):
-        if Path(claim_path).resolve() != self.claim.resolve():
-            raise ValueError("capture_reservation_path_mismatch")
+        self.select_claim(claim_path)
         claim = json.loads(self.claim.read_bytes())
         if claim["contract_sha256"] != digest(self.scope.value) or self.key(
             claim["item"]
@@ -270,14 +323,14 @@ class AttemptAllowance:
         if expected["jump_datetime"] != actual_jump:
             raise ValueError("capture_reservation_jump_changed")
         self.scope.admit(now, seconds=50)
+        self.check_window(claim["item"], now=now)
         create_once(
             self.claim.with_suffix(".fetch.json"),
             {"started_at": now.isoformat(), "reservation_sha256": digest(claim)},
         )
 
     def finish(self, claim_path, result):
-        if Path(claim_path).resolve() != self.claim.resolve():
-            raise ValueError("capture_reservation_path_mismatch")
+        self.select_claim(claim_path)
         create_once(self.claim.with_suffix(".terminal.json"), {"result": result})
 
 
@@ -332,6 +385,12 @@ def install_request_guard(scope):
             if count >= scope.value["max_logical_requests"]:
                 scope.stop("REQUEST_CAP_EXHAUSTED")
                 raise ValueError("request_cap_exhausted")
+            if scope.campaign:
+                try:
+                    scope.campaign.request()
+                except ValueError:
+                    scope.stop("CAMPAIGN_REQUEST_CAP_EXHAUSTED")
+                    raise
             network[category] += 1
             network["by_host"][host] = network["by_host"].get(host, 0) + 1
             atomic_json(network_path, network)

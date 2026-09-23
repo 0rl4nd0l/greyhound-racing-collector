@@ -2710,7 +2710,7 @@ def execute_capture_plan(
         if live_freshness_contract is not None:
             from race_collection.live_freshness_contract import FreshnessContract, AttemptAllowance
             allowance = AttemptAllowance(FreshnessContract.load(live_freshness_contract))
-            allowance.start_fetch(live_capture_reservation, item, now=fetch_time)
+            allowance.start_fetch(live_capture_reservation, item, now=time_provider())
         attempt["status"] = "FETCH_IN_PROGRESS"
         attempt["fetch_timeout_seconds"] = fetch_timeout_seconds
         flush_attempt_progress(progress_dir, attempts=attempts, active_attempt=attempt)
@@ -2722,7 +2722,7 @@ def execute_capture_plan(
                 item.get("race_date"),
                 allow_auto_scrape_odds=True,
                 timeout_seconds=fetch_timeout_seconds,
-                **({"request_metrics_path": allowance.scope.session / "capture-requests.json"}
+                **({"request_metrics_path": (allowance.claim.with_suffix(".requests.json") if allowance.scope.campaign else allowance.scope.session / "capture-requests.json")}
                    if live_freshness_contract is not None else {}),
             )
         except FetchTimeoutError as exc:

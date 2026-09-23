@@ -14,7 +14,7 @@ import subprocess
 import sys
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -108,15 +108,17 @@ def restore(output, plan, control, *, clock=time.monotonic, sleep=time.sleep):
         sleep(1)
     try:
         closes = None
-        if claim.exists():
+        claims = list(claim.parent.glob("captures/*/capture-reservation.json")) if plan.get("campaign_root") else ([claim] if claim.exists() else [])
+        for claim in claims:
             from scripts.autonomous_live_odds_capture import capture_window_bounds
 
             item = json.loads(claim.read_bytes())["item"]
             _, window = AttemptAllowance.key(item)
-            _, closes = capture_window_bounds(
+            _, boundary = capture_window_bounds(
                 jump_datetime=datetime.fromisoformat(item["race_identity"]["jump_datetime"]),
                 capture_window_minutes=window,
             )
+            closes = max(closes, boundary) if closes else boundary
             if closes.utcoffset() is None:
                 raise ValueError("ambiguous_reserved_window")
     except (ValueError, KeyError, TypeError) as error:
@@ -335,8 +337,8 @@ def window_accounting(rows, exclusions, claim, end):
         if row.get("status") == "READY_TO_CAPTURE":
             eligible[(row["race_id"], row["capture_window_minutes"])] = row
     attempted = set()
-    if claim.exists():
-        item = json.loads(claim.read_bytes())["item"]
+    for path in ([claim] if isinstance(claim, Path) and claim.exists() else (claim if isinstance(claim, list) else [])):
+        item = json.loads(path.read_bytes())["item"]
         attempted.add((item["race_id"], item["capture_window_minutes"]))
     excluded = {(row["race_id"], row.get("capture_window_minutes")) for row in exclusions}
     missed = []
@@ -386,15 +388,16 @@ def observe(output, plan, control, scope):
         if (scope.session / "STOP.json").exists():
             raise ValueError("candidate_scope_stopped")
         allowance = AttemptAllowance(scope)
-        if (
-            allowance.claim.with_suffix(".terminal.json").exists()
-            and not (output / "capture-receipt-verification.json").exists()
-        ):
+        for claim in allowance.claims():
+            verification = (output / "capture-verifications" / (claim.parent.name + ".json")
+                            if scope.campaign else output / "capture-receipt-verification.json")
+            if not claim.with_suffix(".terminal.json").exists() or verification.exists():
+                continue
             from race_collection.manual_prediction_collector_request import (
                 ManualPredictionCollectorProtocol,
             )
 
-            item = json.loads(allowance.claim.read_bytes())["item"]
+            item = json.loads(claim.read_bytes())["item"]
             handoff = ManualPredictionCollectorProtocol(
                 evidence / "manual_prediction_collector_requests_v1"
             ).discover_collector_exact_handoff(
@@ -403,7 +406,7 @@ def observe(output, plan, control, scope):
             if handoff is None:
                 raise ValueError("native_capture_receipt_unavailable")
             create_once(
-                output / "capture-receipt-verification.json",
+                verification,
                 {
                     "status": "NATIVE_HANDOFF_VERIFIED",
                     "race_id": item["race_id"],
@@ -423,6 +426,8 @@ def observe(output, plan, control, scope):
                 continue
             value = json.loads(checkpoint.read_bytes())
             report = json.loads(terminal.read_bytes())
+            window_rows.extend(value.get("window_observations", []))
+            exclusions.extend(value.get("exclusions", []))
             if report["runtime_action"] not in {
                 "LIVE_COLLECTION_COMPLETE",
                 "DEFERRED_LOCK_HELD",
@@ -434,8 +439,6 @@ def observe(output, plan, control, scope):
             if report["runtime_action"] == "LIVE_COLLECTION_COMPLETE":
                 completed[lane].add(value["cycle_id"])
             waits.append(report["timing"]["lock_wait_seconds"])
-            window_rows.extend(value.get("window_observations", []))
-            exclusions.extend(value.get("exclusions", []))
         age_from_start = (now() - start).total_seconds()
         try:
             current = sample(plan, output, control)
@@ -466,6 +469,11 @@ def observe(output, plan, control, scope):
             if capture_requests.exists()
             else {"browser_navigation_attempts": 0, "subresource_requests": "UNMEASURED"}
         )
+        if scope.campaign:
+            with scope.campaign.ledger() as ledger:
+                current["campaign_logical_requests"] = ledger["logical_requests"]
+            current["capture_requests"] = [json.loads(path.read_bytes()) for path in
+                scope.session.glob("captures/*/capture-reservation.requests.json")]
         # Preserve the failing observation before assessing it.
         atomic_json(output / "samples" / f"{samples:06d}.json", current)
         samples += 1
@@ -523,7 +531,7 @@ def observe(output, plan, control, scope):
                 "python_network": current["python_network"],
                 "timer_accounting": timer_accounting.summary(now()),
                 "windows": window_accounting(
-                    window_rows, exclusions, AttemptAllowance(scope).claim, now()
+                    window_rows, exclusions, AttemptAllowance(scope).claims(), now()
                 ),
             },
         )
@@ -533,16 +541,15 @@ def observe(output, plan, control, scope):
     if not all(external_overheads.values()):
         raise ValueError("external_completion_timing_unmeasured")
     allowance = AttemptAllowance(scope)
-    terminal = allowance.claim.with_suffix(".terminal.json")
-    captured = (
-        terminal.exists()
-        and json.loads(terminal.read_bytes())["result"]
-        .get("autonomous_live_odds_capture_status", {})
-        .get("status")
-        == "AUTONOMOUS_LIVE_ODDS_CAPTURE_APPENDED"
-    )
-    if not captured or not (output / "capture-receipt-verification.json").exists():
-        raise ValueError("single_capture_not_demonstrated")
+    captures = [path for path in allowance.claims()
+                if path.with_suffix(".terminal.json").exists()
+                and json.loads(path.with_suffix(".terminal.json").read_bytes())["result"]
+                .get("autonomous_live_odds_capture_status", {}).get("status")
+                == "AUTONOMOUS_LIVE_ODDS_CAPTURE_APPENDED"]
+    verified = (list((output / "capture-verifications").glob("*.json")) if scope.campaign
+                else list(output.glob("capture-receipt-verification.json")))
+    if len(captures) < (3 if scope.campaign else 1) or len(verified) != len(captures):
+        raise ValueError("required_distinct_captures_not_demonstrated")
     atomic_json(
         output / "measurement.json",
         {
@@ -556,11 +563,11 @@ def observe(output, plan, control, scope):
                 key: max(value) for key, value in external_overheads.items()
             },
             "timer_accounting": timer_accounting.summary(end),
-            "windows": window_accounting(window_rows, exclusions, allowance.claim, end),
+            "windows": window_accounting(window_rows, exclusions, allowance.claims(), end),
             "logical_requests": current["logical_requests"],
             "python_network": current["python_network"],
             "capture_requests": current["capture_requests"],
-            "capture_count": 1,
+            "capture_count": len(captures),
             "throughput_validated": False,
         },
     )
@@ -593,6 +600,17 @@ def execute(plan_path, expected_digest, approval_id):
     runtime = verify_runtime(plan)
     if runtime["prefix"] != sys.prefix:
         raise ValueError("executor_must_use_pinned_python_environment")
+    campaign = None
+    campaign_owner = None
+    if plan.get("campaign_root"):
+        import fcntl
+        from race_collection.freshness_campaign import Campaign
+        campaign = Campaign(plan["campaign_root"])
+        if digest(campaign.value) != plan["campaign_authorization_sha256"]:
+            raise ValueError("campaign_authorization_changed")
+        # A single owner across packages and launches, held through restoration.
+        campaign_owner = (campaign.root / "owner.lock").open("a")
+        fcntl.flock(campaign_owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
     control = SystemdControl()
     snapshot(output, plan, control)
     paused = False
@@ -606,6 +624,10 @@ def execute(plan_path, expected_digest, approval_id):
         sig: signal.signal(sig, interrupted) for sig in (signal.SIGINT, signal.SIGTERM)
     }
     try:
+        # Pause triggers first; existing owners drain naturally.
+        paused = True
+        for timer in TIMERS:
+            control.command("stop", timer)
         while now() < start:
             if control.idle() and not Path(plan["lock_path"]).exists():
                 paused = True
@@ -622,10 +644,6 @@ def execute(plan_path, expected_digest, approval_id):
                         break
                     release_owned_collector_lock(owned)
                     owned = None
-                for timer in TIMERS:
-                    if json.loads((output / "restoration.json").read_bytes())["active"][timer]:
-                        control.command("start", timer)
-                paused = False
             time.sleep(1)
         if owned is None:
             raise ValueError("natural_quiescence_not_reached")
@@ -655,6 +673,8 @@ def execute(plan_path, expected_digest, approval_id):
                 "runtime_sha256",
             )
         }
+        if plan.get("campaign_root"):
+            contract.update({key: plan[key] for key in ("campaign_root", "campaign_authorization_sha256")})
         contract.update(
             schema_version="freshness_rehearsal_contract_v1",
             source_date=accounting["source_date"],
@@ -681,6 +701,9 @@ def execute(plan_path, expected_digest, approval_id):
             time.sleep(min(1, (start - now()).total_seconds()))
         if (now() - start).total_seconds() > 5:
             raise ValueError("start_dispatch_late")
+        if campaign:
+            campaign.begin(plan["rehearsal_id"], now=now(),
+                           deadline=datetime.fromisoformat(plan["ends_at"]) + timedelta(seconds=plan["cleanup_seconds"]))
         for timer in TIMERS:
             control.command("start", timer)
         observe(output, plan, control, scope)
@@ -701,6 +724,12 @@ def execute(plan_path, expected_digest, approval_id):
         # Restore even on acquisition failure; never restart the rehearsal.
         if paused:
             restore(output, plan, control)
+        if campaign:
+            with campaign.ledger() as ledger:
+                begun = plan["rehearsal_id"] in ledger["launches"]
+            if begun:
+                campaign.close(plan["rehearsal_id"], now=now())
+            campaign_owner.close()
         for sig, handler in previous_handlers.items():
             signal.signal(sig, handler)
 

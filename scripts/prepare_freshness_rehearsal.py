@@ -22,7 +22,7 @@ UNITS = (
 )
 
 
-def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir):
+def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None):
     output = output.absolute()
     output.mkdir(parents=True, exist_ok=False)
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
@@ -112,7 +112,13 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         name: hashlib.sha256((installed_dir / name).read_bytes()).hexdigest()
         for name in (*UNITS, "greyhound-operator-ui-r3.service")
     }
+    campaign = None
+    if campaign_root is not None:
+        from race_collection.freshness_campaign import Campaign
+        campaign = Campaign(campaign_root)
     plan = {
+        **({"campaign_root": str(campaign.root),
+            "campaign_authorization_sha256": digest(campaign.value)} if campaign else {}),
         "schema_version": "freshness_scheduled_rehearsal_plan_v1",
         "status": "PREPARED_NOT_AUTHORIZED",
         "rehearsal_id": output.name,
@@ -127,14 +133,14 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         "starts_at": start.isoformat(),
         "ends_at": (start + timedelta(minutes=90)).isoformat(),
         "admission_starts_at": (start - timedelta(minutes=30)).isoformat(),
-        "cleanup_seconds": 1200,
+        "cleanup_seconds": 1860 if campaign else 1200,
         "sample_period_seconds": 2,
         "max_sample_gap_seconds": 5,
         "readiness_warmup_seconds": 1200,
         "first_index_deadline_seconds": 180,
         "profile": "bounded80-v1",
-        "max_capture_attempts": 1,
-        "max_logical_requests": 24000,
+        "max_capture_attempts": 12 if campaign else 1,
+        "max_logical_requests": 48000 if campaign else 24000,
         "capture_allowance": "PENDING_QUIESCENT_RECONCILIATION",
         "evidence_root": str(evidence),
         "lock_path": str(lock),
@@ -172,6 +178,7 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--campaign-root", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--start", required=True)
     parser.add_argument("--python", type=Path, required=True)
@@ -183,6 +190,7 @@ def main():
     print(
         json.dumps(
             prepare(
+                campaign_root=args.campaign_root,
                 output=args.output,
                 start=datetime.fromisoformat(args.start),
                 python=args.python,
