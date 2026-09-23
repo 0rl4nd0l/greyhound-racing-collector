@@ -545,9 +545,11 @@ def fetch_odds_for_target_race(
             summary["warnings"].append("race found but no win odds extracted")
         return summary
     finally:
-        if network_accounting is not None:
-            network_accounting.drain()
-        integrator.close_driver()
+        try:
+            if network_accounting is not None:
+                network_accounting.drain()
+        finally:
+            integrator.close_driver()
 
 
 def ensure_odds_for_target_race(
