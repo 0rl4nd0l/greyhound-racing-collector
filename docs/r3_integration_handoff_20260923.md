@@ -123,8 +123,67 @@ runner hash, run, refresh hash, publication hash, jump, service binding, stale o
 future observation and unverified index remain rejected. Altered refresh bytes
 remain rejected by the native index reader.
 
-Final commit, independent review, executed test totals, package checks and
-preservation comparison are recorded with the completed PR validation evidence.
+Tested implementation commit:
+`d5705e4f486bf8a8e638784d6da1552b3fe9c7bb`. Subsequent handoff/evidence edits
+are documentation only. Machine summary:
+[r3_integration_validation_20260923.json](r3_integration_validation_20260923.json).
+
+Executed with the existing pinned R3 Python 3.11.15 interpreter and a test audit
+guard denying network and non-fixture data reads:
+
+| Check | Executed result |
+| --- | --- |
+| Affected predictor, journal, JobStore, worker, bootstrap, deployment, retention and collector suites | **956 passed, 2 deselected**, 104.90 seconds |
+| Standalone exported source, real consumer/admission/result-binding and generated-package checks | **80 passed, 119 deselected**, 17.48 seconds; deselections are the explicit focused package selection |
+| Local combination with PR #184 head `fe3d984a`, tree `6546b4179c91846246a000d54b4bd1bd4ce45a3f` | Automatic merge without conflicts; **341 passed, 2 deselected**, 12.05 seconds; this is an isolated uncommitted compatibility tree, not a PR merge |
+| Independent verifier regression rerun | **2 passed**, 1.87 seconds |
+| Source formatting/integrity | `git diff --check` passed; no frozen model, feature schema or prediction-config changes |
+
+The two full-suite exclusions are
+`test_autopilot_default_min_joined_races_matches_review_target` and
+`test_autonomous_live_odds_capture_runs_before_daily_shadow_run`. Both were
+independently reproduced against exact baseline `89d22067`: stale assertions
+expect refresh limit 8 while baseline already uses 16. They were not silently
+fixed or counted as passing. This is focused regression coverage, not a claim
+that the entire repository suite passed.
+
+Retained failed evidence includes the initial handoff/consumer regressions,
+the review verifier reproductions, an earlier collector-environment startup
+failure (`flask_compress`, later passed with the installed R3 interpreter),
+three fixture-isolation failures corrected without relaxing the test guard,
+and an initial export-harness failure missing `accuracy_program` Python modules.
+The corrected export contains 1,018 regular code/config/test files plus one
+internal wrapper symlink; no raw historical or outcome fixtures. Archive SHA256:
+`53b7248d01171c358e539d2034d727de669cb43d914c92bdbd87de23f3e405e6`.
+Logs, the export script, per-file hashes and both reviewed revisions are retained
+under `/home/l4nd0/greyhound-r3-integration-evidence-20260923/`.
+
 Synthetic transport/scoring establishes orchestration and provenance only. No
 live source availability, throughput, prediction quality or eventual official
 result delivery is claimed.
+
+## Standards
+
+Independent review found zero documented violations and zero actionable smell
+findings at the initial implementation and corrective revision. Reviewers
+inspected repository guidance, relevant ADRs, source and synthetic tests.
+
+## Spec
+
+Independent review found one P2 issue: an outer producer could reseal rejected
+or chronologically invalid retention completion metadata while preserving the
+pinned retained manifest. The repair shares the complete metadata validator
+between consumption and independent indexed verification. Both exact attacks
+now reject; the reviewer reran them. Zero unresolved Spec findings remain.
+
+Review totals: Standards **0**; Spec **1 found and fixed, 0 unresolved**.
+
+## Campaign preservation
+
+The preservation comparison found identical prepared archive/plan, launch
+script, installed collector/R3 unit bytes and R3 binding. Both collector
+services stayed inactive, timers disabled, and R3 remained the same running PID.
+Campaign ledger bytes are unchanged: **1/12 attempts, 405/48,000 requests,
+721.058807/10,800 charged seconds**. No launch was armed, source recovery used,
+provider contacted, real prediction made, retention/journal activated, runtime
+installed or PR merged. The separate draft PR is the only publication.
