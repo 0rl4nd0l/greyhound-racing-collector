@@ -1001,6 +1001,7 @@ def test_run_once_repeated_odds_priority_cannot_starve_full_primary(
     )
 
     monkeypatch.setattr(daemon, "ROOT", tmp_path)
+    monkeypatch.setattr(daemon, "protected_hashes", lambda: {})
     monkeypatch.setattr(daemon, "copy_if_exists", lambda source, dest: None)
     monkeypatch.setattr(
         daemon,
@@ -1220,6 +1221,9 @@ def test_run_once_non_deferred_validates_run_owned_service_files(
     args = daemon.parse_args(
         [
             "run-once",
+            "--state-path", str(tmp_path / "runtime/daemon_state.json"),
+            "--odds-capture-state-path", str(tmp_path / "runtime/odds_state.json"),
+            "--db", str(tmp_path / "fixture.db"),
             "--enable-autonomous-result-capture", "--skip-shadow-run",
             "--r3-job-store", str(tmp_path / "r3-jobs.db"),
             "--r3-prediction-bundles", str(tmp_path / "r3-bundles"),
@@ -1828,6 +1832,7 @@ def test_run_once_lock_held_surfaces_latest_odds_capture_state(tmp_path, monkeyp
     )
 
     monkeypatch.setattr(daemon, "ROOT", tmp_path)
+    monkeypatch.setattr(daemon, "protected_hashes", lambda: {})
     monkeypatch.setattr(daemon, "copy_if_exists", lambda source, dest: None)
     monkeypatch.setattr(
         daemon,

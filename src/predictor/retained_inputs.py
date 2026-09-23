@@ -47,6 +47,26 @@ def _read(root, relative):
     return raw
 
 
+def _validate_retention_metadata(manifest, completion, *, expected_manifest_sha256,
+                                 race_id, jump, now):
+    """One completion contract for both consumption and independent verification."""
+    cutoff = datetime.fromisoformat(manifest["prediction_cutoff"])
+    sealed_at = datetime.fromisoformat(completion["inputs_sealed_at"])
+    if (manifest["schema_version"] != "prospective_input_retention_v1"
+            or manifest["status"] != "INPUTS_PENDING_COMPLETION"
+            or manifest["race_id"] != race_id
+            or datetime.fromisoformat(manifest["jump_at"]) != jump
+            or not datetime.fromisoformat(manifest["source_observed_at"])
+            <= datetime.fromisoformat(manifest["capture_started_at"])
+            <= datetime.fromisoformat(manifest["capture_completed_at"])
+            <= sealed_at <= now < cutoff < jump
+            or completion["status"] != "INPUTS_RETAINED_NOT_QUALIFIED"
+            or completion["manifest_sha256"] != expected_manifest_sha256
+            or set(manifest["files"]) != REQUIRED_ROLES):
+        raise ValueError("retained identity or timing")
+    return cutoff, sealed_at
+
+
 def consume_retained_inputs(*, root, expected_manifest_sha256, bundle, race_id, jump,
                             now, model, config_sha256, ready_receipt, repository_root):
     """Copy verified bytes once; never open the original source/history paths."""
@@ -58,17 +78,10 @@ def consume_retained_inputs(*, root, expected_manifest_sha256, bundle, race_id, 
         manifest = json.loads(manifest_raw)
         completion_raw = _read(root, "completion.json")
         completion = json.loads(completion_raw)
-        cutoff = datetime.fromisoformat(manifest["prediction_cutoff"])
-        if (manifest["schema_version"] != "prospective_input_retention_v1"
-                or manifest["race_id"] != race_id or datetime.fromisoformat(manifest["jump_at"]) != jump
-                or not datetime.fromisoformat(manifest["source_observed_at"])
-                <= datetime.fromisoformat(manifest["capture_started_at"])
-                <= datetime.fromisoformat(manifest["capture_completed_at"])
-                <= datetime.fromisoformat(completion["inputs_sealed_at"]) <= now < cutoff < jump
-                or completion["status"] != "INPUTS_RETAINED_NOT_QUALIFIED"
-                or completion["manifest_sha256"] != expected_manifest_sha256
-                or set(manifest["files"]) != REQUIRED_ROLES):
-            raise ValueError("retained identity or timing")
+        cutoff, _ = _validate_retention_metadata(
+            manifest, completion, expected_manifest_sha256=expected_manifest_sha256,
+            race_id=race_id, jump=jump, now=now,
+        )
         archive = {"bundle/manifest.json": manifest_raw, "bundle/completion.json": completion_raw}
         if manifest["authorization_config_sha256"] is not None:
             raw = _read(root.parent, "terminal.json")
@@ -169,14 +182,13 @@ def verify_retained_prediction_bundle(contents, result, request):
             raise ValueError("retained manifest binding")
         manifest = json.loads(manifest_raw)
         completion = json.loads(raw["bundle/completion.json"])
-        cutoff = datetime.fromisoformat(manifest["prediction_cutoff"])
-        sealed_at = datetime.fromisoformat(completion["inputs_sealed_at"])
         generated = datetime.fromisoformat(result["generated_at"])
-        if (completion["manifest_sha256"] != request["retained_input_manifest_sha256"]
-                or manifest["race_id"] != result["race"]["race_id"]
-                or datetime.fromisoformat(manifest["jump_at"]) != datetime.fromisoformat(result["race"]["jump_timestamp"])
-                or not sealed_at <= generated < cutoff < datetime.fromisoformat(manifest["jump_at"])):
-            raise ValueError("retained prediction identity")
+        _, sealed_at = _validate_retention_metadata(
+            manifest, completion,
+            expected_manifest_sha256=request["retained_input_manifest_sha256"],
+            race_id=result["race"]["race_id"],
+            jump=datetime.fromisoformat(result["race"]["jump_timestamp"]), now=generated,
+        )
         if manifest["authorization_config_sha256"] is not None:
             terminal = json.loads(raw["terminal.json"])
             if (terminal["status"] != "RETAINED" or terminal["manifest_sha256"] != request["retained_input_manifest_sha256"]

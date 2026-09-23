@@ -241,3 +241,35 @@ def test_real_worker_consumer_finalizer_and_restart_share_retained_identity(reta
     assert restarted.get(job.job_id).input.retained_input_manifest_sha256 == args.retained_input_manifest_sha256
     with pytest.raises(WorkerRejected,match='JOB_NOT_CLAIMABLE'):
         run_once(restarted,job.job_id,worker,now=deps.now,confirm_audit=confirm)
+
+
+@pytest.mark.parametrize('mutation',['rejected_completion','seal_before_completed'])
+def test_indexed_verifier_rejects_resealed_invalid_retention_completion(retained_case, mutation):
+    import io
+    import zipfile
+    from src.predictor.on_demand import build_prediction_bundle_manifest_v2, canonical_bytes, prediction_bundle_index_entry
+    args,deps,_,_,source=retained_case
+    result=predictor.run_prediction(args,deps)
+    bundle=next(path for path in args.output_root.iterdir() if path.is_dir())
+    original_entry=json.loads((args.output_root/'prediction_bundle_index_v1.json').read_bytes())['entries'][0]
+    assert verify_indexed_prediction_bundle(args.output_root,original_entry).result['status']=='PREDICTION_READY'
+    with zipfile.ZipFile(bundle/'retained_inputs.zip') as archive:
+        members={name:archive.read(name) for name in archive.namelist()}
+    completion=json.loads(members['bundle/completion.json'])
+    if mutation == 'rejected_completion':
+        completion['status']='REJECTED'
+    else:
+        completion['inputs_sealed_at']=source.NOW.isoformat()
+    members['bundle/completion.json']=canonical_bytes(completion)
+    rewritten=io.BytesIO()
+    with zipfile.ZipFile(rewritten,'w') as archive:
+        for name,raw in members.items(): archive.writestr(name,raw)
+    (bundle/'retained_inputs.zip').write_bytes(rewritten.getvalue())
+    manifest=build_prediction_bundle_manifest_v2(bundle,prediction_id=result['prediction_id'],job_id=result['job_id'])
+    raw=canonical_bytes(manifest)
+    (bundle/'bundle_manifest.json').write_bytes(raw)
+    entry=prediction_bundle_index_entry(bundle=bundle,result=result,manifest_raw=raw)
+    # The retained manifest and request digest remain unchanged. Recomputing
+    # outer producer hashes cannot qualify an invalid completion receipt.
+    with pytest.raises(PredictionBlocked,match='RETAINED_INPUT_INVALID'):
+        verify_indexed_prediction_bundle(args.output_root,entry)
