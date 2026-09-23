@@ -188,6 +188,34 @@ def _matching_event(
     return matches[0][1], []
 
 
+def usable_recovery_snapshot(url: str, response: Any) -> bool:
+    """Recovery requires current identifiable greyhound metadata on this route.
+
+    An empty schedule is inconclusive, not permission to spend another recovery.
+    Race-specific matching and track checks still run in the existing consumer.
+    """
+    if url.split("?", 1)[0] != SPORTSBET_NEXT_EVENTS_ENDPOINT:
+        return False
+    try:
+        events = response.json()
+        if not isinstance(events, list):
+            return False
+        json.dumps(events, allow_nan=False)
+        now = datetime.now(timezone.utc).timestamp()
+        return any(
+            isinstance(event, Mapping)
+            and _event_is_greyhound(event)
+            and _parse_int(event.get("id")) is not None
+            and (_parse_int(event.get("raceNumber")) or 0) > 0
+            and bool(str(event.get("competitionName") or "").strip())
+            and now < float(event.get("startTime", 0)) < now + 86400 * 2
+            and bool(normalize_track_condition_text(event.get("trackStatus")))
+            for event in events
+        )
+    except (ValueError, TypeError, OverflowError):
+        return False
+
+
 def fetch_sportsbet_next_events_snapshot(*, session: Any = None) -> dict[str, Any]:
     """Fetch one immutable NextEvents payload for one bounded refresh."""
 
