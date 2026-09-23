@@ -487,6 +487,15 @@ def test_rehearsal_failure_restores_exact_pair_and_does_not_reset_consumption(
 
     def fail(*args):
         if reserve_before_failure:
+            run.atomic_json(Path(args[1]["evidence_root"]) / "shadow_autopilot_daemonization_v1_fixture/phase-checkpoint.json", {
+                "window_observations": [{"race_id": "unattempted", "capture_window_minutes": 10,
+                    "jump_datetime": (clock[0] + timedelta(minutes=5)).isoformat(), "status": "READY_TO_CAPTURE"}]
+            })
+            run.atomic_json(Path(args[1]["evidence_root"]) / "shadow_autopilot_daemon_runtime/odds.live-phase-checkpoint.json", {
+                "cycle_id": "interrupted-peer", "status": "RUNNING",
+                "window_observations": [{"race_id": "unattempted-peer", "capture_window_minutes": 10,
+                    "jump_datetime": (clock[0] + timedelta(minutes=6)).isoformat(), "status": "READY_TO_CAPTURE"}]
+            })
             from race_collection.live_freshness_contract import AttemptAllowance
 
             if campaign:
@@ -553,6 +562,10 @@ def test_rehearsal_failure_restores_exact_pair_and_does_not_reset_consumption(
             assert len(ledger["attempts"]) == int(reserve_before_failure)
     if reserve_before_failure:
         assert clock[0] > stamp + timedelta(minutes=8)
+        windows = json.loads((output / "final-window-accounting.json").read_bytes())
+        assert len(windows["pending_at_end"]) == 2
+        assert windows["missed_observed_windows"] == []
+        assert datetime.fromisoformat(windows["observation_ended_at"]) == stamp
     with pytest.raises(FileExistsError):
         run.execute(output / "plan.json", digest(plan), "offline-retry")
 

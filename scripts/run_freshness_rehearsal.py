@@ -358,6 +358,7 @@ def window_accounting(rows, exclusions, claim, end):
         _, closes = capture_window_bounds(jump_datetime=jump, capture_window_minutes=key[1])
         (missed if closes <= end else pending).append(row)
     return {
+        "observation_ended_at": end.isoformat(),
         "eligible_observed_windows": list(eligible.values()),
         "attempted_windows": [
             {"race_id": race, "capture_window_minutes": window}
@@ -742,6 +743,7 @@ def execute(plan_path, expected_digest, approval_id):
         )
         raise
     finally:
+        observation_ended_at = min(now(), datetime.fromisoformat(plan["ends_at"]))
         # A second termination signal must not interrupt exact restoration.
         for sig in previous_handlers:
             signal.signal(sig, signal.SIG_IGN)
@@ -764,12 +766,18 @@ def execute(plan_path, expected_digest, approval_id):
                 signal.signal(sig, handler)
         if scope:
             rows, excluded = [], []
-            for path in Path(plan["evidence_root"]).glob("shadow_autopilot_daemonization_v1_*/phase-checkpoint.json"):
+            evidence = Path(plan["evidence_root"])
+            checkpoints = list(evidence.glob("shadow_autopilot_daemonization_v1_*/phase-checkpoint.json"))
+            checkpoints += list((evidence / "shadow_autopilot_daemon_runtime").glob("*.live-phase-checkpoint.json"))
+            cycles = {}
+            for path in checkpoints:
                 checkpoint = json.loads(path.read_bytes())
+                cycles[checkpoint.get("cycle_id", str(path))] = checkpoint
+            for checkpoint in cycles.values():
                 rows.extend(checkpoint.get("window_observations", []))
                 excluded.extend(checkpoint.get("exclusions", []))
             atomic_json(output / "final-window-accounting.json", window_accounting(
-                rows, excluded, AttemptAllowance(scope).claims(), now()))
+                rows, excluded, AttemptAllowance(scope).claims(), observation_ended_at))
 
 
 def main():
