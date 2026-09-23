@@ -149,8 +149,11 @@ def fetch_odds_for_target_race_with_timeout(
     allow_auto_scrape_odds: bool,
     timeout_seconds: float,
     request_metrics_path: Path | None = None,
+    validate_result=None,
 ) -> dict[str, Any]:
     metrics = {"request_metrics_path": request_metrics_path} if request_metrics_path is not None else {}
+    if validate_result is not None:
+        metrics["validate_result"] = validate_result
     if timeout_seconds <= 0:
         return fetch_odds_for_target_race(
             db_path,
@@ -2723,6 +2726,8 @@ def execute_capture_plan(
                 allow_auto_scrape_odds=True,
                 timeout_seconds=fetch_timeout_seconds,
                 **({"request_metrics_path": (allowance.claim.with_suffix(".requests.json") if allowance.scope.campaign else allowance.scope.session / "capture-requests.json")}
+                   if live_freshness_contract is not None else {}),
+                **({"validate_result": lambda result: validate_fetched_odds(item, result)["status"] == "PASS"}
                    if live_freshness_contract is not None else {}),
             )
         except FetchTimeoutError as exc:

@@ -58,6 +58,11 @@ class SourceCoordinatedSession(requests.Session):
         with SportsbetAccess().operation("python") as operation:
             response = super().send(request, **kwargs)
             operation.response(response.status_code, response.headers)
+            if operation.recovery and 200 <= response.status_code < 300:
+                from utils.prejump_sportsbet import usable_recovery_snapshot
+
+                if usable_recovery_snapshot(request.url, response):
+                    operation.accept_data()
             return response
 
     def close(self):

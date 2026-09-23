@@ -74,7 +74,7 @@ def fixture_data(root, scenario):
         for r in runners
     )
     # A different race returned by the source must fail native capture validation.
-    if scenario == "mismatch":
+    if scenario in {"mismatch", "source_recovery_mismatch"}:
         sportsbet = sportsbet.replace("race-9-", "race-8-")
     return now, dict(
         race=race,
@@ -90,7 +90,7 @@ def fixture_data(root, scenario):
 
 
 @pytest.mark.parametrize("campaign_mode", [False, True])
-@pytest.mark.parametrize("scenario", ["canonical_alias", "mismatch", "interrupted", "delayed_start", "expired_append", "source_denial_full", "source_denial_odds", "source_recovery", "source_denial_python_full", "source_denial_python_odds"])
+@pytest.mark.parametrize("scenario", ["canonical_alias", "mismatch", "interrupted", "delayed_start", "expired_append", "source_denial_full", "source_denial_odds", "source_recovery", "source_recovery_mismatch", "source_denial_python_full", "source_denial_python_odds"])
 def test_actual_packaged_service_capture(tmp_path, scenario, campaign_mode, monkeypatch):
     from scripts.prepare_freshness_rehearsal import prepare, UNITS
     from scripts.check_freshness_service import service_command
@@ -100,7 +100,7 @@ def test_actual_packaged_service_capture(tmp_path, scenario, campaign_mode, monk
 
     access = tmp_path / "sportsbet-access.json"
     SportsbetAccess(access).initialize(access_basis={"status": "permitted", "reference": "fabricated test"})
-    if scenario == "source_recovery":
+    if scenario.startswith("source_recovery"):
         SportsbetAccess(access, clock=lambda: time.time() - 1801).retain_denial(429)
     monkeypatch.setenv("GREYHOUND_SPORTSBET_ACCESS_STATE", str(access))
 
@@ -342,6 +342,9 @@ print('BOTH_ALIASES_VERIFIED')
 
     else:
         assert rows == [], log
+    if scenario == "source_recovery_mismatch":
+        assert SportsbetAccess(access).read()["phase"] == "STOP"
+        assert SportsbetAccess(access).read()["recovery_attempts"] == 1
     if scenario.startswith("source_denial"):
         assert SportsbetAccess(access).read()["phase"] == "COOLDOWN"
         other = "shadow-autopilot.service" if first_unit.endswith("odds-capture.service") else "shadow-autopilot-odds-capture.service"

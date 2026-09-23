@@ -67,6 +67,21 @@ class SportsbetAccess:
             )
             if not valid:
                 raise ValueError("invalid_source_state")
+            policy = value.get("operating_policy")
+            if policy is not None:
+                if not policy.get("reference") or any(
+                    type(policy.get(key)) is not int or not 0 < policy[key] <= ceiling
+                    for key, ceiling in (("python_per_60_seconds", 10),
+                                         ("browser_per_60_seconds", 1),
+                                         ("browser_navigation_cap", 2))
+                ):
+                    raise ValueError("invalid_operating_policy")
+                operations = value.get("operations", [])
+                if not isinstance(operations, list) or any(
+                    row["kind"] not in {"python", "browser"} or not math.isfinite(row["at"])
+                    for row in operations
+                ):
+                    raise ValueError("invalid_operation_accounting")
             return value
         except (OSError, ValueError, TypeError, KeyError, AssertionError) as error:
             raise SportsbetAccessBlocked("sportsbet_access_state_missing_or_invalid") from error
@@ -171,6 +186,21 @@ class SportsbetAccess:
             recovery = value["phase"] == "COOLDOWN"
             if recovery and (self.clock() < value["not_before"] or value["recovery_attempts"]):
                 raise SportsbetAccessBlocked("sportsbet_cooldown")
+            policy = value.get("operating_policy")
+            if policy is not None:
+                now = self.clock()
+                operations = value.setdefault("operations", [])
+                recent = [row for row in operations if row["at"] > now - 60]
+                limit = policy.get(kind + "_per_60_seconds", 0)
+                if (kind not in {"python", "browser"} or len(operations) >= 512
+                        or sum(row["kind"] == kind for row in recent) >= limit
+                        or any(row["at"] > now for row in operations)):
+                    value["phase"] = "STOP"
+                    value["policy_stop"] = {"at": now, "kind": kind,
+                                            "reason": "operating_policy_limit_or_clock"}
+                    self.write(value)
+                    raise SportsbetAccessBlocked("sportsbet_operating_policy_stop")
+                operations.append({"at": now, "kind": kind})
             if recovery:
                 value["recovery_attempts"] += 1
                 value["phase"] = "RECOVERY"
@@ -194,7 +224,14 @@ class SportsbetAccess:
 class SourceOperation:
     def __init__(self, gate, value, recovery):
         self.gate, self.value, self.recovery = gate, value, recovery
-        self.failed = self.success = False
+        self.failed = self.success = self.transport_success = False
+
+    def accept_data(self):
+        """Called only after the route's data checks pass, while still owning it."""
+        self.check()
+        if not self.transport_success:
+            raise SportsbetAccessBlocked("sportsbet_validated_data_without_response")
+        self.success = True
 
     def check(self):
         if self.value["phase"] in {"COOLDOWN", "STOP"}:
@@ -207,6 +244,6 @@ class SourceOperation:
         if status in {401, 403, 429} or (status >= 400 and instructed):
             self.gate._denial(self.value, status, headers, "source_response", observed_at=self.gate.clock())
         elif 200 <= status < 300:
-            self.success = True
+            self.transport_success = True
         elif self.recovery:
             self.failed = True

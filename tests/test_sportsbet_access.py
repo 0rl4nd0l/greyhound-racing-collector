@@ -23,6 +23,7 @@ def test_denial_survives_restart_and_allows_only_one_bounded_recovery(tmp_path):
     with recovered.operation("python") as operation:
         assert operation.recovery
         operation.response(200, {})
+        operation.accept_data()
     with recovered.operation("browser") as operation:
         operation.response(429, {})
     with pytest.raises(SportsbetAccessBlocked):
@@ -269,3 +270,102 @@ def test_http_date_guidance_preserves_server_interval_and_unknown_reset_holds(tm
     assert gate.read()['not_before'] == 11800
     gate.retain_denial(429, {'X-RateLimit-Reset': 'unclear-units'})
     assert gate.read()['phase'] == 'STOP'
+
+@pytest.mark.parametrize('payload', [b'<html>challenge</html>', b'{}', b'[]'])
+def test_python_recovery_requires_usable_next_events(tmp_path, monkeypatch, payload):
+    import time
+    import requests
+    from utils.http_client import SourceCoordinatedSession
+    from utils.prejump_sportsbet import fetch_sportsbet_next_events_snapshot
+    from utils.sportsbet_access import SportsbetAccess
+
+    monkeypatch.setenv('GREYHOUND_SPORTSBET_ACCESS_STATE', str(tmp_path / 'access.json'))
+    gate = SportsbetAccess()
+    gate.initialize(access_basis={'status': 'permitted', 'reference': 'fabricated fixture'})
+    SportsbetAccess(clock=lambda: time.time() - 1801).retain_denial(429)
+    def transport(adapter, request, **kwargs):
+        response = requests.Response()
+        response.status_code = 200
+        response._content = payload
+        response.request = request
+        return response
+    monkeypatch.setattr(requests.adapters.HTTPAdapter, 'send', transport)
+    fetch_sportsbet_next_events_snapshot(session=SourceCoordinatedSession())
+    assert gate.read()['phase'] == 'STOP'
+    assert gate.read()['recovery_attempts'] == 1
+    assert len(gate.read()['denials']) == 1
+
+
+def test_browser_http_success_alone_cannot_complete_recovery(tmp_path, monkeypatch):
+    import time
+    from types import SimpleNamespace
+    from tests.fixtures.freshness_transport.fake_cdp import BrowserTransport
+    from utils.sportsbet_access import SportsbetAccess
+    from utils.sportsbet_browser import create_sportsbet_driver
+
+    monkeypatch.setenv('GREYHOUND_SPORTSBET_ACCESS_STATE', str(tmp_path / 'access.json'))
+    gate = SportsbetAccess()
+    gate.initialize(access_basis={'status': 'permitted', 'reference': 'fabricated fixture'})
+    SportsbetAccess(clock=lambda: time.time() - 1801).retain_denial(429)
+    transport = BrowserTransport()
+    class Driver:
+        service = SimpleNamespace(process=transport.process)
+        def start_devtools(self): return None, transport
+        def get(self, url): transport.response(url, 200)
+        def get_log(self, name): return []
+        def quit(self): transport.quit()
+    driver = create_sportsbet_driver(Driver)
+    try:
+        driver.get('https://www.sportsbet.com.au/fixture')
+    finally:
+        driver.quit()
+    assert gate.read()['phase'] == 'STOP'
+    assert gate.read()['recovery_attempts'] == 1
+
+
+def test_python_recovery_accepts_current_identifiable_metadata(tmp_path, monkeypatch):
+    import time
+    import requests
+    from utils.http_client import SourceCoordinatedSession
+    from utils.prejump_sportsbet import fetch_sportsbet_next_events_snapshot
+    from utils.sportsbet_access import SportsbetAccess
+
+    monkeypatch.setenv('GREYHOUND_SPORTSBET_ACCESS_STATE', str(tmp_path / 'access.json'))
+    gate = SportsbetAccess()
+    gate.initialize(access_basis={'status': 'permitted', 'reference': 'fabricated fixture'})
+    SportsbetAccess(clock=lambda: time.time() - 1801).retain_denial(429)
+    def transport(adapter, request, **kwargs):
+        response = requests.Response()
+        response.status_code = 200
+        response._content = json.dumps([dict(id=123, classId='4', raceNumber=1,
+            competitionName='Sale', startTime=time.time() + 600, trackStatus='Good')]).encode()
+        response.request = request
+        return response
+    monkeypatch.setattr(requests.adapters.HTTPAdapter, 'send', transport)
+    snapshot = fetch_sportsbet_next_events_snapshot(session=SourceCoordinatedSession())
+    assert len(snapshot['events']) == 1
+    assert gate.read()['phase'] == 'OPEN'
+    assert gate.read()['recovery_attempts'] == 1
+
+
+def test_operating_policy_stops_combined_lane_bursts_and_survives_restart(tmp_path):
+    from utils.sportsbet_access import SportsbetAccess, SportsbetAccessBlocked
+    gate = SportsbetAccess(tmp_path / 'access.json', clock=lambda: 1000)
+    gate.initialize(access_basis={'status': 'permitted', 'reference': 'fabricated fixture'})
+    with gate.locked():
+        value = gate.read()
+        value['operating_policy'] = {'reference': 'fabricated bounded trial',
+            'python_per_60_seconds': 2, 'browser_per_60_seconds': 1,
+            'browser_navigation_cap': 2}
+        gate.write(value)
+    for kind in ('python', 'browser', 'python'):
+        with gate.operation(kind):
+            pass
+    with pytest.raises(SportsbetAccessBlocked, match='operating_policy'):
+        with gate.operation('python'):
+            pytest.fail('combined source burst admitted')
+    assert gate.read()['phase'] == 'STOP'
+    assert len(gate.read()['operations']) == 3
+    with pytest.raises(SportsbetAccessBlocked):
+        with SportsbetAccess(gate.path, clock=lambda: 2000).operation('browser'):
+            pytest.fail('policy stop expired on restart')

@@ -432,6 +432,7 @@ def fetch_odds_for_target_race(
     race_date: Any = None,
     allow_auto_scrape_odds: bool | None = None,
     request_metrics_path=None,
+    validate_result=None,
 ) -> dict[str, Any]:
     """Fetch current Sportsbet odds for a target race without writing DB rows."""
 
@@ -543,6 +544,8 @@ def fetch_odds_for_target_race(
         summary["success"] = summary["win_count"] > 0
         if not summary["success"]:
             summary["warnings"].append("race found but no win odds extracted")
+        if validate_result is not None and validate_result(summary):
+            driver.sportsbet_accept_validated_data()
         return summary
     finally:
         try:

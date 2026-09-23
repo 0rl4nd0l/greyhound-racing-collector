@@ -175,9 +175,11 @@ def create_sportsbet_driver(factory, **kwargs):
             if not is_sportsbet(url):
                 operation.failed = True
                 raise SportsbetAccessBlocked('sportsbet_browser_route_changed')
-            if operation.recovery and navigations >= 2:
+            navigation_cap = operation.value.get('operating_policy', {}).get(
+                'browser_navigation_cap', 2 if operation.recovery else None)
+            if navigation_cap is not None and navigations >= navigation_cap:
                 operation.failed = True
-                raise SportsbetAccessBlocked('sportsbet_recovery_navigation_cap')
+                raise SportsbetAccessBlocked('sportsbet_browser_navigation_cap')
             navigations += 1
         try:
             result = navigate(url)
@@ -227,5 +229,11 @@ def create_sportsbet_driver(factory, **kwargs):
                 with state_lock:
                     admission.__exit__(None, None, None)
 
+    def accept_data():
+        events.join()
+        with state_lock:
+            operation.accept_data()
+
+    driver.sportsbet_accept_validated_data = accept_data
     driver.get, driver.get_log, driver.quit = get, logs, quit
     return driver
