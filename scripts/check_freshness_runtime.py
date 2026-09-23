@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Import the finite collector/readiness runtime offline and pin its environment.
 
-No browser, collector, model or reader is constructed. Imports may create local
-logs only in a disposable directory; network, databases and retained data are
-denied before loading application modules.
+No browser, collector or model is constructed. The native reader is exercised
+against synthetic missing startup files. All writes stay in a disposable
+directory; network, databases and retained data are denied before application imports.
 """
 
 import argparse
@@ -40,6 +40,72 @@ def verify_runtime(plan):
     if digest(identity) != plan["runtime_sha256"]:
         raise ValueError("runtime_environment_changed")
     return identity
+
+
+def check_startup_observation(source_root, scratch):
+    from datetime import datetime, timezone
+    from race_collection.freshness_rehearsal import native_observation
+    from scripts import shadow_autopilot_daemon as daemon
+    from src.operator_ui.live_adapters import InstalledUnits
+
+    now = datetime.now(timezone.utc)
+    evidence = scratch / "startup-evidence"
+    evidence.mkdir()
+    common = {
+        "repo_path": source_root,
+        "timeout_seconds": 600,
+        "live_freshness": True,
+        "live_freshness_profile": "bounded80-v1",
+        "live_freshness_contract": scratch / "absent-contract.json",
+    }
+    raw = {
+        "full_service": daemon.service_file_text(**common).encode(),
+        "odds_service": daemon.odds_capture_service_file_text(**common).encode(),
+        "full_timer": daemon.timer_file_text().encode(),
+        "odds_timer": daemon.odds_capture_timer_file_text(live_freshness=True).encode(),
+    }
+    hashes = {key: hashlib.sha256(value).hexdigest() for key, value in raw.items()}
+    units = InstalledUnits(
+        **raw,
+        **{key + "_sha256": value for key, value in hashes.items()},
+        observed_at=now,
+        working_directory=str(source_root),
+        full_unit_name="shadow-autopilot.service",
+        odds_unit_name="shadow-autopilot-odds-capture.service",
+        full_active_state="inactive",
+        full_sub_state="dead",
+        full_exec_main_pid=0,
+        odds_active_state="inactive",
+        odds_sub_state="dead",
+        odds_exec_main_pid=0,
+    )
+    result = native_observation(
+        now=now,
+        paths={
+            key: evidence / (key + ".json")
+            for key in ("full_report", "full_state", "odds_report", "odds_state", "odds_refresh")
+        },
+        units=units,
+        evidence_root=evidence,
+        index_path=evidence / "absent-index.json",
+        output=scratch / "startup-observation",
+        authority={
+            "commit": "b" * 40,
+            "tree": "c" * 40,
+            "source_root": str(source_root),
+            "unit_sha256": hashes,
+        },
+    )
+    statuses = {
+        key: result[key] for key in ("index_status", "collector_status", "authority_status")
+    }
+    if statuses != {
+        "index_status": "UNAVAILABLE/DATA_MISSING",
+        "collector_status": "UNAVAILABLE/DATA_MISSING",
+        "authority_status": "AVAILABLE/FRESH",
+    }:
+        raise ValueError("native_startup_observation_failed")
+    return statuses
 
 
 def runtime_identity(source_root):
@@ -93,7 +159,8 @@ def runtime_identity(source_root):
         "version": sys.version,
         "modules": modules,
         "distributions": distributions,
-        "scope": "Import availability and installed distribution records; no acquisition or browser launch",
+        "startup_observation": check_startup_observation(source_root, scratch),
+        "scope": "Imports, distribution records and synthetic native startup observation; no acquisition or browser launch",
     }
 
 

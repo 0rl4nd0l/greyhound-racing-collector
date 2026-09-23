@@ -4,7 +4,39 @@ Status: offline candidate, **release held**. This implements the accepted
 [architecture decision](freshness_architecture_decision_20260922.md). It supersedes
 that document's implementation-pending status, not its evidence or the failures in
 the [release gate](freshness_release_gate_20260922.md). Bulk investigation and
-historical recovery remain closed. No live execution occurred in this work.
+historical recovery remain closed. Original preparation was offline; subsequent
+execution outcomes are recorded below.
+
+## September 23 renewed rehearsal: startup reader failure, restored
+
+The separately approved `greyhound-freshness-rehearsal-20260923-approved-1245`
+attempt started admission at 12:15 AEST for a fixed 12:45–14:15 interval. Natural
+quiescence and all seven reconciliation domains succeeded, retaining 20 consumed
+race/windows. Its first monitoring sample failed at 12:45:00.199 with
+`ValueError: top-level schema is not exact`. Restoration finished at 12:45:01.479;
+all five original unit hashes match, both timers are active and R3 retained PID
+149626. The supervisor exited. The attempt is consumed and must not be rerun.
+
+No refresh-request counter, capture reservation, candidate collection evidence or
+measurement sample was produced. Eligible/excluded/missed windows and sustained
+freshness/readiness remain unassessed. This is a rehearsal-monitor startup failure,
+not a source-latency observation or successful 90-minute validation. Original plans,
+approvals, failure, scope STOP and restoration records remain unchanged.
+
+The offline regression reproduced the failure with both empty and partially
+populated native startup evidence. The measurement wrapper inferred an empty
+schema for an absent file while still declaring a producer timestamp field; the
+native reader correctly rejected that inconsistent configuration. The correction
+omits the timestamp binding only for genuinely absent adapter-owned sources, so
+the native reader returns `UNAVAILABLE/DATA_MISSING`. Existing evidence still uses
+its original timestamp and validation. No consumer freshness limit is relaxed.
+
+Package preflight now executes a synthetic empty-startup native observation under
+the selected interpreter, with network, database and retained-data access denied.
+It requires missing collector/index status and valid synthetic unit authority,
+and pins those checks in the runtime identity. Import success alone is insufficient.
+The focused candidate/runtime suite passed 35 checks after the correction. No new
+live attempt, installation or package substitution followed the failure.
 
 ## Exact candidate
 

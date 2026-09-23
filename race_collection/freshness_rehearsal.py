@@ -45,10 +45,12 @@ def native_observation(*, now, paths, units, evidence_root, index_path, authorit
     sources = {}
     for key, path in paths.items():
         path = Path(path)
+        missing = False
         try:
             value = json.loads(path.read_bytes())
         except FileNotFoundError:
             value = {}
+            missing = True
         schema = value.get("schema_version")
         policy = (
             "P-DEPLOY-60"
@@ -57,9 +59,11 @@ def native_observation(*, now, paths, units, evidence_root, index_path, authorit
                 "P-COLLECTOR-ODDS-DYNAMIC" if key.startswith("odds") else "P-COLLECTOR-FULL-DYNAMIC"
             )
         )
+        # Let the native reader report absent adapter evidence as missing. An
+        # empty schema with a declared timestamp fails configuration validation.
         time_field = (
             None
-            if key == "full_state"
+            if missing or key == "full_state"
             else ("updated_at" if key == "odds_state" else "generated_at")
         )
         sources[key] = SourceConfig(

@@ -24,6 +24,11 @@ def test_native_runtime_probe_pins_environment_and_rejects_changed_identity():
     root = Path(__file__).resolve().parents[1]
     identity = probe_runtime(python=sys.executable, source_root=root)
     assert identity["prefix"] == sys.prefix
+    assert identity["startup_observation"] == {
+        "index_status": "UNAVAILABLE/DATA_MISSING",
+        "collector_status": "UNAVAILABLE/DATA_MISSING",
+        "authority_status": "AVAILABLE/FRESH",
+    }
     assert "race_collection.freshness_rehearsal" in identity["modules"]
     assert any(row["name"].lower() == "flask" for row in identity["distributions"])
     plan = {"python": sys.executable, "source_root": str(root), "runtime_sha256": digest(identity)}

@@ -256,7 +256,8 @@ def test_native_r3_peer_handoff_requires_fresh_index_and_matching_owner(
     assert (result.evidence.status == "AVAILABLE/FRESH") == (expected == "WAITING_FOR_PEER")
 
 
-def test_raw_phase_report_serialization_matches_native_r3(tmp_path):
+@pytest.mark.parametrize("evidence_state", ["complete", "empty", "odds_report_only"])
+def test_raw_phase_report_serialization_matches_native_r3(tmp_path, evidence_state):
     import hashlib
     from race_collection.live_phase_checkpoint import atomic_json
     from race_collection.freshness_rehearsal import native_observation
@@ -279,7 +280,10 @@ def test_raw_phase_report_serialization_matches_native_r3(tmp_path):
             if key == "odds_refresh"
             else tmp_path / (key + ".json")
         )
-        atomic_json(path, values[key])
+        if evidence_state == "complete" or (
+            evidence_state == "odds_report_only" and key == "odds_report"
+        ):
+            atomic_json(path, values[key])
         paths[key] = path
     raw = dict(
         full_service=daemon.service_file_text(repo_path=tmp_path, timeout_seconds=600).encode(),
@@ -319,7 +323,9 @@ def test_raw_phase_report_serialization_matches_native_r3(tmp_path):
         },
     )
     assert result["authority_status"] == "AVAILABLE/FRESH"
-    assert result["collector_status"] == "AVAILABLE/FRESH"
+    assert result["collector_status"] == (
+        "AVAILABLE/FRESH" if evidence_state == "complete" else "UNAVAILABLE/DATA_MISSING"
+    )
     assert result["index_status"] == "UNAVAILABLE/DATA_MISSING"
 
 
