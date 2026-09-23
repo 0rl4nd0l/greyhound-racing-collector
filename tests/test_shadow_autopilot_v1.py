@@ -100,6 +100,11 @@ def test_current_race_index_is_published_from_completed_refresh(
     }
     report_path = output_dir / "current_race_index_publish.json"
     assert report_path.read_bytes() == canonical_bytes(result)
+    timing = json.loads((output_dir / "current_index_publication_timing.json").read_text())
+    assert timing["source_generated_at"] == result["source_generated_at"]
+    assert timing["status"] == "PUBLISHED"
+    assert timing["elapsed_seconds"] >= 0
+    assert timing["completed_at"] >= timing["started_at"]
     lifecycle_path = state_path.parent / "manual_prediction_current_race_index.state.json"
     lifecycle = json.loads(lifecycle_path.read_text(encoding="utf-8"))
     assert lifecycle["run_id"] == "scheduled-run"
@@ -5308,14 +5313,6 @@ def test_skip_primary_refresh_still_runs_odds_capture_refresh(tmp_path, monkeypa
         }
 
     monkeypatch.setattr(autopilot, "step_command", fake_step_command)
-    monkeypatch.setattr(
-        autopilot,
-        "publish_current_race_index",
-        lambda **_kwargs: pytest.fail(
-            "odds-only refresh must not replace the shared candidate index"
-        ),
-    )
-
     args = autopilot.parse_args(
         [
             "--run-id",
@@ -5361,11 +5358,8 @@ def test_skip_primary_refresh_still_runs_odds_capture_refresh(tmp_path, monkeypa
     publication = json.loads(
         (output_dir / "current_race_index_publish.json").read_text(encoding="utf-8")
     )
-    assert publication == {
-        "schema_version": "collector_current_race_index_publish_v2",
-        "status": "SKIPPED",
-        "reason": "primary_candidate_refresh_not_run",
-    }
+    assert publication["status"] == "REJECTED"
+    assert publication["source_refresh_report_path"].endswith("/odds_capture_refresh_report.json")
     assert (output_dir / "rolling_model_comparison_status.json").exists()
     assert (output_dir / "high_accuracy_refinement_status.json").exists()
     rolling_status = json.loads(

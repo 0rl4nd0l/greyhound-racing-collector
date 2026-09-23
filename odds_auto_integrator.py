@@ -430,6 +430,7 @@ def fetch_odds_for_target_race(
     race_number: int | None,
     race_date: Any = None,
     allow_auto_scrape_odds: bool | None = None,
+    request_metrics_path=None,
 ) -> dict[str, Any]:
     """Fetch current Sportsbet odds for a target race without writing DB rows."""
 
@@ -472,6 +473,21 @@ def fetch_odds_for_target_race(
             summary["warnings"].append("selenium driver unavailable")
             return summary
         driver = integrator.driver
+        if request_metrics_path is not None:
+            from race_collection.live_phase_checkpoint import atomic_json
+            navigation_count = 0
+            navigate = driver.get
+
+            def counted_navigation(url):
+                nonlocal navigation_count
+                navigation_count += 1
+                atomic_json(request_metrics_path, {
+                    "browser_navigation_attempts": navigation_count,
+                    "subresource_requests": "UNMEASURED",
+                })
+                return navigate(url)
+
+            driver.get = counted_navigation
         driver.get(integrator.greyhound_url)
 
         time.sleep(5)

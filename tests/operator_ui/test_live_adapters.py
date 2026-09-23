@@ -94,7 +94,7 @@ def test_non_full_sources_retain_default_256_kib_ceiling(fixed_source_root, sour
         bootstrap_module._retained_source_read(path, source_key)
 
 
-def actual_payloads(at=NOW - timedelta(seconds=30)):
+def actual_payloads(at=NOW - timedelta(seconds=30), *, include_models=True):
     stamp = at.isoformat().replace("+00:00", "Z")
     full_report = completed_daemon_run_report_envelope(
         run_id="full-1", generated_at=at, current_time=stamp,
@@ -155,7 +155,7 @@ def actual_payloads(at=NOW - timedelta(seconds=30)):
         ("market-only", "market-only", "market-only.json", "market_only_v1"),
     )
     catalog_configs = []
-    for name, selector, filename, resolved in config_specs:
+    for name, selector, filename, resolved in (config_specs if include_models else ()):
         config_path = repo / "configs/prediction" / filename
         schema_path = repo / "configs/prediction/schemas" / f"{resolved}.schema.json"
         artifact = repo / "artifacts/frozen_models/market_form_residual_v1/model.json" if resolved != "market_only_v1" else None
@@ -193,6 +193,9 @@ def make_live(
     upcoming_races=None,
     prediction_bundles=None,
     reader_clock=None,
+    odds_refresh_path=None,
+    include_models=True,
+    unit_overrides=None,
 ):
     values = values or actual_payloads()
     unit_bytes = {
@@ -201,6 +204,7 @@ def make_live(
         "odds_timer": (odds_timer or odds_capture_timer_file_text()).encode(),
         "odds_service": odds_capture_service_file_text(repo_path=Path("/srv/app"), timeout_seconds=600).encode(),
     }
+    unit_bytes.update(unit_overrides or {})
     if "deployment_manifest" in values:
         values["deployment_manifest"]["working_directory"] = "/srv/app"
         values["deployment_manifest"]["installed_unit_sha256"] = {
@@ -241,6 +245,8 @@ def make_live(
         "model_baseline_config": repo / "configs/prediction/market-only.json",
         "model_baseline_schema": repo / "configs/prediction/schemas/market_only_v1.schema.json",
     })
+    if not include_models:
+        raw_key_files = {key: value for key, value in raw_key_files.items() if not key.startswith("model_")}
     for key, raw in (raw_overrides or {}).items():
         override = root / "raw-overrides" / f"{key}.json"
         override.parent.mkdir(parents=True, exist_ok=True)
@@ -258,7 +264,7 @@ def make_live(
     sources = {}
     for key, payload in values.items():
         path = (
-            root / "artifacts/autopilot-9/odds_capture_refresh_report.json"
+            (odds_refresh_path or root / "artifacts/autopilot-9/odds_capture_refresh_report.json")
             if key == "odds_refresh"
             else root / f"{key}.json"
         )
@@ -537,6 +543,16 @@ def test_exact_completed_boundary_and_worst_child_propagation(tmp_path):
     result = make_live(tmp_path / "after", values, now=after).collector(after)
     assert result.evidence.status == "STALE"
     assert result.data["lanes"][0]["status"] == "STALE"
+
+
+def test_minutely_timer_does_not_charge_refresh_duration_against_idle_cadence(tmp_path):
+    values = actual_payloads(NOW)
+    values["odds_refresh"]["generated_at"] = (NOW - timedelta(seconds=100)).isoformat()
+    original = make_live(tmp_path / "original", values).collector(NOW)
+    assert original.data["lanes"][1]["status"] == "RECEIPT_READY"
+    proposed = "[Timer]\nOnCalendar=*-*-* *:*:00\nAccuracySec=5s\n"
+    changed = make_live(tmp_path / "proposed", values, odds_timer=proposed).collector(NOW)
+    assert changed.data["lanes"][1]["status"] == "RECEIPT_READY"
 
 
 def test_intra_lane_run_mismatch_diverges_but_cross_lane_ids_do_not(tmp_path):
@@ -1631,7 +1647,8 @@ def test_no_browser_path_shell_scan_write_service_or_database_surface():
 
 @pytest.mark.parametrize(
     ("age", "jump_offset", "count"),
-    [(300, 1, 1), (300.000001, 1, 0), (0, 1, 1), (0, 0, 0), (0, -1, 0)],
+    [(300, 1, 1), (300.000001, 1, 0), (1155, 1, 0), (1200, 1, 0),
+     (0, 1, 1), (0, 0, 0), (0, -1, 0)],
 )
 def test_upcoming_verified_view_exact_boundaries_and_identity(
     tmp_path, monkeypatch, age, jump_offset, count

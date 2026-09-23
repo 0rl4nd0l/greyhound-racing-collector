@@ -1,0 +1,706 @@
+#!/usr/bin/env python3
+"""One explicitly approved scheduled rehearsal, or restoration only.
+
+Preparation never calls this executor. A plan digest and approval identity are
+required; started.json is consumed even if admission fails. No retry/resume mode.
+"""
+import argparse
+import hashlib
+import json
+import os
+import signal
+import subprocess
+import sys
+import time
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from race_collection.live_freshness_contract import (
+    AttemptAllowance,
+    FreshnessContract,
+    create_once,
+    digest,
+    verify_source_package,
+)
+from race_collection.live_phase_checkpoint import atomic_json
+from scripts.prepare_freshness_rehearsal import UNITS
+from scripts.check_freshness_runtime import verify_runtime
+
+TIMERS = ("shadow-autopilot.timer", "shadow-autopilot-odds-capture.timer")
+SERVICES = ("shadow-autopilot.service", "shadow-autopilot-odds-capture.service")
+
+
+def now():
+    return datetime.now(timezone.utc)
+
+
+class SystemdControl:
+    def command(self, *args):
+        return subprocess.check_output(["systemctl", "--user", *args], text=True, timeout=3)
+
+    def show(self, unit):
+        raw = self.command(
+            "show",
+            unit,
+            "-p",
+            "ActiveState",
+            "-p",
+            "SubState",
+            "-p",
+            "MainPID",
+            "-p",
+            "ControlGroup",
+            "-p",
+            "ExecMainStartTimestampMonotonic",
+            "-p",
+            "ExecMainExitTimestampMonotonic",
+            "-p",
+            "DropInPaths",
+            "-p",
+            "WorkingDirectory",
+        )
+        return dict(line.split("=", 1) for line in raw.splitlines() if "=" in line)
+
+    def idle(self):
+        for unit in SERVICES:
+            value = self.show(unit)
+            if value["ActiveState"] not in {"inactive", "failed"} or int(value["MainPID"]) != 0:
+                return False
+            group = value.get("ControlGroup")
+            if group:
+                directory = Path("/sys/fs/cgroup") / group.lstrip("/")
+                if any(p.read_text().strip() for p in directory.glob("**/cgroup.procs")):
+                    return False
+        return True
+
+
+def restore(output, plan, control, *, clock=time.monotonic, sleep=time.sleep):
+    backup = json.loads((output / "restoration.json").read_bytes())
+    for timer in TIMERS:
+        control.command("stop", timer)
+    deadline = clock() + plan["cleanup_seconds"]
+    claim = (
+        Path(plan["lock_path"]).parent
+        / "live-freshness-attempts-v1"
+        / ("rehearsal-" + hashlib.sha256(plan["rehearsal_id"].encode()).hexdigest())
+        / "capture-reservation.json"
+    )
+    try:
+        create_once(claim.parent / "STOP.json", {"reason": "RESTORATION_REQUESTED"})
+    except FileExistsError:
+        pass
+    # An admitted child may reserve just after STOP; classify only after drain.
+    while not control.idle() or Path(plan["lock_path"]).exists():
+        if clock() >= deadline:
+            atomic_json(
+                output / "RESTORATION_PENDING.json",
+                {"reason": "natural_drain_deadline", "no_process_killed": True},
+            )
+            raise RuntimeError("restoration_pending_natural_drain")
+        sleep(1)
+    try:
+        closes = None
+        if claim.exists():
+            from scripts.autonomous_live_odds_capture import capture_window_bounds
+
+            item = json.loads(claim.read_bytes())["item"]
+            _, window = AttemptAllowance.key(item)
+            _, closes = capture_window_bounds(
+                jump_datetime=datetime.fromisoformat(item["race_identity"]["jump_datetime"]),
+                capture_window_minutes=window,
+            )
+            if closes.utcoffset() is None:
+                raise ValueError("ambiguous_reserved_window")
+    except (ValueError, KeyError, TypeError) as error:
+        atomic_json(
+            output / "RESTORATION_PENDING.json", {"reason": "reserved_window_unclassifiable"}
+        )
+        raise RuntimeError("restoration_pending_reserved_window") from error
+    while (
+        not control.idle()
+        or Path(plan["lock_path"]).exists()
+        or (closes is not None and now() <= closes)
+    ):
+        if clock() >= deadline:
+            atomic_json(
+                output / "RESTORATION_PENDING.json",
+                {"reason": "natural_drain_or_reserved_window_deadline", "no_process_killed": True},
+            )
+            raise RuntimeError("restoration_pending_natural_drain")
+        sleep(1)
+    for name in UNITS:
+        raw = (output / "backup" / name).read_bytes()
+        if hashlib.sha256(raw).hexdigest() != backup["hashes"][name]:
+            raise ValueError("restoration_backup_changed")
+        target = Path(plan["installed_dir"]) / name
+        temporary = target.with_name(
+            target.name + ".freshness-restore-" + uuid.uuid4().hex + ".tmp"
+        )
+        with temporary.open("xb") as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.chmod(temporary, backup["modes"][name])
+        os.replace(temporary, target)
+    control.command("daemon-reload")
+    for timer in TIMERS:
+        if backup["active"][timer]:
+            control.command("start", timer)
+    for name, expected in backup["hashes"].items():
+        if (
+            hashlib.sha256((Path(plan["installed_dir"]) / name).read_bytes()).hexdigest()
+            != expected
+        ):
+            raise ValueError("restored_unit_hash_mismatch")
+    for timer in TIMERS:
+        if (control.show(timer)["ActiveState"] == "active") != backup["active"][timer]:
+            raise ValueError("restored_timer_activity_mismatch")
+        if control.command("is-enabled", timer).strip() != backup["enabled"][timer]:
+            raise ValueError("restored_timer_enablement_mismatch")
+    if control.show("greyhound-operator-ui-r3.service")["MainPID"] != backup["r3_pid"]:
+        raise ValueError("r3_process_changed")
+    atomic_json(
+        output / "restored.json",
+        {"status": "RESTORED", "at": now().isoformat(), "hashes": backup["hashes"]},
+    )
+
+
+def snapshot(output, plan, control):
+    backup = output / "backup"
+    backup.mkdir(exist_ok=False)
+    names = (*UNITS, "greyhound-operator-ui-r3.service")
+    hashes, modes = {}, {}
+    for name in names:
+        if control.show(name).get("DropInPaths"):
+            raise ValueError("unreviewed_unit_dropins")
+        path = Path(plan["installed_dir"]) / name
+        raw = path.read_bytes()
+        hashes[name] = hashlib.sha256(raw).hexdigest()
+        if hashes[name] != plan["baseline_unit_sha256"][name]:
+            raise ValueError("installed_baseline_changed")
+        with (backup / name).open("xb") as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+        modes[name] = path.stat().st_mode & 0o777
+    result = {
+        "hashes": hashes,
+        "modes": modes,
+        "active": {timer: control.show(timer)["ActiveState"] == "active" for timer in TIMERS},
+        "enabled": {timer: control.command("is-enabled", timer).strip() for timer in TIMERS},
+        "r3_pid": control.show("greyhound-operator-ui-r3.service")["MainPID"],
+    }
+    directory = os.open(backup, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+    create_once(output / "restoration.json", result)
+    return result
+
+
+def sample(plan, output, control):
+    from race_collection.freshness_rehearsal import native_observation, completed_service_overhead
+    from race_collection.synchronous_manual_capture import current_race_index_path
+    from src.operator_ui.live_adapters import InstalledUnits
+
+    evidence = Path(plan["evidence_root"])
+    runtime = evidence / "shadow_autopilot_daemon_runtime"
+    read_start, mono_start = now(), time.monotonic()
+    backup = json.loads((output / "restoration.json").read_bytes())
+    r3 = "greyhound-operator-ui-r3.service"
+    if (
+        control.show(r3)["MainPID"] != backup["r3_pid"]
+        or hashlib.sha256((Path(plan["installed_dir"]) / r3).read_bytes()).hexdigest()
+        != backup["hashes"][r3]
+    ):
+        raise ValueError("installed_r3_changed")
+    paths = {
+        "full_state": runtime / "state.json",
+        "odds_state": runtime / "odds_capture_state.json",
+    }
+    for lane, filename in (
+        ("full", "daemon_run_report.json"),
+        ("odds", "odds_capture_only_daemon_report.json"),
+    ):
+        candidates = list(evidence.glob("shadow_autopilot_daemonization_v1_*/" + filename))
+        paths[lane + "_report"] = (
+            max(candidates, key=lambda path: path.stat().st_mtime_ns)
+            if candidates
+            else runtime / ("pending-" + filename)
+        )
+    state = json.loads(paths["odds_state"].read_bytes()) if paths["odds_state"].exists() else {}
+    paths["odds_refresh"] = (
+        Path(state.get("autopilot_output_dir") or str(runtime / "pending"))
+        / "odds_capture_refresh_report.json"
+    )
+    unit_map = dict(zip(("full_service", "full_timer", "odds_service", "odds_timer"), UNITS))
+    raw = {key: (Path(plan["installed_dir"]) / name).read_bytes() for key, name in unit_map.items()}
+    status = {lane: control.show(name) for lane, name in zip(("full", "odds"), SERVICES)}
+    timers = {}
+    for lane, name in zip(("full", "odds"), TIMERS):
+        raw_timer = control.command(
+            "show",
+            name,
+            "-p",
+            "LastTriggerUSecMonotonic",
+            "-p",
+            "NextElapseUSecMonotonic",
+            "-p",
+            "NextElapseUSecRealtime",
+            "-p",
+            "ActiveState",
+        )
+        timers[lane] = dict(line.split("=", 1) for line in raw_timer.splitlines() if "=" in line)
+    if any(
+        value.get("WorkingDirectory") != plan["source_root"] or value.get("DropInPaths")
+        for value in status.values()
+    ):
+        raise ValueError("loaded_candidate_unit_changed")
+    values = {}
+    for lane, observed in status.items():
+        values.update(
+            {
+                lane + "_unit_name": SERVICES[0 if lane == "full" else 1],
+                lane + "_active_state": observed["ActiveState"],
+                lane + "_sub_state": observed["SubState"],
+                lane + "_exec_main_pid": int(observed["MainPID"]),
+            }
+        )
+    hashes = {key: hashlib.sha256(value).hexdigest() for key, value in raw.items()}
+    units = InstalledUnits(
+        **raw,
+        **values,
+        **{key + "_sha256": value for key, value in hashes.items()},
+        observed_at=read_start,
+        working_directory=plan["source_root"],
+    )
+    authority = {
+        **plan,
+        "unit_sha256": {key: plan["unit_sha256"][name] for key, name in unit_map.items()},
+    }
+    result = native_observation(
+        now=read_start,
+        paths=paths,
+        units=units,
+        evidence_root=evidence,
+        index_path=current_race_index_path(runtime / "odds_capture_state.json"),
+        authority=authority,
+        output=output / "observations",
+    )
+    result.update(
+        read_start=read_start.isoformat(),
+        read_end=now().isoformat(),
+        monotonic_start=mono_start,
+        monotonic_end=time.monotonic(),
+        unit_status=status,
+        timer_status=timers,
+    )
+    result["external_service_overhead_seconds"] = {}
+    for lane in ("full", "odds"):
+        terminal = paths[lane + "_report"].parent / "terminal-timing.json"
+        if terminal.exists():
+            result["external_service_overhead_seconds"][lane] = completed_service_overhead(
+                status[lane], json.loads(terminal.read_bytes())
+            )
+    lock = Path(plan["lock_path"])
+    result["lock"] = json.loads(lock.read_bytes()) if lock.exists() else None
+    if result["lock"] and not str(result["lock"].get("output_dir", "")).startswith(
+        str(evidence) + "/"
+    ):
+        raise ValueError("unapproved_lock_owner")
+    return result
+
+
+def window_accounting(rows, exclusions, claim, end):
+    """Observed eligibility only; refresh caps leave other windows unassessed."""
+    eligible = {}
+    for row in rows:
+        if row.get("status") == "READY_TO_CAPTURE":
+            eligible[(row["race_id"], row["capture_window_minutes"])] = row
+    attempted = set()
+    if claim.exists():
+        item = json.loads(claim.read_bytes())["item"]
+        attempted.add((item["race_id"], item["capture_window_minutes"]))
+    excluded = {(row["race_id"], row.get("capture_window_minutes")) for row in exclusions}
+    missed = []
+    pending = []
+    for key, row in eligible.items():
+        if key in attempted or key in excluded:
+            continue
+        from scripts.autonomous_live_odds_capture import capture_window_bounds
+
+        # Native window boundaries, including the next-window cutoff.
+        jump = datetime.fromisoformat(row["jump_datetime"])
+        _, closes = capture_window_bounds(jump_datetime=jump, capture_window_minutes=key[1])
+        (missed if closes <= end else pending).append(row)
+    return {
+        "eligible_observed_windows": list(eligible.values()),
+        "attempted_windows": [
+            {"race_id": race, "capture_window_minutes": window}
+            for race, window in sorted(attempted)
+        ],
+        "excluded_observations": exclusions,
+        "missed_observed_windows": missed,
+        "pending_at_end": pending,
+        "outside_observed_refresh_coverage": "UNASSESSED",
+    }
+
+
+def observe(output, plan, control, scope):
+    from race_collection.freshness_rehearsal import assess_interval, TimerAccounting
+
+    evidence = Path(plan["evidence_root"])
+    end = datetime.fromisoformat(plan["ends_at"])
+    start = datetime.fromisoformat(plan["starts_at"])
+    timer_accounting = TimerAccounting(start)
+    previous = None
+    event_count = 0
+    maximum = 0
+    samples = 0
+    unavailable = 0
+    completed = {"full": set(), "odds": set()}
+    waits = []
+    window_rows = []
+    exclusions = []
+    seen = set()
+    external_overheads = {"full": [], "odds": []}
+    while now() < end:
+        tick = time.monotonic()
+        if (scope.session / "STOP.json").exists():
+            raise ValueError("candidate_scope_stopped")
+        allowance = AttemptAllowance(scope)
+        if (
+            allowance.claim.with_suffix(".terminal.json").exists()
+            and not (output / "capture-receipt-verification.json").exists()
+        ):
+            from race_collection.manual_prediction_collector_request import (
+                ManualPredictionCollectorProtocol,
+            )
+
+            item = json.loads(allowance.claim.read_bytes())["item"]
+            handoff = ManualPredictionCollectorProtocol(
+                evidence / "manual_prediction_collector_requests_v1"
+            ).discover_collector_exact_handoff(
+                race_id=item["race_id"], current_time=now(), max_age_seconds=300
+            )
+            if handoff is None:
+                raise ValueError("native_capture_receipt_unavailable")
+            create_once(
+                output / "capture-receipt-verification.json",
+                {
+                    "status": "NATIVE_HANDOFF_VERIFIED",
+                    "race_id": item["race_id"],
+                    "capture_window_minutes": item["capture_window_minutes"],
+                    "capture_attempt_sha256": handoff["capture_attempt_sha256"],
+                    "observed_at": now().isoformat(),
+                    "prediction_started": False,
+                },
+            )
+        for checkpoint in evidence.glob(
+            "shadow_autopilot_daemonization_v1_*/phase-checkpoint.json"
+        ):
+            if str(checkpoint) in seen:
+                continue
+            terminal = checkpoint.parent / "terminal-timing.json"
+            if not terminal.exists():
+                continue
+            value = json.loads(checkpoint.read_bytes())
+            report = json.loads(terminal.read_bytes())
+            if report["runtime_action"] not in {
+                "LIVE_COLLECTION_COMPLETE",
+                "DEFERRED_LOCK_HELD",
+                "DEFERRED_FULL_LOCK_HANDOFF",
+            }:
+                raise ValueError("candidate_terminal_failure")
+            seen.add(str(checkpoint))
+            lane = "odds" if "odds_capture" in value["cycle_id"] else "full"
+            if report["runtime_action"] == "LIVE_COLLECTION_COMPLETE":
+                completed[lane].add(value["cycle_id"])
+            waits.append(report["timing"]["lock_wait_seconds"])
+            window_rows.extend(value.get("window_observations", []))
+            exclusions.extend(value.get("exclusions", []))
+        age_from_start = (now() - start).total_seconds()
+        try:
+            current = sample(plan, output, control)
+        except (FileNotFoundError, KeyError):
+            if age_from_start >= plan["first_index_deadline_seconds"]:
+                raise
+            unavailable += 1
+            atomic_json(
+                output / "samples" / f"{samples:06d}.json",
+                {"status": "WARMUP_MISSING", "at": now().isoformat()},
+            )
+            samples += 1
+            time.sleep(max(0, 2 - (time.monotonic() - tick)))
+            continue
+        request_path = scope.session / "request-count.json"
+        current["logical_requests"] = (
+            json.loads(request_path.read_bytes())["started"] if request_path.exists() else 0
+        )
+        capture_requests = scope.session / "capture-requests.json"
+        current["capture_requests"] = (
+            json.loads(capture_requests.read_bytes())
+            if capture_requests.exists()
+            else {"browser_navigation_attempts": 0, "subresource_requests": "UNMEASURED"}
+        )
+        # Preserve the failing observation before assessing it.
+        atomic_json(output / "samples" / f"{samples:06d}.json", current)
+        samples += 1
+        timer_accounting.observe(current)
+        for lane, overhead in current["external_service_overhead_seconds"].items():
+            if overhead is not None:
+                external_overheads[lane].append(overhead)
+        publications = []
+        events = sorted(
+            (evidence / "shadow_autopilot_daemon_runtime/live-publication-events").glob("*.json")
+        )
+        preceding = None
+        matched_event_count = None
+        for number, path in enumerate(events):
+            event = json.loads(path.read_bytes())
+            if path.name != f"{number:06d}.json" or event["previous_event_sha256"] != (
+                digest(preceding) if preceding else None
+            ):
+                raise ValueError("publication_chain_invalid")
+            if number >= event_count:
+                publications.append(event)
+            if event["packet_sha256"] == current["packet_sha256"]:
+                matched_event_count = number + 1
+            preceding = event
+        if current["index_status"] == "AVAILABLE/FRESH":
+            if matched_event_count is None or matched_event_count < event_count:
+                raise ValueError("observed_publication_not_in_chain")
+            # A writer can publish again after the native reader's snapshot.
+            # Retain those later events for the next observation interval.
+            publications = publications[: matched_event_count - event_count]
+            if previous:
+                maximum = max(maximum, assess_interval(previous, current, publications))
+            previous = current
+            event_count = matched_event_count
+        elif age_from_start >= plan["first_index_deadline_seconds"]:
+            raise ValueError("native_index_not_available")
+        if any(
+            current[key] in {"INVALID/INTEGRITY_FAILED", "DIVERGENT"}
+            for key in ("index_status", "collector_status", "authority_status")
+        ):
+            raise ValueError("native_integrity_or_authority_failed")
+        if (
+            current["collector_status"] != "AVAILABLE/FRESH"
+            or current["authority_status"] != "AVAILABLE/FRESH"
+        ):
+            unavailable += 1
+            if age_from_start >= plan["readiness_warmup_seconds"]:
+                raise ValueError("native_readiness_failed")
+        atomic_json(
+            output / "progress.json",
+            {
+                "completed_cycles": {key: len(value) for key, value in completed.items()},
+                "lock_wait_seconds": waits,
+                "logical_requests": current["logical_requests"],
+                "timer_accounting": timer_accounting.summary(now()),
+                "windows": window_accounting(
+                    window_rows, exclusions, AttemptAllowance(scope).claim, now()
+                ),
+            },
+        )
+        time.sleep(max(0, plan["sample_period_seconds"] - (time.monotonic() - tick)))
+    if len(completed["full"]) < 3 or len(completed["odds"]) < 6 or not waits or max(waits) <= 0:
+        raise ValueError("lane_progress_or_handoff_unproven")
+    if not all(external_overheads.values()):
+        raise ValueError("external_completion_timing_unmeasured")
+    allowance = AttemptAllowance(scope)
+    terminal = allowance.claim.with_suffix(".terminal.json")
+    captured = (
+        terminal.exists()
+        and json.loads(terminal.read_bytes())["result"]
+        .get("autonomous_live_odds_capture_status", {})
+        .get("status")
+        == "AUTONOMOUS_LIVE_ODDS_CAPTURE_APPENDED"
+    )
+    if not captured or not (output / "capture-receipt-verification.json").exists():
+        raise ValueError("single_capture_not_demonstrated")
+    atomic_json(
+        output / "measurement.json",
+        {
+            "status": "REHEARSAL_MEASURED_NOT_RELEASED",
+            "sample_count": samples,
+            "unavailable_samples_including_warmup": unavailable,
+            "maximum_conservative_source_age": maximum,
+            "completed_cycles": {key: len(value) for key, value in completed.items()},
+            "max_lock_wait_seconds": max(waits),
+            "maximum_external_overhead_seconds": {
+                key: max(value) for key, value in external_overheads.items()
+            },
+            "timer_accounting": timer_accounting.summary(end),
+            "windows": window_accounting(window_rows, exclusions, allowance.claim, end),
+            "logical_requests": current["logical_requests"],
+            "capture_requests": current["capture_requests"],
+            "capture_count": 1,
+            "throughput_validated": False,
+        },
+    )
+
+
+def execute(plan_path, expected_digest, approval_id):
+    from race_collection.freshness_attempt_reconciliation import reconcile
+    from race_collection.synchronous_manual_capture import (
+        acquire_collector_lock_no_steal,
+        release_owned_collector_lock,
+    )
+
+    output = plan_path.parent
+    plan = json.loads(plan_path.read_bytes())
+    if digest(plan) != expected_digest or not approval_id:
+        raise ValueError("exact_plan_approval_required")
+    create_once(
+        output / "started.json",
+        {"approval_id": approval_id, "plan_sha256": expected_digest, "at": now().isoformat()},
+    )
+    start = datetime.fromisoformat(plan["starts_at"])
+    if not datetime.fromisoformat(plan["admission_starts_at"]) <= now() < start:
+        raise ValueError("fixed_admission_window_closed")
+    verify_source_package(plan["source_root"], plan["source_identity_sha256"])
+    if (
+        hashlib.sha256(Path(plan["python"]).resolve().read_bytes()).hexdigest()
+        != plan["python_sha256"]
+    ):
+        raise ValueError("python_identity_changed")
+    runtime = verify_runtime(plan)
+    if runtime["prefix"] != sys.prefix:
+        raise ValueError("executor_must_use_pinned_python_environment")
+    control = SystemdControl()
+    snapshot(output, plan, control)
+    paused = False
+    scope = None
+    owned = None
+
+    def interrupted(signum, frame):
+        raise InterruptedError("rehearsal_interrupted")
+
+    previous_handlers = {
+        sig: signal.signal(sig, interrupted) for sig in (signal.SIGINT, signal.SIGTERM)
+    }
+    try:
+        while now() < start:
+            if control.idle() and not Path(plan["lock_path"]).exists():
+                paused = True
+                for timer in TIMERS:
+                    control.command("stop", timer)
+                if control.idle() and not Path(plan["lock_path"]).exists():
+                    owned = acquire_collector_lock_no_steal(
+                        Path(plan["lock_path"]),
+                        run_id=plan["rehearsal_id"],
+                        output_dir=output,
+                        phase="rehearsal_admission",
+                    )
+                    if control.idle():
+                        break
+                    release_owned_collector_lock(owned)
+                    owned = None
+                for timer in TIMERS:
+                    if json.loads((output / "restoration.json").read_bytes())["active"][timer]:
+                        control.command("start", timer)
+                paused = False
+            time.sleep(1)
+        if owned is None:
+            raise ValueError("natural_quiescence_not_reached")
+        accounting = reconcile(
+            roots=plan["reconciliation_roots"],
+            db_path=Path(plan["db_path"]),
+            source_date=start.astimezone(__import__("zoneinfo").ZoneInfo("Australia/Melbourne"))
+            .date()
+            .isoformat(),
+            lock_path=Path(plan["lock_path"]),
+            owner_run_id=plan["rehearsal_id"],
+        )
+        contract = {
+            key: plan[key]
+            for key in (
+                "profile",
+                "rehearsal_id",
+                "starts_at",
+                "ends_at",
+                "cleanup_seconds",
+                "lock_path",
+                "db_path",
+                "evidence_root",
+                "max_capture_attempts",
+                "max_logical_requests",
+                "source_identity_sha256",
+            )
+        }
+        contract.update(
+            schema_version="freshness_rehearsal_contract_v1",
+            source_date=accounting["source_date"],
+            reconciliation_sha256=digest(accounting),
+        )
+        scope = FreshnessContract(contract)
+        AttemptAllowance(scope).initialize(accounting)
+        create_once(output / "contract.json", contract)
+        for name in UNITS:
+            raw = (output / "units" / name).read_bytes()
+            if hashlib.sha256(raw).hexdigest() != plan["unit_sha256"][name]:
+                raise ValueError("candidate_unit_changed")
+            target = Path(plan["installed_dir"]) / name
+            temporary = target.with_name(target.name + ".freshness-candidate.tmp")
+            with temporary.open("xb") as stream:
+                stream.write(raw)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, target)
+        control.command("daemon-reload")
+        release_owned_collector_lock(owned)
+        owned = None
+        while now() < start:
+            time.sleep(min(1, (start - now()).total_seconds()))
+        if (now() - start).total_seconds() > 5:
+            raise ValueError("start_dispatch_late")
+        for timer in TIMERS:
+            control.command("start", timer)
+        observe(output, plan, control, scope)
+    except BaseException as error:
+        atomic_json(
+            output / "failure.json",
+            {"type": type(error).__name__, "reason": str(error), "at": now().isoformat()},
+        )
+        raise
+    finally:
+        # A second termination signal must not interrupt exact restoration.
+        for sig in previous_handlers:
+            signal.signal(sig, signal.SIG_IGN)
+        if scope:
+            scope.stop("REHEARSAL_ENDED")
+        if owned:
+            release_owned_collector_lock(owned)
+        # Restore even on acquisition failure; never restart the rehearsal.
+        if paused:
+            restore(output, plan, control)
+        for sig, handler in previous_handlers.items():
+            signal.signal(sig, handler)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--plan", type=Path, required=True)
+    parser.add_argument("--plan-sha256", required=True)
+    parser.add_argument("--approval-id", required=True)
+    parser.add_argument("--restore-only", action="store_true")
+    args = parser.parse_args()
+    if args.restore_only:
+        plan = json.loads(args.plan.read_bytes())
+        if digest(plan) != args.plan_sha256:
+            raise ValueError("plan_identity_changed")
+        restore(args.plan.parent, plan, SystemdControl())
+    else:
+        plan = json.loads(args.plan.read_bytes())
+        if ROOT.resolve() != Path(plan["source_root"]).resolve():
+            raise ValueError("executor_must_run_from_pinned_package")
+        execute(args.plan, args.plan_sha256, args.approval_id)
+
+
+if __name__ == "__main__":
+    main()

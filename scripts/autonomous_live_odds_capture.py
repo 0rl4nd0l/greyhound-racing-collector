@@ -148,7 +148,9 @@ def fetch_odds_for_target_race_with_timeout(
     *,
     allow_auto_scrape_odds: bool,
     timeout_seconds: float,
+    request_metrics_path: Path | None = None,
 ) -> dict[str, Any]:
+    metrics = {"request_metrics_path": request_metrics_path} if request_metrics_path is not None else {}
     if timeout_seconds <= 0:
         return fetch_odds_for_target_race(
             db_path,
@@ -156,6 +158,7 @@ def fetch_odds_for_target_race_with_timeout(
             race_number,
             race_date,
             allow_auto_scrape_odds=allow_auto_scrape_odds,
+            **metrics,
         )
     previous_handler = signal.getsignal(signal.SIGALRM)
     previous_timer = signal.setitimer(signal.ITIMER_REAL, float(timeout_seconds))
@@ -167,6 +170,7 @@ def fetch_odds_for_target_race_with_timeout(
             race_number,
             race_date,
             allow_auto_scrape_odds=allow_auto_scrape_odds,
+            **metrics,
         )
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0.0)
@@ -824,6 +828,22 @@ def selected_races_by_key(report: Mapping[str, Any]) -> dict[tuple[str, str], di
 
 
 def refresh_report_for_input_dir(input_dir: Path) -> dict[str, Any]:
+    if input_dir.parent.name == "workers" and input_dir.name.isdecimal():
+        report = refresh_report_for_input_dir(input_dir.parent.parent)
+        directory = input_dir.resolve()
+        coverage = (report.get("sidecar_metadata_coverage") or {}).get("races") or []
+        urls = {row.get("race_url") for row in coverage if row.get("csv_path")
+                and Path(row["csv_path"]).resolve().parent == directory}
+        downloads = []
+        for row in report.get("downloads") or []:
+            result = row.get("result") or {}
+            raw_path = result.get("raw_export_path")
+            if raw_path and directory in Path(raw_path).resolve().parents:
+                urls.add(row.get("race_url"))
+                downloads.append(row)
+        return {**report,
+                "selected_races": [row for row in report.get("selected_races") or [] if row.get("race_url") in urls],
+                "downloads": downloads}
     candidates = [
         input_dir / "odds_capture_refresh_report.json",
         input_dir / "refresh_prejump_report.json",
@@ -2590,6 +2610,8 @@ def execute_capture_plan(
     receipt_publisher: Callable[..., Mapping[str, Any]] | None = None,
     forward_corpus_admitter: Callable[..., Mapping[str, Any]] | None = None,
     input_retainer: Callable[..., Mapping[str, Any]] | None = None,
+    live_freshness_contract: Path | None = None,
+    live_capture_reservation: Path | None = None,
 ) -> dict[str, Any]:
     time_provider = current_time_provider or (lambda: datetime.now().astimezone())
     attempts: list[dict[str, Any]] = []
@@ -2673,6 +2695,12 @@ def execute_capture_plan(
             flush_attempt_progress(progress_dir, attempts=attempts)
             continue
 
+        from race_collection.live_freshness_contract import reject_unreserved_capture
+        reject_unreserved_capture(db_path, item, live_capture_reservation)
+        if live_freshness_contract is not None:
+            from race_collection.live_freshness_contract import FreshnessContract, AttemptAllowance
+            allowance = AttemptAllowance(FreshnessContract.load(live_freshness_contract))
+            allowance.start_fetch(live_capture_reservation, item, now=fetch_time)
         attempt["status"] = "FETCH_IN_PROGRESS"
         attempt["fetch_timeout_seconds"] = fetch_timeout_seconds
         flush_attempt_progress(progress_dir, attempts=attempts, active_attempt=attempt)
@@ -2684,6 +2712,8 @@ def execute_capture_plan(
                 item.get("race_date"),
                 allow_auto_scrape_odds=True,
                 timeout_seconds=fetch_timeout_seconds,
+                **({"request_metrics_path": allowance.scope.session / "capture-requests.json"}
+                   if live_freshness_contract is not None else {}),
             )
         except FetchTimeoutError as exc:
             attempt["status"] = "BLOCKED_FETCH_TIMEOUT"
@@ -3046,6 +3076,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--forward-current-race-index-path", type=Path)
     parser.add_argument("--forward-baseline-config", type=Path)
     parser.add_argument("--input-retention-config", type=Path)
+    parser.add_argument("--live-freshness-contract", type=Path)
+    parser.add_argument("--live-capture-reservation", type=Path)
     return parser.parse_args(argv)
 
 
@@ -3207,6 +3239,8 @@ def main(
         receipt_publisher=receipt_publisher,
         forward_corpus_admitter=forward_corpus_admitter,
         input_retainer=input_retainer,
+        live_freshness_contract=args.live_freshness_contract,
+        live_capture_reservation=args.live_capture_reservation,
     )
     report = {
         **capture_report_identity_fields(output_dir),
