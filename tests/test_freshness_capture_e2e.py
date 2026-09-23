@@ -284,7 +284,7 @@ print('BOTH_ALIASES_VERIFIED')
         assert metrics["observed_provider_requests"] == 2
         assert metrics["observed_other_requests"] == 0
         if campaign:
-            second = json.loads(json.dumps(data).replace("Race 9", "Race 10").replace("race-9-", "race-10-").replace("/9/", "/10/").replace('"race_number": 9', '"race_number": 10'))
+            second = json.loads(json.dumps(data).replace("Race 9", "Race 10").replace("R9", "R10").replace("race-9-", "race-10-").replace("/9/", "/10/").replace('"race_number": 9', '"race_number": 10'))
             fixture.write_text(json.dumps(second))
             next_capture = subprocess.run([sys.executable, "-c", launcher, *odds_command], cwd=odds_cwd, env=env, text=True, capture_output=True, timeout=60)
             assert next_capture.returncode == 0, next_capture.stdout + next_capture.stderr

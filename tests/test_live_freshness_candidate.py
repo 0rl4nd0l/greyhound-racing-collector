@@ -397,11 +397,12 @@ def test_reconciliation_preserves_no_row_and_ambiguous_started_windows(tmp_path)
         )
 
 
+@pytest.mark.parametrize("campaign_mode", [False, True])
 @pytest.mark.parametrize(
     "partial_pause_failure,reserve_before_failure", [(False, False), (True, False), (False, True)]
 )
 def test_rehearsal_failure_restores_exact_pair_and_does_not_reset_consumption(
-    tmp_path, monkeypatch, partial_pause_failure, reserve_before_failure
+    tmp_path, monkeypatch, partial_pause_failure, reserve_before_failure, campaign_mode
 ):
     import json
     import hashlib
@@ -467,6 +468,10 @@ def test_rehearsal_failure_restores_exact_pair_and_does_not_reset_consumption(
         def idle(self):
             return True
 
+    campaign = None
+    if campaign_mode:
+        from tests.test_freshness_campaign import make_campaign
+        campaign = make_campaign(tmp_path / "campaign")
     control = Control()
     monkeypatch.setattr(run, "SystemdControl", lambda: control)
     monkeypatch.setattr(run, "verify_source_package", lambda *args: {})
@@ -484,6 +489,14 @@ def test_rehearsal_failure_restores_exact_pair_and_does_not_reset_consumption(
         if reserve_before_failure:
             from race_collection.live_freshness_contract import AttemptAllowance
 
+            if campaign:
+                from race_collection import live_freshness_contract as contract_module
+                original_create = contract_module.create_once
+                def fail_claim_write(path, value):
+                    if Path(path).name == "capture-reservation.json":
+                        raise RuntimeError("injected_claim_write_failure_after_consumption")
+                    return original_create(path, value)
+                monkeypatch.setattr(contract_module, "create_once", fail_claim_write)
             AttemptAllowance(args[-1]).reserve(
                 {
                     "race_id": "synthetic",
@@ -517,6 +530,16 @@ def test_rehearsal_failure_restores_exact_pair_and_does_not_reset_consumption(
         },
         "reconciliation_roots": {},
     }
+    if campaign:
+        plan.update(campaign_root=str(campaign.root), campaign_authorization_sha256=digest(campaign.value),
+                    max_capture_attempts=12, max_logical_requests=48000, cleanup_seconds=1860)
+    if not partial_pause_failure and not reserve_before_failure:
+        original_atomic = run.atomic_json
+        def fail_final_accounting(path, value):
+            if Path(path).name == "final-window-accounting.json":
+                raise RuntimeError("injected_final_accounting_write_failure")
+            return original_atomic(path, value)
+        monkeypatch.setattr(run, "atomic_json", fail_final_accounting)
     create_once(output / "plan.json", plan)
     with pytest.raises(RuntimeError, match="injected"):
         run.execute(output / "plan.json", digest(plan), "offline-test")
@@ -524,6 +547,10 @@ def test_rehearsal_failure_restores_exact_pair_and_does_not_reset_consumption(
     assert all(control.active.values())
     assert (output / "restored.json").exists()
     assert (output / "started.json").exists()
+    if campaign and not partial_pause_failure:
+        with campaign.ledger() as ledger:
+            assert ledger["launches"][plan["rehearsal_id"]]["closed_at"]
+            assert len(ledger["attempts"]) == int(reserve_before_failure)
     if reserve_before_failure:
         assert clock[0] > stamp + timedelta(minutes=8)
     with pytest.raises(FileExistsError):

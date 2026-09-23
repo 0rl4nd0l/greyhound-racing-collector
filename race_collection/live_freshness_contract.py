@@ -229,8 +229,11 @@ class AttemptAllowance:
                     or candidate.name != "capture-reservation.json"):
                 raise ValueError("capture_reservation_path_mismatch")
             with self.scope.campaign.ledger() as ledger:
-                if not any(row["claim"] == str(candidate) for row in ledger["attempts"]):
+                rows = [row for row in ledger["attempts"] if row["claim"] == str(candidate)]
+                if len(rows) != 1:
                     raise ValueError("capture_campaign_reservation_missing")
+                if rows[0]["item"] != json.loads(candidate.read_bytes())["item"]:
+                    raise ValueError("capture_campaign_reservation_changed")
             self.claim = candidate
         elif candidate != self.claim.resolve():
             raise ValueError("capture_reservation_path_mismatch")

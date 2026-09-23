@@ -467,6 +467,18 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                             }
                         )
                         continue
+                    try:
+                        allowance.check_window(task, now=daemon.wall_clock_now(), required_seconds=50)
+                    except ValueError as error:
+                        if str(error) not in {"capture_reservation_expired", "capture_reservation_not_open", "capture_window_insufficient_time"}:
+                            raise
+                        checkpoint.value.setdefault("exclusions", []).append({
+                            "race_id": task["race_id"],
+                            "capture_window_minutes": task["capture_window_minutes"],
+                            "reason": str(error),
+                            "observed_at": daemon.wall_clock_now().isoformat(),
+                        })
+                        continue
                 pending.append(task)
                 break
         return pending

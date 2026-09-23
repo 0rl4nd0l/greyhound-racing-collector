@@ -38,3 +38,18 @@ def test_delayed_start_preserves_consumption_and_rejects_fetch(tmp_path):
     assert not allowance.available()
     assert allowance.consumed(item)
     assert not claim.with_suffix('.fetch.json').exists()
+
+
+@pytest.mark.parametrize("window,smaller", [(60, 30), (30, 10), (10, 2), (2, 0)])
+def test_all_native_window_boundaries_are_exclusive(window, smaller):
+    jump = datetime.fromisoformat('2026-09-23T02:00:00+00:00')
+    item = dict(race_id='synthetic', capture_window_minutes=window, race_identity={'jump_datetime': jump.isoformat()})
+    opens, closes = jump - timedelta(minutes=window), jump - timedelta(minutes=smaller)
+    with pytest.raises(ValueError, match='not_open'):
+        AttemptAllowance.check_window(item, now=opens - timedelta(microseconds=1))
+    assert AttemptAllowance.check_window(item, now=opens) == closes
+    assert AttemptAllowance.check_window(item, now=closes - timedelta(microseconds=1)) == closes
+    with pytest.raises(ValueError, match='expired'):
+        AttemptAllowance.check_window(item, now=closes)
+    with pytest.raises(ValueError, match='insufficient_time'):
+        AttemptAllowance.check_window(item, now=closes - timedelta(seconds=50), required_seconds=50)
