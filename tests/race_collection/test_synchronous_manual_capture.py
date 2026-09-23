@@ -90,6 +90,148 @@ def _runner_coverage(
     }]}
 
 
+def _scheduled_publication_boundary(tmp_path, monkeypatch, odds_only, observed, run_id, refresh_seconds=150, invalid=None, collection_phase=False):
+    evidence = tmp_path / "artifacts/full_evidence_orchestration_20260525"
+    state = evidence / "runtime/odds.json"
+    race_url = "https://www.thedogs.com.au/racing/gunnedah/2026-07-19/5"
+    source_name = "odds_capture_refresh_report.json" if odds_only else "refresh_prejump_report.json"
+    first_step = "refresh_odds_capture_candidates" if odds_only else "refresh_prejump_races"
+    next_step = "autonomous_live_odds_capture" if odds_only else "refresh_odds_capture_candidates"
+    monkeypatch.setattr(autopilot, "ROOT", tmp_path)
+    monkeypatch.setattr(autopilot, "protected_hashes", lambda: {})
+    previous_ages = []
+    published = []
+
+    class BoundaryReached(Exception):
+        pass
+
+    def step(*, name, command, output_dir, **kwargs):
+        if name == first_step:
+            if current_race_index_path(state).exists():
+                previous = bounded_current_race_index(
+                    current_time=observed + timedelta(seconds=refresh_seconds),
+                    timeout_seconds=1, index_path=current_race_index_path(state),
+                    evidence_root=evidence, max_age_seconds=1200, return_verified_view=True,
+                )
+                previous_ages.append((observed + timedelta(seconds=refresh_seconds)
+                    - datetime.fromisoformat(previous.source_generated_at)).total_seconds())
+            coverage = _runner_coverage(output_dir, race_url, observed)
+            (output_dir / source_name).write_bytes(canonical_bytes({
+                "status": "SUCCESS", "generated_at": observed.isoformat(),
+                "sidecar_metadata_coverage": coverage, "selected_count": 1,
+                "selected_races": [{
+                    "date": "2026-07-19", "jump_datetime": "2026-07-19T23:00:00+10:00",
+                    "race_id": "Race 5 - GUNN - 2026-07-19", "race_number": 5,
+                    "race_id_aliases": ["Race 5 - GUNN - 2026-07-19", "Race 5 - GUNNEDAH - 2026-07-19"],
+                    "source_native_race_id": "15900", "race_time": "23:00",
+                    "race_url": race_url, "venue": "GUNN",
+                }],
+            }))
+            if invalid:
+                payload = json.loads((output_dir / source_name).read_bytes())
+                if invalid == "failed":
+                    payload["status"] = "FAILED"
+                elif invalid == "dry_run":
+                    payload["dry_run"] = True
+                else:
+                    payload["selected_races"][0]["source_native_race_id"] = "99999"
+                (output_dir / source_name).write_bytes(canonical_bytes(payload))
+            return {"name": name, "command": command, "returncode": 0}
+        assert name == next_step
+        view = bounded_current_race_index(current_time=observed + timedelta(seconds=refresh_seconds),
+            timeout_seconds=1, index_path=current_race_index_path(state),
+            evidence_root=evidence, max_age_seconds=1200, return_verified_view=True)
+        if invalid:
+            assert view.run_id != run_id
+            publication = json.loads((output_dir / "current_race_index_publish.json").read_bytes())
+            assert publication["status"] == "REJECTED"
+        else:
+            assert view.source_generated_at == observed.isoformat()
+            assert view.source_refresh_report_path.endswith("/" + source_name)
+        assert len(view.races) == 1
+        published.append(view)
+        raise BoundaryReached
+
+    monkeypatch.setattr(autopilot, "step_command", step)
+    flags = ["--skip-primary-refresh"] if odds_only else []
+    if collection_phase:
+        lock_path = evidence / "runtime/collector.lock"
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_path.write_text(json.dumps({"pid": os.getppid(), "hostname": socket.gethostname(), "run_id": run_id}))
+        flags += ["--collection-phase", "refresh", "--collector-lock-path", str(lock_path)]
+    args = autopilot.parse_args([
+        "--run-id", run_id, "--evidence-root", str(evidence),
+        "--current-time", observed.isoformat(), "--db", str(tmp_path / "unused.db"),
+        "--current-race-index-state-path", str(state), "--enable-autonomous-odds-capture",
+        "--skip-shadow-run", *flags,
+    ])
+    if collection_phase:
+        result = autopilot.run_autopilot(args)
+        assert result["status"] == "PASS"
+        assert result["model_predictions_run"] is False
+        assert [step["name"] for step in result["steps"]] == [first_step]
+        assert "--workers" in result["steps"][0]["command"]
+        published.append(bounded_current_race_index(
+            current_time=observed + timedelta(seconds=refresh_seconds),
+            timeout_seconds=1, index_path=current_race_index_path(state),
+            evidence_root=evidence, max_age_seconds=1200, return_verified_view=True,
+        ))
+    else:
+        with pytest.raises(BoundaryReached):
+            autopilot.run_autopilot(args)
+    return published[0], previous_ages
+
+
+@pytest.mark.parametrize("odds_only", [False, True])
+def test_refresh_phase_publishes_verified_index_without_running_other_steps(tmp_path, monkeypatch, odds_only):
+    view, _ = _scheduled_publication_boundary(tmp_path, monkeypatch, odds_only,
+        datetime.fromisoformat("2026-07-19T12:00:00+10:00"), "phase", refresh_seconds=90,
+        collection_phase=True)
+    assert view.source_generated_at == "2026-07-19T12:00:00+10:00"
+
+
+@pytest.mark.parametrize("odds_only", [False, True])
+def test_scheduled_refresh_publishes_before_unrelated_work(tmp_path, monkeypatch, odds_only):
+    _scheduled_publication_boundary(tmp_path, monkeypatch, odds_only,
+        datetime.fromisoformat("2026-07-19T12:00:00+10:00"), "publication")
+
+
+def test_shared_index_age_across_three_full_cycles_and_overlapping_odds_turns(tmp_path, monkeypatch):
+    origin = datetime.fromisoformat("2026-07-19T12:00:00+10:00")
+    turns = [(True, 0), (False, 600), (True, 1575), (True, 2310),
+             (False, 2910), (True, 3885), (True, 4620), (False, 5220), (True, 6195)]
+    peaks = []
+    for number, (odds_only, offset) in enumerate(turns):
+        view, ages = _scheduled_publication_boundary(tmp_path, monkeypatch, odds_only,
+            origin + timedelta(seconds=offset), f"turn_{number}", refresh_seconds=180)
+        assert view.run_id == f"turn_{number}"
+        peaks.extend(ages)
+    assert max(peaks) == 1155
+    assert all(age < 1200 for age in peaks)
+
+
+def test_refresh_timing_replay_detects_gap_despite_fresh_replacement(tmp_path, monkeypatch):
+    observed = datetime.fromisoformat("2026-07-19T12:00:00+10:00")
+    _scheduled_publication_boundary(tmp_path, monkeypatch, False, observed, "full")
+    replacement, peaks = _scheduled_publication_boundary(
+        tmp_path, monkeypatch, True, observed + timedelta(seconds=1100), "odds",
+        refresh_seconds=180,
+    )
+    assert peaks == [1280]
+    assert max(peaks) > 1200
+    assert replacement.source_generated_at == (observed + timedelta(seconds=1100)).isoformat()
+
+
+@pytest.mark.parametrize("invalid", ["failed", "dry_run", "runner_identity"])
+def test_rejected_odds_refresh_preserves_previous_index_and_timestamp(tmp_path, monkeypatch, invalid):
+    observed = datetime.fromisoformat("2026-07-19T12:00:00+10:00")
+    before, _ = _scheduled_publication_boundary(tmp_path, monkeypatch, False, observed, "full")
+    after, _ = _scheduled_publication_boundary(tmp_path, monkeypatch, True,
+        observed + timedelta(seconds=300), "odds", invalid=invalid)
+    assert after.packet_bytes == before.packet_bytes
+    assert after.source_generated_at == before.source_generated_at
+
+
 def _write_publication_evidence(
     evidence_root: Path, state: Path, published: Mapping[str, Any]
 ) -> None:

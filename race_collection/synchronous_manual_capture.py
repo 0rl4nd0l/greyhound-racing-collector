@@ -1277,6 +1277,7 @@ def publish_current_race_index(
     source_refresh_report_path: Path,
     run_id: str,
     max_races: int = MAX_CURRENT_INDEX_RACES,
+    enforce_monotonic: bool = False,
 ) -> dict[str, Any]:
     """Seal one finite scheduled-refresh selection at a fixed runtime path."""
 
@@ -1305,6 +1306,13 @@ def publish_current_race_index(
                 or source_generated_at.utcoffset() is None
             ):
                 raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
+            if enforce_monotonic and index_path.exists():
+                with _RetainedSafeFiles(evidence_root) as preceding:
+                    previous = json.loads(preceding.read(index_path, missing_code="CURRENT_INDEX_SOURCE_MISSING"))
+                    preceding.validate()
+                previous_time = datetime.fromisoformat(previous["source_generated_at"])
+                if source_generated_at <= previous_time:
+                    raise CaptureOneRejected("CURRENT_INDEX_SOURCE_REGRESSION")
             races = _normalize_current_index_rows(source, max_races=max_races)
             if not races:
                 raise CaptureOneRejected(

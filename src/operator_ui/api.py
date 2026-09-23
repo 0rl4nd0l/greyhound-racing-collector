@@ -116,6 +116,7 @@ _PREDICTION_LIFECYCLES = frozenset(
 )
 _COLLECTOR_LANE_STATUSES = frozenset(
     {
+        "WAITING_FOR_PEER",
         "ACTIVE",
         "RECEIPT_READY",
         "REQUEST_EXPIRED",
@@ -131,6 +132,7 @@ _COLLECTOR_LANE_STATUSES = frozenset(
 )
 _COLLECTOR_TERMINAL_STATUSES = frozenset(
     {
+        "WAITING_FOR_PEER",
         "RECEIPT_READY",
         "REQUEST_EXPIRED",
         "RACE_NOT_FOUND",
