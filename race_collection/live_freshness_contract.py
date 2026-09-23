@@ -178,6 +178,77 @@ class AttemptAllowance:
             create_once(self.scope.root / "windows" / (digest(list(candidate)) + ".json"), claim)
         return self.claim
 
+    def bind_capture_plan(self, claim_path, plan):
+        """Authenticate a native planner alias, then carry the reserved canonical ID.
+
+        Alias membership alone is insufficient: exact input bytes, source URL,
+        native source identity, jump, window and runner set must agree. Rebinding
+        neither starts a fetch nor creates/replenishes an allowance.
+        """
+        from race_collection.synchronous_manual_capture import runner_set_sha256
+        from utils.runner_completeness import normalise_runner_name
+
+        if Path(claim_path).resolve() != self.claim.resolve():
+            raise ValueError("capture_reservation_path_mismatch")
+        claim = json.loads(self.claim.read_bytes())
+        if claim["contract_sha256"] != digest(self.scope.value):
+            raise ValueError("capture_reservation_identity_changed")
+        reserved = claim["item"]
+        identity = reserved["race_identity"]
+        rows = plan.get("races", [])
+        if len(rows) != 1:
+            raise ValueError("capture_reservation_plan_ambiguous")
+        item = dict(rows[0])
+        aliases = reserved.get("race_id_aliases", [reserved["race_id"]])
+        if (
+            not isinstance(aliases, list)
+            or not 0 < len(aliases) <= 16
+            or len(set(aliases)) != len(aliases)
+            or reserved["race_id"] not in aliases
+            or item.get("race_id") not in aliases
+            or identity.get("race_id") != reserved["race_id"]
+        ):
+            raise ValueError("capture_reservation_identity_changed")
+        for alias in aliases:
+            parts = alias.split(" - ")
+            if (
+                len(parts) != 3
+                or parts[0] != f"Race {item['race_number']}"
+                or parts[2] != item["race_date"]
+            ):
+                raise ValueError("capture_reservation_alias_invalid")
+        files = reserved.get("input_files", {})
+        if not files or item.get("csv_path") not in files or item.get("sidecar_path") not in files:
+            raise ValueError("capture_reserved_input_substituted")
+        for path, expected in files.items():
+            if hashlib.sha256(Path(path).read_bytes()).hexdigest() != expected:
+                raise ValueError("capture_reserved_input_changed")
+        metadata = json.loads(Path(item["sidecar_path"]).read_bytes())["prejump_shadow_metadata"]
+        if (
+            item.get("thedogs_source_url") != identity.get("race_url")
+            or not identity.get("source_native_race_id")
+            or str(metadata.get("source_native_race_id")) != str(identity["source_native_race_id"])
+            or any(
+                normalise_runner_name(row["dog_name"]) != row["identity"]
+                for row in item.get("expected_runners", [])
+            )
+            or runner_set_sha256(item.get("expected_runners", []))
+            != reserved.get("capture_runner_set_sha256")
+        ):
+            raise ValueError("capture_reservation_source_identity_changed")
+        if item.get("jump_datetime") != identity["jump_datetime"]:
+            raise ValueError("capture_reservation_jump_changed")
+        if item.get("capture_window_minutes") != reserved["capture_window_minutes"]:
+            raise ValueError("capture_reservation_identity_changed")
+        item.update(
+            race_id=reserved["race_id"],
+            canonical_race_id=reserved["race_id"],
+            planner_race_id=item.get("planner_race_id", item["race_id"]),
+            race_id_aliases=list(aliases),
+            race_identity=dict(identity),
+        )
+        return {**plan, "races": [item]}
+
     def start_fetch(self, claim_path, item, *, now):
         if Path(claim_path).resolve() != self.claim.resolve():
             raise ValueError("capture_reservation_path_mismatch")
@@ -218,6 +289,7 @@ def install_request_guard(scope):
     """
     import fcntl
     import requests
+    from urllib.parse import urlsplit
 
     original = requests.Session.request
 
@@ -226,11 +298,43 @@ def install_request_guard(scope):
         scope.session.mkdir(parents=True, exist_ok=True)
         with (scope.session / "request-count.lock").open("a") as mutex:
             fcntl.flock(mutex, fcntl.LOCK_EX)
+            host = (urlsplit(url).hostname or "").lower()
+            provider = any(
+                host == domain or host.endswith("." + domain)
+                for domain in ("thedogs.com.au", "sportsbet.com.au")
+            )
+            auxiliary = host == "api.open-meteo.com"
+            network_path = scope.session / "network-count.json"
+            network = (
+                json.loads(network_path.read_bytes())
+                if network_path.exists()
+                else {
+                    "provider_started": 0,
+                    "auxiliary_started": 0,
+                    "unexpected_blocked": 0,
+                    "by_host": {},
+                    "wire_retries": "UNMEASURED",
+                }
+            )
+            category = (
+                "provider_started"
+                if provider
+                else ("auxiliary_started" if auxiliary else "unexpected_blocked")
+            )
+            if category == "unexpected_blocked":
+                network[category] += 1
+                network["by_host"][host] = network["by_host"].get(host, 0) + 1
+                atomic_json(network_path, network)
+                scope.stop("UNEXPECTED_NETWORK_BLOCKED")
+                raise ValueError("unexpected_network_host")
             path = scope.session / "request-count.json"
             count = json.loads(path.read_bytes())["started"] if path.exists() else 0
             if count >= scope.value["max_logical_requests"]:
                 scope.stop("REQUEST_CAP_EXHAUSTED")
                 raise ValueError("request_cap_exhausted")
+            network[category] += 1
+            network["by_host"][host] = network["by_host"].get(host, 0) + 1
+            atomic_json(network_path, network)
             atomic_json(path, {"started": count + 1})
         return original(session, method, url, **kwargs)
 

@@ -38,6 +38,30 @@ def get_chrome_driver(headless=True):
             # Fallback if pytest not available: raise a clear runtime error
             raise RuntimeError("Selenium disabled via DISABLE_SELENIUM=1")
 
+    if os.environ.get("GREYHOUND_LIVE_EXECUTION") == "bounded80-v1":
+        # The bounded profile never calls Selenium Manager or webdriver-manager.
+        # Failure of these installed binaries is terminal, not an installer trigger.
+        from selenium import webdriver as pinned_webdriver
+        from selenium.webdriver.chrome.options import Options as PinnedOptions
+        from selenium.webdriver.chrome.service import Service as PinnedService
+
+        options = PinnedOptions()
+        options.binary_location = os.environ["GREYHOUND_CHROME_BINARY"]
+        options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
+        for argument in (
+            "--headless",
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-background-networking",
+            "--disable-component-update",
+            "--no-first-run",
+            "--disable-sync",
+        ):
+            options.add_argument(argument)
+        return pinned_webdriver.Chrome(
+            service=PinnedService(os.environ["GREYHOUND_CHROMEDRIVER"]), options=options
+        )
+
     # Lazy-import selenium and webdriver-manager to avoid module_guard violations at startup
     from selenium import webdriver as _webdriver
     from selenium.webdriver.chrome.options import Options as _Options

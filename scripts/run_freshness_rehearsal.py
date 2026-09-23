@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -53,6 +54,10 @@ class SystemdControl:
             "MainPID",
             "-p",
             "ControlGroup",
+            "-p",
+            "ExecMainPID",
+            "-p",
+            "InvocationID",
             "-p",
             "ExecMainStartTimestampMonotonic",
             "-p",
@@ -302,9 +307,17 @@ def sample(plan, output, control):
     result["external_service_overhead_seconds"] = {}
     for lane in ("full", "odds"):
         terminal = paths[lane + "_report"].parent / "terminal-timing.json"
+        invocation = status[lane].get("InvocationID", "")
+        lifecycle = (
+            (runtime / "service-lifecycles" / (invocation + ".json"))
+            if re.fullmatch(r"[0-9a-f]{32}", invocation)
+            else None
+        )
         if terminal.exists():
             result["external_service_overhead_seconds"][lane] = completed_service_overhead(
-                status[lane], json.loads(terminal.read_bytes())
+                status[lane],
+                json.loads(terminal.read_bytes()),
+                json.loads(lifecycle.read_bytes()) if lifecycle and lifecycle.exists() else None,
             )
     lock = Path(plan["lock_path"])
     result["lock"] = json.loads(lock.read_bytes()) if lock.exists() else None
@@ -441,6 +454,12 @@ def observe(output, plan, control, scope):
         current["logical_requests"] = (
             json.loads(request_path.read_bytes())["started"] if request_path.exists() else 0
         )
+        network_path = scope.session / "network-count.json"
+        current["python_network"] = (
+            json.loads(network_path.read_bytes())
+            if network_path.exists()
+            else {"provider_started": 0, "auxiliary_started": 0, "unexpected_blocked": 0}
+        )
         capture_requests = scope.session / "capture-requests.json"
         current["capture_requests"] = (
             json.loads(capture_requests.read_bytes())
@@ -501,6 +520,7 @@ def observe(output, plan, control, scope):
                 "completed_cycles": {key: len(value) for key, value in completed.items()},
                 "lock_wait_seconds": waits,
                 "logical_requests": current["logical_requests"],
+                "python_network": current["python_network"],
                 "timer_accounting": timer_accounting.summary(now()),
                 "windows": window_accounting(
                     window_rows, exclusions, AttemptAllowance(scope).claim, now()
@@ -538,6 +558,7 @@ def observe(output, plan, control, scope):
             "timer_accounting": timer_accounting.summary(end),
             "windows": window_accounting(window_rows, exclusions, allowance.claim, end),
             "logical_requests": current["logical_requests"],
+            "python_network": current["python_network"],
             "capture_requests": current["capture_requests"],
             "capture_count": 1,
             "throughput_validated": False,
@@ -631,6 +652,7 @@ def execute(plan_path, expected_digest, approval_id):
                 "max_capture_attempts",
                 "max_logical_requests",
                 "source_identity_sha256",
+                "runtime_sha256",
             )
         }
         contract.update(

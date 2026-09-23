@@ -3,6 +3,7 @@
 import hashlib
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -52,6 +53,14 @@ def run_live_collection_cycle(args, *, odds_only: bool):
         scope.admit(now, seconds=90)
         allowance = AttemptAllowance(scope)
         allowance.available()  # Missing reconciliation blocks even refresh startup.
+    if scope and os.environ.get("GREYHOUND_SERVICE_INVOCATION"):
+
+        def interrupted(signum, frame):
+            scope.stop("SERVICE_INTERRUPTED")
+            raise InterruptedError("live_service_interrupted")
+
+        signal.signal(signal.SIGINT, interrupted)
+        signal.signal(signal.SIGTERM, interrupted)
     lane = "odds" if odds_only else "full"
     run_id = args.run_id or daemon.now_id(daemon.wall_clock_now()) + (
         "_odds_capture" if odds_only else ""
@@ -136,6 +145,8 @@ def run_live_collection_cycle(args, *, odds_only: bool):
     outcome = "LIVE_COLLECTION_COMPLETE"
     previous_state = daemon.load_json(state_path) or {}
     timing = {
+        "service_invocation_id": os.environ.get("GREYHOUND_SERVICE_INVOCATION"),
+        "process_pid": os.getpid(),
         "process_started_monotonic": cycle_started,
         "startup_seconds": time.monotonic() - cycle_started,
         "lock_wait_seconds": 0.0,
@@ -313,6 +324,8 @@ def run_live_collection_cycle(args, *, odds_only: bool):
             atomic_json(state_path, previous_state)
 
     def capture_tasks(view):
+        from race_collection.manual_prediction_collector_request import runner_set_sha256
+
         refresh = daemon.load_json(evidence / view.source_refresh_report_path) or {}
         coverage = (refresh.get("sidecar_metadata_coverage") or {}).get("races") or []
         tasks = []
@@ -332,6 +345,20 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                         "race_id_aliases": row.get("race_id_aliases", [row["race_id"]]),
                         "input_dir": str(directory),
                         "packet_sha256": view.packet_sha256,
+                        "capture_runner_set_sha256": (
+                            runner_set_sha256(
+                                [
+                                    {
+                                        "box_number": runner["box"],
+                                        "dog_name": runner["display_name"],
+                                        "identity": runner["identity"],
+                                    }
+                                    for runner in row["runners"]
+                                ]
+                            )
+                            if scope
+                            else None
+                        ),
                         "input_files": {
                             str(path): hashlib.sha256(path.read_bytes()).hexdigest()
                             for path in directory.iterdir()
@@ -373,6 +400,7 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                     row.get("capture_window_minutes") or 0,
                 ),
             )
+            by_url = {task["race_identity"]["race_url"]: task for task in tasks}
             if scope:
                 checkpoint.value.setdefault("window_observations", []).extend(
                     {
@@ -386,6 +414,10 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                                 "blockers",
                             )
                         },
+                        "race_id": by_url.get(row.get("thedogs_source_url"), {}).get(
+                            "race_id", row.get("race_id")
+                        ),
+                        "planner_race_id": row.get("race_id"),
                         "observed_at": daemon.wall_clock_now().isoformat(),
                     }
                     for row in plan["races"]
@@ -393,14 +425,16 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                 if not allowance.available():
                     checkpoint.value.setdefault("exclusions", []).extend(
                         {
-                            "race_id": row.get("race_id"),
+                            "race_id": by_url.get(row.get("thedogs_source_url"), {}).get(
+                                "race_id", row.get("race_id")
+                            ),
+                            "planner_race_id": row.get("race_id"),
                             "capture_window_minutes": row.get("capture_window_minutes"),
                             "reason": "shared_capture_allowance_consumed",
                         }
                         for row in ready
                     )
                     return []
-            by_url = {task["race_identity"]["race_url"]: task for task in tasks}
             for row in ready:
                 if row.get("thedogs_source_url") not in by_url:
                     continue

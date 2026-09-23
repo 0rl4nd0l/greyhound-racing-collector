@@ -135,14 +135,33 @@ def assess_interval(previous, current, publications):
     return upper
 
 
-def completed_service_overhead(status, report):
+def completed_service_overhead(status, report, lifecycle=None):
     """Include systemd dispatch, interpreter startup, final stdout and process exit."""
     started = int(status.get("ExecMainStartTimestampMonotonic") or 0) / 1e6
     ended = int(status.get("ExecMainExitTimestampMonotonic") or 0) / 1e6
     if status["ActiveState"] not in {"inactive", "failed"} or ended < started or not started:
         return None
     timing = report["timing"]
-    if not started <= timing["process_started_monotonic"] <= ended:
+    if timing.get("service_invocation_id"):
+        if lifecycle is None:
+            return None
+        if (
+            lifecycle.get("invocation_id") != timing["service_invocation_id"]
+            or status.get("InvocationID") != lifecycle["invocation_id"]
+            or int(status.get("ExecMainPID") or 0) != lifecycle.get("wrapper_pid")
+            or timing.get("process_pid") != lifecycle.get("child_pid")
+        ):
+            raise ValueError("service_lifecycle_identity_mismatch")
+        if (
+            lifecycle.get("children_reaped") is not True
+            or not lifecycle["process_start_lower_bound"]
+            <= timing["process_started_monotonic"]
+            <= lifecycle["completed_monotonic"]
+            <= ended
+        ):
+            raise ValueError("service_lifecycle_incomplete")
+        started = min(started, lifecycle["process_start_lower_bound"])
+    elif not started <= timing["process_started_monotonic"] <= ended:
         return None  # An old report cannot authenticate a new activation.
     overhead = ended - started - timing["phase_seconds"] - timing["lock_wait_seconds"]
     if overhead < 0 or overhead > 10:

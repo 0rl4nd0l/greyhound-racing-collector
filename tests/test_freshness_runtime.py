@@ -65,3 +65,66 @@ def test_executor_checks_runtime_before_touching_services(tmp_path, monkeypatch)
     with pytest.raises(ValueError, match="runtime_environment_changed"):
         run.execute(tmp_path / "plan.json", digest(plan), "synthetic-offline")
     assert (tmp_path / "started.json").exists()
+
+
+def test_profile_capture_command_cannot_select_dependency_installer(monkeypatch):
+    from scripts import shadow_autopilot_v1 as autopilot
+
+    monkeypatch.setattr(autopilot, "odds_capture_dependencies_available", lambda: False)
+    assert autopilot.odds_capture_command_prefix("pinned") == [sys.executable]
+
+
+def test_generated_command_rejects_environment_without_installed_dependencies(tmp_path):
+    import json
+    import subprocess
+    from scripts.shadow_autopilot_daemon import service_file_text
+    from scripts.check_freshness_service import service_command
+
+    venv = tmp_path / "empty-venv"
+    subprocess.run([sys.executable, "-m", "venv", "--without-pip", str(venv)], check=True)
+    unit = tmp_path / "candidate.service"
+    unit.write_text(
+        service_file_text(
+            repo_path=Path(__file__).resolve().parents[1],
+            python_path=venv / "bin/python",
+            timeout_seconds=600,
+            live_freshness=True,
+            live_freshness_profile="bounded80-v1",
+            live_freshness_contract=tmp_path / "absent-contract.json",
+        )
+    )
+    command, cwd, env = service_command(unit)
+    launcher = 'from scripts.check_freshness_service import deny_network; import os,sys; deny_network(); os.execve(sys.argv[1],sys.argv[1:],dict(__import__("json").loads(os.environ["FIXTURE_ENV"])))'
+    result = subprocess.run(
+        [sys.executable, "-c", launcher, *command, "--verify-live-runtime"],
+        cwd=cwd,
+        env={"FIXTURE_ENV": json.dumps(env)},
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode != 0
+    assert "ModuleNotFoundError" in result.stderr
+    assert not (tmp_path / "absent-contract.json").exists()
+
+
+def test_no_install_guard_blocks_actual_installer_process(tmp_path):
+    import json
+    import subprocess
+    from race_collection.live_execution import installed_browser_binaries
+
+    manifest = {
+        "executable": sys.executable,
+        "prefix": sys.prefix,
+        "browser_binaries": installed_browser_binaries(),
+    }
+    (tmp_path / "runtime-identity.json").write_text(json.dumps(manifest))
+    command = 'from race_collection.live_execution import configure_profile_execution; import subprocess,sys; configure_profile_execution(sys.argv[1]); subprocess.run([sys.executable,"-m","pip","--version"])'
+    result = subprocess.run(
+        [sys.executable, "-c", command, str(tmp_path / "absent-contract.json")],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode != 0
+    assert "profile_dependency_installation_forbidden" in result.stderr

@@ -3824,6 +3824,11 @@ def refresh_command_prefix(mode: str = "auto") -> list[str]:
 
 
 def odds_capture_command_prefix(mode: str = "auto") -> list[str]:
+    if mode == "pinned":
+        from race_collection.live_execution import require_profile_dependencies
+
+        require_profile_dependencies()
+        return [sys.executable]
     if mode not in {"auto", "python", "uv"}:
         raise ValueError(f"unknown_odds_capture_command_mode:{mode}")
     if mode == "python" or (mode == "auto" and odds_capture_dependencies_available()):
@@ -3836,8 +3841,6 @@ def odds_capture_command_prefix(mode: str = "auto") -> list[str]:
         command.append("python")
         return command
     raise RuntimeError("odds_capture_dependencies_missing_and_uv_unavailable")
-
-
 
 
 def metric_from_source(
@@ -6995,6 +6998,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             else current_time
         )
         autonomous_odds_command = autonomous_live_odds_capture_command(
+            command_prefix=odds_capture_command_prefix("pinned") if profile else None,
             input_dirs=odds_capture_input_dirs,
             evidence_root=evidence_root,
             capture_dir=autonomous_odds_capture_dir,
@@ -7003,13 +7007,9 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             limit=autonomous_odds_capture_limit,
             execute=args.execute_autonomous_odds_capture,
             allow_auto_scrape_odds=args.allow_auto_scrape_odds,
-            manual_request_root=(
-                manual_protocol.root if manual_protocol is not None else None
-            ),
+            manual_request_root=(manual_protocol.root if manual_protocol is not None else None),
             manual_request_id=(
-                str(manual_request.request["request_id"])
-                if manual_request is not None
-                else None
+                str(manual_request.request["request_id"]) if manual_request is not None else None
             ),
             collector_run_id=(
                 str(manual_request.claim["collector_run_id"])
@@ -7027,9 +7027,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             ),
             forward_corpus_root=args.forward_corpus_root,
             forward_current_race_index_path=(
-                collector_current_race_index_path(
-                    args.current_race_index_state_path
-                )
+                collector_current_race_index_path(args.current_race_index_state_path)
                 if args.forward_corpus_root is not None
                 and args.forward_baseline_config is None
                 and args.current_race_index_state_path is not None

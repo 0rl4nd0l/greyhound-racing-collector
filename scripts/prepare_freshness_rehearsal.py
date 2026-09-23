@@ -80,6 +80,24 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         state_path=runtime / "odds_capture_state.json",
         refresh_limit=16,
     )
+    service_checks = {}
+    for name in (UNITS[0], UNITS[2]):
+        completed = subprocess.run(
+            [
+                str(python),
+                "-B",
+                str(source / "scripts/check_freshness_service.py"),
+                "--unit",
+                str(output / "units" / name),
+            ],
+            text=True,
+            capture_output=True,
+            timeout=45,
+        )
+        if completed.returncode:
+            raise ValueError("generated_service_preflight_failed: " + completed.stderr[-3000:])
+        service_checks[name] = json.loads(completed.stdout.splitlines()[-1])
+    create_once(output / "service-preflight.json", service_checks)
     # An immutable archive of code/config only; no retained data/model/test fixtures.
     import tarfile
 

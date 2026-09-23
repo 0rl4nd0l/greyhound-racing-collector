@@ -139,6 +139,13 @@ def runtime_identity(source_root):
         module = importlib.import_module(name)
         path = Path(module.__file__).resolve()
         modules[name] = {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+    from race_collection.live_execution import (
+        installed_browser_binaries,
+        require_profile_dependencies,
+    )
+
+    require_profile_dependencies()
+    browser_binaries = installed_browser_binaries()
     distributions = sorted(
         (
             {
@@ -158,6 +165,7 @@ def runtime_identity(source_root):
         "prefix": sys.prefix,
         "version": sys.version,
         "modules": modules,
+        "browser_binaries": browser_binaries,
         "distributions": distributions,
         "startup_observation": check_startup_observation(source_root, scratch),
         "scope": "Imports, distribution records and synthetic native startup observation; no acquisition or browser launch",

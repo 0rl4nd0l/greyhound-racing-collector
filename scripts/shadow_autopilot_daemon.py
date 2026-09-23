@@ -1118,6 +1118,38 @@ def run_command(
     cwd: Path = ROOT,
     wait_for_descendants: bool = False,
 ) -> dict[str, Any]:
+    if wait_for_descendants:
+        # Adopt descendants that detach into their own process group. The phase
+        # owns these children and must drain them before releasing its lock.
+        import ctypes
+
+        if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
+            raise RuntimeError("phase_child_subreaper_unavailable")
+
+    def reap_owned_children():
+        nonlocal timed_out, returncode
+        while True:
+            try:
+                child_pid, _ = os.waitpid(-1, os.WNOHANG)
+            except ChildProcessError:
+                return
+            except InterruptedError:
+                continue
+            if child_pid:
+                continue
+            if time.monotonic() - started_monotonic >= timeout_seconds:
+                timed_out = True
+                returncode = -signal.SIGKILL
+                # These are unreaped direct/adopted children, not arbitrary PIDs
+                # found by name. Apply the existing phase timeout to their cleanup.
+                children = Path(f"/proc/self/task/{os.getpid()}/children").read_text().split()
+                for child in children:
+                    try:
+                        os.kill(int(child), signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+            time.sleep(0.05)
+
     started = datetime.now().astimezone()
     started_monotonic = time.monotonic()
     log_dir = output_dir / "logs"
@@ -1127,6 +1159,7 @@ def run_command(
     running_path = log_dir / f"{name}.running.json"
     finished_path = log_dir / f"{name}.finished.json"
     timed_out = False
+    interrupted = False
     returncode: int | None = None
     log_dir.mkdir(parents=True, exist_ok=True)
     timeout_deadline_at = started + timedelta(seconds=timeout_seconds)
@@ -1192,7 +1225,24 @@ def run_command(
                 returncode = process.wait()
             if returncode == 0:
                 returncode = -signal.SIGTERM
+        except InterruptedError:
+            if not wait_for_descendants:
+                raise
+            interrupted = True
+            process.wait()
+            # Continue through owned-child cleanup and the durable finished record.
+            # Returning FAIL lets the caller charge the interrupted phase duration
+            # and seal its consumed reservation instead of losing that interval.
+            returncode = -signal.SIGINT
+        except BaseException:
+            if wait_for_descendants:
+                process.wait()
+                reap_owned_children()
+                while process_group_has_running_members(process.pid):
+                    time.sleep(0.05)
+            raise
         if wait_for_descendants:
+            reap_owned_children()
             while process_group_has_running_members(process.pid):
                 if time.monotonic() - started_monotonic >= timeout_seconds:
                     timed_out = True
@@ -1214,6 +1264,7 @@ def run_command(
         "timeout_seconds": timeout_seconds,
         "timeout_deadline_at": timeout_deadline_at.isoformat(),
         "timed_out": timed_out,
+        "interrupted": interrupted,
         "returncode": returncode,
         "status": "PASS" if returncode == 0 and not timed_out else "FAIL",
         "stdout_path": relpath(stdout_path),
@@ -1305,7 +1356,11 @@ def service_file_text(
     profile_segment = live_profile_segment(live_freshness, live_freshness_profile, live_freshness_contract)
     if live_freshness_profile and forward_corpus_root is not None:
         raise ValueError("live_profile_forbids_result_and_research_access")
-    script_path = repo_path / "scripts/shadow_autopilot_daemon.py"
+    script_path = repo_path / (
+        "scripts/run_freshness_service.py"
+        if live_freshness_profile
+        else "scripts/shadow_autopilot_daemon.py"
+    )
     service_python = python_path or Path("/usr/bin/python3")
     evidence_root_segment = " ".join(optional_path_cli_args("--evidence-root", evidence_root))
     evidence_root_segment = f"{evidence_root_segment} " if evidence_root_segment else ""
@@ -1350,14 +1405,23 @@ def service_file_text(
             "Description=Greyhound shadow autopilot evidence collection",
             "Wants=network-online.target",
             "After=network-online.target",
-            *( [f"ConditionPathExists=!{pause_path}"] if pause_path is not None else [] ),
+            *([f"ConditionPathExists=!{pause_path}"] if pause_path is not None else []),
             "",
             "[Service]",
             "Type=oneshot",
             f"WorkingDirectory={repo_path}",
             "Environment=PYTHONUNBUFFERED=1",
             "Environment=GREYHOUND_ALLOW_TGR=0",
-            *(["Environment=TZ=Australia/Melbourne"] if live_freshness_profile else []),
+            *(
+                [
+                    "Environment=TZ=Australia/Melbourne",
+                    "Environment=PYTHONNOUSERSITE=1",
+                    "Environment=UV_OFFLINE=1",
+                    "Environment=PIP_NO_INDEX=1",
+                ]
+                if live_freshness_profile
+                else []
+            ),
             "Environment=PATH=/home/l4nd0/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             (
                 f"ExecStart={service_python} {script_path} run-once "
@@ -1429,7 +1493,11 @@ def odds_capture_service_file_text(
     profile_segment = live_profile_segment(live_freshness, live_freshness_profile, live_freshness_contract)
     if live_freshness_profile and forward_corpus_root is not None:
         raise ValueError("live_profile_forbids_result_and_research_access")
-    script_path = repo_path / "scripts/shadow_autopilot_daemon.py"
+    script_path = repo_path / (
+        "scripts/run_freshness_service.py"
+        if live_freshness_profile
+        else "scripts/shadow_autopilot_daemon.py"
+    )
     service_python = python_path or Path("/usr/bin/python3")
     evidence_root_segment = " ".join(optional_path_cli_args("--evidence-root", evidence_root))
     evidence_root_segment = f"{evidence_root_segment} " if evidence_root_segment else ""
@@ -1477,7 +1545,16 @@ def odds_capture_service_file_text(
             f"WorkingDirectory={repo_path}",
             "Environment=PYTHONUNBUFFERED=1",
             "Environment=GREYHOUND_ALLOW_TGR=0",
-            *(["Environment=TZ=Australia/Melbourne"] if live_freshness_profile else []),
+            *(
+                [
+                    "Environment=TZ=Australia/Melbourne",
+                    "Environment=PYTHONNOUSERSITE=1",
+                    "Environment=UV_OFFLINE=1",
+                    "Environment=PIP_NO_INDEX=1",
+                ]
+                if live_freshness_profile
+                else []
+            ),
             "Environment=PATH=/home/l4nd0/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             (
                 f"ExecStart={service_python} {script_path} run-odds-capture-once "
@@ -13537,6 +13614,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     run_parser = subparsers.add_parser("run-once", help="Run one timer-safe daemon cycle")
     run_parser.add_argument("--run-id")
     run_parser.add_argument("--live-freshness", action="store_true")
+    run_parser.add_argument("--verify-live-runtime", action="store_true")
     run_parser.add_argument("--live-freshness-profile", choices=("bounded80-v1",))
     run_parser.add_argument("--live-freshness-contract", type=Path)
     run_parser.add_argument("--evidence-root", type=Path, default=DEFAULT_EVIDENCE_ROOT)
@@ -13629,6 +13707,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     odds_parser.add_argument("--run-id")
     odds_parser.add_argument("--live-freshness", action="store_true")
+    odds_parser.add_argument("--verify-live-runtime", action="store_true")
     odds_parser.add_argument("--live-freshness-profile", choices=("bounded80-v1",))
     odds_parser.add_argument("--live-freshness-contract", type=Path)
     odds_parser.add_argument("--evidence-root", type=Path, default=DEFAULT_EVIDENCE_ROOT)
@@ -13786,6 +13865,28 @@ def main(argv: Sequence[str] | None = None) -> int:
         getattr(args, "live_freshness_profile", None),
         getattr(args, "live_freshness_contract", None),
     )
+    if getattr(args, "live_freshness_profile", None) and args.command in {
+        "run-once",
+        "run-odds-capture-once",
+    }:
+        from race_collection.live_execution import configure_profile_execution
+
+        configure_profile_execution(args.live_freshness_contract)
+        if args.verify_live_runtime:
+            command = [
+                *autopilot.odds_capture_command_prefix("pinned"),
+                str(ROOT / "scripts/autonomous_live_odds_capture.py"),
+                "--verify-live-runtime",
+                "--input-dir",
+                str(ROOT / "preflight-unused"),
+                "--live-freshness-contract",
+                str(args.live_freshness_contract),
+            ]
+            result = subprocess.run(command, text=True, capture_output=True)
+            if result.returncode:
+                raise ValueError("capture_preflight_failed: " + result.stderr[-3000:])
+            print(result.stdout.strip())
+            return 0
     if getattr(args, "live_freshness", False) and args.command in {
         "run-once", "run-odds-capture-once"
     }:

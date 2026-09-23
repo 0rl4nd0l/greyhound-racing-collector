@@ -8,6 +8,7 @@ function is called.
 
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
 import time
@@ -468,12 +469,17 @@ def fetch_odds_for_target_race(
         allow_auto_scrape_odds=True,
         setup_database=False,
     )
+    network_accounting = None
     try:
         if not integrator.setup_driver():
             summary["warnings"].append("selenium driver unavailable")
             return summary
         driver = integrator.driver
-        if request_metrics_path is not None:
+        if request_metrics_path is not None and os.environ.get("GREYHOUND_LIVE_EXECUTION"):
+            from race_collection.live_execution import BrowserNetworkAccounting
+
+            network_accounting = BrowserNetworkAccounting(driver, request_metrics_path)
+        elif request_metrics_path is not None:
             from race_collection.live_phase_checkpoint import atomic_json
             navigation_count = 0
             navigate = driver.get
@@ -539,6 +545,8 @@ def fetch_odds_for_target_race(
             summary["warnings"].append("race found but no win odds extracted")
         return summary
     finally:
+        if network_accounting is not None:
+            network_accounting.drain()
         integrator.close_driver()
 
 

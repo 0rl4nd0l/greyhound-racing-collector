@@ -2614,6 +2614,12 @@ def execute_capture_plan(
     live_capture_reservation: Path | None = None,
 ) -> dict[str, Any]:
     time_provider = current_time_provider or (lambda: datetime.now().astimezone())
+    allowance = None
+    if live_freshness_contract is not None:
+        from race_collection.live_freshness_contract import FreshnessContract, AttemptAllowance
+
+        allowance = AttemptAllowance(FreshnessContract.load(live_freshness_contract))
+        plan = allowance.bind_capture_plan(live_capture_reservation, plan)
     attempts: list[dict[str, Any]] = []
     inserted_rows = 0
     validation_pass_count = 0
@@ -2659,6 +2665,10 @@ def execute_capture_plan(
             flush_attempt_progress(progress_dir, attempts=attempts)
             continue
         item = executable_item
+        if allowance is not None:
+            item = allowance.bind_capture_plan(live_capture_reservation, {"races": [item]})[
+                "races"
+            ][0]
         attempt["capture_window_minutes"] = item.get("capture_window_minutes")
         capture_mode = f"autonomous_prejump_t{item.get('capture_window_minutes')}m"
         existing_status = existing_capture_runner_status(
@@ -2755,6 +2765,11 @@ def execute_capture_plan(
             flush_attempt_progress(progress_dir, attempts=attempts)
             continue
         item = append_item
+        if allowance is not None:
+            allowance.scope.admit(append_time, seconds=0)
+            item = allowance.bind_capture_plan(live_capture_reservation, {"races": [item]})[
+                "races"
+            ][0]
         attempt["capture_window_minutes"] = item.get("capture_window_minutes")
         capture_mode = f"autonomous_prejump_t{item.get('capture_window_minutes')}m"
         existing_status = existing_capture_runner_status(
@@ -3076,6 +3091,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--forward-current-race-index-path", type=Path)
     parser.add_argument("--forward-baseline-config", type=Path)
     parser.add_argument("--input-retention-config", type=Path)
+    parser.add_argument("--verify-live-runtime", action="store_true")
     parser.add_argument("--live-freshness-contract", type=Path)
     parser.add_argument("--live-capture-reservation", type=Path)
     return parser.parse_args(argv)
@@ -3088,6 +3104,28 @@ def main(
     current_index_reader: Callable[..., Any] | None = None,
 ) -> int:
     args = parse_args(argv)
+    if args.live_freshness_contract:
+        from race_collection.live_execution import configure_profile_execution
+
+        runtime = configure_profile_execution(args.live_freshness_contract)
+        if args.verify_live_runtime:
+            print(
+                json.dumps(
+                    {
+                        "executable": sys.executable,
+                        "prefix": sys.prefix,
+                        "browser_binaries": runtime["browser_binaries"],
+                        "dependency_installation": False,
+                    }
+                )
+            )
+            return 0
+    elif args.verify_live_runtime:
+        raise ValueError("profile_runtime_contract_required")
+    if args.live_freshness_contract:
+        from race_collection.live_freshness_contract import FreshnessContract, install_request_guard
+
+        install_request_guard(FreshnessContract.load(args.live_freshness_contract))
     current_time = parse_current_time(args.current_time)
     evidence_root = args.evidence_root
     output_dir = assert_output_dir_safe(
@@ -3103,6 +3141,12 @@ def main(
         current_time=current_time,
         limit=args.limit,
     )
+    if args.live_freshness_contract is not None:
+        from race_collection.live_freshness_contract import FreshnessContract, AttemptAllowance
+
+        plan = AttemptAllowance(
+            FreshnessContract.load(args.live_freshness_contract)
+        ).bind_capture_plan(args.live_capture_reservation, plan)
     manual_request_status = None
     if args.manual_request_id:
         if args.manual_request_root is None or not args.collector_run_id:

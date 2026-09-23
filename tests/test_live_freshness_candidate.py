@@ -504,6 +504,7 @@ def test_rehearsal_failure_restores_exact_pair_and_does_not_reset_consumption(
         "installed_dir": str(installed),
         "source_root": str(output),
         "source_identity_sha256": "a" * 64,
+        "runtime_sha256": "b" * 64,
         "python": str(python),
         "python_sha256": hashlib.sha256(python.resolve().read_bytes()).hexdigest(),
         "admission_starts_at": (stamp - timedelta(minutes=30)).isoformat(),
@@ -541,10 +542,10 @@ def test_shared_request_cap_stops_before_next_source_call(tmp_path, monkeypatch)
     )
     restore = install_request_guard(scope)
     try:
-        requests.Session().get("https://synthetic.invalid/one")
-        requests.Session().get("https://synthetic.invalid/two")
+        requests.Session().get("https://www.thedogs.com.au/fabricated/one")
+        requests.Session().get("https://www.thedogs.com.au/fabricated/two")
         with pytest.raises(ValueError, match="cap"):
-            requests.Session().get("https://synthetic.invalid/three")
+            requests.Session().get("https://www.thedogs.com.au/fabricated/three")
     finally:
         restore()
     assert len(calls) == 2
@@ -716,7 +717,7 @@ def test_capture_navigation_count_uses_native_fetch_without_response_storage(tmp
     class Integrator:
         def __init__(self, *args, **kwargs):
             self.driver = Driver()
-            self.greyhound_url = "https://synthetic.invalid/"
+            self.greyhound_url = "https://www.thedogs.com.au/fabricated/"
 
         def setup_driver(self):
             return True
@@ -761,6 +762,13 @@ def test_reserved_native_plan_reaches_one_validated_append(tmp_path, monkeypatch
     stamp = datetime.fromisoformat("2026-06-10T14:40:00+10:00")
     directory = tmp_path / "input"
     csv = _write_capture_input(directory)
+    import json
+    from race_collection.synchronous_manual_capture import runner_set_sha256
+
+    sidecar = capture.sidecar_path_for(csv)
+    metadata = json.loads(sidecar.read_bytes())
+    metadata["prejump_shadow_metadata"]["source_native_race_id"] = "synthetic-1"
+    sidecar.write_text(json.dumps(metadata))
     plan = capture.build_capture_plan([directory], current_time=stamp)
     item = plan["races"][0]
     accounting = {
@@ -781,7 +789,13 @@ def test_reserved_native_plan_reaches_one_validated_append(tmp_path, monkeypatch
     allowance.initialize(accounting)
     inputs = {
         **item,
-        "race_identity": {"jump_datetime": item["jump_datetime"]},
+        "race_identity": {
+            "race_id": item["race_id"],
+            "jump_datetime": item["jump_datetime"],
+            "race_url": item["thedogs_source_url"],
+            "source_native_race_id": "synthetic-1",
+        },
+        "capture_runner_set_sha256": runner_set_sha256(item["expected_runners"]),
         "input_files": {
             str(path): hashlib.sha256(path.read_bytes()).hexdigest()
             for path in (csv, capture.sidecar_path_for(csv))
