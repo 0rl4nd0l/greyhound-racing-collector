@@ -633,8 +633,9 @@ class SportsbetOddsIntegrator:
         """
         try:
             from drivers import get_chrome_driver
+            from utils.sportsbet_browser import create_sportsbet_driver
 
-            self.driver = get_chrome_driver(headless=headless)
+            self.driver = create_sportsbet_driver(get_chrome_driver, headless=headless)
             if not getattr(self, "greyhound_url", None):
                 self.greyhound_url = f"{self.base_url}/betting/greyhound-racing"
             return True

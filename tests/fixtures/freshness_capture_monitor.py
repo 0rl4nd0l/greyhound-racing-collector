@@ -17,6 +17,7 @@ plan = json.loads((package / 'plan.json').read_bytes())
 
 class Control:
     active = {name: True for name in supervisor.TIMERS}
+    enabled = {name: 'enabled' for name in supervisor.TIMERS}
 
     def show(self, name):
         return dict(ActiveState='active' if self.active.get(name, name == 'greyhound-operator-ui-r3.service') else 'inactive',
@@ -31,7 +32,9 @@ class Control:
         if command in {'start', 'stop'}:
             self.active[args[0]] = command == 'start'
         elif command == 'is-enabled':
-            return 'enabled\n'
+            return self.enabled[args[0]] + '\n'
+        elif command == 'disable':
+            self.enabled[args[0]] = 'disabled'
         elif command == 'show':
             return 'LastTriggerUSecMonotonic=0\nNextElapseUSecMonotonic=0\nNextElapseUSecRealtime=0\nActiveState=active\n'
         elif command != 'daemon-reload':
@@ -60,4 +63,9 @@ else:
     supervisor.now = lambda: stamp
     supervisor.restore(package, plan, control)
     assert json.loads((package / 'restored.json').read_bytes())['hashes'] == plan['baseline_unit_sha256']
+    from utils.sportsbet_access import SportsbetAccess
+    if SportsbetAccess(plan['sportsbet_access_state']).blocks_restoration():
+        assert not any(control.active.values())
+        assert set(control.enabled.values()) == {'disabled'}
+        assert json.loads((package / 'restored.json').read_bytes())['status'] == 'RESTORED_COLLECTOR_TRIGGERS_HELD'
 (package / ('monitor-' + action + '.json')).write_text(json.dumps(sample, indent=2))

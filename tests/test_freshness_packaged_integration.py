@@ -12,9 +12,14 @@ import pytest
 
 
 @pytest.mark.parametrize("scenario", ["empty", "publication", "unavailable", "stale", "malformed"])
-def test_packaged_supervisor_reader_monitor_and_restoration(tmp_path, scenario):
+def test_packaged_supervisor_reader_monitor_and_restoration(tmp_path, scenario, monkeypatch):
     from scripts.prepare_freshness_rehearsal import prepare, UNITS
     from race_collection.freshness_attempt_reconciliation import DOMAINS
+    from utils.sportsbet_access import SportsbetAccess
+
+    access = tmp_path / "sportsbet-access.json"
+    SportsbetAccess(access).initialize(access_basis={"status": "permitted", "reference": "fabricated test"})
+    monkeypatch.setenv("GREYHOUND_SPORTSBET_ACCESS_STATE", str(access))
 
     installed = tmp_path / "installed"
     installed.mkdir()

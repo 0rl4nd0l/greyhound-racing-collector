@@ -20,6 +20,8 @@ def main():
     command = [sys.executable, str(ROOT / "scripts/shadow_autopilot_daemon.py"), *arguments]
     if "--verify-live-runtime" in arguments:
         os.execv(sys.executable, command)
+    from utils.sportsbet_access import SportsbetAccess
+    SportsbetAccess().check_admission()
     contract = Path(arguments[arguments.index("--live-freshness-contract") + 1])
     from race_collection.live_execution import configure_profile_execution
 

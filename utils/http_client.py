@@ -36,6 +36,35 @@ def source_retry_headers(headers):
     }
 
 
+class SourceCoordinatedSession(requests.Session):
+    """Each Sportsbet transport attempt participates in the durable source hold."""
+
+    def __init__(self):
+        super().__init__()
+        self.sportsbet_adapter = HTTPAdapter(max_retries=0)
+
+    def get_adapter(self, url):
+        from utils.sportsbet_access import is_sportsbet
+
+        return self.sportsbet_adapter if is_sportsbet(url) else super().get_adapter(url)
+
+    def send(self, request, **kwargs):
+        from utils.sportsbet_access import SportsbetAccess, is_sportsbet
+
+        if not is_sportsbet(request.url):
+            return super().send(request, **kwargs)
+        # A redirect is not permission to change the route during recovery.
+        kwargs["allow_redirects"] = False
+        with SportsbetAccess().operation("python") as operation:
+            response = super().send(request, **kwargs)
+            operation.response(response.status_code, response.headers)
+            return response
+
+    def close(self):
+        self.sportsbet_adapter.close()
+        super().close()
+
+
 def get_shared_session() -> requests.Session:
     """Return a process-wide shared requests.Session configured with a larger
     connection pool and light retries. Safe for concurrent use.
@@ -46,7 +75,7 @@ def get_shared_session() -> requests.Session:
     with _session_lock:
         if _shared_session is not None:
             return _shared_session
-        s = requests.Session()
+        s = SourceCoordinatedSession()
         retry = AccessDenialAwareRetry(
             total=2,
             backoff_factor=0.1,

@@ -78,6 +78,7 @@ def get_chrome_driver(headless=True):
     )
 
     options = Options()
+    options.set_capability("goog:loggingPrefs", {"performance": "ALL"})
 
     # Basic options
     if headless:

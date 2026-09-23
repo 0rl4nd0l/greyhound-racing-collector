@@ -158,8 +158,14 @@ def restore(output, plan, control, *, clock=time.monotonic, sleep=time.sleep):
         os.chmod(temporary, backup["modes"][name])
         os.replace(temporary, target)
     control.command("daemon-reload")
+    source_hold = False
+    if plan.get("sportsbet_access_state"):
+        from utils.sportsbet_access import SportsbetAccess
+        source_hold = SportsbetAccess(plan["sportsbet_access_state"]).blocks_restoration()
     for timer in TIMERS:
-        if backup["active"][timer]:
+        if source_hold:
+            control.command("disable", timer)
+        elif backup["active"][timer]:
             control.command("start", timer)
     for name, expected in backup["hashes"].items():
         if (
@@ -168,15 +174,18 @@ def restore(output, plan, control, *, clock=time.monotonic, sleep=time.sleep):
         ):
             raise ValueError("restored_unit_hash_mismatch")
     for timer in TIMERS:
-        if (control.show(timer)["ActiveState"] == "active") != backup["active"][timer]:
+        if (control.show(timer)["ActiveState"] == "active") != (backup["active"][timer] and not source_hold):
             raise ValueError("restored_timer_activity_mismatch")
-        if control.command("is-enabled", timer).strip() != backup["enabled"][timer]:
+        expected_enabled = "disabled" if source_hold else backup["enabled"][timer]
+        if control.command("is-enabled", timer).strip() != expected_enabled:
             raise ValueError("restored_timer_enablement_mismatch")
     if control.show("greyhound-operator-ui-r3.service")["MainPID"] != backup["r3_pid"]:
         raise ValueError("r3_process_changed")
     atomic_json(
         output / "restored.json",
-        {"status": "RESTORED", "at": now().isoformat(), "hashes": backup["hashes"]},
+        {"status": "RESTORED_COLLECTOR_TRIGGERS_HELD" if source_hold else "RESTORED",
+         "at": now().isoformat(), "hashes": backup["hashes"],
+         "sportsbet_hold": source_hold, "paused_timers": list(TIMERS) if source_hold else []},
     )
 
 

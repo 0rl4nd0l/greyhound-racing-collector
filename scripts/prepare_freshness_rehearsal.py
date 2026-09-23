@@ -116,7 +116,10 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
     if campaign_root is not None:
         from race_collection.freshness_campaign import Campaign
         campaign = Campaign(campaign_root)
+    from utils.sportsbet_access import state_path
+
     plan = {
+        "sportsbet_access_state": str(state_path()),
         **({"campaign_root": str(campaign.root),
             "campaign_authorization_sha256": digest(campaign.value)} if campaign else {}),
         "schema_version": "freshness_scheduled_rehearsal_plan_v1",

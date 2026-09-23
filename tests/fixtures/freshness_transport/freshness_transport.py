@@ -108,6 +108,14 @@ def install():
                     )
                 }
             )
+            status = 429 if fixture["scenario"].startswith("source_denial") else 200
+            self.logs.append({"message": json.dumps({"message": {
+                "method": "Network.responseReceived",
+                "params": {"type": "Document", "response": {
+                    "url": url, "status": status,
+                    "headers": {"Retry-After": "60"} if status == 429 else {},
+                }},
+            }})})
             if fixture["scenario"] == "expired_append" and "/race-" in url:
                 expire_capture_clock()
             if fixture["scenario"] == "interrupted":
@@ -117,6 +125,10 @@ def install():
 
         def execute_script(self, script, *args):
             return "complete" if "readyState" in script else None
+
+        def execute_cdp_cmd(self, command, params):
+            assert command in {"Network.setBlockedURLs", "Page.stopLoading"}
+            return {}
 
         def get_log(self, name):
             logs, self.logs = self.logs, []
@@ -144,4 +156,3 @@ def install():
             original_dependencies()
             expire_capture_clock()
         live_execution.require_profile_dependencies = dependencies_with_delayed_clock
-

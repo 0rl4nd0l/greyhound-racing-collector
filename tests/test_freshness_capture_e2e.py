@@ -90,12 +90,19 @@ def fixture_data(root, scenario):
 
 
 @pytest.mark.parametrize("campaign_mode", [False, True])
-@pytest.mark.parametrize("scenario", ["canonical_alias", "mismatch", "interrupted", "delayed_start", "expired_append"])
-def test_actual_packaged_service_capture(tmp_path, scenario, campaign_mode):
+@pytest.mark.parametrize("scenario", ["canonical_alias", "mismatch", "interrupted", "delayed_start", "expired_append", "source_denial_full", "source_denial_odds", "source_recovery"])
+def test_actual_packaged_service_capture(tmp_path, scenario, campaign_mode, monkeypatch):
     from scripts.prepare_freshness_rehearsal import prepare, UNITS
     from scripts.check_freshness_service import service_command
     from race_collection.live_freshness_contract import AttemptAllowance, FreshnessContract, digest
     from sportsbet_odds_integrator import SportsbetOddsIntegrator
+    from utils.sportsbet_access import SportsbetAccess
+
+    access = tmp_path / "sportsbet-access.json"
+    SportsbetAccess(access).initialize(access_basis={"status": "permitted", "reference": "fabricated test"})
+    if scenario == "source_recovery":
+        SportsbetAccess(access, clock=lambda: time.time() - 1801).retain_denial(429)
+    monkeypatch.setenv("GREYHOUND_SPORTSBET_ACCESS_STATE", str(access))
 
     stamp, data = fixture_data(tmp_path, scenario)
     campaign = None
@@ -156,7 +163,8 @@ def test_actual_packaged_service_capture(tmp_path, scenario, campaign_mode):
     allowance.initialize(accounting)
     fixture = tmp_path / "fabricated.json"
     fixture.write_text(json.dumps(data))
-    command, cwd, env = service_command(package / "units/shadow-autopilot.service")
+    first_unit = "shadow-autopilot-odds-capture.service" if scenario == "source_denial_odds" else "shadow-autopilot.service"
+    command, cwd, env = service_command(package / "units" / first_unit)
     env.update(
         PYTHONPATH=str(Path(__file__).parent / "fixtures/freshness_transport")
         + os.pathsep
@@ -209,7 +217,7 @@ def test_actual_packaged_service_capture(tmp_path, scenario, campaign_mode):
     lifecycle = json.loads(lifecycles[0].read_bytes())
     assert lifecycle["children_reaped"]
     assert not (tmp_path / "collector.lock").exists()
-    if scenario == "canonical_alias":
+    if scenario in {"canonical_alias", "source_recovery"}:
         assert process.returncode == 0, log
         assert len(rows) == 8 and {r[0] for r in rows} == {canonical}, log
         assert {r[1] for r in rows} == {"win", "place"}
@@ -295,8 +303,26 @@ print('BOTH_ALIASES_VERIFIED')
             with campaign.ledger() as ledger:
                 assert len(ledger["attempts"]) == 2 and ledger["logical_requests"] == 4
 
+        if scenario == "source_recovery":
+            assert SportsbetAccess(access).read()["recovery_attempts"] == 1
+            assert SportsbetAccess(access).read()["phase"] == "OPEN"
+            # A renewed denial permanently stops automatic source recovery.
+            SportsbetAccess(access).retain_denial(429, {"Retry-After": "0"})
+            denied = subprocess.run([sys.executable, "-c", launcher, *odds_command], cwd=odds_cwd, env=env, text=True, capture_output=True, timeout=20)
+            assert denied.returncode != 0 and "sportsbet_source_hold" in denied.stderr
+            assert SportsbetAccess(access).read()["phase"] == "STOP"
+
     else:
         assert rows == [], log
+    if scenario.startswith("source_denial"):
+        assert SportsbetAccess(access).read()["phase"] == "COOLDOWN"
+        other = "shadow-autopilot.service" if first_unit.endswith("odds-capture.service") else "shadow-autopilot-odds-capture.service"
+        other_command, other_cwd, _ = service_command(package / "units" / other)
+        before = SportsbetAccess(access).read()
+        restarted = subprocess.run([sys.executable, "-c", launcher, *other_command], cwd=other_cwd, env=env, text=True, capture_output=True, timeout=20)
+        assert restarted.returncode != 0 and "sportsbet_source_hold" in restarted.stderr
+        assert SportsbetAccess(access).read() == before
+        assert claims[0].read_bytes() == claim_bytes
     if scenario in {"delayed_start", "expired_append"}:
         errors = "\n".join(path.read_text() for path in Path(plan["evidence_root"]).glob("**/autonomous_live_odds_capture.stderr.txt"))
         assert "capture_reservation_identity_changed" in errors, errors
