@@ -748,13 +748,6 @@ def execute(plan_path, expected_digest, approval_id):
         try:
             if scope:
                 scope.stop("REHEARSAL_ENDED")
-                rows, excluded = [], []
-                for path in Path(plan["evidence_root"]).glob("shadow_autopilot_daemonization_v1_*/phase-checkpoint.json"):
-                    checkpoint = json.loads(path.read_bytes())
-                    rows.extend(checkpoint.get("window_observations", []))
-                    excluded.extend(checkpoint.get("exclusions", []))
-                atomic_json(output / "final-window-accounting.json", window_accounting(
-                    rows, excluded, AttemptAllowance(scope).claims(), now()))
         finally:
             if owned:
                 release_owned_collector_lock(owned)
@@ -769,6 +762,14 @@ def execute(plan_path, expected_digest, approval_id):
                 campaign_owner.close()
             for sig, handler in previous_handlers.items():
                 signal.signal(sig, handler)
+        if scope:
+            rows, excluded = [], []
+            for path in Path(plan["evidence_root"]).glob("shadow_autopilot_daemonization_v1_*/phase-checkpoint.json"):
+                checkpoint = json.loads(path.read_bytes())
+                rows.extend(checkpoint.get("window_observations", []))
+                excluded.extend(checkpoint.get("exclusions", []))
+            atomic_json(output / "final-window-accounting.json", window_accounting(
+                rows, excluded, AttemptAllowance(scope).claims(), now()))
 
 
 def main():
