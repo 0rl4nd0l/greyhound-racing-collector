@@ -120,7 +120,7 @@ def test_actual_packaged_service_capture(tmp_path, scenario, campaign_mode, monk
         campaign_root=campaign.root if campaign else None,
         output=package,
         start=stamp - timedelta(seconds=5),
-        python=Path(sys.executable),
+        python=Path(os.environ.get("FRESHNESS_TEST_PYTHON", sys.executable)),
         db=db,
         lock=tmp_path / "collector.lock",
         reconciliation_roots={},
