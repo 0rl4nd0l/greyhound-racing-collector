@@ -35,6 +35,11 @@ def install():
 
     def download(self, url, **kwargs):
         assert url == fixture["race"]["url"]
+        if fixture["scenario"].startswith("source_denial_python"):
+            from utils.prejump_sportsbet import fetch_sportsbet_next_events_snapshot
+            result = fetch_sportsbet_next_events_snapshot(session=self.session)
+            assert result.get("rejected_weather_track_metadata_sources")
+            return {"success": False, "error": "fabricated source denial"}
         directory = Path(os.environ["UPCOMING_RACES_DIR"])
         directory.mkdir(parents=True, exist_ok=True)
         csv = directory / fixture["filename"]
@@ -44,6 +49,17 @@ def install():
 
     upcoming_race_browser.UpcomingRaceBrowser.get_upcoming_races = upcoming
     upcoming_race_browser.UpcomingRaceBrowser.download_race_csv = download
+    if fixture["scenario"].startswith("source_denial_python"):
+        import requests
+        def response(adapter, request, **kwargs):
+            assert request.url.startswith("https://www.sportsbet.com.au/")
+            Path(fixture["transport_marker"]).write_text(str(os.getpid()))
+            result = requests.Response()
+            result.status_code = 429
+            result.headers = {"Retry-After": "60"}
+            result.request, result.url, result._content = request, request.url, b"{}"
+            return result
+        requests.adapters.HTTPAdapter.send = response
 
     class Element:
         def __init__(self, node):

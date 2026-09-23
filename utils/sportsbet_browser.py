@@ -1,6 +1,7 @@
 """Keep source ownership until browser cleanup, including its asynchronous work."""
 
 import json
+import threading
 
 from utils.sportsbet_access import SportsbetAccess, SportsbetAccessBlocked, is_sportsbet
 
@@ -18,8 +19,23 @@ def create_sportsbet_driver(factory, **kwargs):
     buffered = []
     navigations = 0
     closed = False
+    drain_lock = threading.RLock()
+    command_lock = threading.RLock()
+    stopping = threading.Event()
+    if hasattr(driver, "execute"):
+        execute = driver.execute
+
+        def serialized_execute(*args, **kwargs):
+            with command_lock:
+                return execute(*args, **kwargs)
+
+        driver.execute = serialized_execute
 
     def drain():
+        with drain_lock:
+            read_responses()
+
+    def read_responses():
         try:
             rows = get_log("performance")
             buffered.extend(rows)
@@ -39,6 +55,7 @@ def create_sportsbet_driver(factory, **kwargs):
 
     def get(url):
         nonlocal navigations
+        drain()
         operation.check()
         if not is_sportsbet(url):
             operation.failed = True
@@ -59,16 +76,33 @@ def create_sportsbet_driver(factory, **kwargs):
     def logs(name):
         if name != "performance":
             return get_log(name)
-        drain()
-        result = list(buffered)
-        buffered.clear()
-        return result
+        with drain_lock:
+            drain()
+            result = list(buffered)
+            buffered.clear()
+            return result
+
+    def monitor():
+        while not stopping.wait(0.1):
+            try:
+                drain()
+                if operation.value["phase"] in {"COOLDOWN", "STOP"}:
+                    return
+            except Exception:
+                operation.failed = True
+                operation.value["phase"] = "STOP"
+                operation.gate.write(operation.value)
+                return
+
+    watcher = threading.Thread(target=monitor, name="sportsbet-response-monitor", daemon=True)
 
     def quit():
         nonlocal closed
         if closed:
             return
         closed = True
+        stopping.set()
+        watcher.join()
         try:
             drain()
         finally:
@@ -81,4 +115,5 @@ def create_sportsbet_driver(factory, **kwargs):
                 admission.__exit__(None, None, None)
 
     driver.get, driver.get_log, driver.quit = get, logs, quit
+    watcher.start()
     return driver

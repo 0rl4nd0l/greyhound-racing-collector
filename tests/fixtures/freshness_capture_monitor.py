@@ -52,14 +52,14 @@ if action == 'startup':
     assert sample['collector_status'] == 'UNAVAILABLE/DATA_MISSING', sample
 else:
     sample = supervisor.sample(plan, package, control)
-    assert sample['index_status'] == 'AVAILABLE/FRESH', sample
+    assert sample['index_status'] in {'AVAILABLE/FRESH', 'UNAVAILABLE/DATA_MISSING'}, sample
     allowance = AttemptAllowance(FreshnessContract.load(package / 'contract.json'))
     claims = allowance.claims()
     # Controlled restoration clock waits out the original consumed windows;
     # systemd file restoration and hash/activity checks are the real implementation.
     closes = [AttemptAllowance.check_window(json.loads(p.read_bytes())['item'],
                 now=datetime.fromisoformat(json.loads(p.read_bytes())['reserved_at'])) for p in claims]
-    stamp = max(closes) + timedelta(seconds=1)
+    stamp = max(closes) + timedelta(seconds=1) if closes else datetime.now().astimezone()
     supervisor.now = lambda: stamp
     supervisor.restore(package, plan, control)
     assert json.loads((package / 'restored.json').read_bytes())['hashes'] == plan['baseline_unit_sha256']

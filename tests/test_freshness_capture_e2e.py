@@ -90,7 +90,7 @@ def fixture_data(root, scenario):
 
 
 @pytest.mark.parametrize("campaign_mode", [False, True])
-@pytest.mark.parametrize("scenario", ["canonical_alias", "mismatch", "interrupted", "delayed_start", "expired_append", "source_denial_full", "source_denial_odds", "source_recovery"])
+@pytest.mark.parametrize("scenario", ["canonical_alias", "mismatch", "interrupted", "delayed_start", "expired_append", "source_denial_full", "source_denial_odds", "source_recovery", "source_denial_python_full", "source_denial_python_odds"])
 def test_actual_packaged_service_capture(tmp_path, scenario, campaign_mode, monkeypatch):
     from scripts.prepare_freshness_rehearsal import prepare, UNITS
     from scripts.check_freshness_service import service_command
@@ -163,7 +163,7 @@ def test_actual_packaged_service_capture(tmp_path, scenario, campaign_mode, monk
     allowance.initialize(accounting)
     fixture = tmp_path / "fabricated.json"
     fixture.write_text(json.dumps(data))
-    first_unit = "shadow-autopilot-odds-capture.service" if scenario == "source_denial_odds" else "shadow-autopilot.service"
+    first_unit = "shadow-autopilot-odds-capture.service" if scenario.endswith("_odds") else "shadow-autopilot.service"
     command, cwd, env = service_command(package / "units" / first_unit)
     env.update(
         PYTHONPATH=str(Path(__file__).parent / "fixtures/freshness_transport")
@@ -199,6 +199,22 @@ def test_actual_packaged_service_capture(tmp_path, scenario, campaign_mode, monk
         process.wait(timeout=90)
     log = (tmp_path / "service.log").read_text()
     claims = allowance.claims()
+    if scenario.startswith("source_denial_python"):
+        assert claims == [], log
+        assert Path(data["transport_marker"]).exists(), log
+        assert SportsbetAccess(access).read()["phase"] == "COOLDOWN"
+        for name in ("shadow-autopilot.service", "shadow-autopilot-odds-capture.service"):
+            blocked_command, blocked_cwd, _ = service_command(package / "units" / name)
+            blocked = subprocess.run([sys.executable, "-c", launcher, *blocked_command], cwd=blocked_cwd, env=env, text=True, capture_output=True, timeout=20)
+            assert blocked.returncode != 0 and "sportsbet_source_hold" in blocked.stderr
+        with sqlite3.connect(db) as conn:
+            assert conn.execute("SELECT COUNT(*) FROM live_odds").fetchone()[0] == 0
+        if campaign:
+            with campaign.ledger() as ledger:
+                assert ledger["attempts"] == [] and ledger["logical_requests"] == 1
+        restored = subprocess.run([sys.executable, str(monitor), str(package), "restore"], text=True, capture_output=True, timeout=20)
+        assert restored.returncode == 0, restored.stdout + restored.stderr
+        return
     assert len(claims) == 1, log
     claim_bytes = claims[0].read_bytes()
     claim = json.loads(claim_bytes)

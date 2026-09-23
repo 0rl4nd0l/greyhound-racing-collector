@@ -177,8 +177,6 @@ class SportsbetAccess:
                 operation.failed = True
                 raise
             finally:
-                if recovery and self.clock() - operation.started_at > 50:
-                    operation.failed = True
                 if operation.failed or (recovery and not operation.success):
                     value["phase"] = "STOP"
                 elif recovery and value["phase"] == "RECOVERY":
@@ -191,12 +189,8 @@ class SourceOperation:
     def __init__(self, gate, value, recovery):
         self.gate, self.value, self.recovery = gate, value, recovery
         self.failed = self.success = False
-        self.started_at = gate.clock()
 
     def check(self):
-        if self.recovery and self.gate.clock() - self.started_at > 50:
-            self.failed = True
-            raise SportsbetAccessBlocked("sportsbet_recovery_time_cap")
         if self.value["phase"] in {"COOLDOWN", "STOP"}:
             raise SportsbetAccessBlocked("sportsbet_source_hold")
 

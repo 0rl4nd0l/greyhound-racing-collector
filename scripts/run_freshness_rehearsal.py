@@ -40,7 +40,12 @@ def now():
 
 class SystemdControl:
     def command(self, *args):
-        return subprocess.check_output(["systemctl", "--user", *args], text=True, timeout=3)
+        try:
+            return subprocess.check_output(["systemctl", "--user", *args], text=True, timeout=3)
+        except subprocess.CalledProcessError as error:
+            if args[0] == "is-enabled" and error.returncode == 1 and error.output.strip() == "disabled":
+                return error.output
+            raise
 
     def show(self, unit):
         raw = self.command(

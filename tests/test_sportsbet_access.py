@@ -100,3 +100,56 @@ def test_python_denial_blocks_browser_before_driver_creation(tmp_path, monkeypat
         create_sportsbet_driver(lambda: pytest.fail("held browser was constructed"))
     with pytest.raises(SportsbetAccessBlocked):
         SourceCoordinatedSession().get("https://www.sportsbet.com.au/fixture")
+
+
+def test_browser_observes_async_denial_without_another_navigation(tmp_path, monkeypatch):
+    import threading
+    from utils.sportsbet_access import SportsbetAccess, SportsbetAccessBlocked
+    from utils.sportsbet_browser import create_sportsbet_driver
+
+    path = tmp_path / "access.json"
+    monkeypatch.setenv("GREYHOUND_SPORTSBET_ACCESS_STATE", str(path))
+    SportsbetAccess().initialize(access_basis={"status": "permitted", "reference": "fabricated fixture"})
+    stopped = threading.Event()
+
+    class Driver:
+        pending = []
+        navigations = 0
+        closed = False
+        def get(self, url):
+            self.navigations += 1
+        def get_log(self, name):
+            rows, self.pending = self.pending, []
+            return rows
+        def execute_cdp_cmd(self, command, params):
+            stopped.set()
+        def quit(self):
+            self.closed = True
+
+    driver = create_sportsbet_driver(Driver)
+    try:
+        driver.get("https://www.sportsbet.com.au/fixture")
+        driver.pending = [{"message": json.dumps({"message": {
+            "method": "Network.responseReceived", "params": {"response": {
+                "url": "https://www.sportsbet.com.au/fixture", "status": 429,
+                "headers": {"Retry-After": "120"},
+            }}}})}]
+        assert stopped.wait(2), "asynchronous source traffic not stopped"
+        with pytest.raises(SportsbetAccessBlocked):
+            driver.get("https://www.sportsbet.com.au/second")
+        assert driver.navigations == 1
+    finally:
+        driver.quit()
+    assert driver.closed
+    assert SportsbetAccess().read()["phase"] == "COOLDOWN"
+
+
+def test_real_systemd_adapter_accepts_disabled_exit_status(monkeypatch):
+    from scripts.run_freshness_rehearsal import SystemdControl
+
+    def disabled(*args, **kwargs):
+        raise subprocess.CalledProcessError(1, args[0], output="disabled\n")
+    monkeypatch.setattr(subprocess, "check_output", disabled)
+    assert SystemdControl().command("is-enabled", "synthetic.timer") == "disabled\n"
+    with pytest.raises(subprocess.CalledProcessError):
+        SystemdControl().command("start", "synthetic.timer")
