@@ -171,6 +171,11 @@ def test_actual_packaged_service_capture(tmp_path, scenario, campaign_mode, monk
         + str(package / "source"),
         FRESHNESS_FABRICATED_SOURCE=str(fixture),
     )
+    # Optional offline wall-clock shim must reach the real service children too.
+    # Production service environments continue to exclude injected libraries.
+    if os.environ.get("FRESHNESS_OFFLINE_CLOCK_OFFSET"):
+        env.update({key: os.environ[key] for key in
+                    ("LD_PRELOAD", "FRESHNESS_OFFLINE_CLOCK_OFFSET")})
     # This launcher installs the kernel filter before the real ExecStart is exec'd.
     launcher = "from scripts.check_freshness_service import deny_network; import os,sys; deny_network(); os.execv(sys.argv[1],sys.argv[1:])"
     monitor = Path(__file__).parent / "fixtures/freshness_capture_monitor.py"
