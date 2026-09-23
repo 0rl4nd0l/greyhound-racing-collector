@@ -178,8 +178,10 @@ class AttemptAllowance:
         """Planner opens at target; the original next-window boundary is exclusive."""
         _, window = AttemptAllowance.key(item)
         jump = datetime.fromisoformat(item["race_identity"]["jump_datetime"])
-        opens = jump - timedelta(minutes=window)
-        closes = jump - timedelta(minutes=max((w for w in (60, 30, 10, 2) if w < window), default=0))
+        from scripts.autonomous_live_odds_capture import capture_window_bounds
+        opens, closes = capture_window_bounds(jump_datetime=jump,
+                                             capture_window_minutes=window,
+                                             tolerance_seconds=0)
         if now.utcoffset() is None or jump.utcoffset() is None:
             raise ValueError("capture_window_timezone_required")
         if now < opens:
@@ -395,7 +397,11 @@ def install_request_guard(scope):
             network["by_host"][host] = network["by_host"].get(host, 0) + 1
             atomic_json(network_path, network)
             atomic_json(path, {"started": count + 1})
-        return original(session, method, url, **kwargs)
+        response = original(session, method, url, **kwargs)
+        if getattr(response, "status_code", None) in {401, 403, 429}:
+            scope.stop("SOURCE_ACCESS_DENIED")
+            raise ValueError("source_access_denied")
+        return response
 
     requests.Session.request = request
     return lambda: setattr(requests.Session, "request", original)

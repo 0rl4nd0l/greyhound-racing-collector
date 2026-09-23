@@ -109,10 +109,15 @@ def restore(output, plan, control, *, clock=time.monotonic, sleep=time.sleep):
     try:
         closes = None
         claims = list(claim.parent.glob("captures/*/capture-reservation.json")) if plan.get("campaign_root") else ([claim] if claim.exists() else [])
-        for claim in claims:
+        items = [json.loads(path.read_bytes())["item"] for path in claims]
+        if plan.get("campaign_root"):
+            from race_collection.freshness_campaign import Campaign
+            with Campaign(plan["campaign_root"]).ledger() as ledger:
+                items.extend(row["item"] for row in ledger["attempts"]
+                             if Path(row["claim"]).is_relative_to(claim.parent))
+        for item in items:
             from scripts.autonomous_live_odds_capture import capture_window_bounds
 
-            item = json.loads(claim.read_bytes())["item"]
             _, window = AttemptAllowance.key(item)
             _, boundary = capture_window_bounds(
                 jump_datetime=datetime.fromisoformat(item["race_identity"]["jump_datetime"]),
@@ -365,6 +370,28 @@ def window_accounting(rows, exclusions, claim, end):
     }
 
 
+def verify_claim_receipt(claim, handoff, evidence, source_root):
+    """A race-level discovery result is not proof of this reservation's append."""
+    reserved = json.loads(claim.read_bytes())
+    terminal = json.loads(claim.with_suffix(".terminal.json").read_bytes())["result"]
+    directory = Path(terminal["autonomous_live_odds_capture_status"]["output_dir"])
+    directory = directory if directory.is_absolute() else source_root / directory
+    if not directory.resolve().is_relative_to(evidence.resolve()):
+        raise ValueError("capture_report_outside_campaign_evidence")
+    report = json.loads((directory / "autonomous_live_odds_capture_report.json").read_bytes())
+    attempts = report.get("attempts", [])
+    source = json.loads(handoff["_report_bytes"])
+    sealed = source["source_attempt"]
+    if (len(attempts) != 1 or attempts[0].get("collector_exact_receipt_publish", {}).get("status") != "PUBLISHED"
+            or {key: attempts[0].get(key) for key in sealed} != sealed
+            or sealed.get("race_id") != reserved["item"]["race_id"]
+            or sealed.get("capture_window_minutes") != reserved["item"]["capture_window_minutes"]
+            or source["source_plan_item"].get("capture_window_minutes") != reserved["item"]["capture_window_minutes"]
+            or datetime.fromisoformat(sealed["fetch_time"]) < datetime.fromisoformat(reserved["reserved_at"])):
+        raise ValueError("capture_receipt_reservation_mismatch")
+    AttemptAllowance.check_window(reserved["item"], now=datetime.fromisoformat(sealed["append_time"]))
+
+
 def observe(output, plan, control, scope):
     from race_collection.freshness_rehearsal import assess_interval, TimerAccounting
 
@@ -405,6 +432,7 @@ def observe(output, plan, control, scope):
             )
             if handoff is None:
                 raise ValueError("native_capture_receipt_unavailable")
+            verify_claim_receipt(claim, handoff, evidence, Path(plan["source_root"]))
             create_once(
                 verification,
                 {
@@ -719,6 +747,13 @@ def execute(plan_path, expected_digest, approval_id):
             signal.signal(sig, signal.SIG_IGN)
         if scope:
             scope.stop("REHEARSAL_ENDED")
+            rows, excluded = [], []
+            for path in Path(plan["evidence_root"]).glob("shadow_autopilot_daemonization_v1_*/phase-checkpoint.json"):
+                checkpoint = json.loads(path.read_bytes())
+                rows.extend(checkpoint.get("window_observations", []))
+                excluded.extend(checkpoint.get("exclusions", []))
+            atomic_json(output / "final-window-accounting.json", window_accounting(
+                rows, excluded, AttemptAllowance(scope).claims(), now()))
         if owned:
             release_owned_collector_lock(owned)
         # Restore even on acquisition failure; never restart the rehearsal.
@@ -745,7 +780,19 @@ def main():
         plan = json.loads(args.plan.read_bytes())
         if digest(plan) != args.plan_sha256:
             raise ValueError("plan_identity_changed")
-        restore(args.plan.parent, plan, SystemdControl())
+        if plan.get("campaign_root"):
+            import fcntl
+            from race_collection.freshness_campaign import Campaign
+            campaign = Campaign(plan["campaign_root"])
+            with (campaign.root / "owner.lock").open("a") as owner:
+                fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                restore(args.plan.parent, plan, SystemdControl())
+                with campaign.ledger() as ledger:
+                    begun = plan["rehearsal_id"] in ledger["launches"]
+                if begun:
+                    campaign.close(plan["rehearsal_id"], now=now())
+        else:
+            restore(args.plan.parent, plan, SystemdControl())
     else:
         plan = json.loads(args.plan.read_bytes())
         if ROOT.resolve() != Path(plan["source_root"]).resolve():

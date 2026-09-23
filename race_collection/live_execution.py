@@ -155,6 +155,14 @@ class BrowserNetworkAccounting:
         try:
             for row in self.driver.get_log("performance"):
                 event = json.loads(row["message"])["message"]
+                if event.get("method") == "Network.responseReceived":
+                    response = event["params"]["response"]
+                    host = (urlsplit(response.get("url", "")).hostname or "").lower()
+                    if response.get("status") in {401, 403, 429} and any(
+                        host == domain or host.endswith("." + domain)
+                        for domain in ("sportsbet.com.au", "thedogs.com.au")
+                    ):
+                        self.value["source_access_denied"] = {"host": host, "status": response["status"]}
                 if event.get("method") != "Network.requestWillBeSent":
                     continue
                 params = event["params"]
@@ -178,3 +186,9 @@ class BrowserNetworkAccounting:
         except Exception as error:
             self.value["performance_log_errors"].append(type(error).__name__)
         self.write(self.output, self.value)
+        if self.value.get("source_access_denied"):
+            contract = os.environ.get("GREYHOUND_LIVE_CONTRACT")
+            if contract:
+                from race_collection.live_freshness_contract import FreshnessContract
+                FreshnessContract.load(contract).stop("SOURCE_ACCESS_DENIED")
+            raise ValueError("source_access_denied")

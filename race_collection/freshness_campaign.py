@@ -67,7 +67,7 @@ class Campaign:
                    for r in value['attempts']):
                 raise ValueError('campaign_capture_window_consumed')
             value['attempts'].append(dict(claim=str(claim), race_id=item['race_id'],
-                aliases=sorted(aliases), window=item['capture_window_minutes'],
+                aliases=sorted(aliases), window=item['capture_window_minutes'], item=item,
                 consumed_at=datetime.now(timezone.utc).isoformat()))
 
     def request(self):

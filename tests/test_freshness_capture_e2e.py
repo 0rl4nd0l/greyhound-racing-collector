@@ -89,14 +89,19 @@ def fixture_data(root, scenario):
     )
 
 
+@pytest.mark.parametrize("campaign_mode", [False, True])
 @pytest.mark.parametrize("scenario", ["canonical_alias", "mismatch", "interrupted"])
-def test_actual_packaged_service_capture(tmp_path, scenario):
+def test_actual_packaged_service_capture(tmp_path, scenario, campaign_mode):
     from scripts.prepare_freshness_rehearsal import prepare, UNITS
     from scripts.check_freshness_service import service_command
     from race_collection.live_freshness_contract import AttemptAllowance, FreshnessContract, digest
     from sportsbet_odds_integrator import SportsbetOddsIntegrator
 
     stamp, data = fixture_data(tmp_path, scenario)
+    campaign = None
+    if campaign_mode:
+        from tests.test_freshness_campaign import make_campaign
+        campaign = make_campaign(tmp_path / "campaign")
     installed = tmp_path / "installed"
     installed.mkdir()
     for name in (*UNITS, "greyhound-operator-ui-r3.service"):
@@ -105,6 +110,7 @@ def test_actual_packaged_service_capture(tmp_path, scenario):
     SportsbetOddsIntegrator(str(db), allow_auto_scrape_odds=False)
     package = tmp_path / "package"
     prepared = prepare(
+        campaign_root=campaign.root if campaign else None,
         output=package,
         start=stamp - timedelta(seconds=5),
         python=Path(sys.executable),
@@ -137,6 +143,9 @@ def test_actual_packaged_service_capture(tmp_path, scenario):
             "runtime_sha256",
         )
     }
+    if campaign:
+        contract.update({key: plan[key] for key in ("campaign_root", "campaign_authorization_sha256")})
+        campaign.begin(plan["rehearsal_id"], now=stamp, deadline=stamp + timedelta(minutes=110))
     contract.update(
         schema_version="freshness_rehearsal_contract_v1",
         source_date=stamp.date().isoformat(),
@@ -178,13 +187,14 @@ def test_actual_packaged_service_capture(tmp_path, scenario):
             assert (tmp_path / "collector.lock").exists(), "lock released before child cleanup"
         process.wait(timeout=90)
     log = (tmp_path / "service.log").read_text()
-    claims = list(allowance.scope.session.glob("capture-reservation.json"))
+    claims = allowance.claims()
     assert len(claims) == 1, log
     claim_bytes = claims[0].read_bytes()
     claim = json.loads(claim_bytes)
     canonical = f"Race 9 - MURR - {stamp.date().isoformat()}"
     assert claim["item"]["race_id"] == canonical
-    assert not allowance.available()
+    assert allowance.available() == campaign_mode
+    assert allowance.consumed(claim["item"])
     with sqlite3.connect(db) as conn:
         rows = conn.execute("SELECT race_id,market_type FROM live_odds").fetchall()
     lifecycles = list(
@@ -236,6 +246,18 @@ print('BOTH_ALIASES_VERIFIED')
         assert consumed.returncode == 0 and "BOTH_ALIASES_VERIFIED" in consumed.stdout, (
             consumed.stdout + consumed.stderr
         )
+        from scripts.run_freshness_rehearsal import verify_claim_receipt
+        from race_collection.manual_prediction_collector_request import ManualPredictionCollectorProtocol
+        handoff = ManualPredictionCollectorProtocol(Path(plan["evidence_root"]) / 'manual_prediction_collector_requests_v1').discover_collector_exact_handoff(
+            race_id=canonical, current_time=datetime.now().astimezone(), max_age_seconds=300)
+        verify_claim_receipt(claims[0], handoff, Path(plan["evidence_root"]), Path(cwd))
+        # An earlier-window receipt cannot certify a later-window reservation.
+        wrong = json.loads(claim_bytes)
+        wrong["item"]["capture_window_minutes"] = 10
+        claims[0].write_text(json.dumps(wrong))
+        with pytest.raises(ValueError, match="receipt_reservation_mismatch"):
+            verify_claim_receipt(claims[0], handoff, Path(plan["evidence_root"]), Path(cwd))
+        claims[0].write_bytes(claim_bytes)
         # The other real generated lane progresses, but the shared spent claim
         # prevents a second acquisition even though the window remains eligible.
         odds_command, odds_cwd, _ = service_command(
@@ -254,7 +276,7 @@ print('BOTH_ALIASES_VERIFIED')
         assert claims[0].read_bytes() == claim_bytes
         with sqlite3.connect(db) as conn:
             assert conn.execute("SELECT COUNT(*) FROM live_odds").fetchone()[0] == 8
-        metrics = json.loads((allowance.scope.session / "capture-requests.json").read_bytes())
+        metrics = json.loads((claims[0].with_suffix(".requests.json") if campaign else allowance.scope.session / "capture-requests.json").read_bytes())
         assert metrics["browser_navigation_attempts"] == 2
         assert metrics["observed_provider_requests"] == 2
         assert metrics["observed_other_requests"] == 0
@@ -268,7 +290,7 @@ print('BOTH_ALIASES_VERIFIED')
         )
         timing = json.loads(timing_file.read_bytes())["timing"]
         assert timing["phase_seconds"] >= 5, "interrupted acquisition charged as overhead"
-        assert allowance.claim.with_suffix(".terminal.json").exists()
+        assert claims[0].with_suffix(".terminal.json").exists()
         finished = list(
             Path(plan["evidence_root"]).glob(
                 "shadow_autopilot_daemonization*/phase-1/logs/*.finished.json"
