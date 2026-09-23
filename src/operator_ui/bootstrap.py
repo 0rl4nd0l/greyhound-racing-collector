@@ -200,7 +200,7 @@ def _repository_layout()->dict[str,Any]:
         if not binding_path.exists():raise RuntimeError("generated repository-v1 binding unavailable") from exc
         raise
     deployment=binding.get("deployment")
-    if set(binding) not in (_BINDING_KEYS, _BINDING_KEYS|{"live_evidence"}) or binding["schema_version"]!="operator_ui_repository_binding_v1" or binding["profile_id"]!="repository-v1" or type(binding["roots"]) is not dict or set(binding["roots"])!=_ROOT_KEYS or type(binding["generator"]) is not dict or set(binding["generator"])!=_GENERATOR_KEYS or binding["generator"]!={"generator_id":"GHU-036-repository-v1-generator","schema_version":"operator_ui_repository_binding_generator_v1","version":"1"} or any(not _finite_text(value) for value in binding["generator"].values()) or type(deployment) is not dict or set(deployment)!=_DEPLOYMENT_KEYS or not _HEX40_RE.fullmatch(deployment.get("source_commit","") or "") or not _HEX40_RE.fullmatch(deployment.get("source_tree","") or "") or any(not _finite_text(deployment.get(key)) for key in ("ui_version","profile_id")) or any(deployment[key]!=profile["deployment"][key] for key in _PROFILE_DEPLOYMENT_KEYS) or not _HEX64_RE.fullmatch(binding.get("profile_sha256","") or "") or binding["profile_sha256"]!=hashlib.sha256(profile_raw).hexdigest() or type(binding["artifacts"]) is not dict or set(binding["artifacts"])!=_ARTIFACT_KEYS or any(not isinstance(value,str) or _HEX64_RE.fullmatch(value) is None for value in binding["artifacts"].values()):raise RuntimeError("generated repository-v1 binding invalid")
+    if set(binding) not in (_BINDING_KEYS, _BINDING_KEYS|{"live_evidence"}, _BINDING_KEYS|{"retained_inputs"}, _BINDING_KEYS|{"live_evidence", "retained_inputs"}) or binding["schema_version"]!="operator_ui_repository_binding_v1" or binding["profile_id"]!="repository-v1" or type(binding["roots"]) is not dict or set(binding["roots"])!=_ROOT_KEYS or type(binding["generator"]) is not dict or set(binding["generator"])!=_GENERATOR_KEYS or binding["generator"]!={"generator_id":"GHU-036-repository-v1-generator","schema_version":"operator_ui_repository_binding_generator_v1","version":"1"} or any(not _finite_text(value) for value in binding["generator"].values()) or type(deployment) is not dict or set(deployment)!=_DEPLOYMENT_KEYS or not _HEX40_RE.fullmatch(deployment.get("source_commit","") or "") or not _HEX40_RE.fullmatch(deployment.get("source_tree","") or "") or any(not _finite_text(deployment.get(key)) for key in ("ui_version","profile_id")) or any(deployment[key]!=profile["deployment"][key] for key in _PROFILE_DEPLOYMENT_KEYS) or not _HEX64_RE.fullmatch(binding.get("profile_sha256","") or "") or binding["profile_sha256"]!=hashlib.sha256(profile_raw).hexdigest() or type(binding["artifacts"]) is not dict or set(binding["artifacts"])!=_ARTIFACT_KEYS or any(not isinstance(value,str) or _HEX64_RE.fullmatch(value) is None for value in binding["artifacts"].values()):raise RuntimeError("generated repository-v1 binding invalid")
     roots={}
     for name,value in binding["roots"].items():
         path=Path(value) if isinstance(value,str) else Path("")
@@ -223,7 +223,7 @@ def _repository_layout()->dict[str,Any]:
     for path in artifacts.values():_regular(path)
     artifact_binding={"prediction_script":artifacts["script"],"prediction_config":artifacts["config"],"model_artifact":artifacts["model"],"model_manifest":artifacts["manifest"],"model_schema":artifacts["schema"]}
     if any(binding["artifacts"].get(name)!=_sha(path) for name,path in artifact_binding.items()):raise RuntimeError("generated repository-v1 artifact identity mismatch")
-    return {"base":operations,"paths":paths,"dirs":dirs,"artifacts":artifacts,"source_root":roots["source_root"],"pinned_python":roots["pinned_python"],"deployment":dict(deployment),"live_evidence":binding.get("live_evidence")}
+    return {"base":operations,"paths":paths,"dirs":dirs,"artifacts":artifacts,"source_root":roots["source_root"],"pinned_python":roots["pinned_python"],"deployment":dict(deployment),"live_evidence":binding.get("live_evidence"),"retained_inputs":binding.get("retained_inputs")}
 
 
 def _configured_live(layout:Mapping[str,Any])->LiveEvidenceAdapters:
@@ -368,7 +368,7 @@ def _build_r3_services(app: Flask, profile: str) -> R3Services:
     receipt_policy=ReceiptPreflightPolicy.from_prediction_config(config)
     receipt_protocol=ManualPredictionCollectorProtocol(dirs["collector_requests"])
     captures=(dirs["current_evidence"],) if profile=="repository-v1" else (dirs["current_evidence"],dirs["capture_evidence_a"],dirs["capture_evidence_b"])
-    worker=WorkerConfig(layout["pinned_python"] if layout is not None else Path(sys.executable),product_root,{"latest-research":choice},paths["canonical.sqlite3"],dirs["prediction_bundles"],captures,dirs["collector_requests"],paths["current_index.json"],dirs["current_evidence"],1.0,45.0,90.0,2.0)
+    worker=WorkerConfig(layout["pinned_python"] if layout is not None else Path(sys.executable),product_root,{"latest-research":choice},paths["canonical.sqlite3"],dirs["prediction_bundles"],captures,dirs["collector_requests"],paths["current_index.json"],dirs["current_evidence"],1.0,45.0,90.0,2.0,retained_input_bindings=layout.get("retained_inputs") if layout is not None else None)
     verifier_authority=object()
     store=JobStore(paths["jobs.sqlite3"],separate_from=(paths["audit.sqlite3"],paths["canonical.sqlite3"]),verifier_authority=verifier_authority)
 
@@ -399,14 +399,20 @@ def _build_r3_services(app: Flask, profile: str) -> R3Services:
         require_fresh_index(view, max(now,clock()))
         jump=race.get("jump_datetime",race.get("jump_timestamp"))
         provenance=OperationalIndexProvenance.from_verified_current_race_index(view)
-        job_input=JobInput(str(race["race_id"]),str(jump),str(race["runner_set_sha256"]),model_id,resolved_model,model_sha,manifest_sha,schema_sha,config_id,choice.config_sha256,odds_source,runners,provenance)
+        retained_digest = None
+        if worker.retained_input_bindings is not None:
+            retained = worker.retained_input_bindings.get(str(race["race_id"]))
+            if retained is None: raise R3Rejected("RETAINED_INPUT_BINDING_MISSING")
+            retained_digest = retained["manifest_sha256"]
+        job_input=JobInput(str(race["race_id"]),str(jump),str(race["runner_set_sha256"]),model_id,resolved_model,model_sha,manifest_sha,schema_sha,config_id,choice.config_sha256,odds_source,runners,provenance,retained_digest)
         job_input.fields()
         return ResolvedSubmission(job_input,runners)
     def finalize(job: Job, confirm) -> Job:
         return finalize_producer_bundle(dirs["prediction_bundles"],store,job,capability=verifier_authority,now=clock(),confirm_audit=confirm)
     dispatcher=_FixedDispatcher(store,worker,clock,finalize)
     return R3Services(store,resolve,dispatcher,finalize,build_verified_bundle_reader(dirs["prediction_bundles"],store),clock=clock,
-                      observe_current_races=lambda: current_index(clock()).races)
+                      observe_current_races=lambda: current_index(clock()).races,
+                      observe_current_index=lambda: current_index(clock()))
 
 
 def bind_configured_r3(app: Flask) -> bool:
@@ -437,7 +443,10 @@ def bind_configured_r3(app: Flask) -> bool:
             services=services, audit=app.extensions["operator_ui_audit"],
             races=services.observe_current_races, results=OfficialResultSource(layout["paths"]["canonical.sqlite3"]),
             result_readiness=ResultAcquisitionReadiness(layout["dirs"]["current_evidence"],
-                authority=layout["live_evidence"], races=services.observe_current_races),
+                authority=layout["live_evidence"], races=services.observe_current_races,
+                verified_index=services.observe_current_index,
+                result_job_store=layout["paths"]["jobs.sqlite3"],
+                result_prediction_bundles=layout["dirs"]["prediction_bundles"]),
             clock=services.clock)
         app.extensions["operator_ui_journal"] = coordinator
         app.extensions["operator_ui_journal_stop"] = start_journal_coordinator(coordinator, app.logger)

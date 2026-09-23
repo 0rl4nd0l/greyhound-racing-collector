@@ -1259,14 +1259,22 @@ def service_file_text(
     forward_corpus_root: Path | None = None,
     forward_baseline_config: Path | None = None,
     input_retention_config: Path | None = None,
+    r3_job_store: Path | None = None,
+    r3_prediction_bundles: Path | None = None,
+    skip_shadow_run: bool = False,
     pause_path: Path | None = DEFAULT_HEAVY_SCHEDULING_PAUSE_PATH,
 ) -> str:
+    if (r3_job_store is None) != (r3_prediction_bundles is None):
+        raise ValueError("R3 result discovery requires both bindings")
     require_forward_baseline_binding(forward_corpus_root, forward_baseline_config)
     script_path = repo_path / "scripts/shadow_autopilot_daemon.py"
     service_python = python_path or Path("/usr/bin/python3")
     evidence_root_segment = " ".join(optional_path_cli_args("--evidence-root", evidence_root))
     evidence_root_segment = f"{evidence_root_segment} " if evidence_root_segment else ""
     explicit_path_args = [
+        *(["--skip-shadow-run"] if skip_shadow_run else []),
+        *[systemd_exec_argument(v) for v in optional_path_cli_args("--r3-job-store", r3_job_store)],
+        *[systemd_exec_argument(v) for v in optional_path_cli_args("--r3-prediction-bundles", r3_prediction_bundles)],
         *optional_path_cli_args("--db", db_path),
         *shadow_model_cli_args(shadow_model),
         *optional_path_cli_args("--lock-path", lock_path),
@@ -1478,6 +1486,9 @@ def write_service_files(
     forward_corpus_root: Path | None = None,
     forward_baseline_config: Path | None = None,
     input_retention_config: Path | None = None,
+    r3_job_store: Path | None = None,
+    r3_prediction_bundles: Path | None = None,
+    skip_shadow_run: bool = False,
     pause_path: Path | None = DEFAULT_HEAVY_SCHEDULING_PAUSE_PATH,
 ) -> dict[str, Any]:
     service_dir.mkdir(parents=True, exist_ok=True)
@@ -1498,11 +1509,17 @@ def write_service_files(
             forward_corpus_root=forward_corpus_root,
             forward_baseline_config=forward_baseline_config,
             input_retention_config=input_retention_config,
+            r3_job_store=r3_job_store,
+            r3_prediction_bundles=r3_prediction_bundles,
+            skip_shadow_run=skip_shadow_run,
             pause_path=pause_path,
         ),
     )
     write_text(timer_path, timer_file_text())
     return {
+        "skip_shadow_run": skip_shadow_run,
+        "r3_job_store": str(r3_job_store) if r3_job_store else None,
+        "r3_prediction_bundles": str(r3_prediction_bundles) if r3_prediction_bundles else None,
         "service_path": relpath(service_path),
         "timer_path": relpath(timer_path),
         "timer_frequency": DEFAULT_TIMER_FREQUENCY,
@@ -1933,6 +1950,10 @@ def expected_service_exec_fragments_for_run(args: argparse.Namespace) -> list[st
     fragments.extend(
         optional_path_cli_args("--input-retention-config", args.input_retention_config)
     )
+    fragments.extend(optional_path_cli_args("--r3-job-store", getattr(args, "r3_job_store", None)))
+    fragments.extend(optional_path_cli_args("--r3-prediction-bundles", getattr(args, "r3_prediction_bundles", None)))
+    if getattr(args, "skip_shadow_run", False):
+        fragments.append("--skip-shadow-run")
     return fragments
 
 
@@ -9572,6 +9593,9 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             if args.enable_forward_official_result_observer
             else None,
             input_retention_config=args.input_retention_config,
+            r3_job_store=getattr(args, "r3_job_store", None),
+            r3_prediction_bundles=getattr(args, "r3_prediction_bundles", None),
+            skip_shadow_run=args.skip_shadow_run,
             pause_path=lock_path.parent / "pause-heavy-scheduling",
         )
         service_path = run_service_dir / SERVICE_NAME
@@ -9857,6 +9881,8 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             autopilot_command.append("--allow-auto-scrape-odds")
         if args.enable_autonomous_result_capture:
             autopilot_command.append("--enable-autonomous-result-capture")
+        autopilot_command.extend(optional_path_cli_args("--r3-job-store", getattr(args, "r3_job_store", None)))
+        autopilot_command.extend(optional_path_cli_args("--r3-prediction-bundles", getattr(args, "r3_prediction_bundles", None)))
         if (
             args.forward_corpus_root is not None
             and args.forward_baseline_config is None
@@ -13502,6 +13528,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     run_parser.add_argument("--forward-corpus-root", type=Path)
     run_parser.add_argument("--forward-baseline-config", type=Path)
     run_parser.add_argument("--input-retention-config", type=Path)
+    run_parser.add_argument("--r3-job-store", type=Path)
+    run_parser.add_argument("--r3-prediction-bundles", type=Path)
     run_parser.add_argument(
         "--result-backlog-limit",
         type=int,
@@ -13622,6 +13650,9 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     service_parser.add_argument("--forward-corpus-root", type=Path)
     service_parser.add_argument("--forward-baseline-config", type=Path)
     service_parser.add_argument("--input-retention-config", type=Path)
+    service_parser.add_argument("--r3-job-store", type=Path)
+    service_parser.add_argument("--r3-prediction-bundles", type=Path)
+    service_parser.add_argument("--skip-shadow-run", action="store_true")
     service_parser.add_argument(
         "--pause-path",
         type=Path,
@@ -13654,6 +13685,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_ODDS_CAPTURE_ONLY_REFRESH_LIMIT,
     )
     args = parser.parse_args(argv)
+    if (getattr(args, "r3_job_store", None) is None) != (getattr(args, "r3_prediction_bundles", None) is None):
+        parser.error("--r3-job-store and --r3-prediction-bundles must be provided together")
+    if args.command == "run-once" and args.r3_job_store is not None and not args.enable_autonomous_result_capture:
+        parser.error("R3 result discovery requires --enable-autonomous-result-capture")
     if (
         args.command == "run-once"
         and args.enable_forward_official_result_observer
@@ -13722,6 +13757,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             forward_corpus_root=args.forward_corpus_root,
             forward_baseline_config=args.forward_baseline_config,
             input_retention_config=args.input_retention_config,
+            r3_job_store=getattr(args, "r3_job_store", None),
+            r3_prediction_bundles=getattr(args, "r3_prediction_bundles", None),
+            skip_shadow_run=args.skip_shadow_run,
             pause_path=args.pause_path,
         )
         print(json.dumps(result, indent=2, sort_keys=True))

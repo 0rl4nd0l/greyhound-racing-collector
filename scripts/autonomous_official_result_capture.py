@@ -1138,24 +1138,37 @@ def shadow_run_backlog_retention_race_ids(shadow_run_dirs: Sequence[Path]) -> li
 def run_shadow_run_official_dry_run(
     *,
     db_path: Path,
-    shadow_run_dir: Path,
+    shadow_run_dir: Path | None,
     target_date: str,
     current_time: datetime,
     output_dir: Path,
     race_ids: Sequence[str],
+    r3_job_store: Path | None = None,
+    r3_prediction_bundles: Path | None = None,
     include_live_odds_backlog: bool = False,
     backlog_evidence_root: Path | None = None,
     backlog_limit: int = 0,
     backlog_shadow_run_limit: int = 0,
     backlog_lookback_days: int = 0,
 ) -> tuple[dict[str, Any], int]:
-    candidates, skipped, source_report = shadow_run_candidates(
-        shadow_run_dir=shadow_run_dir,
-        target_date=target_date,
-        current_time=current_time,
-        race_ids=race_ids,
-        output_dir=output_dir,
-    )
+    if (r3_job_store is None) != (r3_prediction_bundles is None):
+        raise ValueError("R3 result discovery requires both bindings")
+    if r3_job_store is not None:
+        from scripts.r3_official_result_candidates import r3_prediction_candidates
+        candidates, skipped, source_report = r3_prediction_candidates(
+            job_store_path=r3_job_store, prediction_bundles=r3_prediction_bundles,
+            result_database=db_path, target_date=target_date, current_time=current_time,
+            race_ids=race_ids, output_dir=output_dir,
+            limit=backlog_limit or DEFAULT_BACKLOG_LIMIT,
+        )
+        # The explicitly configured source owns this cycle; never reconstruct an
+        # R3 candidate from unrelated shadow predictions or mutable form inputs.
+        include_live_odds_backlog = False
+    else:
+        candidates, skipped, source_report = shadow_run_candidates(
+            shadow_run_dir=shadow_run_dir, target_date=target_date,
+            current_time=current_time, race_ids=race_ids, output_dir=output_dir,
+        )
     candidate_by_race_id = {candidate.race_id: candidate for candidate in candidates}
     backlog_report: dict[str, Any] = {
         "enabled": include_live_odds_backlog,
@@ -1349,7 +1362,15 @@ def run_shadow_run_official_dry_run(
                     attempts.append(official)
                     selected = official
                     validation_error = ingest.result_validation_error(candidate, selected)
-                    if validation_error and sportsbet is not None:
+                    if candidate.participant_source == "verified_r3_prediction" and validation_error is None:
+                        expected_boxes = {row["box_number"] for row in candidate.participants}
+                        if (selected.source != OFFICIAL_SOURCE or selected.status != RESULTED_STATUS
+                            or selected.source_url not in {candidate.canonical_thedogs_url,
+                                                          candidate.canonical_thedogs_url + "?trial=false"}
+                            or set(selected.positions_by_box) != expected_boxes
+                            or set(selected.positions_by_box.values()) != set(range(1, len(expected_boxes) + 1))):
+                            validation_error = "r3_official_result_identity_or_completeness_mismatch"
+                    if validation_error and sportsbet is not None and candidate.participant_source != "verified_r3_prediction":
                         fallback = sportsbet.fetch(candidate)
                         attempts.append(fallback)
                         fallback_error = ingest.result_validation_error(candidate, fallback)
@@ -1443,7 +1464,7 @@ def run_shadow_run_official_dry_run(
             "date": target_date,
             "shadow_run_dir": relpath(shadow_run_dir),
             "race_ids": sorted({str(race_id) for race_id in race_ids if race_id}),
-            "candidate_source": "shadow_run_predictions",
+            "candidate_source": "verified_r3_predictions" if r3_job_store is not None else "shadow_run_predictions",
             "live_odds_backlog_enabled": include_live_odds_backlog,
             "live_odds_backlog_lookback_days": backlog_lookback_days,
         },
@@ -3156,6 +3177,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--date", default=date.today().isoformat())
     parser.add_argument("--upcoming-dir", type=Path)
     parser.add_argument("--shadow-run-dir", type=Path)
+    parser.add_argument("--r3-job-store", type=Path)
+    parser.add_argument("--r3-prediction-bundles", type=Path)
     parser.add_argument("--snapshot-dir", type=Path, default=ROOT / "artifacts/prediction_snapshots")
     parser.add_argument("--db", type=Path, default=ROOT / "greyhound_racing_data.db")
     parser.add_argument("--output-dir", type=Path)
@@ -3193,14 +3216,18 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     args = parser.parse_args(argv)
+    if (args.r3_job_store is None) != (args.r3_prediction_bundles is None):
+        parser.error("--r3-job-store and --r3-prediction-bundles must be provided together")
     has_existing_artifacts = bool(args.existing_race_rows_jsonl or args.existing_runner_rows_jsonl)
+    if has_existing_artifacts and args.r3_job_store is not None:
+        parser.error("R3 discovery cannot be combined with existing result artifacts")
     if has_existing_artifacts and not (
         args.existing_race_rows_jsonl and args.existing_runner_rows_jsonl
     ):
         parser.error(
             "--existing-race-rows-jsonl and --existing-runner-rows-jsonl must be provided together"
         )
-    if args.upcoming_dir is None and args.shadow_run_dir is None and not has_existing_artifacts:
+    if args.upcoming_dir is None and args.shadow_run_dir is None and args.r3_job_store is None and not has_existing_artifacts:
         parser.error(
             "--upcoming-dir, --shadow-run-dir, or existing official-result JSONL is required"
         )
@@ -3294,19 +3321,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         write_json(ingest_report_path, ingest_report)
         write_text(output_dir / "official_result_ingest.stdout.txt", "")
         write_text(output_dir / "official_result_ingest.stderr.txt", "")
-    elif args.shadow_run_dir is not None:
+    elif args.shadow_run_dir is not None or args.r3_job_store is not None:
         command = [
             sys.executable,
             str(ROOT / "scripts/autonomous_official_result_capture.py"),
             "--date",
             args.date,
-            "--shadow-run-dir",
-            str(args.shadow_run_dir),
             "--output-dir",
             str(output_dir),
             "--db",
             str(args.db),
         ]
+        if args.shadow_run_dir is not None:
+            command.extend(["--shadow-run-dir", str(args.shadow_run_dir)])
+        if args.r3_job_store is not None:
+            command.extend(["--r3-job-store", str(args.r3_job_store),
+                            "--r3-prediction-bundles", str(args.r3_prediction_bundles)])
         if args.current_time:
             command.extend(["--current-time", args.current_time])
         if args.include_live_odds_backlog:
@@ -3322,6 +3352,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         ingest_report, returncode = run_shadow_run_official_dry_run(
             db_path=args.db,
             shadow_run_dir=args.shadow_run_dir,
+            r3_job_store=args.r3_job_store,
+            r3_prediction_bundles=args.r3_prediction_bundles,
             target_date=args.date,
             current_time=parse_current_time(args.current_time),
             output_dir=output_dir,
