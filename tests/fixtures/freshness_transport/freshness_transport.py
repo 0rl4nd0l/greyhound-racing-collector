@@ -4,11 +4,26 @@ import json
 import os
 from pathlib import Path
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 def install():
     fixture = json.loads(Path(os.environ["FRESHNESS_FABRICATED_SOURCE"]).read_bytes())
+    import sys
+
+    def expire_capture_clock():
+        # Clock is a controlled external input. Planner, reservation, subprocess,
+        # fetch/append time gates and storage remain the actual packaged code.
+        module = sys.modules.get("__main__")
+        if not str(getattr(module, "__file__", "")).endswith("autonomous_live_odds_capture.py"):
+            return
+        boundary = datetime.fromisoformat(fixture["sidecar"]["prejump_shadow_metadata"]["jump_time"]) - timedelta(minutes=10)
+        class ExpiredDateTime(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return boundary.astimezone(tz) if tz else boundary
+        module.datetime = ExpiredDateTime
+
     import upcoming_race_browser
     from selenium import webdriver
     from selenium.common.exceptions import NoSuchElementException
@@ -93,6 +108,8 @@ def install():
                     )
                 }
             )
+            if fixture["scenario"] == "expired_append" and "/race-" in url:
+                expire_capture_clock()
             if fixture["scenario"] == "interrupted":
                 Path(fixture["transport_marker"]).write_text(str(os.getpid()))
                 time.sleep(3)
@@ -120,3 +137,11 @@ def install():
         executable_path, port=9999, **kwargs
     )
     webdriver.Chrome = Driver
+    if fixture["scenario"] == "delayed_start":
+        from race_collection import live_execution
+        original_dependencies = live_execution.require_profile_dependencies
+        def dependencies_with_delayed_clock():
+            original_dependencies()
+            expire_capture_clock()
+        live_execution.require_profile_dependencies = dependencies_with_delayed_clock
+

@@ -90,7 +90,7 @@ def fixture_data(root, scenario):
 
 
 @pytest.mark.parametrize("campaign_mode", [False, True])
-@pytest.mark.parametrize("scenario", ["canonical_alias", "mismatch", "interrupted"])
+@pytest.mark.parametrize("scenario", ["canonical_alias", "mismatch", "interrupted", "delayed_start", "expired_append"])
 def test_actual_packaged_service_capture(tmp_path, scenario, campaign_mode):
     from scripts.prepare_freshness_rehearsal import prepare, UNITS
     from scripts.check_freshness_service import service_command
@@ -165,6 +165,9 @@ def test_actual_packaged_service_capture(tmp_path, scenario, campaign_mode):
     )
     # This launcher installs the kernel filter before the real ExecStart is exec'd.
     launcher = "from scripts.check_freshness_service import deny_network; import os,sys; deny_network(); os.execv(sys.argv[1],sys.argv[1:])"
+    monitor = Path(__file__).parent / "fixtures/freshness_capture_monitor.py"
+    before = subprocess.run([sys.executable, str(monitor), str(package), "startup"], text=True, capture_output=True, timeout=20)
+    assert before.returncode == 0, before.stdout + before.stderr
     with (tmp_path / "service.log").open("w") as log:
         process = subprocess.Popen(
             [sys.executable, "-c", launcher, *command],
@@ -283,6 +286,11 @@ print('BOTH_ALIASES_VERIFIED')
 
     else:
         assert rows == [], log
+    if scenario in {"delayed_start", "expired_append"}:
+        errors = "\n".join(path.read_text() for path in Path(plan["evidence_root"]).glob("**/autonomous_live_odds_capture.stderr.txt"))
+        assert "capture_reservation_identity_changed" in errors, errors
+        assert claim["item"]["capture_window_minutes"] == 30
+        assert (allowance.scope.session / "STOP.json").exists()
     if scenario == "interrupted":
         assert lifecycle["interrupted"]
         timing_file = next(
@@ -300,6 +308,8 @@ print('BOTH_ALIASES_VERIFIED')
         assert Path(data["cleanup_marker"]).exists()
         assert (allowance.scope.session / "STOP.json").exists()
     assert claims[0].read_bytes() == claim_bytes
+    restored = subprocess.run([sys.executable, str(monitor), str(package), "restore"], text=True, capture_output=True, timeout=20)
+    assert restored.returncode == 0, restored.stdout + restored.stderr
     (tmp_path / "result.json").write_text(
         json.dumps(
             dict(
