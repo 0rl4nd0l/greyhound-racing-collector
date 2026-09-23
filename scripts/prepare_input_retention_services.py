@@ -60,18 +60,21 @@ def prepare_services(*, installed_dir: Path, output_dir: Path, repo_path: Path,
             if len(pause) > 1:
                 raise ValueError("unsupported pause conditions")
             common.update(shadow_model=args.shadow_model,
+                          skip_shadow_run=args.skip_shadow_run,
+                          r3_job_store=args.r3_job_store,
+                          r3_prediction_bundles=args.r3_prediction_bundles,
                           odds_capture_state_path=args.odds_capture_state_path,
                           pause_path=Path(pause[0]) if pause else None)
             renderer = daemon.service_file_text
         else:
             common.update(refresh_limit=args.refresh_limit)
             renderer = daemon.odds_capture_service_file_text
-        disabled = renderer(**common)
-        expected = original.replace(f"WorkingDirectory={old_repo}\n", f"WorkingDirectory={repo_path}\n")
-        expected = expected.replace(f"{old_repo}/scripts/shadow_autopilot_daemon.py",
-                                    f"{repo_path}/scripts/shadow_autopilot_daemon.py")
-        if disabled != expected:
+        # Validate the complete original unit, including source-bound access
+        # conditions, before rendering those same settings at the new checkout.
+        expected = renderer(**{**common, "repo_path": old_repo})
+        if original != expected:
             raise ValueError("installed service differs from supported generator; review required")
+        disabled = renderer(**common)
         enabled = renderer(**common, input_retention_config=retention_config)
         rendered[name] = {"default-off": disabled, "retention-configured": enabled}
         lane_args.append((command[0], args))

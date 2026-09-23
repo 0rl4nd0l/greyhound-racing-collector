@@ -31,14 +31,14 @@ class CaptureFinished(BaseException):
     """Stop the fixture before any ordinary downstream scorer/result step."""
 
 
-def installed_units(tmp_path, evidence, db):
+def installed_units(tmp_path, evidence, db, **full_options):
     directory = tmp_path / 'installed'
     common = dict(service_dir=directory, repo_path=tmp_path / 'old-source',
                   python_path=Path(sys.executable), evidence_root=evidence,
                   db_path=db, lock_path=tmp_path / 'collector.lock')
     daemon.write_service_files(**common, state_path=tmp_path / 'full-state.json',
         odds_capture_state_path=tmp_path / 'odds-state.json',
-        shadow_model=tmp_path / 'unused-model', pause_path=tmp_path / 'pause')
+        shadow_model=tmp_path / 'unused-model', pause_path=tmp_path / 'pause', **full_options)
     daemon.write_odds_capture_service_files(**common, state_path=tmp_path / 'odds-state.json')
     return directory
 
@@ -258,6 +258,54 @@ def test_package_preserves_both_rollbacks_and_rejects_split_lock(tmp_path):
         package.prepare_services(installed_dir=installed, output_dir=tmp_path / 'invalid',
                                  repo_path=ROOT, retention_config=tmp_path / 'config')
     assert not (tmp_path / 'invalid').exists()
+
+
+def test_package_preserves_r3_bindings_and_source_bound_access_guard(tmp_path):
+    jobs = tmp_path / 'r3 jobs.sqlite3'
+    bundles = tmp_path / 'r3 prediction bundles'
+    installed = installed_units(tmp_path, tmp_path / 'evidence', tmp_path / 'synthetic.db',
+        skip_shadow_run=True, r3_job_store=jobs, r3_prediction_bundles=bundles)
+    originals = {p.name: p.read_bytes() for p in installed.iterdir()}
+    config = tmp_path / 'future-config.json'
+    paired = prepare(tmp_path, installed, config)
+    for label in ('default-off', 'retention-configured'):
+        full = (paired / label / daemon.SERVICE_NAME).read_text()
+        args = daemon.parse_args(package.service_command(full)[2:])
+        assert args.skip_shadow_run is True
+        assert args.r3_job_store == jobs
+        assert args.r3_prediction_bundles == bundles
+        assert args.enable_autonomous_result_capture is True
+        for name in package.SERVICES:
+            unit = (paired / label / name).read_text()
+            condition = next(line for line in unit.splitlines() if line.startswith('ExecCondition='))
+            assert str(ROOT / 'scripts/check_sportsbet_access.py') in condition
+            assert str(tmp_path / 'old-source') not in condition
+            lane = daemon.parse_args(package.service_command(unit)[2:])
+            assert lane.input_retention_config == (config if label == 'retention-configured' else None)
+    assert all((paired / 'rollback' / name).read_bytes() == raw for name, raw in originals.items())
+    assert all((installed / name).read_bytes() == raw for name, raw in originals.items())
+    assert not config.exists()
+
+
+@pytest.mark.parametrize('lane', package.SERVICES)
+@pytest.mark.parametrize('damage', ['wrong-script', 'missing-condition', 'changed-access-state'])
+def test_package_rejects_modified_access_guard(tmp_path, lane, damage):
+    installed = installed_units(tmp_path, tmp_path / 'evidence', tmp_path / 'synthetic.db')
+    unit = installed / lane
+    original = unit.read_text()
+    if damage == 'wrong-script':
+        modified = original.replace('/scripts/check_sportsbet_access.py', '/scripts/unchecked.py')
+    elif damage == 'missing-condition':
+        modified = ''.join(line for line in original.splitlines(keepends=True)
+                           if not line.startswith('ExecCondition='))
+    else:
+        modified = original.replace('GREYHOUND_SPORTSBET_ACCESS_STATE=',
+                                    'GREYHOUND_SPORTSBET_ACCESS_STATE=/unapproved/')
+    assert modified != original
+    unit.write_text(modified)
+    with pytest.raises(ValueError, match='differs from supported generator'):
+        prepare(tmp_path, installed, tmp_path / 'future.json')
+    assert not (tmp_path / 'paired').exists()
 
 
 @pytest.mark.parametrize('damage', ['missing-full-lane', 'already-armed', 'unsupported-setting'])
