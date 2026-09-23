@@ -165,12 +165,18 @@ class BrowserNetworkAccounting:
                         from datetime import datetime, timezone
                         from utils.http_client import source_retry_headers
 
-                        self.value.setdefault("source_access_denied", {
+                        denial = {
                             "host": host,
                             "status": response["status"],
                             "observed_at": datetime.now(timezone.utc).isoformat(),
                             "retry_headers": source_retry_headers(response.get("headers")),
-                        })
+                        }
+                        self.value.setdefault("source_access_denied", denial)
+                        denials = self.value.setdefault("source_access_denials", [])
+                        if len(denials) < 128:
+                            denials.append(denial)
+                        else:
+                            self.value["source_access_denials_truncated"] = True
                 if event.get("method") != "Network.requestWillBeSent":
                     continue
                 params = event["params"]

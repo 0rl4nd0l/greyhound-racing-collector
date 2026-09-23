@@ -51,19 +51,25 @@ def test_browser_denial_retains_only_retry_guidance(tmp_path, monkeypatch):
             pass
 
         def get_log(self, name):
-            return [{"message": json.dumps({"message": {
+            events = [{"message": json.dumps({"message": {
                 "method": "Network.responseReceived", "params": {"response": {
                     "url": "https://www.sportsbet.com.au/fixture?secret=hidden",
                     "status": 429,
                     "headers": {"Retry-After": "120", "Date": "Wed, 23 Sep 2026 07:00:00 GMT",
                                 "Set-Cookie": "secret", "Authorization": "secret"},
                 }}}})}]
+            initial = json.loads(events[0]["message"])
+            initial["message"]["params"]["response"]["headers"] = {}
+            return [{"message": json.dumps(initial)}, *events]
 
     path = tmp_path / "browser.json"
     meter = BrowserNetworkAccounting(Driver(), path)
     with pytest.raises(ValueError, match="source_access_denied"):
         meter.drain()
-    evidence = json.loads(path.read_text())["source_access_denied"]
+    recorded = json.loads(path.read_text())
+    assert recorded["source_access_denied"]["retry_headers"] == {}
+    assert len(recorded["source_access_denials"]) == 2
+    evidence = recorded["source_access_denials"][1]
     assert evidence["retry_headers"] == {
         "retry-after": "120", "date": "Wed, 23 Sep 2026 07:00:00 GMT"}
     assert evidence["observed_at"]
