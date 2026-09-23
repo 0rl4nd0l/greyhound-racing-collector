@@ -745,28 +745,30 @@ def execute(plan_path, expected_digest, approval_id):
         # A second termination signal must not interrupt exact restoration.
         for sig in previous_handlers:
             signal.signal(sig, signal.SIG_IGN)
-        if scope:
-            scope.stop("REHEARSAL_ENDED")
-            rows, excluded = [], []
-            for path in Path(plan["evidence_root"]).glob("shadow_autopilot_daemonization_v1_*/phase-checkpoint.json"):
-                checkpoint = json.loads(path.read_bytes())
-                rows.extend(checkpoint.get("window_observations", []))
-                excluded.extend(checkpoint.get("exclusions", []))
-            atomic_json(output / "final-window-accounting.json", window_accounting(
-                rows, excluded, AttemptAllowance(scope).claims(), now()))
-        if owned:
-            release_owned_collector_lock(owned)
-        # Restore even on acquisition failure; never restart the rehearsal.
-        if paused:
-            restore(output, plan, control)
-        if campaign:
-            with campaign.ledger() as ledger:
-                begun = plan["rehearsal_id"] in ledger["launches"]
-            if begun:
-                campaign.close(plan["rehearsal_id"], now=now())
-            campaign_owner.close()
-        for sig, handler in previous_handlers.items():
-            signal.signal(sig, handler)
+        try:
+            if scope:
+                scope.stop("REHEARSAL_ENDED")
+                rows, excluded = [], []
+                for path in Path(plan["evidence_root"]).glob("shadow_autopilot_daemonization_v1_*/phase-checkpoint.json"):
+                    checkpoint = json.loads(path.read_bytes())
+                    rows.extend(checkpoint.get("window_observations", []))
+                    excluded.extend(checkpoint.get("exclusions", []))
+                atomic_json(output / "final-window-accounting.json", window_accounting(
+                    rows, excluded, AttemptAllowance(scope).claims(), now()))
+        finally:
+            if owned:
+                release_owned_collector_lock(owned)
+            # Restore even on acquisition failure; never restart the rehearsal.
+            if paused:
+                restore(output, plan, control)
+            if campaign:
+                with campaign.ledger() as ledger:
+                    begun = plan["rehearsal_id"] in ledger["launches"]
+                if begun:
+                    campaign.close(plan["rehearsal_id"], now=now())
+                campaign_owner.close()
+            for sig, handler in previous_handlers.items():
+                signal.signal(sig, handler)
 
 
 def main():
