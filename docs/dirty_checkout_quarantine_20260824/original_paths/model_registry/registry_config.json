@@ -1,0 +1,19 @@
+{
+  "auto_select_best": true,
+  "max_models_to_keep": 50,
+  "best_selection_metric": "performance_score",
+  "performance_weight": {
+    "accuracy": 0.4,
+    "auc": 0.3,
+    "f1_score": 0.2,
+    "data_quality": 0.1
+  },
+  "min_races_for_promotion": 0,
+  "tie_breaker_order": [
+    "races_evaluated",
+    "accuracy",
+    "auc",
+    "performance_score",
+    "created_at"
+  ]
+}
