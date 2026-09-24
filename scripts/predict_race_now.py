@@ -590,6 +590,21 @@ def _persist_blocked_bundle(
     bundle = Path(state["bundle"])
     if state.get("comparison") is not None:
         state["comparison"].finish(production_failure=exc.code)
+    if exc.code == "COLLECTOR_PROTOCOL_INVALID":
+        # Preserve the bounded cause before the public result strips details.
+        # Never retain arbitrary exception text, source paths or payloads.
+        reason = exc.details.get("reason")
+        known = {
+            "PROTOCOL_DIRECTORY_CHANGED", "PROTOCOL_MEMBER_CHANGED",
+            "PROTOCOL_PATH_UNSAFE", "HASH_DRIFT", "EXACT_RECEIPT_MALFORMED",
+            "PROTOCOL_MEMBER_OVERSIZED", "TIMESTAMP_ORDER_INVALID",
+            "IDENTITY_MISMATCH",
+        }
+        _write_canonical(bundle / "protocol-failure.json", {
+            "schema_version": "prediction_protocol_failure_v1",
+            "code": exc.code,
+            "reason": reason if isinstance(reason, str) and reason in known else "UNCLASSIFIED",
+        })
     result = _sealed_result(
         state=state, generated_at=generated_at, blocker=exc, prediction=None
     )

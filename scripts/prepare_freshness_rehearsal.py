@@ -22,7 +22,7 @@ UNITS = (
 )
 
 
-def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False, comparison_plan=None):
+def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False, observation_minutes=90, comparison_plan=None):
     comparison_binding = None
     if comparison_plan is not None:
         if not operational_predictions:
@@ -32,6 +32,9 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         comparison_sha = hashlib.sha256(comparison_plan.read_bytes()).hexdigest()
         load_plan(comparison_plan, comparison_sha)
         comparison_binding = {"path": str(comparison_plan), "sha256": comparison_sha}
+    if (type(observation_minutes) is not int or observation_minutes not in (60, 90)
+            or (observation_minutes == 60 and not (campaign_root and operational_predictions))):
+        raise ValueError("invalid_operational_observation_duration")
     output = output.absolute()
     output.mkdir(parents=True, exist_ok=False, mode=0o700)
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
@@ -159,7 +162,7 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         "python_sha256": hashlib.sha256(python.resolve().read_bytes()).hexdigest(),
         "runtime_sha256": digest(runtime_identity),
         "starts_at": start.isoformat(),
-        "ends_at": (start + timedelta(minutes=90)).isoformat(),
+        "ends_at": (start + timedelta(minutes=observation_minutes)).isoformat(),
         "admission_starts_at": (start - timedelta(minutes=30)).isoformat(),
         "cleanup_seconds": 1860 if campaign else 1200,
         "sample_period_seconds": 2,
@@ -224,6 +227,7 @@ def main():
     parser.add_argument("--campaign-root", type=Path)
     parser.add_argument("--operational-predictions", action="store_true")
     parser.add_argument("--comparison-plan", type=Path, help="Explicit approved comparison binding; omitted by default")
+    parser.add_argument("--observation-minutes", type=int, choices=(60, 90), default=90)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--start", required=True)
     parser.add_argument("--python", type=Path, required=True)
@@ -238,6 +242,7 @@ def main():
                 campaign_root=args.campaign_root,
                 operational_predictions=args.operational_predictions,
                 comparison_plan=args.comparison_plan,
+                observation_minutes=args.observation_minutes,
                 output=args.output,
                 start=datetime.fromisoformat(args.start),
                 python=args.python,

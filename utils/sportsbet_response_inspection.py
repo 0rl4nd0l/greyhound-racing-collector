@@ -168,6 +168,7 @@ class ResponseInspection:
         self.network_responses = []
         self.browser_identity = {}
         self.dom_snapshot = {"state": "not_observed"}
+        self.paired_readiness = []
         self.dropped_responses = 0
         self.frame_roles = {}
         self.mark("browser_start")
@@ -194,6 +195,7 @@ class ResponseInspection:
             "navigation_complete",
             "rendered_extraction_complete",
             "paired_rows_ready",
+            "paired_readiness_expired",
             "inspection_complete",
         }:
             raise ValueError("unknown_inspection_mark")
@@ -205,6 +207,18 @@ class ResponseInspection:
         with self.lock:
             self.navigation += 1
             self.mark("navigation_start")
+
+    def record_paired_readiness(self, boundary, counts):
+        """Two value-free DOM count observations; never price or runner text."""
+        keys = ("card_count", "single_header_count", "paired_card_count", "unique_box_count")
+        if boundary not in {"start", "end"} or any(
+            type(counts.get(key)) is not int or counts[key] < 0 for key in keys
+        ):
+            raise ValueError("invalid_paired_readiness_counts")
+        with self.lock:
+            if len(self.paired_readiness) < 2:
+                self.paired_readiness.append({"boundary": boundary,
+                    **{key: counts[key] for key in keys}, **self._stamp()})
 
     def fail(self):
         with self.lock:
@@ -391,6 +405,7 @@ class ResponseInspection:
                         "dropped_responses": self.dropped_responses,
                         "browser_identity": self.browser_identity,
                         "dom_snapshot": self.dom_snapshot,
+                        "paired_readiness": self.paired_readiness,
                         "marks": self.marks,
                         "responses": list(self.rows.values()),
                     }

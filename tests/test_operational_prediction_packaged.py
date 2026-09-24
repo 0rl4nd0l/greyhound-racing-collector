@@ -15,7 +15,7 @@ from tests.test_freshness_campaign import make_campaign
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.mark.parametrize("landing_missing", [False, True])
+@pytest.mark.parametrize("landing_missing", [False, True, "paired_missing"])
 def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, landing_missing):
     from scripts.prepare_freshness_rehearsal import prepare, UNITS
     from scripts.check_freshness_service import service_command
@@ -58,7 +58,9 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     http.write_text(json.dumps(payload))
     for name in ('Alpha', 'Bravo', 'Charlie', 'Delta'):
         browser['race_html'] = browser['race_html'].replace(name, 'Synthetic '+name)
-    if landing_missing:
+    if landing_missing == "paired_missing":
+        browser["race_html"] = browser["race_html"].replace("<span>1.50</span><span>EW</span>", "")
+    if landing_missing is True:
         browser['landing_html'] = '<a href="https://www.sportsbet.com.au/greyhound-racing/australia-nz/murray-bridge-straight">Murray Bridge Straight</a>'
     browser_path = tmp_path / 'browser.json'
     browser_path.write_text(json.dumps(browser))
@@ -81,8 +83,9 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     package = tmp_path/'package'
     prepare(output=package, start=stamp-timedelta(seconds=5), python=Path(sys.executable), db=db,
         lock=tmp_path/'collector.lock', reconciliation_roots={}, installed_dir=installed,
-        campaign_root=campaign.root, operational_predictions=True)
+        campaign_root=campaign.root, operational_predictions=True, observation_minutes=60)
     plan = json.loads((package/'plan.json').read_bytes())
+    assert (datetime.fromisoformat(plan['ends_at']) - datetime.fromisoformat(plan['starts_at'])).total_seconds() == 3600
     assert plan['max_capture_attempts'] == (12 if landing_missing else 64)
     from race_collection.synchronous_manual_capture import _atomic_replace_canonical
     from race_collection.live_phase_checkpoint import atomic_json
@@ -123,11 +126,20 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
         terminal_capture=json.loads(allowance.claims()[0].with_suffix(".terminal.json").read_bytes())["result"]
         assert terminal_capture["operational_capture_outcome"]["status"] == "UNREADY_NO_CAPTURE"
         assert json.loads(gate.read_bytes())['phase'] == 'OPEN'
-        assert 'target_race_not_visible_within_navigation_allowance' in (tmp_path/'collector.log').read_text() or any('target_race_not_visible_within_navigation_allowance' in p.read_text() for p in evidence.glob('**/autonomous_live_odds_capture_report.json'))
+        expected_marker = ("target_race_not_visible_within_navigation_allowance" if landing_missing is True
+                           else "required_paired_markets_not_ready_within_readiness_budget")
+        assert terminal_capture["operational_capture_outcome"]["reason"] == expected_marker
+        if landing_missing == "paired_missing":
+            assert inspection["paired_readiness"][-1]["card_count"] == 4
+            assert inspection["paired_readiness"][-1]["paired_card_count"] == 0
+            assert any(m["name"] == "paired_readiness_expired" for m in inspection["marks"])
+        assert not list((campaign.root/"operational-predictions/races").glob("*/terminal.json"))
         with sqlite3.connect(plan['db_path']) as capture_conn:
             assert capture_conn.execute('SELECT count(*) FROM live_odds').fetchone()[0] == 0
         return
     assert service.returncode == 0, (tmp_path/'collector.log').read_text()[-3000:]
+    assert inspection['paired_readiness'][-1]['card_count'] == 4
+    assert inspection['paired_readiness'][-1]['paired_card_count'] == 4
     claims = allowance.claims()
     assert len(claims) == 1
     result = subprocess.run([sys.executable,'-B','-m','race_collection.operational_prediction',str(package/'plan.json'),str(claims[0])],

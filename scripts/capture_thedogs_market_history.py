@@ -308,7 +308,7 @@ class _RunnerParser(HTMLParser):
                 if len(effective_box_texts) != 1:
                     raise CaptureError("effective_box_source_ambiguous_in_odds_page")
                 match = re.fullmatch(
-                    r"\(\s*from\s+box\s+([1-8])\s*\)",
+                    r"\(\s*(?:from|into)\s+box\s+([1-8])\s*\)",
                     effective_box_texts[0],
                     flags=re.IGNORECASE,
                 )
