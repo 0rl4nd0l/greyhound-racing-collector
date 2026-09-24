@@ -37,6 +37,9 @@ def r3_prediction_candidates(*, job_store_path: Path, prediction_bundles: Path,
     candidates, skipped = [], []
     selected_ids = set(race_ids)
     for job in jobs:
+        if job.operation == "operational_prediction":
+            skipped.append({"race_id": job.input.race_id, "reason": "OPERATIONAL_RESULT_ACCESS_FORBIDDEN"})
+            continue
         if job.phase is not Phase.PREDICTION_READY or selected_ids and job.input.race_id not in selected_ids:
             continue
         reason = None

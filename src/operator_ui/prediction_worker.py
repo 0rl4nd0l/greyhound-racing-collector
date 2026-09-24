@@ -146,14 +146,15 @@ def _open_runtime_descriptors(config:WorkerConfig)->tuple[int,int]:
         raise
 
 def revalidate_current_race(job,config,*,now,reader=bounded_current_race_index,completion_clock=None):
-    try:view=reader(current_time=now,timeout_seconds=config.current_index_timeout_seconds,index_path=config.current_index_path,evidence_root=config.current_index_evidence_root,max_age_seconds=1200,return_verified_view=True)
+    maximum_age = 300 if job.operation == "operational_prediction" else 1200
+    try:view=reader(current_time=now,timeout_seconds=config.current_index_timeout_seconds,index_path=config.current_index_path,evidence_root=config.current_index_evidence_root,max_age_seconds=maximum_age,return_verified_view=True)
     except CaptureOneRejected as exc: raise WorkerRejected(exc.code) from exc
     if not isinstance(view,VerifiedCurrentRaceIndex): raise WorkerRejected("CURRENT_INDEX_INVALID")
     # The verified-view reader authenticates stale packets too; they cannot
     # authorize a new attempt under this fixed worker's 1200-second policy.
     generated=datetime.fromisoformat(view.source_generated_at.replace("Z","+00:00"))
     observed=max(now,completion_clock()) if completion_clock is not None else now
-    if not 0 <= (observed-generated).total_seconds() <= 1200: raise WorkerRejected("CURRENT_INDEX_STALE")
+    if not 0 <= (observed-generated).total_seconds() <= maximum_age: raise WorkerRejected("CURRENT_INDEX_STALE")
     matches=[r for r in view.races if r.get("race_id")==job.input.race_id]
     if len(matches)!=1: raise WorkerRejected("RACE_ID_MISSING_OR_AMBIGUOUS")
     if matches[0].get("jump_datetime")!=job.input.jump_timestamp: raise WorkerRejected("RACE_JUMP_CHANGED")

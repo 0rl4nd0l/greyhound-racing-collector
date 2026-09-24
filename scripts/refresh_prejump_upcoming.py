@@ -911,6 +911,7 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
             raise ValueError("discovery_clock_scope_mismatch")
         install_request_guard(scope)  # This CLI process exits after the refresh.
     browser = _refresh_browser(timing, browser_type)
+    browser.bounded_meeting_discovery = budget is not None
     discovery_days_ahead = int(args.days_ahead)
     if budget is not None:
         discovery_days_ahead = bounded_discovery_days_ahead(

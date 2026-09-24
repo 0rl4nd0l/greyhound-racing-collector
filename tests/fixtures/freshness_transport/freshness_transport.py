@@ -47,8 +47,9 @@ def install():
         csv.with_name(csv.name + ".metadata.json").write_text(json.dumps(fixture["sidecar"]))
         return {"success": True, "csv_path": str(csv)}
 
-    upcoming_race_browser.UpcomingRaceBrowser.get_upcoming_races = upcoming
-    upcoming_race_browser.UpcomingRaceBrowser.download_race_csv = download
+    if not os.environ.get("GREYHOUND_SHARED_SNAPSHOT_FIXTURE"):
+        upcoming_race_browser.UpcomingRaceBrowser.get_upcoming_races = upcoming
+        upcoming_race_browser.UpcomingRaceBrowser.download_race_csv = download
     import requests
     def response(adapter, request, **kwargs):
         assert request.url.startswith("https://www.sportsbet.com.au/")

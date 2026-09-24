@@ -1,0 +1,111 @@
+"""Actual exported service, retention and frozen predictor; only source transport is invented."""
+import json
+import os
+from pathlib import Path
+import sqlite3
+import subprocess
+import sys
+from datetime import timedelta
+
+from tests.test_freshness_capture_e2e import fixture_data
+from tests.test_refresh_shared_sportsbet_snapshot import fixture as http_fixture, access
+from tests.test_freshness_campaign import make_campaign
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch):
+    from scripts.prepare_freshness_rehearsal import prepare, UNITS
+    from scripts.check_freshness_service import service_command
+    from sportsbet_odds_integrator import SportsbetOddsIntegrator
+    from race_collection.live_freshness_contract import AttemptAllowance, FreshnessContract, digest
+
+    gate = access(tmp_path)
+    monkeypatch.setenv("GREYHOUND_SPORTSBET_ACCESS_STATE", str(gate))
+    stamp, browser = fixture_data(tmp_path, "canonical_alias")
+    http = http_fixture(tmp_path, 1)
+    payload = json.loads(http.read_bytes())
+    jump = browser['sidecar']['prejump_shadow_metadata']['jump_time']
+    from datetime import datetime
+    jump_dt = datetime.fromisoformat(jump)
+    # The invented HTTP and browser observations refer to the same race/runners.
+    responses = {}
+    import re
+    for key, value in payload['responses'].items():
+        key = key.replace('/sale/', '/murray-bridge-straight/').replace('/1/invented', '/9/fabricated')
+        body = value['body'].replace('/sale/', '/murray-bridge-straight/').replace('/1/invented', '/9/fabricated')
+        body = body.replace('Race 1', 'Race 9').replace('>R1<', '>R9<')
+        body = re.sub(r'(<formatted-time[^>]*>).*?(</formatted-time>)', r'\g<1>'+jump_dt.strftime('%H:%M')+r'\g<2>', body)
+        if 'NextEvents' in key:
+            events = json.loads(body)
+            events[0].update(competitionName='Murray Bridge Straight', raceNumber=9, startTime=int(jump_dt.timestamp()))
+            body = json.dumps(events)
+        if 'open-meteo' in key:
+            weather = json.loads(body)
+            weather['hourly']['time'] = [jump_dt.strftime('%Y-%m-%dT%H:%M')]
+            body = json.dumps(weather)
+        if key.count('/') == 2 and '/racing/' in key:
+            body = body.replace('</a>', '<formatted-time data-format="time_24">'+jump_dt.strftime('%H:%M')+'</formatted-time></a>')
+        responses[key] = {**value, 'body': body}
+    payload['responses'] = responses
+    http.write_text(json.dumps(payload))
+    for name in ('Alpha', 'Bravo', 'Charlie', 'Delta'):
+        browser['race_html'] = browser['race_html'].replace(name, 'Synthetic '+name)
+    browser_path = tmp_path / 'browser.json'
+    browser_path.write_text(json.dumps(browser))
+    installed = tmp_path / 'installed'
+    installed.mkdir()
+    for name in (*UNITS, 'greyhound-operator-ui-r3.service'):
+        (installed/name).write_text('synthetic original '+name)
+    db = tmp_path/'history.sqlite'
+    SportsbetOddsIntegrator(str(db), allow_auto_scrape_odds=False)
+    with sqlite3.connect(db) as conn:
+        conn.executescript('CREATE TABLE IF NOT EXISTS race_metadata(race_id TEXT,race_date TEXT,data_source TEXT,url TEXT); CREATE TABLE IF NOT EXISTS dog_race_data(race_id TEXT,dog_name TEXT,finish_position INTEGER,data_source TEXT);')
+    campaign = make_campaign(tmp_path/'campaign')
+    package = tmp_path/'package'
+    prepare(output=package, start=stamp-timedelta(seconds=5), python=Path(sys.executable), db=db,
+        lock=tmp_path/'collector.lock', reconciliation_roots={}, installed_dir=installed,
+        campaign_root=campaign.root, operational_predictions=True)
+    plan = json.loads((package/'plan.json').read_bytes())
+    accounting = dict(schema_version='freshness_attempt_reconciliation_v1',complete=True,consumed=[],sources=[{'sha256':'a'*64}])
+    keys = ('profile','rehearsal_id','starts_at','ends_at','lock_path','evidence_root','db_path','cleanup_seconds',
+        'max_capture_attempts','max_logical_requests','source_identity_sha256','runtime_sha256',
+        'campaign_root','campaign_authorization_sha256','operational_predictions')
+    contract = {k:plan[k] for k in keys}
+    contract.update(schema_version='freshness_rehearsal_contract_v1',source_date=stamp.date().isoformat(),reconciliation_sha256=digest(accounting))
+    (package/'contract.json').write_text(json.dumps(contract))
+    scope = FreshnessContract(contract)
+    allowance = AttemptAllowance(scope)
+    allowance.initialize(accounting)
+    campaign.begin(plan['rehearsal_id'],now=stamp,deadline=stamp+timedelta(minutes=110))
+    command, cwd, env = service_command(package/'units/shadow-autopilot.service')
+    env.update(PYTHONPATH=os.pathsep.join(str(p) for p in (ROOT/'tests/fixtures/freshness_transport',ROOT/'tests/fixtures/shared_snapshot_transport',package/'source')),
+        FRESHNESS_FABRICATED_SOURCE=str(browser_path),GREYHOUND_SHARED_SNAPSHOT_FIXTURE=str(http))
+    launcher = 'from scripts.check_freshness_service import deny_network; import os,sys; deny_network(); os.execv(sys.argv[1],sys.argv[1:])'
+    service = subprocess.run([sys.executable,'-c',launcher,*command],cwd=cwd,env=env,capture_output=True,text=True,timeout=100)
+    (tmp_path/'collector.log').write_text(service.stdout+service.stderr)
+    assert service.returncode == 0, (tmp_path/'collector.log').read_text()[-3000:]
+    claims = allowance.claims()
+    assert len(claims) == 1
+    result = subprocess.run([sys.executable,'-B','-m','race_collection.operational_prediction',str(package/'plan.json'),str(claims[0])],
+        cwd=cwd,env=env,capture_output=True,text=True,timeout=180)
+    (tmp_path/'prediction.log').write_text(result.stdout+result.stderr)
+    terminals = list((campaign.root/'operational-predictions/races').glob('*/terminal.json'))
+    assert len(terminals) == 1, result.stderr
+    terminal = json.loads(terminals[0].read_bytes())
+    assert terminal['status'] == 'PREDICTION_READY', terminal
+    assert terminal['seconds_to_jump_at_verification'] > 60
+    from src.operator_ui.job_store import JobStore
+    store = JobStore(campaign.root/'operational-predictions/jobs.sqlite3',readonly=True)
+    jobs = store.recorded_jobs()
+    assert len(jobs) == 1 and jobs[0].attempt_claimed and jobs[0].operation == 'operational_prediction'
+    # The real result nomination interface must reject operational jobs even if
+    # a future operator accidentally points it at this store.
+    from scripts.r3_official_result_candidates import r3_prediction_candidates
+    candidates, skipped, _ = r3_prediction_candidates(job_store_path=store.path,
+        prediction_bundles=campaign.root/'operational-predictions/bundles',result_database=db,
+        target_date=stamp.date().isoformat(),current_time=jump_dt+timedelta(minutes=1),race_ids=[],output_dir=tmp_path/'unused')
+    assert candidates == [] and skipped[0]['reason'] == 'OPERATIONAL_RESULT_ACCESS_FORBIDDEN'
+    repeated = subprocess.run([sys.executable,'-B','-m','race_collection.operational_prediction',str(package/'plan.json'),str(claims[0])],
+        cwd=cwd,env=env,capture_output=True,text=True,timeout=20)
+    assert repeated.returncode != 0 and len(store.recorded_jobs()) == 1

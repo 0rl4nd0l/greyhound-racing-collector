@@ -3265,6 +3265,7 @@ class UpcomingRaceBrowser:
 
                 if bs4 is None:
                     raise RuntimeError("BeautifulSoup (bs4) is required. Install with 'pip install beautifulsoup4'.")
+                meeting_card_observed_at = datetime.now(timezone.utc).isoformat()
                 meeting_card_sha256 = hashlib.sha256(response.content).hexdigest()
                 soup = bs4.BeautifulSoup(response.content, "html.parser")
             finally:
@@ -3339,11 +3340,31 @@ class UpcomingRaceBrowser:
                             venue_races.append(race_info)
                             continue
 
-                        real_time = self._scrape_race_time_from_page(race_info["url"])
+                        # Only exact-link explicit times are usable. Parent text can
+                        # belong to another race and is never a schedule authority.
+                        meeting_times = set()
+                        if getattr(self, "bounded_meeting_discovery", False):
+                            for anchor in soup.find_all("a", href=href):
+                                for element in anchor.select('formatted-time[data-format="time_24"]'):
+                                    text = element.get_text(" ", strip=True)
+                                    if re.fullmatch(r"\d{1,2}:\d{2}", text):
+                                        value = self._format_clock_time(text)
+                                        if value:
+                                            meeting_times.add(value)
+                        meeting_time = next(iter(meeting_times)) if len(meeting_times) == 1 else None
+                        real_time = meeting_time or self._scrape_race_time_from_page(race_info["url"])
+                        if meeting_time:
+                            race_info["discovery_time_evidence"] = {
+                                "source_url": date_url,
+                                "source_sha256": meeting_card_sha256,
+                                "observed_at": meeting_card_observed_at,
+                                "canonical_race_url": race_info["url"],
+                                "clock_time": meeting_time,
+                            }
                         if real_time:
                             race_info["race_time"] = real_time
                             race_info["time_source"] = "live_scraped"
-                            race_info["race_time_source"] = "canonical_race_url"
+                            race_info["race_time_source"] = "exact_meeting_link" if meeting_time else "canonical_race_url"
                             race_info["race_time_mapping_status"] = "exact_url_match"
                         else:
                             race_info["race_time"] = None

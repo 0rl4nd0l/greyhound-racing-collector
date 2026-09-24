@@ -165,7 +165,7 @@ class AttemptAllowance:
         keys = {(alias, key[1]) for alias in item.get("race_id_aliases", [key[0]])} | {key}
         if self.scope.campaign:
             with self.scope.campaign.ledger() as ledger:
-                if any(row["window"] == key[1] and any((alias, key[1]) in keys for alias in row["aliases"])
+                if any((self.scope.value.get("operational_predictions") or row["window"] == key[1]) and any((alias, key[1]) in keys for alias in row["aliases"])
                        for row in ledger["attempts"]):
                     return True
         return any(self.key(row) in keys for row in self._accounting()["consumed"]) or any(

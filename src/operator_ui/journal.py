@@ -277,7 +277,7 @@ class JournalCoordinator:
         store = self.services.job_store
         jobs = store.recorded_jobs()
         actor = "r3-journal:" + self.activation.activation_id
-        owned = [job for job in jobs if job.actor_identity == actor]
+        owned = [job for job in jobs if job.actor_identity == actor and job.operation != "operational_prediction"]
         report = {
             "state": "OBSERVED",
             "jobs": [job.job_id for job in owned],

@@ -413,7 +413,7 @@ def verify_claim_receipt(claim, handoff, evidence, source_root):
     AttemptAllowance.check_window(reserved["item"], now=datetime.fromisoformat(sealed["append_time"]))
 
 
-def observe(output, plan, control, scope):
+def observe(output, plan, control, scope, predictions=None):
     from race_collection.freshness_rehearsal import assess_interval, TimerAccounting
 
     evidence = Path(plan["evidence_root"])
@@ -433,6 +433,8 @@ def observe(output, plan, control, scope):
     external_overheads = {"full": [], "odds": []}
     while now() < end:
         tick = time.monotonic()
+        if predictions is not None:
+            predictions.tick()
         if (scope.session / "STOP.json").exists():
             raise ValueError("candidate_scope_stopped")
         allowance = AttemptAllowance(scope)
@@ -729,6 +731,8 @@ def execute(plan_path, expected_digest, approval_id):
             source_date=accounting["source_date"],
             reconciliation_sha256=digest(accounting),
         )
+        if plan.get("operational_predictions"):
+            contract["operational_predictions"] = plan["operational_predictions"]
         scope = FreshnessContract(contract)
         AttemptAllowance(scope).initialize(accounting)
         create_once(output / "contract.json", contract)
@@ -755,7 +759,12 @@ def execute(plan_path, expected_digest, approval_id):
                            deadline=datetime.fromisoformat(plan["ends_at"]) + timedelta(seconds=plan["cleanup_seconds"]))
         for timer in TIMERS:
             control.command("start", timer)
-        observe(output, plan, control, scope)
+        from race_collection.operational_prediction import Supervisor
+        predictions = Supervisor(output, plan, scope)
+        try:
+            observe(output, plan, control, scope, predictions=predictions)
+        finally:
+            predictions.drain()
     except BaseException as error:
         atomic_json(
             output / "failure.json",

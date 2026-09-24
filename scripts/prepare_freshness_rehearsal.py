@@ -22,7 +22,7 @@ UNITS = (
 )
 
 
-def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None):
+def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False):
     output = output.absolute()
     output.mkdir(parents=True, exist_ok=False)
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
@@ -35,9 +35,10 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
     identities = {}
     for name in files:
         path = Path(name)
-        if path.parts[0] in {"tests", "artifacts", ".git", "docs"}:
+        frozen = operational_predictions and (name in {"artifacts/frozen_models/market_form_residual_v1/model.json", "artifacts/frozen_models/market_form_residual_v1/manifest.json", "accuracy_program/repaired_non_tgr_schema.json"})
+        if path.parts[0] in {"tests", "artifacts", ".git", "docs"} and not frozen:
             continue
-        if path.suffix != ".py" and not (
+        if not frozen and path.suffix != ".py" and not (
             path.parts[0] in {"configs", "config", "ops"}
             and path.suffix in {".json", ".toml", ".yaml", ".yml", ".service", ".timer"}
         ):
@@ -170,6 +171,17 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         ],
         "restoration": "exact four collector files; natural drain and reserved-window closure; keep only collector timers inactive and disabled while source is held or baseline source coordination is unverified; never change R3; record previous timer states",
     }
+    if operational_predictions:
+        if campaign is None:
+            raise ValueError("operational_predictions_require_existing_campaign")
+        from race_collection.operational_prediction import prepare_retention
+        plan["operational_predictions"] = {
+            "authorization": "user:collection-to-prediction-20260924",
+            "retention_config_sha256": prepare_retention(output, source, python),
+            "operation": "operational_prediction",
+            "max_jobs": 12 - len(json.loads((campaign.root / "ledger.json").read_bytes())["attempts"]),
+            "result_access": False, "research_activation": False,
+        }
     create_once(output / "plan.json", plan)
     return {
         "plan": str(output / "plan.json"),
@@ -183,6 +195,7 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--campaign-root", type=Path)
+    parser.add_argument("--operational-predictions", action="store_true")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--start", required=True)
     parser.add_argument("--python", type=Path, required=True)
@@ -195,6 +208,7 @@ def main():
         json.dumps(
             prepare(
                 campaign_root=args.campaign_root,
+                operational_predictions=args.operational_predictions,
                 output=args.output,
                 start=datetime.fromisoformat(args.start),
                 python=args.python,
