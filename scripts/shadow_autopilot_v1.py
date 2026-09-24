@@ -6680,6 +6680,20 @@ def publish_current_race_index_after_refresh(
     source_refresh_report_path: Path | None,
     enforce_monotonic: bool = False,
 ) -> dict[str, Any]:
+    from contextlib import nullcontext
+    from race_collection.live_phase_checkpoint import native_publication_lock
+    with native_publication_lock(evidence_root, exclusive=True) if enforce_monotonic else nullcontext():
+        return _publish_current_race_index_after_refresh(
+            state_path=state_path, evidence_root=evidence_root, output_dir=output_dir,
+            run_id=run_id, source_refresh_report_path=source_refresh_report_path,
+            enforce_monotonic=enforce_monotonic)
+
+
+def _publish_current_race_index_after_refresh(
+    *, state_path: Path | None, evidence_root: Path, output_dir: Path,
+    run_id: str, source_refresh_report_path: Path | None,
+    enforce_monotonic: bool = False,
+) -> dict[str, Any]:
     """Publish the bounded index before the slower odds-capture batch begins."""
 
     publication_started_at = datetime.now().astimezone()

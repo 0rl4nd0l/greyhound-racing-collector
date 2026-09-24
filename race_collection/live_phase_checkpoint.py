@@ -1,8 +1,35 @@
 import hashlib
 import json
 import os
+import fcntl
+import stat
+import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+
+
+@contextmanager
+def native_publication_lock(evidence_root: Path, *, exclusive: bool, timeout_seconds: float = 5.0):
+    """Serialize short native publication groups with their local observer."""
+    path = Path(evidence_root) / 'shadow_autopilot_daemon_runtime' / 'native-publication.lock'
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise ValueError('native_publication_lock_not_regular')
+        deadline = time.monotonic() + timeout_seconds
+        while True:
+            try:
+                fcntl.flock(descriptor, (fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH) | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError('native_publication_lock_timeout')
+                time.sleep(.005)
+        yield
+    finally:
+        os.close(descriptor)
 
 
 def atomic_json(path: Path, payload: dict[str, Any]) -> None:

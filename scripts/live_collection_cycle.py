@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 from race_collection.live_phase_budget import LiveBudget
-from race_collection.live_phase_checkpoint import PhaseCheckpoint, atomic_json
+from race_collection.live_phase_checkpoint import PhaseCheckpoint, atomic_json, native_publication_lock
 from race_collection.synchronous_manual_capture import (
     bounded_current_race_index,
     current_race_index_path,
@@ -247,6 +247,12 @@ def run_live_collection_cycle(args, *, odds_only: bool):
             result["autopilot_output_dir"] = None
         return result
 
+    def publish_native_report(report):
+        name = 'odds_capture_only_daemon_report.json' if odds_only else 'daemon_run_report.json'
+        with native_publication_lock(evidence, exclusive=True):
+            atomic_json(output / name, report)
+
+    @native_publication_lock(evidence, exclusive=True)
     def finish_checkpoint():
         nonlocal completed_report, outcome
         finalization_started = time.monotonic()
@@ -614,15 +620,7 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                 final_verdict="DAEMON_RUNNING",
                 final_status="ODDS_CAPTURE_ONLY_RUNNING",
             )
-            atomic_json(
-                output
-                / (
-                    "odds_capture_only_daemon_report.json"
-                    if odds_only
-                    else "daemon_run_report.json"
-                ),
-                waiting,
-            )
+            publish_native_report(waiting)
         try:
             owner = daemon.acquire_lock_with_odds_capture_retry(
                 lock_path=lock_path,
@@ -664,15 +662,7 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                     final_status="ODDS_CAPTURE_ONLY_RUNNING",
                     **daemon.odds_capture_only_operator_fields("ODDS_CAPTURE_ONLY_RUNNING"),
                 )
-            atomic_json(
-                output
-                / (
-                    "odds_capture_only_daemon_report.json"
-                    if odds_only
-                    else "daemon_run_report.json"
-                ),
-                running,
-            )
+            publish_native_report(running)
             if checkpoint is None:
                 checkpoint = PhaseCheckpoint(
                     checkpoint_path, identity=identity, cycle_id=run_id, output_dir=output
@@ -910,17 +900,19 @@ def run_live_collection_cycle(args, *, odds_only: bool):
         "DEFERRED_FULL_LOCK_HANDOFF",
     }:
         scope.stop(outcome)
-    terminal_report = report_payload()
-    atomic_json(output / "terminal-timing.json", terminal_report)
-    if outcome == "LIVE_COLLECTION_COMPLETE" and terminal_timing_failed():
-        outcome = "LIVE_TIMING_BUDGET_EXCEEDED"
+    with native_publication_lock(evidence, exclusive=True):
         terminal_report = report_payload()
         atomic_json(output / "terminal-timing.json", terminal_report)
+    if outcome == "LIVE_COLLECTION_COMPLETE" and terminal_timing_failed():
+        outcome = "LIVE_TIMING_BUDGET_EXCEEDED"
+        with native_publication_lock(evidence, exclusive=True):
+            terminal_report = report_payload()
+            atomic_json(output / "terminal-timing.json", terminal_report)
     if completed_report is not None and completed_report["runtime_action"] == outcome:
         return terminal_report
     result = report_payload()
     report_name = "odds_capture_only_daemon_report.json" if odds_only else "daemon_run_report.json"
-    atomic_json(output / report_name, result)
+    publish_native_report(result)
     if completed_report is not None and outcome == "LIVE_TIMING_BUDGET_EXCEEDED":
         from race_collection.synchronous_manual_capture import (
             CollectorBusy,
@@ -942,7 +934,8 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                     current_state.update(result)
                     current_state["schema_version"] = state_schema
                     current_state["last_verdict"] = result["final_verdict"]
-                    atomic_json(state_path, current_state)
+                    with native_publication_lock(evidence, exclusive=True):
+                        atomic_json(state_path, current_state)
             finally:
                 release_owned_collector_lock(correction_lock)
         atomic_json(output / "terminal-timing-failure.json", result)

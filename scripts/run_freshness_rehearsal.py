@@ -282,6 +282,40 @@ def _clock_boundary_rejection(value):
 
 
 def _sample_once(plan, output, control):
+    from race_collection.live_phase_checkpoint import native_publication_lock
+    wall_started, started = now(), time.monotonic()
+    status_started = time.monotonic()
+    status_snapshot = _sample_status(control)
+    status_elapsed = time.monotonic() - status_started
+    wait_started = time.monotonic()
+    with native_publication_lock(Path(plan['evidence_root']), exclusive=False, timeout_seconds=1.0):
+        waited = time.monotonic() - wait_started
+        result = _sample_locked(plan, output, status_snapshot)
+    result['status_probe_seconds'] = status_elapsed
+    result['publication_lock_wait_seconds'] = waited
+    result['monotonic_start'] = started
+    # Retain the complete read/wait interval; native validation uses the clock
+    # sampled after acquisition, never an artificially advanced timestamp.
+    result['read_start'] = wall_started.isoformat()
+    return result
+
+
+def _sample_status(control):
+    # Service queries can each take seconds. Never hold a publication lock while
+    # waiting for systemd; native file validation samples its own clock later.
+    r3 = control.show("greyhound-operator-ui-r3.service")
+    status = {lane: control.show(name) for lane, name in zip(("full", "odds"), SERVICES)}
+    timers = {}
+    for lane, name in zip(("full", "odds"), TIMERS):
+        raw_timer = control.command(
+            "show", name, "-p", "LastTriggerUSecMonotonic", "-p",
+            "NextElapseUSecMonotonic", "-p", "NextElapseUSecRealtime", "-p", "ActiveState",
+        )
+        timers[lane] = dict(line.split("=", 1) for line in raw_timer.splitlines() if "=" in line)
+    return r3, status, timers
+
+
+def _sample_locked(plan, output, status_snapshot):
     from race_collection.freshness_rehearsal import native_observation, completed_service_overhead
     from race_collection.synchronous_manual_capture import current_race_index_path
     from src.operator_ui.live_adapters import InstalledUnits
@@ -291,8 +325,9 @@ def _sample_once(plan, output, control):
     read_start, mono_start = now(), time.monotonic()
     backup = json.loads((output / "restoration.json").read_bytes())
     r3 = "greyhound-operator-ui-r3.service"
+    r3_status, status, timers = status_snapshot
     if (
-        control.show(r3)["MainPID"] != backup["r3_pid"]
+        r3_status["MainPID"] != backup["r3_pid"]
         or hashlib.sha256((Path(plan["installed_dir"]) / r3).read_bytes()).hexdigest()
         != backup["hashes"][r3]
     ):
@@ -318,22 +353,6 @@ def _sample_once(plan, output, control):
     )
     unit_map = dict(zip(("full_service", "full_timer", "odds_service", "odds_timer"), UNITS))
     raw = {key: (Path(plan["installed_dir"]) / name).read_bytes() for key, name in unit_map.items()}
-    status = {lane: control.show(name) for lane, name in zip(("full", "odds"), SERVICES)}
-    timers = {}
-    for lane, name in zip(("full", "odds"), TIMERS):
-        raw_timer = control.command(
-            "show",
-            name,
-            "-p",
-            "LastTriggerUSecMonotonic",
-            "-p",
-            "NextElapseUSecMonotonic",
-            "-p",
-            "NextElapseUSecRealtime",
-            "-p",
-            "ActiveState",
-        )
-        timers[lane] = dict(line.split("=", 1) for line in raw_timer.splitlines() if "=" in line)
     if any(
         value.get("WorkingDirectory") != plan["source_root"] or value.get("DropInPaths")
         for value in status.values()
