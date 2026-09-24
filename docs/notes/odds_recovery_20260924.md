@@ -458,3 +458,36 @@ finish on the same local source date, preserving the finite duration, cumulative
 budget, cleanup reserve and identity checks. Ordinary rehearsal defaults retain
 their old cutoff. Network-denied boundary tests cover acceptance after 21:20
 and rejection when cleanup would cross the source date.
+
+The 19:55 cf396451 refresh made 186 logical calls, including one Sportsbet
+metadata operation, and no browser attempt. All four downloads failed CSV
+validation; the sequence stopped and restored at 19:55:46.811423 without a new
+denial. Its source failure records remain unchanged. Retained request timing
+proves that the new broad export-link selector followed a different race whose
+title contained `download`. Retained HTML also proves that the ordinary PDF
+export control precedes the CSV control; offline reproduction confirms that the
+broad match selects PDF first. The other three live response bodies were not
+retained, so PDF selection there remains an inference. Neither failure is evidence that source access was denied. The next
+repair must require a CSV-specific action, bind every URL to the exact race,
+and preserve one follow of a source-delivered download URL. Runner and CSV
+validators correctly rejected these inputs; they are not relaxed.
+
+Review also found the service finalizer unconditionally writes LIVE_PHASE_FAILED
+to the scope STOP before the supervisor can apply its transient-refresh policy.
+That policy needs the same narrow classifier at the actual service boundary,
+with a verified prior fresh index and durable failure count before further
+scheduled provider work. The 19:55 untyped CSV failures do not qualify, and its
+STOP must never be cleared or resumed.
+
+The export repair now requires CSV-specific controls and exact race-path binding
+for links, forms and delivered download URLs. It follows one distinct delivered
+URL and rejects a self-reference before any repeated request. Offline validation
+covers the normal form and link flows through CSV and identity validation, plus
+misleading race titles, PDF-first controls and cross-race targets.
+
+The service repair reuses the narrow refresh classifier before releasing collector
+ownership. One record per failed cycle is shared with the observer under the
+existing publication mutex; after two recorded failures, the next service stops
+before source work. Freshness, source guidance, denial and integrity rejection
+remain mandatory. Tests execute the generated service, daemon and refresh
+subprocess with fabricated transport and kernel-level network denial.

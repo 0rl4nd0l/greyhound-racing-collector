@@ -18,7 +18,7 @@ import sys
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import parse_qs, urljoin, urlsplit
 
 import requests
 try:
@@ -2274,16 +2274,17 @@ class UpcomingRaceBrowser:
                     csv_response = self.session.get(csv_url, timeout=30,
                         **({"allow_redirects": False} if os.environ.get("GREYHOUND_LIVE_EXECUTION") else {}))
 
-                # A source-observed export form can return its download URL.
+                # A source-observed CSV link or form can return its download URL.
                 # Follow that exact URL once; never probe alternative endpoints.
                 if csv_response is not None:
                     _raise_supervised_http_failure(csv_response)
                     if (os.environ.get("GREYHOUND_LIVE_EXECUTION")
-                            and isinstance(csv_info, dict)
-                            and csv_info.get("type") in {"form_get", "form_post"}
                             and csv_response.text.strip().startswith("http")):
-                        delivered_url = self._observed_export_url(csv_response.text.strip(), csv_info["url"])
-                        if delivered_url is None:
+                        delivered_url = self._observed_export_url(
+                            csv_response.text.strip(), race_url, race_url)
+                        requested_url = (getattr(csv_response, "url", None)
+                            or (csv_info.get("url") if isinstance(csv_info, dict) else csv_info))
+                        if delivered_url is None or delivered_url == requested_url:
                             return {"success": False, "error": "Observed export URL invalid"}
                         csv_response.close()
                         csv_response = None
@@ -2637,13 +2638,15 @@ class UpcomingRaceBrowser:
             print(f"   ❌ Error extracting race info: {e}")
             return None
 
-    def _observed_export_url(self, value, document_url):
+    def _observed_export_url(self, value, document_url, race_url):
         url = urljoin(document_url, value)
         try:
             parsed = urlsplit(url)
+            race_path = urlsplit(self._normalize_race_url(race_url)[0]).path.rstrip("/")
             if (parsed.scheme == "https" and parsed.hostname == urlsplit(self.base_url).hostname
                     and parsed.port in {None, 443} and parsed.username is None
                     and parsed.password is None and not parsed.fragment
+                    and (parsed.path == race_path or parsed.path.startswith(race_path + "/"))
                     and not {"result", "results", "dividend", "dividends", "payout", "payouts"}.intersection(parsed.path.lower().split("/"))):
                 return url
         except ValueError:
@@ -2657,16 +2660,23 @@ class UpcomingRaceBrowser:
             if not document:
                 continue
             for link in document.find_all("a", href=True):
-                if re.search("csv|export|download", link.get_text() + " " + link["href"], re.I):
-                    url = self._observed_export_url(link["href"], document_url)
+                # Race titles can contain "download"; only explicit CSV intent
+                # or the observed CSV export action identifies a download link.
+                href = urlsplit(link["href"])
+                csv_link = (re.search(r"\bcsv\b", link.get_text(), re.I)
+                    or href.path.lower().endswith((".csv", "/export-expert-form"))
+                    or "export_csv" in parse_qs(href.query))
+                if csv_link:
+                    url = self._observed_export_url(link["href"], document_url, race_url)
                     if url and url != document_url:
                         return url
             for form in document.find_all("form"):
                 controls = form.find_all(["input", "button"])
                 exports = [control for control in controls if re.search(
-                    "csv|export|download", " ".join(str(control.get(key, "")) for key in ("name", "value")) + control.get_text(), re.I)]
+                    "csv", " ".join(str(control.get(key, "")) for key in ("name", "value")) + control.get_text(), re.I)
+                    and not control.has_attr("disabled")]
                 method = form.get("method", "get").lower()
-                url = self._observed_export_url(form.get("action", ""), document_url)
+                url = self._observed_export_url(form.get("action", ""), document_url, race_url)
                 if not exports or not url or method not in {"get", "post"}:
                     continue
                 data = {}

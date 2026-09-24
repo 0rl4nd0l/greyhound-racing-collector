@@ -38,6 +38,7 @@ def run_live_collection_cycle(args, *, odds_only: bool):
     index_state = state_path if odds_only else args.odds_capture_state_path
     lock_path = (args.lock_path or daemon.DEFAULT_LOCK_PATH).resolve()
     scope = allowance = None
+    refresh_deferred = False
     if profile:
         from race_collection.live_freshness_contract import FreshnessContract, AttemptAllowance
 
@@ -524,6 +525,40 @@ def run_live_collection_cycle(args, *, odds_only: bool):
         except Exception:
             return None
 
+    def defer_failed_refresh():
+        if not scope or not scope.value.get("operational_predictions") or timing_failed():
+            return False
+        from race_collection.live_freshness_contract import classify_refresh_outage, create_once
+        from utils.sportsbet_access import SportsbetAccess
+        try:
+            scope.admit(daemon.wall_clock_now(), seconds=0)
+            access = SportsbetAccess().read()
+            if access["phase"] != "OPEN" or access["access_basis"]["status"] != "permitted":
+                return False
+            classified = classify_refresh_outage(evidence, run_id)
+            if classified is None:
+                return False
+            # Verify the previous publication while still owning the collector
+            # lock. This runs no provider/systemd work and holds no writer mutex.
+            view_now()
+            if not 0 <= budget.age(last_observed, daemon.wall_clock_now()) < 270 or timing_failed():
+                return False
+            directory = Path(args.live_freshness_contract).resolve().parent / "refresh-deferrals"
+            with native_publication_lock(evidence, exclusive=True):
+                retained = directory / (run_id + ".json")
+                records = list(directory.glob("*.json"))
+                if retained.exists():
+                    value = json.loads(retained.read_bytes())
+                    return all(value.get(key) == item for key, item in classified.items())
+                if len(records) >= 2:
+                    return False
+                create_once(retained, {**classified,
+                    "observed_at": daemon.wall_clock_now().isoformat(),
+                    "failed_cycle_count": len(records) + 1})
+            return True
+        except (OSError, ValueError, KeyError, TypeError):
+            return False
+
     def command_for(kind, phase_id, inputs):
         command = [
             sys.executable,
@@ -600,7 +635,7 @@ def run_live_collection_cycle(args, *, odds_only: bool):
         return command
 
     def phase(kind, inputs=None):
-        nonlocal checkpoint, refresh_result, capture_result, outcome, output, run_id, active_lock_started, deferred_owner
+        nonlocal checkpoint, refresh_result, capture_result, outcome, output, run_id, active_lock_started, deferred_owner, refresh_deferred
         inputs = inputs or {}
         if scope:
             scope.admit(daemon.wall_clock_now(), seconds=90 if kind == "refresh" else 155)
@@ -649,6 +684,15 @@ def run_live_collection_cycle(args, *, odds_only: bool):
         try:
             if scope:
                 scope.admit(daemon.wall_clock_now(), seconds=90 if kind == "refresh" else 155)
+                if scope.value.get("operational_predictions"):
+                    directory = Path(args.live_freshness_contract).resolve().parent / "refresh-deferrals"
+                    # Collector ownership serializes this check with the prior
+                    # cycle's failure classification, before any next request.
+                    with native_publication_lock(evidence, exclusive=True):
+                        exhausted = len(list(directory.glob("*.json"))) >= 2
+                    if exhausted:
+                        scope.stop("REFRESH_OUTAGE_LIMIT_REACHED")
+                        raise ValueError("refresh_outage_limit_reached")
             running = report_payload()
             running.update(
                 status="RUNNING",
@@ -839,6 +883,10 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                     )
                 )
                 finish_checkpoint()
+                if kind == "refresh" and outcome == "LIVE_PHASE_FAILED":
+                    refresh_deferred = defer_failed_refresh()
+                if scope and not refresh_deferred:
+                    scope.stop(outcome)
                 return False
             if not checkpoint.value["pending"] and budget.safe_to_yield(
                 source_observed(), daemon.wall_clock_now()
@@ -898,7 +946,7 @@ def run_live_collection_cycle(args, *, odds_only: bool):
         "LIVE_COLLECTION_COMPLETE",
         "DEFERRED_LOCK_HELD",
         "DEFERRED_FULL_LOCK_HANDOFF",
-    }:
+    } and not (refresh_deferred and outcome == "LIVE_PHASE_FAILED" and not timing_failed()):
         scope.stop(outcome)
     with native_publication_lock(evidence, exclusive=True):
         terminal_report = report_payload()

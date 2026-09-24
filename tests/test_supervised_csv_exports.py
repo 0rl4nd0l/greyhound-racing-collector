@@ -146,3 +146,67 @@ def test_live_adapter_returns_first_502_without_retrying(browser, monkeypatch):
         assert len(calls) == 1
     finally:
         session.close()
+
+
+def test_observed_csv_form_ignores_other_race_navigation_and_pdf_submit(browser):
+    calls = []
+    other = RACE.replace('/1/fixture', '/2/download-the-app') + '/expert-form'
+    form = f'''<a href="{other}">Download the app</a>
+      <form action="{EXPERT}" method="get">
+      <input name="expert_form[sort_by]" value="">
+      <button name="button" type="submit">Apply</button>
+      <button name="export_pdf" value="true" type="submit">Export PDF</button>
+      <button name="export_csv" value="true" type="submit">Export CSV</button></form>'''
+    def get(url, **kwargs):
+        calls.append(url)
+        assert url in {RACE, EXPERT}, "requested another race's navigation link"
+        if url == RACE:
+            return response(url)
+        if 'params' in kwargs:
+            assert kwargs['params'] == {'expert_form[sort_by]': '', 'export_csv': 'true'}
+            return response(url, 502)
+        return response(url, text=form)
+    browser.session = SimpleNamespace(get=get)
+    assert browser.download_race_csv(RACE)['source_http_status'] == 502
+    assert calls == [RACE, EXPERT, EXPERT]
+
+
+@pytest.mark.parametrize('kind', ['link', 'form', 'delivered'])
+def test_supervised_export_rejects_cross_race_source_targets(browser, kind):
+    calls = []
+    other = RACE.replace('/1/fixture', '/2/other') + '/export-expert-form'
+    def get(url, **kwargs):
+        calls.append(url)
+        assert url != other, 'cross-race export requested'
+        if url == RACE:
+            return response(url)
+        if url == EXPERT:
+            if kind == 'link':
+                return response(url, text=f'<a href="{other}">CSV</a>')
+            if kind == 'form':
+                return response(url, text=f'<form action="{other}"><button name="export_csv" value="true">CSV</button></form>')
+            return response(url, text=f'<a href="{EXPORT}">CSV</a>')
+        assert url == EXPORT
+        return response(url, text=other)
+    browser.session = SimpleNamespace(get=get)
+    result = browser.download_race_csv(RACE)
+    assert result['success'] is False
+    assert result['error'] == ('Observed export URL invalid' if kind == 'delivered' else 'No CSV download link found')
+    assert calls == [RACE, EXPERT] + ([EXPORT] if kind == 'delivered' else [])
+
+
+def test_supervised_delivered_export_url_never_repeats_same_request(browser):
+    calls = []
+    def get(url, **kwargs):
+        calls.append(url)
+        if url == RACE:
+            return response(url)
+        if url == EXPERT:
+            return response(url, text=f'<a href="{EXPORT}">CSV</a>')
+        assert url == EXPORT
+        return response(url, text=EXPORT)
+    browser.session = SimpleNamespace(get=get)
+    result = browser.download_race_csv(RACE)
+    assert result['success'] is False
+    assert result['error'] == 'Observed export URL invalid'
+    assert calls == [RACE, EXPERT, EXPORT]

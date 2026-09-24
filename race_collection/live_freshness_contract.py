@@ -7,6 +7,7 @@ step. Absence, ambiguity, interrupted writes and spent reservations fail closed.
 import hashlib
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -20,6 +21,57 @@ def encoded(value):
 
 def digest(value):
     return hashlib.sha256(encoded(value)).hexdigest()
+
+
+def classify_refresh_outage(evidence, run_id):
+    """Classify one retained refresh failure; no requests or state changes."""
+    if not isinstance(run_id, str) or not re.fullmatch(r"[A-Za-z0-9_+.-]+", run_id):
+        return None
+    evidence = Path(evidence)
+    root = evidence / ("shadow_autopilot_daemonization_v1_" + run_id)
+    try:
+        checkpoint = json.loads((root / "phase-checkpoint.json").read_bytes())
+        phases = checkpoint["phases"]
+        if (checkpoint["cycle_id"] != run_id or len(phases) != 1
+                or phases[0]["kind"] != "refresh" or phases[0]["status"] != "COMPLETE"
+                or phases[0]["budget_exceeded"]):
+            return None
+        raw = (root / "phase-0-result.json").read_bytes()
+        if hashlib.sha256(raw).hexdigest() != phases[0]["result_sha256"]:
+            return None
+        result = json.loads(raw)
+        if result.get("collection_phase") != "refresh" or result.get("final_verdict") != "COLLECTION_PHASE_BLOCKED":
+            return None
+        name = "odds_capture_refresh_report.json" if run_id.endswith("_odds_capture") else "refresh_prejump_report.json"
+        refresh_raw = (evidence / ("shadow_autopilot_v1_" + run_id + "_phase_0") / name).read_bytes()
+        refresh = json.loads(refresh_raw)
+        if (refresh.get("status") != "METADATA_COVERAGE_INCOMPLETE"
+                or refresh.get("reason") != "no_selected_race_csv_sidecars"
+                or refresh.get("accepted_csv_count") != 0 or refresh.get("sidecar_count") != 0):
+            return None
+        statuses = []
+        for download in refresh["downloads"]:
+            item = download["result"]
+            if download.get("success") or item.get("success"):
+                return None
+            if item.get("source_retry_after") or item.get("source_rate_limit_reset"):
+                return None
+            status = item.get("source_http_status")
+            if type(status) is int and status in {502, 503, 504}:
+                statuses.append(status)
+            elif status is not None or item.get("source_failure_category") != "observed_export_absent":
+                return None
+        if not statuses:
+            return None
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return {
+        "status": "FAILED_REFRESH_AWAITING_NORMAL_TIMER", "run_id": run_id,
+        "refresh_sha256": hashlib.sha256(refresh_raw).hexdigest(),
+        "phase_result_sha256": hashlib.sha256(raw).hexdigest(),
+        "upstream_statuses": statuses, "request_retries_added": 0,
+        "maximum_failed_cycles": 2,
+    }
 
 
 def create_once(path, value):

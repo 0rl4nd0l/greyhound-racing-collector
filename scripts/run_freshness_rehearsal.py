@@ -494,58 +494,28 @@ def record_refresh_outage(output, plan, run_id, failures):
     access = SportsbetAccess(plan["sportsbet_access_state"]).read()
     if access.get("phase") != "OPEN" or access["access_basis"]["status"] != "permitted":
         return False
-    if run_id in failures:
-        return True
-    if len(failures) >= 2:
-        return False
+    from race_collection.live_freshness_contract import classify_refresh_outage
+    from race_collection.live_phase_checkpoint import native_publication_lock
     evidence = Path(plan["evidence_root"])
-    root = evidence / ("shadow_autopilot_daemonization_v1_" + run_id)
-    try:
-        checkpoint = json.loads((root / "phase-checkpoint.json").read_bytes())
-        phases = checkpoint["phases"]
-        if (checkpoint["cycle_id"] != run_id or len(phases) != 1
-                or phases[0]["kind"] != "refresh" or phases[0]["status"] != "COMPLETE"
-                or phases[0]["budget_exceeded"]):
-            return False
-        raw = (root / "phase-0-result.json").read_bytes()
-        if hashlib.sha256(raw).hexdigest() != phases[0]["result_sha256"]:
-            return False
-        result = json.loads(raw)
-        if result.get("collection_phase") != "refresh" or result.get("final_verdict") != "COLLECTION_PHASE_BLOCKED":
-            return False
-        name = "odds_capture_refresh_report.json" if run_id.endswith("_odds_capture") else "refresh_prejump_report.json"
-        refresh_path = evidence / ("shadow_autopilot_v1_" + run_id + "_phase_0") / name
-        refresh_raw = refresh_path.read_bytes()
-        refresh = json.loads(refresh_raw)
-        if (refresh.get("status") != "METADATA_COVERAGE_INCOMPLETE"
-                or refresh.get("reason") != "no_selected_race_csv_sidecars"
-                or refresh.get("accepted_csv_count") != 0 or refresh.get("sidecar_count") != 0):
-            return False
-        statuses = []
-        for download in refresh["downloads"]:
-            item = download["result"]
-            if download.get("success") or item.get("success"):
-                return False
-            if item.get("source_retry_after") or item.get("source_rate_limit_reset"):
-                return False
-            status = item.get("source_http_status")
-            if type(status) is int and status in {502, 503, 504}:
-                statuses.append(status)
-            elif (status is not None or item.get("source_failure_category") != "observed_export_absent"):
-                return False
-        if not statuses:
-            return False
-    except (OSError, ValueError, KeyError, TypeError):
+    classified = classify_refresh_outage(evidence, run_id)
+    if classified is None:
         return False
-    failures.add(run_id)
-    create_once(output / "refresh-deferrals" / (run_id + ".json"), {
-        "status": "FAILED_REFRESH_AWAITING_NORMAL_TIMER",
-        "run_id": run_id, "observed_at": now().isoformat(),
-        "refresh_sha256": hashlib.sha256(refresh_raw).hexdigest(),
-        "phase_result_sha256": hashlib.sha256(raw).hexdigest(),
-        "upstream_statuses": statuses, "request_retries_added": 0,
-        "maximum_failed_cycles": 2, "failed_cycle_count": len(failures),
-    })
+    # The service may retain this failure before the observer samples it.
+    # Share its one record and finite counter under the existing writer mutex.
+    with native_publication_lock(evidence, exclusive=True):
+        directory = output / "refresh-deferrals"
+        retained = directory / (run_id + ".json")
+        records = list(directory.glob("*.json"))
+        if retained.exists():
+            value = json.loads(retained.read_bytes())
+            if any(value.get(key) != item for key, item in classified.items()):
+                return False
+        else:
+            if len(records) >= 2 or len(failures) >= 2:
+                return False
+            create_once(retained, {**classified, "observed_at": now().isoformat(),
+                                   "failed_cycle_count": len(records) + 1})
+        failures.add(run_id)
     return True
 
 

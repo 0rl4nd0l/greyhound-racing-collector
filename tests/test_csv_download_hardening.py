@@ -282,7 +282,7 @@ def _synthetic_thedogs_export(runners):
     return "\n".join(",".join(row) for row in rows) + "\n"
 
 
-@pytest.mark.parametrize("acquisition", ["legacy", "supervised", "supervised_form", "odds_502", "api_503"])
+@pytest.mark.parametrize("acquisition", ["legacy", "supervised", "supervised_form", "supervised_link_url", "odds_502", "api_503"])
 def test_primary_download_reallocates_duplicate_refetches_to_native_identity(
     monkeypatch,
     _isolate_upcoming_dir,
@@ -351,6 +351,8 @@ def test_primary_download_reallocates_duplicate_refetches_to_native_identity(
             f'<a href="{export_url}">Download CSV</a>'.encode(),
             b'<form method="GET"><input name="sort_by" value=""><button name="export_csv" value="true">Export CSV</button></form>',
         )
+    if acquisition == "supervised_link_url":
+        expert_html = expert_html.replace(export_url.encode(), (expert_url + "?export_csv=true").encode())
     csv_content = _synthetic_thedogs_export(
         [
             (1, "Alpha Runner"),
@@ -414,6 +416,8 @@ def test_primary_download_reallocates_duplicate_refetches_to_native_identity(
                     assert kwargs["params"] == {"sort_by": "", "export_csv": "true"}
                     return Response(url, export_url.encode(), "text/plain")
                 return Response(url, expert_html, "text/html; charset=utf-8")
+            if acquisition == "supervised_link_url" and url == expert_url + "?export_csv=true":
+                return Response(url, export_url.encode(), "text/plain")
             if url == export_url:
                 return Response(url, csv_content.encode(), "text/csv")
             if url == odds_url or url.startswith(api_url_prefix):
@@ -468,7 +472,10 @@ def test_primary_download_reallocates_duplicate_refetches_to_native_identity(
     assert result["success"] is True, result
     assert session.calls[0] == race_url
     assert session.calls[1].startswith("https://api.open-meteo.com/v1/forecast?")
-    if acquisition == "supervised_form":
+    if acquisition == "supervised_link_url":
+        assert session.calls[2:6] == [expert_url, expert_url + "?export_csv=true", export_url, odds_url]
+        assert len(session.calls) == 7
+    elif acquisition == "supervised_form":
         assert session.calls[2:6] == [expert_url, expert_url, export_url, odds_url]
         assert len(session.calls) == 7
     else:
@@ -568,7 +575,7 @@ def test_primary_download_reallocates_duplicate_refetches_to_native_identity(
     )
     assert repeated["success"] is True, repeated
     assert repeated["already_exists"] is True
-    assert len(session.calls) == (10 if acquisition == "supervised_form" else 9)
+    assert len(session.calls) == (10 if acquisition in {"supervised_form", "supervised_link_url"} else 9)
     assert session.calls.count(race_url) == 2
     assert len(list(evidence_dir.glob("*.race-page.html"))) == 1
     assert len(list(evidence_dir.glob("*.race-page.receipt.json"))) == 2
@@ -613,7 +620,7 @@ def test_primary_download_reallocates_duplicate_refetches_to_native_identity(
         "success": False,
         "error": "Error downloading race CSV: synthetic_parser_failure",
     }
-    assert len(failing_session.calls) == (5 if acquisition == "supervised_form" else 4)
+    assert len(failing_session.calls) == (5 if acquisition in {"supervised_form", "supervised_link_url"} else 4)
     assert failing_session.calls.count(race_url) == 1
     assert odds_url not in failing_session.calls
     assert not any(url.startswith(api_url_prefix) for url in failing_session.calls)
