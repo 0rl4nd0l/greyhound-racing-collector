@@ -49,6 +49,48 @@ def prepare_retention(output, source, python):
     return hashlib.sha256((output / "operational-retention.json").read_bytes()).hexdigest()
 
 
+def classify_unready_capture(claim_path, result, evidence, source_root):
+    """Authenticate a consumed, zero-write coverage miss; never a receipt."""
+    from race_collection.live_freshness_contract import AttemptAllowance
+    from utils.sportsbet_access import SportsbetAccess
+    reserved = json.loads(Path(claim_path).read_bytes())
+    status = result.get("autonomous_live_odds_capture_status", {})
+    directory = Path(status.get("output_dir", ""))
+    directory = directory if directory.is_absolute() else Path(source_root) / directory
+    if not directory.resolve().is_relative_to(Path(evidence).resolve()):
+        return None
+    report_path = directory / "autonomous_live_odds_capture_report.json"
+    if not report_path.is_file():
+        return None
+    raw = report_path.read_bytes()
+    report = json.loads(raw)
+    attempts = report.get("attempts", [])
+    if len(attempts) != 1:
+        return None
+    attempt = attempts[0]
+    fetch = attempt.get("fetch_result", {})
+    marker = "target_race_not_visible_within_navigation_allowance"
+    item = reserved["item"]
+    if (attempt.get("race_id") != item["race_id"]
+            or attempt.get("capture_window_minutes") != item["capture_window_minutes"]
+            or attempt.get("status") != "BLOCKED_VALIDATION_FAILED"
+            or attempt.get("inserted_rows") != 0
+            or fetch.get("success") is not False or fetch.get("write_performed") is not False
+            or fetch.get("warnings") != [marker]
+            or fetch.get("win_count") != 0 or fetch.get("place_count") != 0
+            or fetch.get("discovery_method") != "sportsbet_landing_exact_race_unavailable"):
+        return None
+    fetch_at = datetime.fromisoformat(attempt["fetch_time"])
+    if fetch_at < datetime.fromisoformat(reserved["reserved_at"]):
+        return None
+    AttemptAllowance.check_window(item, now=fetch_at)
+    SportsbetAccess().check_admission()
+    return {"status": "UNREADY_NO_CAPTURE", "race_id": item["race_id"],
+            "capture_window_minutes": item["capture_window_minutes"], "reason": marker,
+            "attempt_report_sha256": hashlib.sha256(raw).hexdigest(),
+            "capture_consumed": True, "prediction_started": False}
+
+
 class Supervisor:
     """At most one concurrent bounded prediction, with durable race consumption."""
     def __init__(self, output, plan, scope):

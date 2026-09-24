@@ -25,6 +25,11 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     gate = access(tmp_path)
     monkeypatch.setenv("GREYHOUND_SPORTSBET_ACCESS_STATE", str(gate))
     stamp, browser = fixture_data(tmp_path, "canonical_alias")
+    from datetime import datetime
+    operational_jump = (stamp + timedelta(minutes=9)).replace(second=0, microsecond=0)
+    browser["sidecar"]["prejump_shadow_metadata"]["jump_time"] = operational_jump.isoformat()
+    browser["race"]["race_time"] = operational_jump.strftime("%H:%M")
+    browser["sidecar"]["race_info"]["race_time"] = operational_jump.strftime("%H:%M")
     http = http_fixture(tmp_path, 1)
     payload = json.loads(http.read_bytes())
     jump = browser['sidecar']['prejump_shadow_metadata']['jump_time']
@@ -92,7 +97,11 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     service = subprocess.run([sys.executable,'-c',launcher,*command],cwd=cwd,env=env,capture_output=True,text=True,timeout=100)
     (tmp_path/'collector.log').write_text(service.stdout+service.stderr)
     if landing_missing:
+        assert service.returncode == 0, (tmp_path/"collector.log").read_text()[-1500:]
+        assert not (scope.session/"STOP.json").exists()
         assert len(allowance.claims()) == 1
+        terminal_capture=json.loads(allowance.claims()[0].with_suffix(".terminal.json").read_bytes())["result"]
+        assert terminal_capture["operational_capture_outcome"]["status"] == "UNREADY_NO_CAPTURE"
         assert json.loads(gate.read_bytes())['phase'] == 'OPEN'
         assert 'target_race_not_visible_within_navigation_allowance' in (tmp_path/'collector.log').read_text() or any('target_race_not_visible_within_navigation_allowance' in p.read_text() for p in (package/'evidence').glob('**/autonomous_live_odds_capture_report.json'))
         with sqlite3.connect(plan['db_path']) as capture_conn:

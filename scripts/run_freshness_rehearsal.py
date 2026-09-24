@@ -441,8 +441,18 @@ def observe(output, plan, control, scope, predictions=None):
         for claim in allowance.claims():
             verification = (output / "capture-verifications" / (claim.parent.name + ".json")
                             if scope.campaign else output / "capture-receipt-verification.json")
+            rejection = output / "capture-rejections" / (claim.parent.name + ".json")
+            if rejection.exists():
+                continue
             if not claim.with_suffix(".terminal.json").exists() or verification.exists():
                 continue
+            if plan.get("operational_predictions"):
+                from race_collection.operational_prediction import classify_unready_capture
+                terminal = json.loads(claim.with_suffix(".terminal.json").read_bytes())["result"]
+                unready = classify_unready_capture(claim, terminal, evidence, Path(plan["source_root"]))
+                if unready:
+                    create_once(rejection, unready)
+                    continue
             from race_collection.manual_prediction_collector_request import (
                 ManualPredictionCollectorProtocol,
             )
