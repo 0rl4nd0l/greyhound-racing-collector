@@ -413,7 +413,7 @@ def verify_claim_receipt(claim, handoff, evidence, source_root):
     AttemptAllowance.check_window(reserved["item"], now=datetime.fromisoformat(sealed["append_time"]))
 
 
-def observe(output, plan, control, scope):
+def observe(output, plan, control, scope, predictions=None):
     from race_collection.freshness_rehearsal import assess_interval, TimerAccounting
 
     evidence = Path(plan["evidence_root"])
@@ -433,14 +433,26 @@ def observe(output, plan, control, scope):
     external_overheads = {"full": [], "odds": []}
     while now() < end:
         tick = time.monotonic()
+        if predictions is not None:
+            predictions.tick()
         if (scope.session / "STOP.json").exists():
             raise ValueError("candidate_scope_stopped")
         allowance = AttemptAllowance(scope)
         for claim in allowance.claims():
             verification = (output / "capture-verifications" / (claim.parent.name + ".json")
                             if scope.campaign else output / "capture-receipt-verification.json")
+            rejection = output / "capture-rejections" / (claim.parent.name + ".json")
+            if rejection.exists():
+                continue
             if not claim.with_suffix(".terminal.json").exists() or verification.exists():
                 continue
+            if plan.get("operational_predictions"):
+                from race_collection.operational_prediction import classify_unready_capture
+                terminal = json.loads(claim.with_suffix(".terminal.json").read_bytes())["result"]
+                unready = classify_unready_capture(claim, terminal, evidence, Path(plan["source_root"]))
+                if unready:
+                    create_once(rejection, unready)
+                    continue
             from race_collection.manual_prediction_collector_request import (
                 ManualPredictionCollectorProtocol,
             )
@@ -698,7 +710,7 @@ def execute(plan_path, expected_digest, approval_id):
             raise ValueError("natural_quiescence_not_reached")
         accounting = reconcile(
             roots=plan["reconciliation_roots"],
-            db_path=Path(plan["db_path"]),
+            db_path=Path(plan.get("operational_predictions", {}).get("history_db_path", plan["db_path"])),
             source_date=start.astimezone(__import__("zoneinfo").ZoneInfo("Australia/Melbourne"))
             .date()
             .isoformat(),
@@ -729,6 +741,8 @@ def execute(plan_path, expected_digest, approval_id):
             source_date=accounting["source_date"],
             reconciliation_sha256=digest(accounting),
         )
+        if plan.get("operational_predictions"):
+            contract["operational_predictions"] = plan["operational_predictions"]
         scope = FreshnessContract(contract)
         AttemptAllowance(scope).initialize(accounting)
         create_once(output / "contract.json", contract)
@@ -755,7 +769,12 @@ def execute(plan_path, expected_digest, approval_id):
                            deadline=datetime.fromisoformat(plan["ends_at"]) + timedelta(seconds=plan["cleanup_seconds"]))
         for timer in TIMERS:
             control.command("start", timer)
-        observe(output, plan, control, scope)
+        from race_collection.operational_prediction import Supervisor
+        predictions = Supervisor(output, plan, scope)
+        try:
+            observe(output, plan, control, scope, predictions=predictions)
+        finally:
+            predictions.drain()
     except BaseException as error:
         atomic_json(
             output / "failure.json",
@@ -780,6 +799,8 @@ def execute(plan_path, expected_digest, approval_id):
                 with campaign.ledger() as ledger:
                     begun = plan["rehearsal_id"] in ledger["launches"]
                 if begun:
+                    from race_collection.operational_prediction import require_completed_lifetimes
+                    require_completed_lifetimes(output, campaign)
                     campaign.close(plan["rehearsal_id"], now=now())
                 campaign_owner.close()
             for sig, handler in previous_handlers.items():
@@ -821,6 +842,8 @@ def main():
                 with campaign.ledger() as ledger:
                     begun = plan["rehearsal_id"] in ledger["launches"]
                 if begun:
+                    from race_collection.operational_prediction import require_completed_lifetimes
+                    require_completed_lifetimes(args.plan.parent, campaign)
                     campaign.close(plan["rehearsal_id"], now=now())
         else:
             restore(args.plan.parent, plan, SystemdControl())

@@ -126,7 +126,7 @@ def test_refresh_avoids_out_of_window_day_before_download_admission(
             "--days-ahead",
             "1",
             "--limit",
-            "6",
+            "4",
             "--workers",
             "2",
             "--current-time",
@@ -141,9 +141,15 @@ def test_refresh_avoids_out_of_window_day_before_download_admission(
     bounded = budgeted and not legacy_discovery
     assert report["discovery_days_ahead"] == (0 if bounded else 1)
     assert len(requested_dates) == (1 if bounded else 2)
-    assert report["selected_count"] == 6
-    assert len(downloaded) == (0 if legacy_discovery else 6)
+    assert report["selected_count"] == 4
+    assert len(downloaded) == (0 if legacy_discovery else 4)
     assert {item["date"] for item in report["selected_races"]} == {observed.date().isoformat()}
+    decisions = report["considered_races"]
+    assert len(decisions) == len(requested_dates) * 6
+    assert sum(row["selection_decision"] == "selected_for_download" for row in decisions) == 4
+    assert sum(row["selection_decision"] == "download_limit" for row in decisions) == 2
+    assert all(row["selection_decision"] == "future_outside_preferred_window"
+               for row in decisions if row["date"] != observed.date().isoformat())
     assert report["metadata_collection_status"] != "PASS"
     assert report["current_index_race_count"] == 0
     assert report["status"] != "SUCCESS"
@@ -152,10 +158,10 @@ def test_refresh_avoids_out_of_window_day_before_download_admission(
         assert report["refresh_elapsed_seconds"] == 76
         assert all(item["reason"] == "refresh_budget_exhausted" for item in report["downloads"])
     elif budgeted:
-        assert report["refresh_elapsed_seconds"] == 44
+        assert report["refresh_elapsed_seconds"] == 42
         assert report["refresh_phase_seconds"] == {
             "discovery_and_browser_startup": 38,
-            "selection_and_downloads": 6,
+            "selection_and_downloads": 4,
             "metadata_validation": 0,
         }
 

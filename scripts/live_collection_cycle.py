@@ -467,6 +467,18 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                             }
                         )
                         continue
+                    if scope.value.get("operational_predictions") and task["capture_window_minutes"] != 10:
+                        checkpoint.value.setdefault("exclusions", []).append({
+                            "race_id": task["race_id"], "capture_window_minutes": task["capture_window_minutes"],
+                            "reason": "operational_single_t10_window"})
+                        continue
+                    if scope.value.get("operational_predictions") and (
+                        datetime.fromisoformat(task["race_identity"]["jump_datetime"]) - daemon.wall_clock_now()
+                    ).total_seconds() < 300:
+                        checkpoint.value.setdefault("exclusions", []).append({
+                            "race_id": task["race_id"], "capture_window_minutes": task["capture_window_minutes"],
+                            "reason": "insufficient_capture_retention_prediction_margin"})
+                        continue
                     try:
                         allowance.check_window(task, now=daemon.wall_clock_now(), required_seconds=50)
                     except ValueError as error:
@@ -543,23 +555,23 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                 "--days-ahead",
                 str(args.days_ahead),
                 "--refresh-limit",
-                str(args.refresh_limit),
+                str(min(args.refresh_limit, 4) if scope and scope.value.get("operational_predictions") else args.refresh_limit),
             ]
             if odds_only:
                 command += [
                     "--skip-primary-refresh",
                     "--enable-autonomous-odds-capture",
                     "--odds-capture-refresh-limit",
-                    str(args.odds_capture_refresh_limit),
+                    str(min(args.odds_capture_refresh_limit, 4) if scope and scope.value.get("operational_predictions") else args.odds_capture_refresh_limit),
                     "--odds-capture-min-minutes",
-                    str(args.odds_capture_min_minutes),
+                    str((budget.refresh_seconds + 300) / 60 if scope and scope.value.get("operational_predictions") else args.odds_capture_min_minutes),
                     "--odds-capture-max-minutes",
                     str(args.odds_capture_max_minutes),
                 ]
             else:
                 command += [
                     "--min-minutes",
-                    str(args.min_minutes),
+                    str((budget.refresh_seconds + 300) / 60 if scope and scope.value.get("operational_predictions") else args.min_minutes),
                     "--max-minutes",
                     str(args.max_minutes),
                 ]
@@ -741,6 +753,10 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                 try:
                     # Fund the entire bounded capture, including child startup, before
                     # consuming. A stale queued item never becomes a later window.
+                    if scope.value.get("operational_predictions") and (
+                        datetime.fromisoformat(inputs["race_identity"]["jump_datetime"]) - daemon.wall_clock_now()
+                    ).total_seconds() < 300:
+                        raise ValueError("insufficient_capture_retention_prediction_margin")
                     allowance.check_window(inputs, now=daemon.wall_clock_now(), required_seconds=50)
                     inputs["reservation_path"] = str(
                         allowance.reserve(inputs, now=daemon.wall_clock_now())
@@ -748,7 +764,7 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                 except ValueError as error:
                     if str(error) not in {
                         "capture_reservation_expired", "capture_reservation_not_open",
-                        "capture_window_insufficient_time",
+                        "capture_window_insufficient_time", "insufficient_capture_retention_prediction_margin",
                     }:
                         raise
                     checkpoint.value["pending"].pop(0)
@@ -778,7 +794,15 @@ def run_live_collection_cycle(args, *, odds_only: bool):
             result["step"] = step
             if step.get("returncode") != 0:
                 result["status"] = "FAIL"
+            operational_unready = None
             if scope and kind == "capture":
+                if scope.value.get("operational_predictions"):
+                    from race_collection.operational_prediction import classify_unready_capture
+                    operational_unready = classify_unready_capture(
+                        inputs["reservation_path"], result, args.evidence_root, Path(__file__).resolve().parents[1])
+                    if operational_unready:
+                        result["operational_capture_outcome"] = operational_unready
+                        checkpoint.value.setdefault("exclusions", []).append(operational_unready)
                 allowance.finish(inputs["reservation_path"], result)
                 if (
                     result.get("autonomous_live_odds_capture_status", {}).get("status")
@@ -814,7 +838,7 @@ def run_live_collection_cycle(args, *, odds_only: bool):
             checkpoint.complete(result, elapsed=elapsed, overrun=overrun)
             if kind == "refresh":
                 refresh_result = result
-            if overrun or result.get("status") != "PASS" or timing_failed():
+            if overrun or (result.get("status") != "PASS" and not operational_unready) or timing_failed():
                 outcome = (
                     "LIVE_PHASE_BUDGET_EXCEEDED"
                     if overrun

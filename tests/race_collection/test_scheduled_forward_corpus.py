@@ -62,7 +62,10 @@ def _fixture(
     mutate_plan: Callable[[dict[str, Any]], None] | None = None,
     mutate_sidecar: Callable[[dict[str, Any]], None] | None = None,
     mutate_raw: Callable[[bytes], bytes] | None = None,
+    venue: str = "WARRNAMBOOL",
+    sportsbet_url: str = "https://www.sportsbet.com.au/greyhounds/warrnambool/race-1",
 ) -> ScheduledFixture:
+    race_id = f"Race 1 - {venue} - 2026-08-03"
     evidence_root = tmp_path / "evidence"
     output_dir = evidence_root / "autonomous_live_odds_capture_fixture"
     output_dir.mkdir(parents=True)
@@ -73,7 +76,7 @@ def _fixture(
     (corpus_root / "artifacts").mkdir(parents=True)
     (corpus_root / "races").mkdir()
 
-    form = output_dir / "Race 1 - WARRNAMBOOL - 2026-08-03.csv"
+    form = output_dir / f"Race 1 - {venue} - 2026-08-03.csv"
     form.write_text("Dog Name,BOX\n1. Bravo,\n2. Alpha,\n", encoding="utf-8")
     sidecar_path = form.with_name(form.name + ".metadata.json")
     raw_dir = output_dir / "raw_exports"
@@ -114,7 +117,7 @@ def _fixture(
             "fail_reasons": [],
             "race_date": "2026-08-03",
             "race_number": "1",
-            "venue": "WARRNAMBOOL",
+            "venue": venue,
             "distance": "525m",
             "source_url": RACE_URL,
             "metadata_captured_at": NOW.isoformat(),
@@ -137,9 +140,9 @@ def _fixture(
         "status": "READY_TO_CAPTURE",
         "csv_path": str(form.resolve()),
         "sidecar_path": str(sidecar_path.resolve()),
-        "race_id": RACE_ID,
+        "race_id": race_id,
         "race_id_aliases": [],
-        "venue": "WARRNAMBOOL",
+        "venue": venue,
         "race_number": 1,
         "race_date": "2026-08-03",
         "race_time": "12:20",
@@ -177,7 +180,7 @@ def _fixture(
         "validation": {
             "schema_version": "autonomous_live_odds_capture_validation_v1",
             "status": "PASS",
-            "source_url": "https://www.sportsbet.com.au/greyhounds/warrnambool/race-1",
+            "source_url": sportsbet_url,
             "accepted_rows": validation_rows,
             "accepted_place_rows": validation_rows,
             "reasons": [],
@@ -207,9 +210,9 @@ def _fixture(
         packet_bytes=b"verified-index",
         races=(
             {
-                "race_id": RACE_ID,
+                "race_id": race_id,
                 "date": "2026-08-03",
-                "venue": "WARRNAMBOOL",
+                "venue": venue,
                 "race_number": 1,
                 "jump_datetime": JUMP.isoformat(),
                 "race_url": RACE_URL,

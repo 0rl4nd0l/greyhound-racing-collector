@@ -513,6 +513,13 @@ def fetch_odds_for_target_race(
             selected = parsed
             break
         if not selected:
+            remaining = getattr(driver, "sportsbet_navigation_remaining", lambda: None)()
+            # A meeting lookup and the subsequent exact race load require two
+            # further navigations. Reject before starting an impossible route.
+            if remaining is not None and remaining < 2:
+                summary["warnings"].append("target_race_not_visible_within_navigation_allowance")
+                summary["discovery_method"] = "sportsbet_landing_exact_race_unavailable"
+                return summary
             selected = _resolve_target_race_from_meeting(
                 integrator,
                 driver,
@@ -621,6 +628,13 @@ def ensure_odds_for_target_race(
             selected = parsed
             break
         if not selected:
+            remaining = getattr(driver, "sportsbet_navigation_remaining", lambda: None)()
+            # A meeting lookup and the subsequent exact race load require two
+            # further navigations. Reject before starting an impossible route.
+            if remaining is not None and remaining < 2:
+                summary["warnings"].append("target_race_not_visible_within_navigation_allowance")
+                summary["discovery_method"] = "sportsbet_landing_exact_race_unavailable"
+                return summary
             selected = _resolve_target_race_from_meeting(
                 integrator,
                 driver,

@@ -75,6 +75,15 @@ class FreshnessContract:
         for key in ("lock_path", "evidence_root", "db_path"):
             if not Path(value[key]).is_absolute():
                 raise ValueError("absolute_scope_paths_required")
+        operational = value.get("operational_predictions")
+        if operational:
+            if self.campaign is None:
+                raise ValueError("operational_campaign_required")
+            expected = self.campaign.root / "operational-predictions/capture.sqlite3"
+            capture = Path(value["db_path"]).resolve()
+            if (capture != expected.resolve() or capture != Path(operational["capture_db_path"]).resolve()
+                    or capture == Path(operational["history_db_path"]).resolve()):
+                raise ValueError("operational_database_separation_required")
         if not value.get("rehearsal_id") or not value.get("reconciliation_sha256"):
             raise ValueError("scope_identity_required")
         self.root = Path(value["lock_path"]).parent / "live-freshness-attempts-v1"
@@ -165,7 +174,7 @@ class AttemptAllowance:
         keys = {(alias, key[1]) for alias in item.get("race_id_aliases", [key[0]])} | {key}
         if self.scope.campaign:
             with self.scope.campaign.ledger() as ledger:
-                if any(row["window"] == key[1] and any((alias, key[1]) in keys for alias in row["aliases"])
+                if any((self.scope.value.get("operational_predictions") or row["window"] == key[1]) and any((alias, key[1]) in keys for alias in row["aliases"])
                        for row in ledger["attempts"]):
                     return True
         return any(self.key(row) in keys for row in self._accounting()["consumed"]) or any(

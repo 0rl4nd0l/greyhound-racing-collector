@@ -25,7 +25,7 @@ def provenance(**changes):
     values={"schema":"operator_ui_operational_index_admission_v1","index_schema_version":"collector_current_race_index_v2","run_id":"run","packet_sha256":H,"source_refresh_sha256":H,"publication_sha256":H,"state_sha256":H,"report_sha256":H}
     values.update(changes); return OperationalIndexProvenance(**values)
 
-def setup(tmp_path):
+def setup(tmp_path, retained_digest=None):
     paths=[]
     for name in ("config.json","model.json","manifest.json","schema.json"):
         path=tmp_path/name; path.write_bytes(b"x"); paths.append(path)
@@ -36,7 +36,7 @@ def setup(tmp_path):
     current_index=evidence_a/"shadow_autopilot_daemon_runtime"/"manual_prediction_current_race_index.json"
     cfg=WorkerConfig(python,Path(__file__).parents[2],{"latest-research":choice},tmp_path/"canonical.db",tmp_path/"output",(evidence_a,tmp_path/"evidence-b"),tmp_path/"requests",current_index,evidence_a,1,45.0,90.0,2)
     value=JobStore(tmp_path/"jobs.db",separate_from=(tmp_path/"canonical.db",tmp_path/"audit.db"))
-    inp=JobInput(RACE_ID,"2026-08-01T01:00:00+00:00",H,"latest-research","market_form_residual_v1",H,H,H,"manual-default",H,"auto",({"box":1,"name":"ALPHA","identity":"ALPHA"},),provenance())
+    inp=JobInput(RACE_ID,"2026-08-01T01:00:00+00:00",H,"latest-research","market_form_residual_v1",H,H,H,"manual-default",H,"receipt" if retained_digest else "auto",({"box":1,"name":"ALPHA","identity":"ALPHA"},),provenance(),retained_digest)
     job=value.create(actor_identity="op",actor_level=2,operation="manual_prediction",idempotency_key="idempotency-key-1234",job_input=inp,now=NOW,confirm_audit=CONFIRM)
     job=value.transition(job.job_id,Phase.VALIDATED,now=NOW,status="VALID",reason="validated",confirm_audit=CONFIRM)
     job=value.transition(job.job_id,Phase.WAITING_FOR_CLAIM,now=NOW,status="WAITING",reason="ready",confirm_audit=CONFIRM)
@@ -531,3 +531,53 @@ def test_sealed_v2_blocker_is_nonfinal_and_persists_exact_identity(tmp_path):
     assert result.phase is Phase.PRODUCER_COMPLETED and result.reason=="PRODUCER_PREDICTION_BLOCKED:POST_JUMP"
     with sqlite3.connect(store.path) as db: facts=json.loads(db.execute("SELECT facts_json FROM job_events ORDER BY sequence DESC LIMIT 1").fetchone()[0])
     assert facts["producer_blocker"]=={"code":"POST_JUMP","stage":"VALIDATION"}
+
+
+def test_retained_binding_is_persisted_and_cannot_fall_back_after_restart(tmp_path):
+    cfg,store,job=setup(tmp_path, retained_digest=H)
+    bindings={RACE_ID:{"path":str(tmp_path/"retained"),"manifest_sha256":H}}
+    cfg=replace(cfg,retained_input_bindings=bindings)
+    argv=fixed_argv(job,cfg)
+    assert argv[argv.index("--retained-input-manifest-sha256")+1] == H
+    bindings[RACE_ID]["manifest_sha256"]="0"*64
+    assert cfg.retained_input_bindings[RACE_ID]["manifest_sha256"] == H
+    restarted=JobStore(store.path,separate_from=(tmp_path/"canonical.db",tmp_path/"audit.db"))
+    persisted=restarted.get(job.job_id)
+    assert persisted.input.retained_input_manifest_sha256 == H
+    with pytest.raises(WorkerRejected,match="RETAINED_INPUT_BINDING_CHANGED"):
+        run_once(restarted,job.job_id,replace(cfg,retained_input_bindings=None),now=lambda:NOW,
+            confirm_audit=CONFIRM,popen=lambda *a,**k:pytest.fail("must not launch"),reader=lambda **k:view())
+    assert not restarted.get(job.job_id).attempt_claimed
+    result=run_once(restarted,job.job_id,cfg,now=lambda:NOW,confirm_audit=CONFIRM,
+        popen=lambda *a,**k:Process(ready(job)),reader=lambda **k:view())
+    assert result.phase is Phase.PRODUCER_COMPLETED
+    reopened=JobStore(store.path,separate_from=(tmp_path/"canonical.db",tmp_path/"audit.db"))
+    with pytest.raises(WorkerRejected,match="JOB_NOT_CLAIMABLE"):
+        run_once(reopened,job.job_id,cfg,now=lambda:NOW,confirm_audit=CONFIRM)
+
+
+def test_retained_job_rejects_reconfigured_manifest_before_claim(tmp_path):
+    cfg,store,job=setup(tmp_path,retained_digest=H)
+    cfg=replace(cfg,retained_input_bindings={RACE_ID:{"path":str(tmp_path/"retained"),"manifest_sha256":"0"*64}})
+    with pytest.raises(WorkerRejected,match="RETAINED_INPUT_BINDING_MISSING"):
+        run_once(store,job.job_id,cfg,now=lambda:NOW,confirm_audit=CONFIRM,
+            popen=lambda *a,**k:pytest.fail("must not launch"),reader=lambda **k:view())
+    assert not store.get(job.job_id).attempt_claimed
+
+
+def test_native_and_prediction_runner_hashes_are_independently_enforced(tmp_path):
+    from src.operator_ui.prediction_worker import _bounded_result
+    cfg,store,legacy=setup(tmp_path)
+    assert store.get(legacy.job_id).input.identity_sha256 == legacy.input.identity_sha256
+    assert 'prediction_runner_set_sha256' not in legacy.input.fields()
+    inp=replace(legacy.input,prediction_runner_set_sha256='f'*64)
+    job=replace(legacy,input=inp)
+    result=json.loads(ready(job));result['evidence']['runner_set_sha256']='f'*64
+    raw=canonical_bytes(result)
+    phase,_,_=_bounded_result(job,raw,len(raw),hashlib.sha256(raw).hexdigest(),b'',0,hashlib.sha256(b'').hexdigest(),0)
+    assert phase is Phase.PRODUCER_COMPLETED
+    wrong=ready(job)
+    phase,reason,_=_bounded_result(job,wrong,len(wrong),hashlib.sha256(wrong).hexdigest(),b'',0,hashlib.sha256(b'').hexdigest(),0)
+    assert phase is Phase.FAILED and reason=='PROCESS_OUTPUT_INVALID'
+    with pytest.raises(WorkerRejected,match='RUNNER_SET_CHANGED'):
+        revalidate_current_race(job,cfg,now=NOW,reader=lambda **_:view([{'race_id':RACE_ID,'jump_datetime':inp.jump_timestamp,'runner_set_sha256':'f'*64}]))

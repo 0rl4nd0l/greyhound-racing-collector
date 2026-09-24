@@ -36,6 +36,18 @@ def is_sportsbet(url):
     return host == "sportsbet.com.au" or host.endswith(".sportsbet.com.au")
 
 
+def operation_owner():
+    """Retain process identity, never arguments, environment or credentials."""
+    owner = {"owner_pid": os.getpid(), "owner_parent_pid": os.getppid()}
+    try:
+        fields = Path('/proc/self/stat').read_text().rsplit(')', 1)[1].split()
+        owner['owner_process_start_ticks'] = fields[19]
+        owner['owner_boot_id'] = Path('/proc/sys/kernel/random/boot_id').read_text().strip()
+    except (OSError, IndexError):
+        owner['owner_identity_incomplete'] = True
+    return owner
+
+
 class SportsbetAccess:
     def __init__(self, path=None, *, clock=None):
         self.path = Path(path) if path is not None else state_path()
@@ -136,7 +148,7 @@ class SportsbetAccess:
             value = self.read()
             self._denial(value, status, headers, reason, observed_at=observed_at)
 
-    def _denial(self, value, status, headers, reason, *, observed_at):
+    def _denial(self, value, status, headers, reason, *, observed_at, observation=None):
         from utils.http_client import source_retry_headers
 
         now = self.clock()
@@ -167,6 +179,8 @@ class SportsbetAccess:
             "status": status, "retry_headers": guidance,
             "provider_not_before_epoch": deadline, "fallback_seconds": fallback,
             "reason": reason,
+            **({"operation_id": value["active"]} if value.get("active") else {}),
+            **({"response_observation": observation} if observation else {}),
         })
         unclear_reset = any(key in guidance for key in ("ratelimit-reset", "x-ratelimit-reset"))
         value["phase"] = (
@@ -187,6 +201,8 @@ class SportsbetAccess:
             if recovery and (self.clock() < value["not_before"] or value["recovery_attempts"]):
                 raise SportsbetAccessBlocked("sportsbet_cooldown")
             policy = value.get("operating_policy")
+            operation_id = kind + ":" + uuid.uuid4().hex
+            record = None
             if policy is not None:
                 now = self.clock()
                 operations = value.setdefault("operations", [])
@@ -200,11 +216,13 @@ class SportsbetAccess:
                                             "reason": "operating_policy_limit_or_clock"}
                     self.write(value)
                     raise SportsbetAccessBlocked("sportsbet_operating_policy_stop")
-                operations.append({"at": now, "kind": kind})
+                record = {"at": now, "kind": kind, "operation_id": operation_id,
+                          **operation_owner()}
+                operations.append(record)
             if recovery:
                 value["recovery_attempts"] += 1
                 value["phase"] = "RECOVERY"
-            value["active"] = kind + ":" + uuid.uuid4().hex
+            value["active"] = operation_id
             self.write(value)  # Durable consumption before any transport call.
             operation = SourceOperation(self, value, recovery)
             try:
@@ -218,6 +236,8 @@ class SportsbetAccess:
                 elif recovery and value["phase"] == "RECOVERY":
                     value["phase"] = "OPEN"
                 value["active"] = None
+                if record is not None:
+                    record.update(closed_at=self.clock(), final_phase=value["phase"])
                 self.write(value)
 
 
@@ -237,12 +257,20 @@ class SourceOperation:
         if self.value["phase"] in {"COOLDOWN", "STOP"}:
             raise SportsbetAccessBlocked("sportsbet_source_hold")
 
-    def response(self, status, headers):
+    def response(self, status, headers, *, source_url=None, resource_type=None):
         from utils.http_client import source_retry_headers
         guidance = source_retry_headers(headers)
         instructed = any(key in guidance for key in ("retry-after", "ratelimit-reset", "x-ratelimit-reset"))
         if status in {401, 403, 429} or (status >= 400 and instructed):
-            self.gate._denial(self.value, status, headers, "source_response", observed_at=self.gate.clock())
+            observation = {"monotonic_seconds": time.monotonic()}
+            if source_url and is_sportsbet(source_url):
+                from urllib.parse import urlunsplit
+                parsed = urlsplit(source_url)
+                observation["source_url_without_query"] = urlunsplit((parsed.scheme, parsed.hostname, parsed.path, "", ""))
+            if isinstance(resource_type, str):
+                observation["resource_type"] = resource_type[:64]
+            self.gate._denial(self.value, status, headers, "source_response",
+                              observed_at=self.gate.clock(), observation=observation)
         elif 200 <= status < 300:
             self.transport_success = True
         elif self.recovery:

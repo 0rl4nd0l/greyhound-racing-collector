@@ -67,7 +67,7 @@ def stop_owned_processes(pid, birth, retained=None):
         raise RuntimeError('owned_browser_cleanup_incomplete')
 
 
-def create_sportsbet_driver(factory, **kwargs):
+def create_sportsbet_driver(factory, *, response_inspection=None, **kwargs):
     admission = SportsbetAccess().operation('browser')
     operation = admission.__enter__()
     driver = connection = None
@@ -108,7 +108,8 @@ def create_sportsbet_driver(factory, **kwargs):
                 status = source['status']
                 with state_lock:
                     if status >= 400 or params.get('type') == 'Document':
-                        operation.response(status, source.get('headers', {}))
+                        operation.response(status, source.get('headers', {}),
+                                           source_url=source.get('url'), resource_type=params.get('type'))
                     held = operation.value['phase'] in {'COOLDOWN', 'STOP'}
                 if held and not expected_disconnect.is_set():
                     channel('Network.setBlockedURLs', {'urls': ['*://*.sportsbet.com.au/*', '*://sportsbet.com.au/*']})
@@ -137,6 +138,13 @@ def create_sportsbet_driver(factory, **kwargs):
                 event = json.loads(message)
                 if event.get('method') == 'Network.responseReceived':
                     events.put(event['params'])
+                if response_inspection is not None:
+                    try:
+                        response_inspection.observe(event)
+                    except Exception:
+                        # Optional research instrumentation must not replace or
+                        # delay the independent source-denial observer.
+                        response_inspection.fail()
             except Exception:
                 lost_observation()
         connection._ws.on_message = received
@@ -146,6 +154,8 @@ def create_sportsbet_driver(factory, **kwargs):
         watcher = threading.Thread(target=monitor, name='sportsbet-source-observer', daemon=True)
         watcher.start()
         channel('Network.enable')
+        if response_inspection is not None:
+            response_inspection.mark('browser_ready')
     except BaseException:
         import sys
         failure = sys.exc_info()
@@ -181,6 +191,8 @@ def create_sportsbet_driver(factory, **kwargs):
                 operation.failed = True
                 raise SportsbetAccessBlocked('sportsbet_browser_navigation_cap')
             navigations += 1
+        if response_inspection is not None:
+            response_inspection.navigate()
         try:
             result = navigate(url)
         except BaseException:
@@ -193,6 +205,8 @@ def create_sportsbet_driver(factory, **kwargs):
         descendants.update(owned_processes(owner_pid, owner_birth))
         with state_lock:
             operation.check()
+        if response_inspection is not None:
+            response_inspection.mark('navigation_complete')
         return result
 
     def logs(name):
@@ -229,11 +243,39 @@ def create_sportsbet_driver(factory, **kwargs):
                 with state_lock:
                     admission.__exit__(None, None, None)
 
+    def navigation_remaining():
+        """Planning information only; get() remains the enforcing boundary."""
+        with state_lock:
+            operation.check()
+            cap = operation.value.get('operating_policy', {}).get(
+                'browser_navigation_cap', 2 if operation.recovery else None)
+            return None if cap is None else max(0, cap - navigations)
+
+    driver.sportsbet_navigation_remaining = navigation_remaining
+
     def accept_data():
         events.join()
         with state_lock:
             operation.accept_data()
 
+    def inspect_response_shapes():
+        if closed:
+            raise RuntimeError('sportsbet_browser_closed')
+        if response_inspection is None:
+            raise RuntimeError('sportsbet_response_inspection_disabled')
+        response_inspection.mark('rendered_extraction_complete')
+        def body(request_id):
+            events.join()
+            with state_lock:
+                operation.check()
+            return channel('Network.getResponseBody', {'requestId': request_id})
+        events.join()
+        with state_lock:
+            operation.check()
+        response_inspection.inspect_bodies(body)
+        return response_inspection.report()
+
     driver.sportsbet_accept_validated_data = accept_data
+    driver.sportsbet_inspect_response_shapes = inspect_response_shapes
     driver.get, driver.get_log, driver.quit = get, logs, quit
     return driver

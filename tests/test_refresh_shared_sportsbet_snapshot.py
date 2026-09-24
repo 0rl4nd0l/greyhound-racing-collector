@@ -144,3 +144,44 @@ def test_failed_shared_observation_is_not_retried_per_race(tmp_path, failure):
     assert state["phase"] == ("COOLDOWN" if failure == "source_denial" else "OPEN")
     requests = [json.loads(line) for line in (tmp_path / "transport.jsonl").read_text().splitlines()]
     assert sum("NextEvents" in row["path"] for row in requests) == 1
+
+
+def test_exact_meeting_link_time_avoids_duplicate_discovery_fetch(tmp_path):
+    payload = fixture(tmp_path, 6)
+    data = json.loads(payload.read_text())
+    date_key = next(k for k in data['responses'] if k.startswith('www.thedogs.com.au/racing/') and k.count('/') == 2)
+    race_page = next(v['body'] for k, v in data['responses'].items() if k.endswith('/invented'))
+    import re
+    clock = re.search(r'<formatted-time.*?</formatted-time>', race_page).group()
+    data['responses'][date_key]['body'] = data['responses'][date_key]['body'].replace('</a>', clock+'</a>')
+    payload.write_text(json.dumps(data))
+    report = refresh(tmp_path, payload, access(tmp_path), 6, lane='full')
+    assert report['current_index_race_count'] == 6
+    calls = [json.loads(x) for x in (tmp_path/'transport.jsonl').read_text().splitlines()]
+    canonical = [x for x in calls if x['path'].endswith('/invented')]
+    assert len(canonical) == 6, 'exact meeting times must not cause discovery plus download page fetches'
+
+
+@pytest.mark.parametrize('meeting_clock', ['', '<formatted-time data-format="time_24">12:00</formatted-time><formatted-time data-format="time_24">13:00</formatted-time>'])
+def test_missing_or_conflicting_meeting_times_use_canonical_page(tmp_path, meeting_clock):
+    payload = fixture(tmp_path, 1)
+    data = json.loads(payload.read_text())
+    date_key = next(k for k in data['responses'] if k.startswith('www.thedogs.com.au/racing/') and k.count('/') == 2)
+    data['responses'][date_key]['body'] = data['responses'][date_key]['body'].replace('</a>', meeting_clock+'</a>')
+    payload.write_text(json.dumps(data))
+    report = refresh(tmp_path, payload, access(tmp_path), 1, lane='full')
+    assert report['current_index_race_count'] == 1
+    calls = [json.loads(x) for x in (tmp_path/'transport.jsonl').read_text().splitlines()]
+    assert sum(x['path'].endswith('/invented') for x in calls) == 2
+
+
+def test_meeting_jump_change_rejected_before_publication(tmp_path):
+    payload = fixture(tmp_path, 1)
+    data = json.loads(payload.read_text())
+    date_key = next(k for k in data['responses'] if k.startswith('www.thedogs.com.au/racing/') and k.count('/') == 2)
+    clock = (datetime.now(ZoneInfo('Australia/Melbourne'))+timedelta(minutes=45)).strftime('%H:%M')
+    data['responses'][date_key]['body'] = data['responses'][date_key]['body'].replace('</a>', '<formatted-time data-format="time_24">'+clock+'</formatted-time></a>')
+    payload.write_text(json.dumps(data))
+    report = refresh(tmp_path,payload,access(tmp_path),1,lane='full')
+    assert report['current_index_race_count'] == 0
+    assert report['downloads'][0]['result']['error'] == 'meeting_canonical_jump_changed'

@@ -249,6 +249,8 @@ def race_window_record(
         "date": race.get("date") or race.get("race_date"),
         "race_time": race.get("race_time") or race.get("jump_time"),
         "jump_datetime": jump_dt.isoformat() if jump_dt else None,
+        "race_time_source": race.get("race_time_source"),
+        "discovery_time_evidence": race.get("discovery_time_evidence"),
         "minutes_to_jump": minutes_to_jump,
         "bucket": bucket,
         "selected": bucket == "preferred_window",
@@ -911,6 +913,7 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
             raise ValueError("discovery_clock_scope_mismatch")
         install_request_guard(scope)  # This CLI process exits after the refresh.
     browser = _refresh_browser(timing, browser_type)
+    browser.bounded_meeting_discovery = budget is not None
     discovery_days_ahead = int(args.days_ahead)
     if budget is not None:
         discovery_days_ahead = bounded_discovery_days_ahead(
@@ -1050,6 +1053,18 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
             max_minutes=float(args.max_minutes),
         ),
         "selected_races": list(selected_records),
+        "considered_races": [
+            {
+                **record,
+                "selection_decision": (
+                    "selected_for_download" if record.get("selection_order")
+                    else "missing_race_url" if record.get("selected") and not record.get("race_url")
+                    else "download_limit" if record.get("selected")
+                    else record.get("excluded_reason") or record["bucket"]
+                ),
+            }
+            for record in records
+        ],
         "current_index_race_count": len(current_index_races),
         "current_index_races": current_index_races,
         "current_index_metadata_selection": current_index_selection,

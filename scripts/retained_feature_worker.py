@@ -45,7 +45,9 @@ def main() -> None:
     from scripts.run_shadow_non_tgr_rf_evaluation import build_live_feature_rows
     import encodings.utf_8_sig  # prewarm before the exact data-read boundary
     from zoneinfo import ZoneInfo
-    ZoneInfo("Australia/Melbourne")
+    from utils.prejump_weather import VENUE_WEATHER_LOCATIONS
+    # Keep strong references: the feature validator may use any supported venue.
+    timezones = [ZoneInfo(name) for name in sorted({v.timezone for v in VENUE_WEATHER_LOCATIONS.values()} | {"Australia/Melbourne"})]
 
     form = path("normalized_form")
     if path("form_metadata") != Path(str(form) + ".metadata.json"):

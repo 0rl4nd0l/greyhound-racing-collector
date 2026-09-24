@@ -485,7 +485,7 @@ def test_rehearsal_failure_restores_exact_pair_and_does_not_reset_consumption(
     }
     monkeypatch.setattr(reconciliation, "reconcile", lambda **kwargs: accounting)
 
-    def fail(*args):
+    def fail(*args, **kwargs):
         if reserve_before_failure:
             run.atomic_json(Path(args[1]["evidence_root"]) / "shadow_autopilot_daemonization_v1_fixture/phase-checkpoint.json", {
                 "window_observations": [{"race_id": "unattempted", "capture_window_minutes": 10,
@@ -1025,3 +1025,47 @@ def test_restoration_keeps_triggers_paused_until_consumed_window_closes(
     assert (output / "RESTORATION_PENDING.json").exists()
     assert commands == [("stop", timer) for timer in run.TIMERS]
     assert not allowance.available()
+
+
+def test_operational_scope_rejects_shared_capture_history_database(tmp_path):
+    from tests.test_freshness_campaign import make_campaign
+    from race_collection.live_freshness_contract import FreshnessContract, digest
+    campaign = make_campaign(tmp_path/'campaign')
+    value = contract_value(tmp_path)
+    capture = campaign.root/'operational-predictions/capture.sqlite3'
+    value.update(cleanup_seconds=1860,max_capture_attempts=12,max_logical_requests=48000,
+        campaign_root=str(campaign.root),campaign_authorization_sha256=digest(campaign.value),db_path=str(capture),
+        operational_predictions={'capture_db_path':str(capture),'history_db_path':str(tmp_path/'history.sqlite')})
+    FreshnessContract(value)
+    value['operational_predictions']['history_db_path'] = str(capture)
+    with pytest.raises(ValueError, match='separation'):
+        FreshnessContract(value)
+
+
+def test_prediction_lifetime_unknown_prevents_campaign_close(tmp_path):
+    from types import SimpleNamespace
+    from race_collection.operational_prediction import require_completed_lifetimes
+    from race_collection.live_freshness_contract import create_once
+    campaign = SimpleNamespace(root=tmp_path/'campaign')
+    output = tmp_path/'package'
+    lifetime = output/'operational-workers/claim.json'
+    create_once(campaign.root/'operational-predictions/dispatches/race.json',
+        {'plan':str(output/'plan.json'),'lifecycle':str(lifetime)})
+    with pytest.raises(RuntimeError, match='lease_retained'):
+        require_completed_lifetimes(output,campaign)
+    create_once(lifetime,{'children_reaped':False})
+    with pytest.raises(RuntimeError, match='lease_retained'):
+        require_completed_lifetimes(output,campaign)
+    lifetime.write_text('{"children_reaped":true}')
+    require_completed_lifetimes(output,campaign)
+
+
+def test_operational_prediction_failure_stops_before_next_race(tmp_path):
+    from types import SimpleNamespace
+    from race_collection.operational_prediction import Supervisor
+    supervisor=Supervisor(tmp_path,{},None)
+    supervisor.child=SimpleNamespace(poll=lambda:2,returncode=2)
+    supervisor.log=(tmp_path/'worker.log').open('w')
+    with pytest.raises(ValueError,match='preserved_consumption'):
+        supervisor.tick()
+    assert supervisor.child is None

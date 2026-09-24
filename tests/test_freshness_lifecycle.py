@@ -80,3 +80,26 @@ def test_detached_child_cannot_extend_phase_past_existing_timeout(tmp_path):
         wait_for_descendants=True,
     )
     assert result["timed_out"] and result["duration_seconds"] < 3
+
+
+def test_operational_timeout_reaps_detached_prediction_descendants(tmp_path):
+    import json
+    import subprocess
+    import sys
+    from pathlib import Path
+    marker = tmp_path/'descendant.pid'
+    sleeper = "import os,time; from pathlib import Path; Path("+repr(str(marker))+").write_text(str(os.getpid())); time.sleep(30)"
+    parent = "import subprocess,sys,time; subprocess.Popen([sys.executable,'-c',"+repr(sleeper)+"],start_new_session=True); time.sleep(30)"
+    wrapper = "\n".join([
+        "import subprocess,sys", "from pathlib import Path",
+        "from race_collection.operational_prediction import bounded_run",
+        "launch=subprocess.Popen",
+        "subprocess.Popen=lambda *a,**kw: launch([sys.executable,'-c',"+repr(parent)+"])",
+        "raise SystemExit(bounded_run(Path("+repr(str(tmp_path/'plan.json'))+"),Path("+repr(str(tmp_path/'claim/reservation.json'))+"),timeout=1))",
+    ])
+    result = subprocess.run([sys.executable,'-c',wrapper],capture_output=True,text=True,timeout=15)
+    assert result.returncode == 2, result.stderr
+    lifetime=json.loads((tmp_path/'operational-workers/claim.json').read_bytes())
+    assert lifetime['children_reaped'] is True
+    assert lifetime['elapsed_seconds'] < 5
+    assert not Path('/proc/'+marker.read_text()).exists()

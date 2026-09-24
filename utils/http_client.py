@@ -57,7 +57,7 @@ class SourceCoordinatedSession(requests.Session):
         kwargs["allow_redirects"] = False
         with SportsbetAccess().operation("python") as operation:
             response = super().send(request, **kwargs)
-            operation.response(response.status_code, response.headers)
+            operation.response(response.status_code, response.headers, source_url=request.url, resource_type="python")
             if operation.recovery and 200 <= response.status_code < 300:
                 from utils.prejump_sportsbet import usable_recovery_snapshot
 

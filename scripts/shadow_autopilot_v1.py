@@ -735,7 +735,11 @@ def autonomous_official_result_capture_command(
     backlog_shadow_run_limit: int | None = None,
     backlog_lookback_days: int | None = None,
     execute_db_ingest: bool = False,
+    r3_job_store: Path | None = None,
+    r3_prediction_bundles: Path | None = None,
 ) -> list[str]:
+    if (r3_job_store is None) != (r3_prediction_bundles is None):
+        raise ValueError("R3 result discovery requires both bindings")
     command = [
         sys.executable,
         str(ROOT / "scripts/autonomous_official_result_capture.py"),
@@ -748,17 +752,22 @@ def autonomous_official_result_capture_command(
         "--db",
         str(db_path),
     ]
-    if upcoming_dir is not None:
+    if r3_job_store is not None:
+        command.extend(["--r3-job-store", str(r3_job_store),
+                        "--r3-prediction-bundles", str(r3_prediction_bundles)])
+        if backlog_limit is not None:
+            command.extend(["--backlog-limit", str(backlog_limit)])
+    if r3_job_store is None and upcoming_dir is not None:
         command.extend(["--upcoming-dir", str(upcoming_dir)])
-    if shadow_run_dir is not None:
+    if r3_job_store is None and shadow_run_dir is not None:
         command.extend(["--shadow-run-dir", str(shadow_run_dir)])
     if current_time:
         command.extend(["--current-time", current_time])
-    if snapshot_dir is not None:
+    if r3_job_store is None and snapshot_dir is not None:
         command.extend(["--snapshot-dir", str(snapshot_dir)])
-    if require_ready_snapshot:
+    if r3_job_store is None and require_ready_snapshot:
         command.append("--require-ready-snapshot")
-    if include_live_odds_backlog:
+    if r3_job_store is None and include_live_odds_backlog:
         command.append("--include-live-odds-backlog")
         if backlog_evidence_root is not None:
             command.extend(["--backlog-evidence-root", str(backlog_evidence_root)])
@@ -7210,10 +7219,15 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         status["upcoming_dir"] = relpath(result_capture_upcoming_dir)
         status["shadow_run_dir"] = relpath(result_capture_shadow_dir)
         status["candidate_source"] = (
-            "shadow_run_predictions"
-            if result_capture_shadow_dir is not None
-            else "upcoming_or_snapshot"
+            "verified_r3_predictions" if args.r3_job_store is not None else
+            "shadow_run_predictions" if result_capture_shadow_dir is not None else
+            "upcoming_or_snapshot"
         )
+        if args.r3_job_store is not None:
+            status["upcoming_dir"] = None
+            status["shadow_run_dir"] = None
+            status["r3_job_store"] = str(args.r3_job_store)
+            status["r3_prediction_bundles"] = str(args.r3_prediction_bundles)
         return status
 
     if args.enable_autonomous_result_capture:
@@ -7236,6 +7250,8 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             backlog_shadow_run_limit=args.result_backlog_shadow_run_limit,
             backlog_lookback_days=args.result_backlog_lookback_days,
             execute_db_ingest=True,
+            r3_job_store=args.r3_job_store,
+            r3_prediction_bundles=args.r3_prediction_bundles,
         )
         autonomous_result_capture_status = add_autonomous_result_capture_context(
             build_autonomous_official_result_capture_status(
@@ -8741,6 +8757,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--execute-autonomous-odds-capture", action="store_true")
     parser.add_argument("--allow-auto-scrape-odds", action="store_true")
     parser.add_argument("--enable-autonomous-result-capture", action="store_true")
+    parser.add_argument("--r3-job-store", type=Path)
+    parser.add_argument("--r3-prediction-bundles", type=Path)
     parser.add_argument("--result-backlog-limit", type=int, default=DEFAULT_RESULT_BACKLOG_LIMIT)
     parser.add_argument(
         "--result-backlog-shadow-run-limit",
@@ -8753,6 +8771,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_RESULT_BACKLOG_LOOKBACK_DAYS,
     )
     args = parser.parse_args(argv)
+    if (args.r3_job_store is None) != (args.r3_prediction_bundles is None):
+        parser.error("--r3-job-store and --r3-prediction-bundles must be provided together")
+    if args.r3_job_store is not None and not args.enable_autonomous_result_capture:
+        parser.error("R3 result discovery requires --enable-autonomous-result-capture")
     if args.forward_baseline_config is not None and args.forward_corpus_root is None:
         parser.error(
             "--forward-baseline-config requires --forward-corpus-root"

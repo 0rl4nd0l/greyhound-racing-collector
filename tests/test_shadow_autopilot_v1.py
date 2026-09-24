@@ -4763,8 +4763,9 @@ def test_autonomous_live_odds_capture_runs_before_daily_shadow_run(tmp_path, mon
     assert daily_command[daily_command.index("--output-parent") + 1] == str(evidence_root)
 
 
+@pytest.mark.parametrize("r3", [False, True])
 def test_autonomous_official_result_capture_uses_fresh_step_time(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, r3
 ):
     evidence_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
     shadow_model = tmp_path / "shadow_model.joblib"
@@ -4823,7 +4824,7 @@ def test_autonomous_official_result_capture_uses_fresh_step_time(
             assert early_status["attempted"] is True
             assert early_status["in_progress"] is True
             assert early_status["target_date"] == "2026-06-12"
-            assert early_status["candidate_source"] == "shadow_run_predictions"
+            assert early_status["candidate_source"] == ("verified_r3_predictions" if r3 else "shadow_run_predictions")
             capture_dir = command_value(command, "--output-dir")
             autopilot.write_json(
                 capture_dir / "autonomous_official_result_capture_report.json",
@@ -4853,6 +4854,9 @@ def test_autonomous_official_result_capture_uses_fresh_step_time(
 
     args = autopilot.parse_args(
         [
+            *(["--r3-job-store", str(tmp_path / "r3-jobs.db"),
+               "--r3-prediction-bundles", str(tmp_path / "r3-bundles"),
+               "--skip-shadow-run"] if r3 else []),
             "--run-id",
             "fresh_result_time",
             "--evidence-root",
@@ -4875,11 +4879,15 @@ def test_autonomous_official_result_capture_uses_fresh_step_time(
 
     result = autopilot.run_autopilot(args)
 
-    daily_command = commands_by_step["daily_shadow_run"]
     result_command = commands_by_step["autonomous_official_result_capture"]
-    assert daily_command[daily_command.index("--current-time") + 1] == (
-        "2026-06-12T18:47:11+10:00"
-    )
+    if r3:
+        assert "daily_shadow_run" not in commands_by_step
+        assert result_command[result_command.index("--r3-job-store") + 1] == str(tmp_path / "r3-jobs.db")
+        assert result_command[result_command.index("--r3-prediction-bundles") + 1] == str(tmp_path / "r3-bundles")
+        assert all(flag not in result_command for flag in ("--shadow-run-dir", "--snapshot-dir", "--upcoming-dir", "--include-live-odds-backlog"))
+    else:
+        daily_command = commands_by_step["daily_shadow_run"]
+        assert daily_command[daily_command.index("--current-time") + 1] == "2026-06-12T18:47:11+10:00"
     assert result_command[result_command.index("--current-time") + 1] == (
         "2026-06-12T18:53:33+10:00"
     )
