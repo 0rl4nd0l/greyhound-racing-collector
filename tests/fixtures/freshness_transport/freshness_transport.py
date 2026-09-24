@@ -49,17 +49,23 @@ def install():
 
     upcoming_race_browser.UpcomingRaceBrowser.get_upcoming_races = upcoming
     upcoming_race_browser.UpcomingRaceBrowser.download_race_csv = download
-    if fixture["scenario"].startswith("source_denial_python"):
-        import requests
-        def response(adapter, request, **kwargs):
-            assert request.url.startswith("https://www.sportsbet.com.au/")
+    import requests
+    def response(adapter, request, **kwargs):
+        assert request.url.startswith("https://www.sportsbet.com.au/")
+        denied = fixture["scenario"].startswith("source_denial_python")
+        if denied:
             Path(fixture["transport_marker"]).write_text(str(os.getpid()))
-            result = requests.Response()
-            result.status_code = 429
-            result.headers = {"Retry-After": "60"}
-            result.request, result.url, result._content = request, request.url, b"{}"
-            return result
-        requests.adapters.HTTPAdapter.send = response
+        event = dict(id=12345678, classId="4", className="Greyhound Racing",
+                     competitionName="Murray Bridge Straight", raceNumber=9,
+                     startTime=datetime.fromisoformat(fixture["sidecar"]["prejump_shadow_metadata"]["jump_time"]).timestamp(),
+                     trackStatus="Good")
+        result = requests.Response()
+        result.status_code = 429 if denied else 200
+        result.headers = {"Retry-After": "60"} if denied else {}
+        result.request, result.url = request, request.url
+        result._content = json.dumps([event]).encode()
+        return result
+    requests.adapters.HTTPAdapter.send = response
 
     class Element:
         def __init__(self, node):

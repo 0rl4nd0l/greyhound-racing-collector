@@ -100,6 +100,17 @@ def test_actual_packaged_service_capture(tmp_path, scenario, campaign_mode, monk
 
     access = tmp_path / "sportsbet-access.json"
     SportsbetAccess(access).initialize(access_basis={"status": "permitted", "reference": "fabricated test"})
+    if os.environ.get("FRESHNESS_FIXTURE_OPERATING_POLICY") == "1":
+        gate = SportsbetAccess(access)
+        with gate.locked():
+            state = gate.read()
+            state["operating_policy"] = {
+                "reference": "synthetic exact bounded trial policy",
+                "python_per_60_seconds": 10, "browser_per_60_seconds": 1,
+                "browser_navigation_cap": 2,
+            }
+            state["operations"] = []
+            gate.write(state)
     if scenario.startswith("source_recovery"):
         SportsbetAccess(access, clock=lambda: time.time() - 1801).retain_denial(429)
     monkeypatch.setenv("GREYHOUND_SPORTSBET_ACCESS_STATE", str(access))
@@ -184,7 +195,7 @@ def test_actual_packaged_service_capture(tmp_path, scenario, campaign_mode, monk
     if scenario.startswith("source_denial"):
         # Both generated entrypoints contend with a real durable owner in another
         # process. Neither may construct a browser or consume a race/window.
-        with SportsbetAccess(access).operation("fabricated_source_owner"):
+        with SportsbetAccess(access).operation("python"):
             peers = []
             for name in ("shadow-autopilot.service", "shadow-autopilot-odds-capture.service"):
                 peer_command, peer_cwd, _ = service_command(package / "units" / name)
@@ -324,17 +335,29 @@ print('BOTH_ALIASES_VERIFIED')
         assert metrics["browser_navigation_attempts"] == 2
         assert metrics["observed_provider_requests"] == 2
         assert metrics["observed_other_requests"] == 0
-        if campaign:
+        if campaign and not (scenario == "source_recovery" and os.environ.get("FRESHNESS_FIXTURE_OPERATING_POLICY") == "1"):
             second = json.loads(json.dumps(data).replace("Race 9", "Race 10").replace("R9", "R10").replace("race-9-", "race-10-").replace("/9/", "/10/").replace('"race_number": 9', '"race_number": 10'))
             fixture.write_text(json.dumps(second))
             next_capture = subprocess.run([sys.executable, "-c", launcher, *odds_command], cwd=odds_cwd, env=env, text=True, capture_output=True, timeout=60)
-            assert next_capture.returncode == 0, next_capture.stdout + next_capture.stderr
+            policy_enabled = os.environ.get("FRESHNESS_FIXTURE_OPERATING_POLICY") == "1"
+            if policy_enabled:
+                # A different race is a new browser operation within 60 seconds.
+                # Preserve the real policy STOP, spent claim and first receipt.
+                assert next_capture.returncode != 0
+                state = SportsbetAccess(access).read()
+                assert state["phase"] == "STOP"
+                assert state["policy_stop"]["kind"] == "browser"
+                assert claims[0].read_bytes() == claim_bytes
+            else:
+                assert next_capture.returncode == 0, next_capture.stdout + next_capture.stderr
             all_claims = allowance.claims()
             assert len(all_claims) == 2
             with sqlite3.connect(db) as conn:
-                assert conn.execute("SELECT COUNT(*) FROM live_odds").fetchone()[0] == 16
+                assert conn.execute("SELECT COUNT(*) FROM live_odds").fetchone()[0] == (8 if policy_enabled else 16)
             with campaign.ledger() as ledger:
-                assert len(ledger["attempts"]) == 2 and ledger["logical_requests"] == 4
+                assert len(ledger["attempts"]) == 2
+                # Three refresh observations plus two/four browser navigations.
+                assert ledger["logical_requests"] == (5 if policy_enabled else 7)
 
         if scenario == "source_recovery":
             assert SportsbetAccess(access).read()["recovery_attempts"] == 1

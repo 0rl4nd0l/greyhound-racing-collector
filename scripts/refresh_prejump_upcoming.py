@@ -829,6 +829,8 @@ def download_selected_race(task: Mapping[str, Any]) -> dict[str, Any]:
     try:
         timing = RefreshRequestTiming(task["directory"]) if task.get("trace_requests") else None
         browser = _refresh_browser(timing)
+        if "sportsbet_next_events_snapshot" in task:
+            browser._sportsbet_next_events_snapshot = task["sportsbet_next_events_snapshot"]
         result = _timed_call(
             timing,
             "download",
@@ -985,6 +987,18 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
                 }
             )
         if tasks:
+            if deadline is None or time.monotonic() < deadline:
+                from utils.prejump_sportsbet import fetch_sportsbet_next_events_snapshot
+
+                # Each worker creates a browser per race. Fetch once in the
+                # refresh owner, preserving the observation time and rejection
+                # payload as well as valid data; workers must not retry it.
+                snapshot = _timed_call(
+                    timing, "sportsbet_snapshot", fetch_sportsbet_next_events_snapshot,
+                    session=browser.session,
+                )
+                for task in tasks:
+                    task["sportsbet_next_events_snapshot"] = snapshot
             downloads.extend(_timed_call(timing, "worker_pool_including_cleanup", _download_tasks, tasks))
 
     downloads_finished = time.monotonic()
