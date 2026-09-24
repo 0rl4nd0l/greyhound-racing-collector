@@ -7,6 +7,7 @@ waiting. The fallback is our engineering policy, not a provider recovery promise
 from contextlib import contextmanager
 from email.utils import parsedate_to_datetime
 import fcntl
+import hashlib
 import json
 import math
 import os
@@ -133,9 +134,44 @@ class SportsbetAccess:
         return (value["access_basis"]["status"] != "permitted"
                 or value["phase"] != "OPEN" or value["active"] is not None)
 
+    def authorize_diagnostic(self, *, reference, expected_sha256, expires_at,
+                             max_operations, rationale):
+        """Explicit prospective user authority; never automatic denial recovery."""
+        with self.locked():
+            value = self.read()
+            now = self.clock()
+            if (hashlib.sha256(self.path.read_bytes()).hexdigest() != expected_sha256
+                    or value['active'] is not None or value['access_basis']['status'] != 'permitted'
+                    or now < value['not_before']):
+                raise SportsbetAccessBlocked('diagnostic_authority_state_or_cooldown')
+            if (not reference or not rationale or not math.isfinite(expires_at)
+                    or not now < expires_at <= now + 10800
+                    or type(max_operations) is not int or not 1 <= max_operations <= 128):
+                raise ValueError('invalid_finite_diagnostic_authority')
+            row = dict(reference=reference, rationale=rationale, authorized_at=now,
+                       expires_at=expires_at, max_operations=max_operations,
+                       operation_start=len(value.get('operations', [])),
+                       prior_phase=value['phase'], prior_state_sha256=expected_sha256,
+                       prior_recovery_attempts=value['recovery_attempts'],
+                       prior_denial_count=len(value['denials']))
+            value.setdefault('diagnostic_authorizations', []).append(row)
+            value['diagnostic_authority'] = row
+            value.setdefault('operating_policy', dict(reference=reference,
+                python_per_60_seconds=10, browser_per_60_seconds=1, browser_navigation_cap=2))
+            value['phase'] = 'OPEN'
+            self.write(value)
+
+    def _check_diagnostic(self, value):
+        diagnostic = value.get('diagnostic_authority')
+        if diagnostic is not None and (
+                self.clock() >= diagnostic['expires_at']
+                or len(value.get('operations', [])) - diagnostic['operation_start'] >= diagnostic['max_operations']):
+            raise SportsbetAccessBlocked('sportsbet_diagnostic_bound_reached')
+
     def check_admission(self):
         """Read-only timer preflight; actual transport still claims under lock."""
         value = self.read()
+        self._check_diagnostic(value)
         if (value["access_basis"]["status"] != "permitted" or value["active"] is not None
                 or value["phase"] in {"STOP", "RECOVERY"}
                 or (value["phase"] == "COOLDOWN" and
@@ -184,7 +220,7 @@ class SportsbetAccess:
         })
         unclear_reset = any(key in guidance for key in ("ratelimit-reset", "x-ratelimit-reset"))
         value["phase"] = (
-            "STOP" if status != 429 or value["recovery_attempts"] or value["phase"] == "STOP" or unclear_reset
+            "STOP" if status != 429 or value["recovery_attempts"] or value["phase"] == "STOP" or unclear_reset or value.get('diagnostic_authority')
             else "COOLDOWN"
         )
         self.write(value)
@@ -193,6 +229,7 @@ class SportsbetAccess:
     def operation(self, kind):
         with self.locked():
             value = self.read()
+            self._check_diagnostic(value)
             if value["access_basis"]["status"] != "permitted":
                 raise SportsbetAccessBlocked("sportsbet_access_basis_" + value["access_basis"]["status"])
             if value["active"] is not None or value["phase"] in {"RECOVERY", "STOP"}:

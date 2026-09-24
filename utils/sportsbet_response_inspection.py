@@ -148,6 +148,8 @@ class ResponseInspection:
         self.dropped = 0
         self.websocket_frames = 0
         self.body_reads = 0
+        self.operation_id = None
+        self.network_responses = []
         self.mark("browser_start")
 
     def _stamp(self):
@@ -192,6 +194,28 @@ class ResponseInspection:
             if not self._open():
                 return
             method, params = event.get("method"), event.get("params", {})
+            if method == "Network.responseReceived" and len(self.network_responses) < 256:
+                from utils.sportsbet_access import is_sportsbet
+                from utils.http_client import source_retry_headers
+                response = params.get("response", {})
+                url = response.get("url", "")
+                if is_sportsbet(url):
+                    import hashlib
+                    parsed = urlsplit(url)
+                    resource = params.get("type", "unknown")
+                    route = safe_route(url)
+                    category = ("document" if resource == "Document" else
+                                "structured_data" if resource in {"XHR", "Fetch"} else
+                                "static_asset" if resource in {"Image", "Font", "Stylesheet"} else
+                                "script" if resource == "Script" else "unknown")
+                    self.network_responses.append({
+                        "host": parsed.hostname, "route": route,
+                        "path_sha256": hashlib.sha256(parsed.path.encode()).hexdigest(),
+                        "resource_type": resource, "category": category,
+                        "status": response.get("status"),
+                        "retry_headers": source_retry_headers(response.get("headers", {})),
+                        **self._stamp(),
+                    })
             if method == "Network.webSocketFrameReceived":
                 self.websocket_frames += 1
                 return  # Never inspect stream payloads or infer ordering.
@@ -324,6 +348,8 @@ class ResponseInspection:
                         "dropped_requests": self.dropped,
                         "websocket_frame_count": self.websocket_frames,
                         "body_reads": self.body_reads,
+                        "operation_id": self.operation_id,
+                        "network_responses": self.network_responses,
                         "marks": self.marks,
                         "responses": list(self.rows.values()),
                     }

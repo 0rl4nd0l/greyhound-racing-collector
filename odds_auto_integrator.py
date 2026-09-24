@@ -470,6 +470,14 @@ def fetch_odds_for_target_race(
         allow_auto_scrape_odds=True,
         setup_database=False,
     )
+    inspection = None
+    if os.environ.get("GREYHOUND_SPORTSBET_RESPONSE_INSPECTION") == "1":
+        if request_metrics_path is None:
+            raise ValueError("response_inspection_requires_evidence_path")
+        from datetime import datetime, timedelta, timezone
+        from utils.sportsbet_response_inspection import ResponseInspection
+        inspection = ResponseInspection(expires_at=datetime.now(timezone.utc) + timedelta(seconds=50))
+        integrator.response_inspection = inspection
     network_accounting = None
     try:
         if not integrator.setup_driver():
@@ -553,13 +561,21 @@ def fetch_odds_for_target_race(
             summary["warnings"].append("race found but no win odds extracted")
         if validate_result is not None and validate_result(summary):
             driver.sportsbet_accept_validated_data()
+        if inspection is not None:
+            driver.sportsbet_inspect_response_shapes()
         return summary
     finally:
         try:
             if network_accounting is not None:
                 network_accounting.drain()
         finally:
-            integrator.close_driver()
+            try:
+                integrator.close_driver()
+            finally:
+                if inspection is not None:
+                    from pathlib import Path
+                    from race_collection.live_phase_checkpoint import atomic_json
+                    atomic_json(Path(request_metrics_path).with_suffix(".responses.json"), inspection.report())
 
 
 def ensure_odds_for_target_race(

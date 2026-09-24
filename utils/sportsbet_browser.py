@@ -70,6 +70,8 @@ def stop_owned_processes(pid, birth, retained=None):
 def create_sportsbet_driver(factory, *, response_inspection=None, **kwargs):
     admission = SportsbetAccess().operation('browser')
     operation = admission.__enter__()
+    if response_inspection is not None:
+        response_inspection.operation_id = operation.value["active"]
     driver = connection = None
     expected_disconnect = threading.Event()
     observation_failed = threading.Event()
