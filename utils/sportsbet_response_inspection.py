@@ -21,6 +21,22 @@ _FIELDS = frozenset(
     "id eventId raceId marketId selectionId runnerId name eventName marketName runnerName competitionId competitionName raceNumber startTime status state active suspended closed scratched isScratched isSuspended isActive markets selections runners events prices price odds decimal win place fixed fixedWin fixedPlace numerator denominator places numberOfPlaces placeTerms timestamp sequence version data payload snapshot updates type".split()
 )
 
+# Endpoint names and field names only, from the pinned external racing review.
+# These do not assert a provider schema or enable acquisition/receipt acceptance.
+# Keep event IDs, dates, runner filters, all scalar values and unknown names
+# redacted. In particular, do not add results, form or account fields here.
+_ROUTE_TOKENS |= frozenset({
+    "AllRacing", "Racecard", "RacecardWithContext", "MultipleRacecards",
+})
+_FIELDS |= frozenset({
+    "dates", "meetingDate", "sections", "raceType", "meetings", "classId",
+    "racecardEvent", "racecardContext", "bettingStatus", "statusCode",
+    "marketType", "marketSort", "availablePriceTypes", "livePriceAvailable",
+    "numPlaces", "eachwayAvailable", "placeAvailable", "isDisplayed",
+    "runnerNumber", "drawNumber", "isOut", "priceCode", "winPrice",
+    "placePrice", "winPriceNum", "winPriceDen", "placePriceNum", "placePriceDen",
+})
+
 
 def safe_route(url):
     """Only gateway metadata; never persist credentials or arbitrary text."""
