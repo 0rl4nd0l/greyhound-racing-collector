@@ -249,6 +249,8 @@ def race_window_record(
         "date": race.get("date") or race.get("race_date"),
         "race_time": race.get("race_time") or race.get("jump_time"),
         "jump_datetime": jump_dt.isoformat() if jump_dt else None,
+        "race_time_source": race.get("race_time_source"),
+        "discovery_time_evidence": race.get("discovery_time_evidence"),
         "minutes_to_jump": minutes_to_jump,
         "bucket": bucket,
         "selected": bucket == "preferred_window",

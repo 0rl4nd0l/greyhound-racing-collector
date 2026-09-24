@@ -2126,6 +2126,11 @@ class UpcomingRaceBrowser:
                 else:
                     race_info["race_time_source"] = "canonical_race_url"
                     race_info["race_time_mapping_status"] = "missing_race_time"
+            if (race_info_hint or {}).get("race_time_source") == "exact_meeting_link":
+                meeting_clock = self._format_clock_time(race_info_hint.get("race_time"))
+                canonical_clock = self._format_clock_time(race_info.get("race_time"))
+                if not canonical_clock or canonical_clock != meeting_clock:
+                    return {"success": False, "error": "meeting_canonical_jump_changed"}
             race_discovery_key = str(
                 (race_info_hint or {}).get("race_discovery_key") or ""
             ).strip()

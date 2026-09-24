@@ -485,7 +485,7 @@ def test_rehearsal_failure_restores_exact_pair_and_does_not_reset_consumption(
     }
     monkeypatch.setattr(reconciliation, "reconcile", lambda **kwargs: accounting)
 
-    def fail(*args):
+    def fail(*args, **kwargs):
         if reserve_before_failure:
             run.atomic_json(Path(args[1]["evidence_root"]) / "shadow_autopilot_daemonization_v1_fixture/phase-checkpoint.json", {
                 "window_observations": [{"race_id": "unattempted", "capture_window_minutes": 10,
