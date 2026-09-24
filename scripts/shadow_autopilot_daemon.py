@@ -681,7 +681,14 @@ def write_full_daemon_lock_wait_report(
             "last_lock": dict(lock_details),
         },
     }
-    write_json(report_path, report)
+    if report.get("live_freshness_profile") == "bounded80-v1":
+        from race_collection.live_phase_checkpoint import atomic_json, native_publication_lock
+        # This writer runs while acquiring the collector lock, outside the
+        # live-cycle publication sections. Readers must see a complete packet.
+        with native_publication_lock(output_dir.parent, exclusive=True):
+            atomic_json(report_path, report)
+    else:
+        write_json(report_path, report)
     return report
 
 
@@ -1446,7 +1453,7 @@ def service_file_text(
                 f"ExecStart={service_python} {script_path} run-once "
                 f"{'--live-freshness ' if live_freshness else ''}{profile_segment}"
                 f"{evidence_root_segment}"
-                f"--days-ahead 1 --refresh-limit {DEFAULT_FULL_DAEMON_REFRESH_LIMIT} "
+                f"--days-ahead {0 if live_freshness_profile else 1} --refresh-limit {DEFAULT_FULL_DAEMON_REFRESH_LIMIT} "
                 f"{explicit_path_segment}"
                 "--enable-autonomous-odds-capture "
                 "--execute-autonomous-odds-capture "
@@ -1580,7 +1587,7 @@ def odds_capture_service_file_text(
                 f"ExecStart={service_python} {script_path} run-odds-capture-once "
                 f"{'--live-freshness ' if live_freshness else ''}{profile_segment}"
                 f"{evidence_root_segment}"
-                "--days-ahead 1 "
+                f"--days-ahead {0 if live_freshness_profile else 1} "
                 f"--refresh-limit {refresh_limit} "
                 f"--odds-capture-refresh-limit {refresh_limit} "
                 "--require-safe-refresh-metadata "

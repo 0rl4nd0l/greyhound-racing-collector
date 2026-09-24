@@ -368,6 +368,7 @@ def _sample_locked(plan, output, status_snapshot):
                 lane + "_active_state": observed["ActiveState"],
                 lane + "_sub_state": observed["SubState"],
                 lane + "_exec_main_pid": int(observed["MainPID"]),
+                lane + "_service_invocation_id": observed.get("InvocationID"),
             }
         )
     hashes = {key: hashlib.sha256(value).hexdigest() for key, value in raw.items()}

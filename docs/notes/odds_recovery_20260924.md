@@ -544,3 +544,71 @@ five body shapes were inspected. NextEvents exposed discovery field types, but
 no usable runner/market/price schema was established. Cached, truncated and
 uninspected responses remain unassessed. Verified odds still come from DOM
 extraction, not an invented API schema.
+
+Candidate fcaee954357cee0bd7eeebbb8ed9804035043017 ran unchanged from 20:35
+until 21:06:56.321679 AEST. It completed seven naturally eligible captures and
+seven independently verified pre-jump predictions: WPK R6/R7, GUNN R7/R8,
+SAN R6/R7 and WRGL R11. Each passed all 28 chain checks, including complete
+paired markets (5–8 runners), retained inputs, frozen model/configuration and
+original verification 411.251–548.756 seconds before jump. Processing took
+3.991481–4.431709 seconds; capture phases took 13.479240–15.830643 seconds.
+There were 339 recorded browser responses, all HTTP200, with zero drops.
+Seven-chain audit SHA256 35dc7cd2d62fee74f6360364d9b39eb6f233f77160afbca984646aa49e905f74.
+
+One full cycle and 29 odds cycles completed. The full cycle waited 55 seconds
+for the odds refresh owner, acquired only after that owner released, and
+completed successfully. Independent handoff audit SHA256
+d7b257dd6fcdd2b5970db22abd5d78d690f6bee641fbb9037b816796a1882720.
+At the midpoint, authenticated source age ranged 41.991478–148.153598 seconds.
+Refreshes overlapping prediction took 43.813214–55.282046 seconds; other
+refreshes took 41.278807–79.437260 seconds. This sample supplies no evidence of
+prediction processing materially delaying collection. Twelve of thirteen
+selected races supplied CSVs; eight had usable native/index inputs at least once.
+Some exclusions remain `scratched_runner_has_active_price`; the failing odds
+HTML/API bodies were not retained, so source-vs-parser cause remains unknown.
+
+The second full-lane start exposed a separate native status defect and ended
+the observation, not a provider denial. The full daemon's legitimate
+WAITING_LOCK_HELD / DAEMON_WAITING_FOR_ODDS_CAPTURE_LOCK report describes the
+odds peer that owns the lock. The generic native active-owner check rejects
+that different run as DIVERGENT. That guard dates to d5e1c9862; first-cycle
+missing state masked it before a completed full state existed. The exact failed
+sample is 000958.json, with a fresh 78.276565-second index and live service PIDs.
+The repair must authenticate the actual peer and finite wait; arbitrary foreign
+owners must still be rejected. Service MainPID is a wrapper, so collector child
+PID must be bound through its recorded service invocation and peer report.
+
+The failed observation and STOP are preserved. Restoration finished at
+21:11:00.655155 AEST: all original unit hashes restored, timers held, R3 unchanged.
+Campaign totals remain 31 captures, 26,953 logical requests and 12,416.703484
+charged seconds; source totals are 167 operations and four historical denials,
+OPEN with no active owner. The existing remaining 5,583.296516 seconds cover
+another 60-minute observation and the unchanged 31-minute cleanup reserve.
+No campaign consumption is reset.
+
+The prospective handoff repair binds the collector child to the observed
+systemd invocation and retained peer report, rather than equating the wrapper
+MainPID with its child. The bounded waiting report is published atomically under
+the existing native publication mutex. The observer accepts an authenticated
+active peer, or its completed handoff only while the same peer's verified index
+remains fresh. Foreign ownership, wrong invocation, stale publication and
+expired waits remain rejected. The ordinary R3 binding schema and installed
+service are unchanged; the temporary packaged supervisor supplies invocation
+identity to this opt-in profile.
+
+A generated-service regression creates prior completed full state, starts an
+actual odds wrapper and collector child, then starts the second full wrapper
+while the child owns the lock. Fabricated HTTP transport supplies a deterministic
+barrier; kernel network denial applies to the process tree. The native observer
+must recognize the handoff and both generated services must finish successfully.
+This tests the second-cycle seam that the first successful full cycle missed.
+
+The regression also checks the completed-peer gap and reverse odds deferral
+behind a full collector child. The same invocation-bound child check repairs
+that direction. Focused validation passed 28 ownership, publication-mutex and
+discovery-date controls. The late-evening fixture exposed a separate concrete
+configuration mismatch: default 160-minute discovery plus days-ahead=1 crosses
+midnight after 21:20, while this contract seals one source date. Both opt-in
+service renderers now request days-ahead=0; legacy services keep days-ahead=1.
+The red test reproduced both incorrect generated commands. No additional dates
+or weakened freshness limits are authorized by this change.
