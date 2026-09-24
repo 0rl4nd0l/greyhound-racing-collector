@@ -201,3 +201,65 @@ batching N racecards could reduce N logical fetches to one if completeness and
 freshness are verified. None proves a ten-second speedup, provider permission,
 full-day coverage or sustainable live capacity. #187 already removes repeated
 NextEvents reads within a refresh; do not count those savings again.
+
+## Follow-up: owner-recorded 14:40 browser attempt, local inspection only
+
+The main owner supplied a recorder from candidate `e07ab93e`. This investigation
+made no provider request or browser attachment. Read-only JSON inspection used:
+
+```
+/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/artifacts/full_evidence_orchestration_20260525/shadow_autopilot_daemon_runtime/live-freshness-attempts-v1/rehearsal-1607afa2e341f7dd41321aceb2a1d45d125a84047273fc6f86bfccab0dbf3ed8/captures/5cefded090bc4ffa9408983734116b9a/capture-reservation.requests.responses.json
+SHA256 56cf1f11736de1ea3106a2e0488d2e48e0b67473cdc17a50c6762d197043661d
+```
+
+Directly verified metadata:
+
+- 53 network response records, nine gateway response records, zero dropped
+  requests/responses, **zero body reads**, zero observed WebSocket frames.
+- Three Document responses: HTTP 200 at local elapsed 1.3436s, HTTP 200 at
+  8.7015s, HTTP 429 at 19.6449s. The owner identifies the last as
+  `/{uuid}/{uuid}/fp`; this recorder retains only its path hash
+  `292b2011ef38576baca1e65126565729016d25423ad75da24f7009e11a6882b0`.
+  It records Date `Thu, 24 Sep 2026 04:41:14 GMT`, no Retry-After.
+- First NextEvents response: HTTP 200, noncached, 9,609 encoded bytes. Second:
+  HTTP 200, **from_cache=true**, zero encoded bytes, no service-worker flag.
+  These are not two independently fresh upstream observations.
+- Browser `146.0.7680.153`, driver `146.0.7680.165`; count-only snapshot has nine
+  runner elements and zero price elements. These selectors are not market
+  validators. The owner independently reports actual generic-button extraction
+  of five WIN and five paired PLACE rows before denial; this investigation did
+  not inspect those values or establish receipt acceptance.
+
+**What `/fp` means:** a fingerprint/challenge document is a plausible hypothesis,
+not established vendor attribution. Neither inspected local implementation nor
+pinned external Sportsbet source documents this path. `Document` is a browser
+resource classification, not proof that it was the top-level document, an iframe,
+a required pricing resource, or dispensable telemetry. The recorder lacks
+frameId/loaderId/initiator/frame-parent relationships and redirect chains needed
+to resolve that distinction. A suffix and two UUID-shaped segments cannot justify
+ignoring the denial or changing its ownership/backoff treatment. The owner retains
+shared STOP and sole provider ownership.
+
+**Embedded odds:** plausible but unproven. No Racecard route is visible in the
+recorded responses, but the observation is bounded, same-Sportsbet-host scoped,
+and not a page/stream completeness inventory. With zero retained body shapes,
+absence of a Racecard fetch does not distinguish server-rendered HTML, embedded
+hydration state, another transport/host, preexisting cache or stream delivery.
+Zero observed WebSocket frames likewise cannot prove no stream exists. The
+owner-reported paired DOM rows establish that prices reached the rendered page;
+they do not identify the transport or prove complete provider market semantics.
+The current JSON-LD parser (`sportsbet_odds_integrator.py`,
+`extract_race_info_from_json_ld`) explicitly initializes empty odds and extracts
+only event metadata. Its separate page-source regex extracts race number only.
+Neither is an embedded-price implementation.
+
+Useful offline next step for the main repair owner: replace obsolete readiness
+selectors with a predicate built on the existing paired-row extraction contract,
+then exercise delayed/partial/scratched/suspended fixtures. Preserve denial STOP,
+reservation consumption and final validation even when DOM rows arrive first.
+No measured latency saving follows from the configured waits alone. If a later
+observation is authorized, bounded frame/request attribution and a value-free
+inventory of embedded script field names would answer the transport question
+without retaining raw HTML, outcomes, credentials or scripts. Do not replay or
+suppress `/fp`, attach to a live browser, or take another provider request for
+this follow-up. No new adapter is justified by this recorder.
