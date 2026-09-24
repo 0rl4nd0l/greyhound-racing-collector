@@ -23,9 +23,11 @@ UNITS = (
 
 
 def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False, observation_minutes=90):
-    if (type(observation_minutes) is not int or observation_minutes not in (60, 90)
-            or (observation_minutes == 60 and not (campaign_root and operational_predictions))):
+    operational = bool(campaign_root and operational_predictions)
+    if (type(observation_minutes) is not int
+            or not (10 <= observation_minutes <= 90 if operational else observation_minutes == 90)):
         raise ValueError("invalid_operational_observation_duration")
+    short_observation = observation_minutes < 60
     output = output.absolute()
     output.mkdir(parents=True, exist_ok=False, mode=0o700)
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
@@ -98,6 +100,13 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         state_path=runtime / "odds_capture_state.json",
         refresh_limit=16,
     )
+    if short_observation:
+        timer_path = output / "units" / UNITS[1]
+        timer = timer_path.read_text()
+        expected = f"OnActiveSec={daemon.DEFAULT_TIMER_FREQUENCY}"
+        if timer.count(expected) != 1:
+            raise ValueError("unexpected_full_timer_start")
+        timer_path.write_text(timer.replace(expected, "OnActiveSec=1s"))
     service_checks = {}
     for name in (UNITS[0], UNITS[2]):
         completed = subprocess.run(
@@ -158,7 +167,9 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         "cleanup_seconds": 1860 if campaign else 1200,
         "sample_period_seconds": 2,
         "max_sample_gap_seconds": 5,
-        "readiness_warmup_seconds": 1200,
+        "readiness_warmup_seconds": 180 if short_observation else 1200,
+        **({"minimum_completed_full_cycles": 1, "minimum_distinct_captures": 1}
+           if short_observation else {}),
         "first_index_deadline_seconds": 180,
         "profile": "bounded80-v1",
         "max_capture_attempts": campaign.value['max_capture_attempts'] if campaign else 1,
@@ -215,7 +226,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--campaign-root", type=Path)
     parser.add_argument("--operational-predictions", action="store_true")
-    parser.add_argument("--observation-minutes", type=int, choices=(60, 90), default=90)
+    parser.add_argument("--observation-minutes", type=int, default=90)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--start", required=True)
     parser.add_argument("--python", type=Path, required=True)

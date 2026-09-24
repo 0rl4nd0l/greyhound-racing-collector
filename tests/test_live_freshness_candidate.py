@@ -1216,7 +1216,7 @@ def test_clock_retry_rejects_unrelated_or_unauthenticated_failures(change):
     assert not _clock_boundary_rejection(value)
 
 
-@pytest.mark.parametrize("minutes, operational", [(60, False), (59, True), (61, True), (91, True)])
+@pytest.mark.parametrize("minutes, operational", [(60, False), (9, True), (10.5, True), (91, True), (0, True)])
 def test_short_observation_requires_exact_operational_duration(tmp_path, minutes, operational):
     from datetime import timedelta
     from race_collection.live_freshness_contract import FreshnessContract

@@ -99,12 +99,15 @@ class FreshnessContract:
             raise ValueError("invalid_freshness_contract")
         self.start = datetime.fromisoformat(value["starts_at"])
         self.end = datetime.fromisoformat(value["ends_at"])
-        allowed_durations = (3600, 5400) if (value.get("campaign_root") and
-            value.get("operational_predictions")) else (5400,)
+        if self.start.utcoffset() is None or self.end.utcoffset() is None:
+            raise ValueError("invalid_scope_duration")
+        duration = (self.end - self.start).total_seconds()
+        operational = bool(value.get("campaign_root") and value.get("operational_predictions"))
+        valid_duration = (600 <= duration <= 5400 and duration % 60 == 0) if operational else duration == 5400
         if (
             self.start.utcoffset() is None
             or self.end.utcoffset() is None
-            or (self.end - self.start).total_seconds() not in allowed_durations
+            or not valid_duration
         ):
             raise ValueError("invalid_scope_duration")
         zone = ZoneInfo("Australia/Melbourne")
