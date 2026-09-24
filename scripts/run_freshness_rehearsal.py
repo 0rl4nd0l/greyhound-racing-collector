@@ -294,6 +294,8 @@ def _sample_once(plan, output, control):
     result['status_probe_seconds'] = status_elapsed
     result['publication_lock_wait_seconds'] = waited
     result['monotonic_start'] = started
+    result['monotonic_end'] = time.monotonic()
+    result['read_end'] = now().isoformat()
     # Retain the complete read/wait interval; native validation uses the clock
     # sampled after acquisition, never an artificially advanced timestamp.
     result['read_start'] = wall_started.isoformat()

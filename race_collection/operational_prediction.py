@@ -69,16 +69,19 @@ def classify_unready_capture(claim_path, result, evidence, source_root):
         return None
     attempt = attempts[0]
     fetch = attempt.get("fetch_result", {})
-    marker = "target_race_not_visible_within_navigation_allowance"
+    markers = {
+        "sportsbet_landing_exact_race_unavailable": "target_race_not_visible_within_navigation_allowance",
+        "sportsbet_exact_race_paired_markets_unready": "required_paired_markets_not_ready_within_readiness_budget",
+    }
+    marker = markers.get(fetch.get("discovery_method"))
     item = reserved["item"]
-    if (attempt.get("race_id") != item["race_id"]
+    if (marker is None or attempt.get("race_id") != item["race_id"]
             or attempt.get("capture_window_minutes") != item["capture_window_minutes"]
             or attempt.get("status") != "BLOCKED_VALIDATION_FAILED"
             or attempt.get("inserted_rows") != 0
             or fetch.get("success") is not False or fetch.get("write_performed") is not False
             or fetch.get("warnings") != [marker]
-            or fetch.get("win_count") != 0 or fetch.get("place_count") != 0
-            or fetch.get("discovery_method") != "sportsbet_landing_exact_race_unavailable"):
+            or fetch.get("win_count") != 0 or fetch.get("place_count") != 0):
         return None
     fetch_at = datetime.fromisoformat(attempt["fetch_time"])
     if fetch_at < datetime.fromisoformat(reserved["reserved_at"]):

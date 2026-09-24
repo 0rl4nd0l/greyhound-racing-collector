@@ -846,6 +846,113 @@ def test_race_page_recovers_win_and_place_from_second_explicit_paired_render(
     ]
 
 
+@pytest.mark.parametrize("scenario", ["delayed_pairs", "single_win", "denied", "denied_after_poll", "timeout_poll", "timeout_discovery", "timeout_scroll", "legacy"])
+def test_operational_paired_readiness_is_bounded_and_source_guarded(tmp_path, monkeypatch, scenario):
+    from datetime import datetime, timedelta, timezone
+    from scripts.autonomous_live_odds_capture import FetchTimeoutError
+    from utils.sportsbet_access import SportsbetAccessBlocked
+    from utils.sportsbet_response_inspection import ResponseInspection
+    import sportsbet_odds_integrator as module
+
+    elapsed = [0.0]
+    base = datetime(2026, 9, 24, tzinfo=timezone.utc)
+    cards = [_FakeSportsbetCard(box, name, "3.00") for box, name in enumerate(
+        ["Fixture Alpha", "Fixture Bravo", "Fixture Charlie", "Fixture Delta"], 1)]
+    checks, selections, waits = [], [], []
+
+    class Driver(_FakeSportsbetRunnerCardDriver):
+        @property
+        def title(self):
+            if scenario == "timeout_discovery":
+                raise FetchTimeoutError("fixture capture deadline")
+            return "Synthetic race"
+
+        def get(self, url):
+            self.current_url = url
+
+        def execute_script(self, *args):
+            if scenario == "timeout_scroll" and "scrollIntoView" in args[0]:
+                raise FetchTimeoutError("fixture capture deadline")
+            return "complete"
+
+        def find_elements(self, by, selector):
+            if scenario == "timeout_poll" and by == _FakeSportsbetBy.XPATH:
+                raise FetchTimeoutError("fixture capture deadline")
+            if scenario == "timeout_scroll" or scenario == "delayed_pairs" and elapsed[0] >= 0.5:
+                for card in cards:
+                    if "EW" not in card.text:
+                        card.text += "\n1.50\nEW"
+            return super().find_elements(by, selector)
+
+        def sportsbet_check_access(self):
+            checks.append(elapsed[0])
+            if scenario == "denied" or (scenario == "denied_after_poll" and len(checks) == 2):
+                raise SportsbetAccessBlocked("sportsbet_source_hold")
+
+    class Wait:
+        def __init__(self, driver, timeout):
+            self.driver = driver
+            waits.append(timeout)
+
+        def until(self, condition):
+            return condition(self.driver)
+
+    integrator = SportsbetOddsIntegrator(str(tmp_path / "unused.sqlite"), setup_database=False)
+    integrator.driver = Driver(cards)
+    monkeypatch.setattr(module.time, "monotonic", lambda: elapsed[0])
+    monkeypatch.setattr(module.time, "sleep", lambda seconds: elapsed.__setitem__(0, elapsed[0] + seconds))
+    monkeypatch.setattr(integrator, "_selenium_primitives", lambda: (
+        _FakeSportsbetBy, Wait, _FakeSportsbetEC, TimeoutError,
+    ))
+    monkeypatch.setattr(integrator, "extract_race_number_from_page", lambda _venue: 1)
+    monkeypatch.setattr(integrator, "_select_place_market", lambda: selections.append(None))
+    if scenario != "legacy":
+        integrator.response_inspection = ResponseInspection(
+            expires_at=base + timedelta(seconds=50),
+            clock=lambda: base + timedelta(seconds=elapsed[0]), monotonic=lambda: elapsed[0],
+        )
+    race = {"race_id": "synthetic", "venue": "Synthetic", "race_number": 1,
+            "race_date": date(2026, 9, 24),
+            "venue_url": "https://www.sportsbet.com.au/greyhound-racing/australia-nz/synthetic/race-1-12345678"}
+    if scenario in {"denied", "denied_after_poll"}:
+        with pytest.raises(SportsbetAccessBlocked):
+            integrator.get_race_odds_from_page(race)
+        assert elapsed[0] == 0
+        assert selections == []
+        return
+    if scenario.startswith("timeout_"):
+        with pytest.raises(FetchTimeoutError, match="fixture capture deadline"):
+            integrator.get_race_odds_from_page(race)
+        assert "operational_coverage_warning" not in race
+        assert "paired_readiness_expired" not in str(integrator.response_inspection.report())
+        assert not selections
+        return
+    result = integrator.get_race_odds_from_page(race)
+    if scenario == "legacy":
+        assert len(result["odds_data"]) == 4
+        assert selections == [None]
+        assert 12 in waits
+        assert not checks
+        return
+    assert not selections
+    assert waits == [10]
+    snapshots = integrator.response_inspection.report()["paired_readiness"]
+    assert len(snapshots) == 2
+    assert [s["boundary"] for s in snapshots] == ["start", "end"]
+    assert all(s["card_count"] == s["single_header_count"] == 4 for s in snapshots)
+    assert "Fixture Alpha" not in str(snapshots)
+    if scenario == "delayed_pairs":
+        assert len(result["odds_data"]) == len(result["odds_data_place"]) == 4
+        assert elapsed[0] == 0.5
+        assert snapshots[0]["paired_card_count"] == 0
+        assert snapshots[1]["paired_card_count"] == 4
+    else:
+        assert elapsed[0] == 5
+        assert not result.get("odds_data") and not result.get("odds_data_place")
+        assert result["operational_coverage_warning"] == "required_paired_markets_not_ready_within_readiness_budget"
+        assert all(s["paired_card_count"] == 0 for s in snapshots)
+
+
 def test_alias_odds_copy_rolls_back_when_metadata_upsert_fails(tmp_path, monkeypatch):
     import sportsbet_odds_integrator as odds_module
 

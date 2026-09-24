@@ -552,6 +552,19 @@ def fetch_odds_for_target_race(
         alias = _alias_race_id(int(race_number), venue, target_date)
         summary["race_id"] = source_race_id
         summary["alias_race_id"] = alias
+        coverage_warning = enhanced.get("operational_coverage_warning")
+        if coverage_warning is not None:
+            if (inspection is None or coverage_warning !=
+                    "required_paired_markets_not_ready_within_readiness_budget"
+                    or enhanced.get("odds_data") or enhanced.get("odds_data_place")):
+                raise ValueError("invalid_operational_coverage_marker")
+            driver.sportsbet_check_access()
+            summary["warnings"] = [coverage_warning]
+            summary["discovery_method"] = "sportsbet_exact_race_paired_markets_unready"
+            # Inspect only already delivered bodies. A concurrent denial still
+            # raises and cannot become a harmless coverage miss.
+            driver.sportsbet_inspect_response_shapes()
+            return summary
         summary["win_count"] = len(enhanced.get("odds_data") or [])
         summary["place_count"] = len(enhanced.get("odds_data_place") or [])
         summary["race_info"] = dict(enhanced)

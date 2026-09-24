@@ -25,6 +25,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import requests
 
 from utils.http_client import get_shared_session
+from utils.sportsbet_access import SportsbetAccessBlocked
 
 try:
     from config.venue_mapping import normalize_venue
@@ -1454,7 +1455,8 @@ class SportsbetOddsIntegrator:
                     if race_info.get("race_number") is not None
                     else None
                 )
-            except Exception:
+            except Exception as exc:
+                self._raise_operational_abort(exc)
                 desired_rn = None
 
             if desired_rn is not None:
@@ -1505,6 +1507,7 @@ class SportsbetOddsIntegrator:
                         print(f"  🎯 Discovered race URL from venue page: {discovered}")
                         self.driver.get(discovered)
             except Exception as _e_discover:
+                self._raise_operational_abort(_e_discover)
                 print(f"  ⚠️  Venue-to-race discovery skipped: {_e_discover}")
 
             # Wait for page to load
@@ -1512,12 +1515,23 @@ class SportsbetOddsIntegrator:
                 WebDriverWait(self.driver, 10).until(
                     lambda driver: driver.execute_script("return document.readyState") == "complete"
                 )
-            except TimeoutException:
+            except TimeoutException as exc:
+                self._raise_operational_abort(exc)
                 print(f"  ⚠️  Timeout waiting for page to load")
 
             # Give additional time for dynamic content to load
             print(f"  ⏳ Waiting for dynamic content to load...")
-            time.sleep(5)
+            operational = getattr(self, "response_inspection", None) is not None
+            if not operational:
+                time.sleep(5)
+            if operational and not self._wait_for_required_paired_cards():
+                self.driver.sportsbet_check_access()
+                race_info["odds_data"] = []
+                race_info["odds_data_place"] = []
+                race_info["operational_coverage_warning"] = (
+                    "required_paired_markets_not_ready_within_readiness_budget"
+                )
+                return race_info
 
             # Debug: Print page info
             print(f"  🔍 Page loaded: {self.driver.title}")
@@ -1531,15 +1545,15 @@ class SportsbetOddsIntegrator:
             # Strategy 1: Look for runner cards with odds
             odds_data = self.extract_odds_strategy_runner_cards()
 
-            if not odds_data:
+            if not odds_data and not operational:
                 # Strategy 2: Try to match runners with separate odds buttons
                 odds_data = self.extract_odds_strategy_separate_buttons()
 
-            if not odds_data:
+            if not odds_data and not operational:
                 # Strategy 3: Look for table-based odds display
                 odds_data = self.extract_odds_strategy_table()
 
-            if not odds_data:
+            if not odds_data and not operational:
                 # Strategy 4: Look for any elements with odds-like patterns
                 odds_data = self.extract_odds_strategy_generic()
 
@@ -1564,7 +1578,8 @@ class SportsbetOddsIntegrator:
                         race_date_str = (
                             race_info.get("start_datetime") or datetime.now()
                         ).strftime("%Y%m%d")
-                    except Exception:
+                    except Exception as exc:
+                        self._raise_operational_abort(exc)
                         race_date_str = datetime.now().strftime("%Y%m%d")
                     # Prefer discovered meeting slug for race_id if available
                     meeting_slug_from_url = self._extract_meeting_slug_from_url(
@@ -1593,7 +1608,7 @@ class SportsbetOddsIntegrator:
                 )
                 race_info["odds_data_place"] = paired_place_odds
                 race_info["place_topN"] = 3
-            else:
+            elif not operational:
                 # A second complete runner-card render can appear only after a
                 # market interaction. The click is not market proof: accept the
                 # second render only when each row still carries explicit paired
@@ -1617,36 +1632,83 @@ class SportsbetOddsIntegrator:
                     else:
                         print("  ℹ️  No source-proven paired PLACE market odds detected")
                 except Exception as _pe:
+                    self._raise_operational_abort(_pe)
                     print(f"  ⚠️  PLACE market extraction failed: {_pe}")
 
             # NOTE: Do not persist here. Callers must persist exactly once via save_odds_to_database(race_info)
             return race_info
 
         except Exception as e:
+            self._raise_operational_abort(e)
             print(f"  ⚠️  Error extracting odds from race page: {e}")
             return race_info
 
+    def _raise_operational_abort(self, error):
+        """Never turn a source hold or capture deadline into an extraction miss."""
+        if getattr(self, "response_inspection", None) is not None and isinstance(
+            error, (SportsbetAccessBlocked, TimeoutError)
+        ):
+            raise error
+
     def _rendered_paired_cards_ready(self) -> bool:
         """Readiness only; capture still validates the complete expected field."""
+        counts = self._rendered_paired_card_counts()
+        return (counts["card_count"] > 0
+                and counts["paired_card_count"] == counts["card_count"]
+                and counts["unique_box_count"] == counts["card_count"])
+
+    def _rendered_paired_card_counts(self):
         By, _, _, _ = self._selenium_primitives()
+        counts = dict(card_count=0, single_header_count=0, paired_card_count=0, unique_box_count=0)
         try:
             cards = self.driver.find_elements(
                 By.XPATH,
                 "//*[contains(@data-automation-id,'racecard-outcome-name')]/ancestor::*[contains(@data-automation-id,'racecard-outcome')][1]",
             )
-            if not cards:
-                return False
+            counts["card_count"] = len(cards)
             boxes = []
             for card in cards:
                 text = card.text
                 box = parse_sportsbet_runner_box_from_text(text)
-                if (sportsbet_runner_header_count(text) != 1 or box is None
-                        or sportsbet_paired_fixed_prices(text) is None):
-                    return False
-                boxes.append(box)
-            return len(boxes) == len(set(boxes))
-        except Exception:
-            return False
+                single = sportsbet_runner_header_count(text) == 1
+                counts["single_header_count"] += int(single)
+                if box is not None:
+                    boxes.append(box)
+                if single and box is not None and sportsbet_paired_fixed_prices(text) is not None:
+                    counts["paired_card_count"] += 1
+            counts["unique_box_count"] = len(set(boxes))
+        except SportsbetAccessBlocked:
+            raise
+        except Exception as exc:
+            self._raise_operational_abort(exc)
+            # A stale or unreadable DOM cannot establish readiness.
+            counts["paired_card_count"] = 0
+        return counts
+
+    def _wait_for_required_paired_cards(self):
+        """Bound one operational observation, without claiming market absence."""
+        inspection = self.response_inspection
+        deadline = time.monotonic() + 5.0
+        first = True
+        while True:
+            self.driver.sportsbet_check_access()
+            counts = self._rendered_paired_card_counts()
+            self.driver.sportsbet_check_access()
+            if first:
+                inspection.record_paired_readiness("start", counts)
+                first = False
+            ready = (counts["card_count"] > 0
+                     and counts["paired_card_count"] == counts["card_count"]
+                     and counts["unique_box_count"] == counts["card_count"])
+            remaining = deadline - time.monotonic()
+            ready = ready and remaining >= 0
+            if ready or remaining <= 0:
+                inspection.record_paired_readiness("end", counts)
+                if not ready:
+                    inspection.mark("paired_readiness_expired")
+                self.driver.sportsbet_check_access()
+                return ready
+            time.sleep(min(0.25, remaining))
 
     def extract_odds_strategy_runner_cards(self) -> List[Dict]:
         """Extract odds using robust Sportsbet-specific DOM selectors with comprehensive fallbacks"""
@@ -1661,6 +1723,10 @@ class SportsbetOddsIntegrator:
             # recognizes every visible row. This does not certify field coverage.
             paired_ready = self._rendered_paired_cards_ready()
             inspection = getattr(self, "response_inspection", None)
+            if inspection is not None:
+                self.driver.sportsbet_check_access()
+                if not paired_ready:
+                    return []
             if paired_ready and inspection is not None:
                 inspection.mark("paired_rows_ready")
             # Enhanced wait for dynamic content with multiple selectors
@@ -1674,7 +1740,8 @@ class SportsbetOddsIntegrator:
                         )
                     )
                 print(f"    ✅ Price elements loaded successfully")
-            except TimeoutException:
+            except TimeoutException as exc:
+                self._raise_operational_abort(exc)
                 print(f"    ⚠️  Timeout waiting for price elements, trying alternative selectors...")
                 # Try alternative wait selectors
                 try:
@@ -1687,7 +1754,8 @@ class SportsbetOddsIntegrator:
                         )
                     )
                     print(f"    ✅ Alternative price elements found")
-                except TimeoutException:
+                except TimeoutException as exc:
+                    self._raise_operational_abort(exc)
                     print(f"    ⚠️  No price elements found, proceeding anyway...")
 
             # Additional wait time for complex loading
@@ -1710,7 +1778,7 @@ class SportsbetOddsIntegrator:
                 print(
                     f"  ⚠️  No Sportsbet runner containers found, falling back to broader approach..."
                 )
-                return self._extract_from_broader_containers()
+                return [] if inspection is not None else self._extract_from_broader_containers()
 
             print(f"  📊 Found {len(candidate_cards)} Sportsbet runner containers")
 
@@ -1720,6 +1788,8 @@ class SportsbetOddsIntegrator:
             discovered_runner_keys = set()
 
             for i, card in enumerate(candidate_cards):
+                if inspection is not None:
+                    self.driver.sportsbet_check_access()
                 print(f"  🐕 Processing runner card {i+1}/{len(candidate_cards)}...")
 
                 # Ensure element is in view (handles virtualization/lazy rendering)
@@ -1727,7 +1797,8 @@ class SportsbetOddsIntegrator:
                     self.driver.execute_script(
                         "arguments[0].scrollIntoView({block: 'center'});", card
                     )
-                except Exception:
+                except Exception as exc:
+                    self._raise_operational_abort(exc)
                     pass
 
                 # Extract dog name with multiple fallback strategies
@@ -1737,7 +1808,8 @@ class SportsbetOddsIntegrator:
                     cleaned = self.clean_dog_name(dog_name)
                     try:
                         runner_text = card.text.strip()
-                    except Exception:
+                    except Exception as exc:
+                        self._raise_operational_abort(exc)
                         runner_text = dog_name
                     if sportsbet_runner_header_count(runner_text) > 1:
                         print(
@@ -1833,9 +1905,12 @@ class SportsbetOddsIntegrator:
                 return odds_data
             else:
                 print(f"  ⚠️  No complete runner data extracted, trying fallback strategies...")
-                return self._extract_from_broader_containers()
+                return [] if inspection is not None else self._extract_from_broader_containers()
 
         except Exception as e:
+            self._raise_operational_abort(e)
+            if getattr(self, "response_inspection", None) is not None:
+                return []
             print(f"  ⚠️  Error in robust Sportsbet runner card strategy: {e}")
             # Fallback to broader container approach
             return self._extract_from_broader_containers()
@@ -1862,6 +1937,7 @@ class SportsbetOddsIntegrator:
                 print(f"    📝 Found dog name (primary): '{raw_name}' -> '{dog_name}'")
                 return dog_name
         except Exception as e:
+            self._raise_operational_abort(e)
             print(f"    ⚠️  Primary dog name selector failed for card {card_number}: {e}")
 
         # Strategy 2: Fallback to .runnerInfo class
@@ -1877,6 +1953,7 @@ class SportsbetOddsIntegrator:
                         print(f"    📝 Found dog name (runnerInfo): '{text}' -> '{dog_name}'")
                         return dog_name
         except Exception as e:
+            self._raise_operational_abort(e)
             print(f"    ⚠️  runnerInfo fallback failed for card {card_number}: {e}")
 
         # Strategy 3: Fallback to .outcomeName class
@@ -1889,6 +1966,7 @@ class SportsbetOddsIntegrator:
                 print(f"    📝 Found dog name (outcomeName): '{text}' -> '{dog_name}'")
                 return dog_name
         except Exception as e:
+            self._raise_operational_abort(e)
             print(f"    ⚠️  outcomeName fallback failed for card {card_number}: {e}")
 
         # Strategy 4: Look for any data-automation-id containing 'name'
@@ -1905,6 +1983,7 @@ class SportsbetOddsIntegrator:
                         )
                         return dog_name
         except Exception as e:
+            self._raise_operational_abort(e)
             print(f"    ⚠️  automation-id name fallback failed for card {card_number}: {e}")
 
         # Strategy 5: Deep search in any span with reasonable text
@@ -1929,6 +2008,7 @@ class SportsbetOddsIntegrator:
                         print(f"    📝 Found dog name (deep search): '{text}' -> '{dog_name}'")
                         return dog_name
         except Exception as e:
+            self._raise_operational_abort(e)
             print(f"    ⚠️  Deep search fallback failed for card {card_number}: {e}")
 
         # Strategy 6: Get card text and analyze it
@@ -1979,6 +2059,7 @@ class SportsbetOddsIntegrator:
                             )
                             return dog_name
         except Exception as e:
+            self._raise_operational_abort(e)
             print(f"    ⚠️  Text analysis fallback failed for card {card_number}: {e}")
 
         print(f"    ❌ No dog name found for card {card_number}")
@@ -2002,6 +2083,7 @@ class SportsbetOddsIntegrator:
                     print(f"    💰 Found odds (primary): '{odds_text}' -> ${odds_decimal:.2f}")
                     return odds_decimal, odds_text
         except Exception as e:
+            self._raise_operational_abort(e)
             print(f"    ⚠️  Primary odds selector failed for card {card_number}: {e}")
 
         # Strategy 2: Fallback to button.price-button
@@ -2014,6 +2096,7 @@ class SportsbetOddsIntegrator:
                     print(f"    💰 Found odds (price-button): '{odds_text}' -> ${odds_decimal:.2f}")
                     return odds_decimal, odds_text
         except Exception as e:
+            self._raise_operational_abort(e)
             print(f"    ⚠️  price-button fallback failed for card {card_number}: {e}")
 
         # Strategy 3: Fallback to span[class*='priceText']
@@ -2029,6 +2112,7 @@ class SportsbetOddsIntegrator:
                         )
                         return odds_decimal, odds_text
         except Exception as e:
+            self._raise_operational_abort(e)
             print(f"    ⚠️  priceText fallback failed for card {card_number}: {e}")
 
         # Strategy 4: Fallback to .priceContainer children
@@ -2046,6 +2130,7 @@ class SportsbetOddsIntegrator:
                         )
                         return odds_decimal, odds_text
         except Exception as e:
+            self._raise_operational_abort(e)
             print(f"    ⚠️  priceContainer fallback failed for card {card_number}: {e}")
 
         # Strategy 5: Generic button search with odds pattern
@@ -2063,6 +2148,7 @@ class SportsbetOddsIntegrator:
                         )
                         return odds_decimal, odds_text
         except Exception as e:
+            self._raise_operational_abort(e)
             print(f"    ⚠️  Generic button search failed for card {card_number}: {e}")
 
         # Strategy 6: Deep search for any element with odds pattern
@@ -2080,6 +2166,7 @@ class SportsbetOddsIntegrator:
                         )
                         return odds_decimal, odds_text
         except Exception as e:
+            self._raise_operational_abort(e)
             print(f"    ⚠️  Deep search for odds failed for card {card_number}: {e}")
 
         print(f"    ❌ No odds found for card {card_number}")
@@ -2098,7 +2185,8 @@ class SportsbetOddsIntegrator:
                     # Ensure this is a meeting slug (not race-*)
                     if slug and not slug.startswith("race-") and "meeting-" not in slug:
                         return slug
-        except Exception:
+        except Exception as exc:
+            self._raise_operational_abort(exc)
             return None
         return None
 
@@ -2123,6 +2211,7 @@ class SportsbetOddsIntegrator:
                 self.driver.save_screenshot(screenshot_path)
                 print(f"    📸 Debug screenshot saved: {screenshot_path}")
             except Exception as e:
+                self._raise_operational_abort(e)
                 print(f"    ⚠️  Could not save screenshot: {e}")
 
             # Save page source
@@ -2134,12 +2223,14 @@ class SportsbetOddsIntegrator:
                     f.write(self.driver.page_source)
                 print(f"    📄 Debug page source saved: {source_path}")
             except Exception as e:
+                self._raise_operational_abort(e)
                 print(f"    ⚠️  Could not save page source: {e}")
 
             # Save URL for reference
             print(f"    🔗 Current URL: {self.driver.current_url}")
 
         except Exception as e:
+            self._raise_operational_abort(e)
             print(f"    ⚠️  Error saving debug info: {e}")
 
     def _extract_from_broader_containers(self) -> List[Dict]:
@@ -3567,7 +3658,8 @@ class SportsbetOddsIntegrator:
                                         f"  📍 Found race number {race_num} in main heading: {text[:50]}..."
                                     )
                                     return race_num
-                except:
+                except BaseException as exc:
+                    self._raise_operational_abort(exc)
                     continue
 
             # Strategy 4: Look for race-specific content in page source
@@ -3605,7 +3697,8 @@ class SportsbetOddsIntegrator:
                                         f"  📍 Found race number {race_num} in current race indicator: {text[:50]}..."
                                     )
                                     return race_num
-                except:
+                except BaseException as exc:
+                    self._raise_operational_abort(exc)
                     continue
 
             # Strategy 6: Find race info in specific race content
@@ -3631,13 +3724,15 @@ class SportsbetOddsIntegrator:
                                         f"  📍 Found race number {race_num} in race content: {text[:30]}..."
                                     )
                                     return race_num
-                except:
+                except BaseException as exc:
+                    self._raise_operational_abort(exc)
                     continue
 
             print(f"  ⚠️  Could not extract race number from page for venue {expected_venue}")
             return None
 
         except Exception as e:
+            self._raise_operational_abort(e)
             print(f"  ⚠️  Error extracting race number: {e}")
             return None
 
@@ -3923,7 +4018,8 @@ class SportsbetOddsIntegrator:
             # If it's just a number, assume it's decimal
             return float(odds_text)
 
-        except:
+        except BaseException as exc:
+            self._raise_operational_abort(exc)
             return 0.0
 
     def clean_dog_name(self, name: str) -> str:

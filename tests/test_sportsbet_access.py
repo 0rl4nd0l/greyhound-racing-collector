@@ -224,7 +224,8 @@ time.sleep(300)
         parent.wait(timeout=3)
 
 
-def test_queued_denial_is_drained_before_navigation(tmp_path, monkeypatch):
+@pytest.mark.parametrize("operation", ["navigation", "readiness"])
+def test_queued_denial_is_drained_before_navigation(tmp_path, monkeypatch, operation):
     import threading
     from types import SimpleNamespace
     from tests.fixtures.freshness_transport.fake_cdp import BrowserTransport
@@ -248,7 +249,10 @@ def test_queued_denial_is_drained_before_navigation(tmp_path, monkeypatch):
     errors = []
     def navigate():
         try:
-            driver.get('https://www.sportsbet.com.au/next')
+            if operation == 'navigation':
+                driver.get('https://www.sportsbet.com.au/next')
+            else:
+                driver.sportsbet_check_access()
         except SportsbetAccessBlocked as error:
             errors.append(error)
     worker = threading.Thread(target=navigate)
@@ -459,3 +463,15 @@ else:
     subprocess.run([sys.executable, '-c', code, kind], check=True, timeout=10,
                    env={**os.environ, 'GREYHOUND_SPORTSBET_ACCESS_STATE': str(path)})
     assert path.read_bytes() == before
+
+
+def test_supervised_transport_has_no_implicit_retry_for_any_provider(monkeypatch):
+    import utils.http_client as client
+    monkeypatch.setenv("GREYHOUND_LIVE_EXECUTION", "1")
+    monkeypatch.setattr(client, "_shared_session", None)
+    session = client.get_shared_session()
+    try:
+        for url in ("https://www.sportsbet.com.au/fixture", "https://www.thedogs.com.au/fixture", "https://api.open-meteo.com/fixture"):
+            assert session.get_adapter(url).max_retries.total == 0
+    finally:
+        session.close()

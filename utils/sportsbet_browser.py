@@ -262,6 +262,14 @@ def create_sportsbet_driver(factory, *, response_inspection=None, **kwargs):
 
     driver.sportsbet_navigation_remaining = navigation_remaining
 
+    def check_access():
+        # Drain already observed responses; this is not a new provider request.
+        events.join()
+        with state_lock:
+            operation.check()
+
+    driver.sportsbet_check_access = check_access
+
     def accept_data():
         events.join()
         with state_lock:

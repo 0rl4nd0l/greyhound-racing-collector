@@ -1189,3 +1189,16 @@ def test_clock_retry_rejects_unrelated_or_unauthenticated_failures(change):
     elif change=='authority_invalid':value['authority_status']='INVALID/INTEGRITY_FAILED'
     else:value['monotonic_end']=2.
     assert not _clock_boundary_rejection(value)
+
+
+@pytest.mark.parametrize("minutes, operational", [(60, False), (59, True), (61, True), (91, True)])
+def test_short_observation_requires_exact_operational_duration(tmp_path, minutes, operational):
+    from datetime import timedelta
+    from race_collection.live_freshness_contract import FreshnessContract
+
+    value = contract_value(tmp_path)
+    value["ends_at"] = (datetime.fromisoformat(value["starts_at"]) + timedelta(minutes=minutes)).isoformat()
+    if operational:
+        value.update(campaign_root=str(tmp_path / "never-opened-campaign"), operational_predictions=True)
+    with pytest.raises(ValueError, match="invalid_scope_duration"):
+        FreshnessContract(value)

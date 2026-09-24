@@ -224,3 +224,96 @@ is retained verbatim and hash-linked. Original authority bytes, 3,807.809229 cha
 seconds, seven consumed captures, 4,767 logical requests, 31 source operations and
 three denials remain unchanged. This funds a corrected 90-minute observation plus
 31-minute cleanup without resetting any historical accounting.
+
+
+## Repeated live predictions and publication concurrency repair
+
+Candidate897bb14a ran from16:18 to16:40:48 AEST. CasinoR5, MountGambierR12
+and WarrnamboolR5 each produced complete WIN/PLACE receipts, retained inputs,
+frozen features and independently verified PREDICTION_READY bundles. Coverage was
+8,5,7 runners respectively (40 prices total). Prediction processing took
+3.853600–3.904619 seconds; price age25.219019–25.408432 seconds; index age
+70.505685–76.455947 seconds; verification461.386083–527.312869 seconds before jump.
+All801 packaged files and every retained/bundle file were independently checked.
+No target result or research evaluation was accessed.
+
+The run stopped on a second local observer race: sample000684 read at
+16:40:48.225558–48.279124 while the producer replaced its report/state generation
+(final publication48.286004). Index and authority remained fresh; no provider
+denial occurred. The first clock-boundary repair had already handled three real
+publication-inside-read cases. This second fault involves inode/generation
+consistency and cannot safely be treated as a future-clock exception.
+
+Candidate729fb9fa adds one advisory publication mutex shared by the native observer
+and exclusive for grouped report/state and index/publication/lifecycle writes.
+Service queries happen before acquisition; provider work never holds this lock.
+Readers wait at most1s and writers5s, covering bounded local validation while
+keeping service stalls outside publication. Whole status/read/wait duration stays
+accounted. Six concurrency fixtures cover split generations, lifecycle/event
+publication, exception release, bounded contention, corruption/future rejection,
+and systemd queries outside the lock.84 focused checks and15 calendar simulations
+passed under denied networking; actual packaged retention/scoring/verifier tests
+passed2 checks in58.33s. Calendar fixtures were corrected to provide runner
+identity and a naturally eligible T10 time; production identity checks remain.
+
+The unchanged package is live-1705-729fb9fa, scheduled17:05–18:35 AEST plus31min
+cleanup. Commit729fb9fa57e989950901a7757de4f6ebde4db10a,
+plan3bc9f93b7a8ebb30644d882ab590bc6e09d78771fcb28170048ba386c76b9292,
+archivea7a037e5470671137e3c11aaeca82734dce985f39b72f4b26080167147890c42.
+Admission retained10 consumed captures,9258 requests,5177.779406 charged seconds,
+57 source operations and3 denials.143 source operations remain under the existing
+200 total ceiling (192 prospective recovery operations plus8 inherited).
+All previous records and the original two-hour deadline remain; that deadline had
+elapsed before this launch. This is a local concurrency comparison, not an
+unchanged retry after provider denial. Final observed results will be appended.
+
+
+## Second exact denial and bounded required-market readiness
+
+The 729fb9fa package verified Warrnambool R7 at 17:06:22.693751 AEST,
+457.306249 seconds before jump: eight WIN and eight PLACE prices, exact retained
+inputs, unchanged frozen model, and a separately audited bundle. Prediction
+processing took 3.929573 seconds; conservative price age was 25.546258 seconds.
+The recorder retained 49 responses, with no dropped observations or denial.
+
+At 17:20:10.510543, Warragul R1 received HTTP 429 on a child-frame Document at
+`/{uuid}/{uuid}/fp`. Both top-level navigation documents returned 200. The recorder
+retained 51 responses (50 HTTP 200 and one HTTP 429), zero drops, and Date-only
+retry metadata. Owning browser operation: 11ec4d0e3f204eb4a87bc064ffaa3341.
+Child-frame role is now proven; resource purpose, vendor and essentiality remain
+unknown. A separate denied document is not evidence that it may be ignored.
+
+This race had four expected runners. Logs show four WIN rows but no proven paired
+PLACE rows, no paired-readiness marker, zero inserted rows, and no valid receipt.
+Complete prices before denial are unproven. The legacy selector waits and later
+market fallback continued until extraction elapsed 46.854031 seconds. This
+reservation remains failed and consumed. No target result was accessed.
+
+The observation stopped after 14 completed odds cycles, 15 refreshes taking
+42.962868–54.582293 seconds, and two naturally eligible attempted races: one valid
+receipt/prediction and one denial. The full lane had not completed its first cycle.
+No native publication failure occurred, but this is not sustained acceptance.
+Original paired units were restored at 17:27:00.829718, timers held, R3 unchanged.
+All leases closed. Cumulative accounting is 12 captures, 12,164 logical requests,
+6,498.618589 charged seconds, 74 source operations and four retained denials.
+
+The next scoped comparison replaces the existing five-second target-page sleep
+with a five-second wait for the current source-paired layout. It does not add a
+second wait. Every poll checks shared source access. Unready layouts produce an
+explicit zero-write consumed coverage miss; no obsolete selector wait or market
+click follows. This does not assert permanent PLACE absence or infer a provider
+four-runner policy. Full-field and receipt validation remain mandatory on success.
+Timestamped, value-free readiness counts are retained. Hard timeouts and source
+denials remain failures, never benign coverage misses.
+
+The operational campaign may select a 60-minute observation, keeping the legacy
+90-minute default. Sixty minutes accommodates the required three full cycles at
+measured roughly 15/32/49-minute activations, with the same minimum six odds cycles,
+positive handoff wait, freshness gates and independent receipts. Cleanup retains
+its separate 31-minute reserve. Supervised Python adapters now have zero implicit
+retries for every source; prior wire retry measurements remain unknown.
+
+A 30-minute engineering quiet interval is selected for the materially different
+readiness comparison; it is not provider guidance or a claim that access will
+succeed. No Retry-After/reset guidance was supplied. The original deadline and all
+STOPs remain recorded; any prospective transition must preserve those records.
