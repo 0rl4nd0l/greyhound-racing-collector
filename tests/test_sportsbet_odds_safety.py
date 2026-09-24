@@ -516,6 +516,43 @@ class _FakeSportsbetRunnerCardDriver:
         return True
 
 
+@pytest.mark.parametrize("complete_pairs", [True, False])
+def test_rendered_paired_cards_do_not_wait_for_absent_legacy_selectors(
+    monkeypatch, tmp_path, complete_pairs
+):
+    waits, sleeps = [], []
+
+    class Wait(_FakeSportsbetWait):
+        def __init__(self, driver, timeout):
+            waits.append(timeout)
+
+    cards = [
+        _FakeSportsbetCard(box, name, "3.00")
+        for box, name in enumerate(["Alpha One", "Bravo Two", "Charlie Three", "Delta Four"], 1)
+    ]
+    for card in cards:
+        card.text += "\n1.50\nEW"
+    if not complete_pairs:
+        cards[-1].text = "4. Delta Four (4)\nLoading"
+    integrator = SportsbetOddsIntegrator(db_path=str(tmp_path / "odds.db"), setup_database=False)
+    integrator.driver = _FakeSportsbetRunnerCardDriver(cards)
+    monkeypatch.setattr(integrator, "_selenium_primitives", lambda: (
+        _FakeSportsbetBy, Wait, _FakeSportsbetEC, TimeoutError,
+    ))
+    monkeypatch.setattr("sportsbet_odds_integrator.time.sleep", sleeps.append)
+    rows = integrator.extract_odds_strategy_runner_cards()
+    win, place = sportsbet_paired_market_rows(rows)
+    if complete_pairs:
+        assert waits == []
+        assert sleeps == []
+        assert len(win) == len(place) == 4
+        assert [row["box_number"] for row in win] == [1, 2, 3, 4]
+    else:
+        assert waits == [12]
+        assert sleeps == [2]
+        assert len(win) == len(place) == 3
+
+
 def test_runner_card_extractor_scans_all_candidates_before_deduping(monkeypatch, tmp_path):
     monkeypatch.setattr("sportsbet_odds_integrator.time.sleep", lambda _seconds: None)
     runners = [

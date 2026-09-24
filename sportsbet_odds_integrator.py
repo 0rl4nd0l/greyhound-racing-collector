@@ -1626,6 +1626,28 @@ class SportsbetOddsIntegrator:
             print(f"  ⚠️  Error extracting odds from race page: {e}")
             return race_info
 
+    def _rendered_paired_cards_ready(self) -> bool:
+        """Readiness only; capture still validates the complete expected field."""
+        By, _, _, _ = self._selenium_primitives()
+        try:
+            cards = self.driver.find_elements(
+                By.XPATH,
+                "//*[contains(@data-automation-id,'racecard-outcome-name')]/ancestor::*[contains(@data-automation-id,'racecard-outcome')][1]",
+            )
+            if not cards:
+                return False
+            boxes = []
+            for card in cards:
+                text = card.text
+                box = parse_sportsbet_runner_box_from_text(text)
+                if (sportsbet_runner_header_count(text) != 1 or box is None
+                        or sportsbet_paired_fixed_prices(text) is None):
+                    return False
+                boxes.append(box)
+            return len(boxes) == len(set(boxes))
+        except Exception:
+            return False
+
     def extract_odds_strategy_runner_cards(self) -> List[Dict]:
         """Extract odds using robust Sportsbet-specific DOM selectors with comprehensive fallbacks"""
         By, WebDriverWait, EC, TimeoutException = self._selenium_primitives()
@@ -1634,15 +1656,23 @@ class SportsbetOddsIntegrator:
         try:
             print(f"  🔍 Looking for Sportsbet runner containers...")
 
+            # Current paired rows can be complete without legacy price classes.
+            # Avoid waiting on absent selectors once the existing source parser
+            # recognizes every visible row. This does not certify field coverage.
+            paired_ready = self._rendered_paired_cards_ready()
+            inspection = getattr(self, "response_inspection", None)
+            if paired_ready and inspection is not None:
+                inspection.mark("paired_rows_ready")
             # Enhanced wait for dynamic content with multiple selectors
             print(f"  ⏳ Waiting for dynamic content to load...")
             try:
                 # Wait for price elements to appear (indicates odds are loaded)
-                WebDriverWait(self.driver, 12).until(
-                    EC.presence_of_element_located(
-                        (By.CSS_SELECTOR, "[data-automation-id*='price-text']")
+                if not paired_ready:
+                    WebDriverWait(self.driver, 12).until(
+                        EC.presence_of_element_located(
+                            (By.CSS_SELECTOR, "[data-automation-id*='price-text']")
+                        )
                     )
-                )
                 print(f"    ✅ Price elements loaded successfully")
             except TimeoutException:
                 print(f"    ⚠️  Timeout waiting for price elements, trying alternative selectors...")
@@ -1661,7 +1691,8 @@ class SportsbetOddsIntegrator:
                     print(f"    ⚠️  No price elements found, proceeding anyway...")
 
             # Additional wait time for complex loading
-            time.sleep(2)
+            if not paired_ready:
+                time.sleep(2)
 
             # Find runner cards by anchoring on the outcome name and walking up to the outcome container
             candidate_cards = self.driver.find_elements(

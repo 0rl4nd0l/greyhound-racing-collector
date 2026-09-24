@@ -67,6 +67,27 @@ def test_shape_never_exposes_values_or_unknown_field_names():
     assert shape["state"] == "shape_only"
 
 
+def test_document_response_distinguishes_main_child_and_unknown_without_urls():
+    rec = inspector()
+    rec.observe({"method": "Page.frameNavigated", "params": {"frame": {
+        "id": "private-main", "url": "https://www.sportsbet.com.au/private?token=secret",
+    }}})
+    rec.observe({"method": "Page.frameAttached", "params": {
+        "frameId": "private-child", "parentFrameId": "private-main",
+    }})
+    for frame in ["private-main", "private-child", "not-seen"]:
+        emit(rec, "responseReceived", frameId=frame, type="Document", response={
+            "url": "https://www.sportsbet.com.au/private?token=secret", "status": 429,
+            "fromDiskCache": True,
+        })
+    rows = rec.report()["network_responses"]
+    assert [row["frame_role"] for row in rows] == ["top_level", "child", "unknown"]
+    assert all(row["from_cache"] for row in rows)
+    assert len({row["frame_id_sha256"] for row in rows}) == 3
+    assert "private" not in json.dumps(rows)
+    assert "secret" not in json.dumps(rows)
+
+
 def test_route_redacts_secrets_and_marks_incomplete_route():
     route = safe_route(URL + "&token=secret")
     assert route["query"] == {"eventId": "123"}

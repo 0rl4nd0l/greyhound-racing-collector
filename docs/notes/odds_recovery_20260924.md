@@ -84,3 +84,39 @@ capture/retention/frozen prediction remains required before any live candidate.
 
 Private evidence root:
 /home/l4nd0/greyhound-collector-campaign-20260923/recovery-20260924.
+
+## First live comparisons and repair
+
+The 14:25 c8df3ff0 package stopped before browser use because index publication
+overlapped the supervisor's atomic progress write in the retained evidence
+parent. A deterministic actual-publisher fixture reproduced
+`publish_root_parent_mutated`. e07ab93e isolates collector evidence under
+`collector/evidence`, preserving all retained-directory checks, and retains safe
+publication rejection details. The packaged overlap and publication tests passed
+(99 tests); the next live index was AVAILABLE/FRESH with three accepted races.
+
+The 14:40 e07ab93e sequence made one metadata operation and one browser operation.
+Landing and target documents returned 200. At 14:41:14.988 AEST a different
+UUID/UUID/fp document returned 429 without Retry-After; the browser source owner
+was `browser:563e9c3a708645c39727c382aff37741`. The recorder retained 53 Sportsbet
+responses with no truncation. NextEvents on the second navigation was cached.
+There was no observed Racecard route. Frame ancestry was not recorded, so neither
+vendor attribution nor nonessential-resource classification is established.
+
+The actual extraction log reports five WIN and five source-paired PLACE prices
+for Mount Gambier R7 before the blanket accounting guard rejected the capture.
+This is evidence of delivered prices, not a valid receipt or accepted capture.
+The legacy price-text count was zero despite the successful paired extraction.
+The old selector wait consumed up to 12+5+2 seconds before fallback extraction.
+The next comparison recognizes complete visible paired rows with the existing
+header/box/paired-price parser before waiting for those obsolete selectors.
+Full expected-field validation remains mandatory. Passive frame roles and cache
+flags improve denial attribution; unknown frame roles remain unknown. Every
+denial still stops source traffic, and no challenge resource is suppressed.
+
+The failed R7 reservation remains consumed. Restoration completed at
+14:47:00.610 AEST with both collector timers held, original unit hashes restored,
+and R3 unchanged. Three cumulative denials, recovery_attempts=1 and all source
+operations remain retained. The next comparison honors the recorded engineering
+quiet interval through 16:41:14.988 AEST. That interval is local policy, not a
+provider-supplied Retry-After.

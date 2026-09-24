@@ -169,6 +169,7 @@ class ResponseInspection:
         self.browser_identity = {}
         self.dom_snapshot = {"state": "not_observed"}
         self.dropped_responses = 0
+        self.frame_roles = {}
         self.mark("browser_start")
 
     def _stamp(self):
@@ -192,6 +193,7 @@ class ResponseInspection:
             "navigation_start",
             "navigation_complete",
             "rendered_extraction_complete",
+            "paired_rows_ready",
             "inspection_complete",
         }:
             raise ValueError("unknown_inspection_mark")
@@ -213,6 +215,15 @@ class ResponseInspection:
             if not self._open():
                 return
             method, params = event.get("method"), event.get("params", {})
+            if method in {"Page.frameAttached", "Page.frameNavigated"}:
+                frame = params.get("frame", params)
+                frame_id = frame.get("id", frame.get("frameId"))
+                if isinstance(frame_id, str) and len(self.frame_roles) < 64:
+                    self.frame_roles[frame_id] = (
+                        "child" if frame.get("parentId", frame.get("parentFrameId"))
+                        else "top_level"
+                    )
+                return
             if method == "Network.responseReceived" and len(self.network_responses) >= 256:
                 self.dropped_responses += 1
             if method == "Network.responseReceived" and len(self.network_responses) < 256:
@@ -233,6 +244,12 @@ class ResponseInspection:
                         "host": parsed.hostname, "route": route,
                         "path_sha256": hashlib.sha256(parsed.path.encode()).hexdigest(),
                         "resource_type": resource, "category": category,
+                        "frame_role": self.frame_roles.get(params.get("frameId"), "unknown"),
+                        "frame_id_sha256": (hashlib.sha256(params["frameId"].encode()).hexdigest()
+                                            if isinstance(params.get("frameId"), str) else None),
+                        "navigation": self.navigation,
+                        "from_cache": bool(response.get("fromDiskCache") or response.get("fromPrefetchCache")),
+                        "from_service_worker": bool(response.get("fromServiceWorker")),
                         "status": response.get("status"),
                         "retry_headers": source_retry_headers(response.get("headers", {})),
                         **self._stamp(),

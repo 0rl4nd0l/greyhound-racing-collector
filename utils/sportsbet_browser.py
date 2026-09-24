@@ -163,6 +163,7 @@ def create_sportsbet_driver(factory, *, response_inspection=None, **kwargs):
         watcher.start()
         channel('Network.enable')
         if response_inspection is not None:
+            channel('Page.enable')
             response_inspection.mark('browser_ready')
     except BaseException:
         import sys
