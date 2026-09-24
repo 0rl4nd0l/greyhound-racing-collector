@@ -256,7 +256,7 @@ def test_native_r3_peer_handoff_requires_fresh_index_and_matching_owner(
     assert (result.evidence.status == "AVAILABLE/FRESH") == (expected == "WAITING_FOR_PEER")
 
 
-@pytest.mark.parametrize("evidence_state", ["complete", "empty", "odds_report_only"])
+@pytest.mark.parametrize("evidence_state", ["complete", "large_complete", "oversized_report", "oversized_string", "empty", "odds_report_only"])
 def test_raw_phase_report_serialization_matches_native_r3(tmp_path, evidence_state):
     import hashlib
     from race_collection.live_phase_checkpoint import atomic_json
@@ -266,6 +266,15 @@ def test_raw_phase_report_serialization_matches_native_r3(tmp_path, evidence_sta
 
     now = datetime(2026, 9, 23, 1, tzinfo=timezone.utc)
     values = actual_payloads(now, include_models=False)
+    if evidence_state in {"large_complete", "oversized_report", "oversized_string"}:
+        # Real completed reports retain encoded source-page evidence (~65KiB
+        # strings) and exceed 512KiB without being malformed or untrustworthy.
+        values['odds_refresh']['downloads'] = [
+            {'native_identity_evidence': {'body_base64': 'A' * (131073 if evidence_state == 'oversized_string' else 65372)}}
+            for _ in range(33 if evidence_state == 'oversized_report' else 9)
+        ]
+        for key in ('odds_report', 'odds_state'):
+            values[key]['odds_capture_refresh_report'] = values['odds_refresh']
     for lane in ("full", "odds"):
         values[lane + "_state"]["last_output_dir" if lane == "full" else "output_dir"] = str(
             tmp_path / lane
@@ -280,7 +289,7 @@ def test_raw_phase_report_serialization_matches_native_r3(tmp_path, evidence_sta
             if key == "odds_refresh"
             else tmp_path / (key + ".json")
         )
-        if evidence_state == "complete" or (
+        if evidence_state in {"complete", "large_complete", "oversized_report", "oversized_string"} or (
             evidence_state == "odds_report_only" and key == "odds_report"
         ):
             atomic_json(path, values[key])
@@ -323,8 +332,11 @@ def test_raw_phase_report_serialization_matches_native_r3(tmp_path, evidence_sta
         },
     )
     assert result["authority_status"] == "AVAILABLE/FRESH"
+    if evidence_state.startswith('oversized'):
+        assert result['collector_status'] == 'INVALID/INTEGRITY_FAILED'
+        return
     assert result["collector_status"] == (
-        "AVAILABLE/FRESH" if evidence_state == "complete" else "UNAVAILABLE/DATA_MISSING"
+        "AVAILABLE/FRESH" if evidence_state in {"complete", "large_complete"} else "UNAVAILABLE/DATA_MISSING"
     )
     assert result["index_status"] == "UNAVAILABLE/DATA_MISSING"
 
@@ -677,6 +689,18 @@ def test_external_exit_time_is_part_of_overhead_allocation():
     status["ExecMainExitTimestampMonotonic"] = "190001000"
     with pytest.raises(ValueError, match="overhead"):
         completed_service_overhead(status, report)
+
+
+def test_old_report_does_not_invalidate_new_service_activation():
+    from race_collection.freshness_rehearsal import completed_service_overhead
+    status = {'ActiveState':'failed', 'InvocationID':'new', 'ExecMainPID':'12',
+        'ExecMainStartTimestampMonotonic':'200000000', 'ExecMainExitTimestampMonotonic':'201000000'}
+    report = {'timing':{'service_invocation_id':'old', 'process_pid':11}}
+    lifecycle = {'invocation_id':'new','wrapper_pid':12,'child_pid':13}
+    assert completed_service_overhead(status, report, lifecycle) is None
+    report['timing']['service_invocation_id'] = 'new'
+    with pytest.raises(ValueError, match='service_lifecycle_identity_mismatch'):
+        completed_service_overhead(status, report, lifecycle)
 
 
 def test_partial_reservation_remains_consumed(tmp_path):
