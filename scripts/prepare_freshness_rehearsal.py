@@ -35,7 +35,7 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
     identities = {}
     for name in files:
         path = Path(name)
-        frozen = operational_predictions and (name in {"artifacts/frozen_models/market_form_residual_v1/model.json", "artifacts/frozen_models/market_form_residual_v1/manifest.json", "accuracy_program/repaired_non_tgr_schema.json"})
+        frozen = operational_predictions and (name in {"artifacts/frozen_models/market_form_residual_v1/model.json", "artifacts/frozen_models/market_form_residual_v1/manifest.json", "accuracy_program/repaired_non_tgr_schema.json", "tests/test_run_shadow_non_tgr_rf_evaluation.py"})
         if path.parts[0] in {"tests", "artifacts", ".git", "docs"} and not frozen:
             continue
         if not frozen and path.suffix != ".py" and not (

@@ -514,6 +514,7 @@ def _seal_and_publish_v2(state: dict[str, Any], result: Mapping[str, Any]) -> No
     manifest_raw = canonical_bytes(manifest)
     _write_canonical(bundle / "bundle_manifest.json", manifest)
     state["terminal_sealed"] = True
+    state["sealed_result"] = dict(result)
     entry = prediction_bundle_index_entry(bundle=bundle, result=result, manifest_raw=manifest_raw)
     publish_prediction_bundle_index_entry(bundle.parent, entry)
     state["catalog_published"] = True
@@ -1240,6 +1241,7 @@ def run_prediction(
         if bundle is not None and not state.get("terminal_sealed"):
             try:
                 _persist_blocked_bundle(state, exc, dependencies.now())
+                exc.sealed_result = state.get("sealed_result")
             except (OSError, TypeError, ValueError, PredictionBlocked) as persist_exc:
                 # Never replace the smallest operational blocker with a reporting failure.
                 exc.details["bundle"] = str(bundle.resolve())
@@ -1253,6 +1255,7 @@ def run_prediction(
         if bundle is not None and not state.get("terminal_sealed"):
             try:
                 _persist_blocked_bundle(state, blocked, dependencies.now())
+                blocked.sealed_result = state.get("sealed_result")
             except (OSError, TypeError, ValueError, PredictionBlocked) as persist_exc:
                 blocked.details["bundle"] = str(bundle.resolve())
                 blocked.details["bundle_persistence_error"] = type(persist_exc).__name__
@@ -1446,6 +1449,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
         if "bundle" in exc.details:
             output["bundle"] = exc.details["bundle"]
+        if getattr(exc, "sealed_result", None) is not None:
+            output = exc.sealed_result
     print(canonical_bytes(output).decode(), end="")
     return 0 if output.get("status") in {"PREDICTION_READY", "CONFIGS_AVAILABLE"} else 2
 
