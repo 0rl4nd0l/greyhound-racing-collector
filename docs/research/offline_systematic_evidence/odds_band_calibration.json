@@ -1,0 +1,470 @@
+{
+  "market": [
+    {
+      "actual_rate": 0.4898989898989899,
+      "binary_brier_delta": 0.0,
+      "market_mean": 0.3920939972030154,
+      "maximum_exclusive": 3,
+      "minimum": 1,
+      "model_mean": 0.3920939972030154,
+      "runners": 198,
+      "wins": 97
+    },
+    {
+      "actual_rate": 0.1981981981981982,
+      "binary_brier_delta": 0.0,
+      "market_mean": 0.1988864817043634,
+      "maximum_exclusive": 5,
+      "minimum": 3,
+      "model_mean": 0.1988864817043634,
+      "runners": 222,
+      "wins": 44
+    },
+    {
+      "actual_rate": 0.0858085808580858,
+      "binary_brier_delta": 0.0,
+      "market_mean": 0.11449639848586038,
+      "maximum_exclusive": 10,
+      "minimum": 5,
+      "model_mean": 0.11449639848586038,
+      "runners": 303,
+      "wins": 26
+    },
+    {
+      "actual_rate": 0.025423728813559324,
+      "binary_brier_delta": 0.0,
+      "market_mean": 0.057883982761757644,
+      "maximum_exclusive": 20,
+      "minimum": 10,
+      "model_mean": 0.057883982761757644,
+      "runners": 236,
+      "wins": 6
+    },
+    {
+      "actual_rate": 0.0136986301369863,
+      "binary_brier_delta": 0.0,
+      "market_mean": 0.023491647063163583,
+      "maximum_exclusive": 10000,
+      "minimum": 20,
+      "model_mean": 0.023491647063163583,
+      "runners": 292,
+      "wins": 4
+    }
+  ],
+  "refit_base16": [
+    {
+      "actual_rate": 0.4898989898989899,
+      "binary_brier_delta": -0.002078525359287052,
+      "market_mean": 0.3920939972030154,
+      "maximum_exclusive": 3,
+      "minimum": 1,
+      "model_mean": 0.39970739495755864,
+      "runners": 198,
+      "wins": 97
+    },
+    {
+      "actual_rate": 0.1981981981981982,
+      "binary_brier_delta": -0.0013372320423844638,
+      "market_mean": 0.1988864817043634,
+      "maximum_exclusive": 5,
+      "minimum": 3,
+      "model_mean": 0.1977168554141017,
+      "runners": 222,
+      "wins": 44
+    },
+    {
+      "actual_rate": 0.0858085808580858,
+      "binary_brier_delta": -0.00091170148709484,
+      "market_mean": 0.11449639848586038,
+      "maximum_exclusive": 10,
+      "minimum": 5,
+      "model_mean": 0.11236081876327854,
+      "runners": 303,
+      "wins": 26
+    },
+    {
+      "actual_rate": 0.025423728813559324,
+      "binary_brier_delta": 9.434258121882323e-05,
+      "market_mean": 0.057883982761757644,
+      "maximum_exclusive": 20,
+      "minimum": 10,
+      "model_mean": 0.05675080427821136,
+      "runners": 236,
+      "wins": 6
+    },
+    {
+      "actual_rate": 0.0136986301369863,
+      "binary_brier_delta": -6.284675309444756e-05,
+      "market_mean": 0.023491647063163583,
+      "maximum_exclusive": 10000,
+      "minimum": 20,
+      "model_mean": 0.02235026027925186,
+      "runners": 292,
+      "wins": 4
+    }
+  ],
+  "refit_box": [
+    {
+      "actual_rate": 0.4898989898989899,
+      "binary_brier_delta": -0.002694841075859604,
+      "market_mean": 0.3920939972030154,
+      "maximum_exclusive": 3,
+      "minimum": 1,
+      "model_mean": 0.399818430286483,
+      "runners": 198,
+      "wins": 97
+    },
+    {
+      "actual_rate": 0.1981981981981982,
+      "binary_brier_delta": -0.0014009915076944827,
+      "market_mean": 0.1988864817043634,
+      "maximum_exclusive": 5,
+      "minimum": 3,
+      "model_mean": 0.197619870534016,
+      "runners": 222,
+      "wins": 44
+    },
+    {
+      "actual_rate": 0.0858085808580858,
+      "binary_brier_delta": -0.0009533149760277585,
+      "market_mean": 0.11449639848586038,
+      "maximum_exclusive": 10,
+      "minimum": 5,
+      "model_mean": 0.1123170958977271,
+      "runners": 303,
+      "wins": 26
+    },
+    {
+      "actual_rate": 0.025423728813559324,
+      "binary_brier_delta": 9.765882607741121e-05,
+      "market_mean": 0.057883982761757644,
+      "maximum_exclusive": 20,
+      "minimum": 10,
+      "model_mean": 0.056807897821940075,
+      "runners": 236,
+      "wins": 6
+    },
+    {
+      "actual_rate": 0.0136986301369863,
+      "binary_brier_delta": -5.993385267236235e-05,
+      "market_mean": 0.023491647063163583,
+      "maximum_exclusive": 10000,
+      "minimum": 20,
+      "model_mean": 0.022347930142930204,
+      "runners": 292,
+      "wins": 4
+    }
+  ],
+  "refit_half": [
+    {
+      "actual_rate": 0.4898989898989899,
+      "binary_brier_delta": -0.0014179139224235952,
+      "market_mean": 0.3920939972030154,
+      "maximum_exclusive": 3,
+      "minimum": 1,
+      "model_mean": 0.3961316329371864,
+      "runners": 198,
+      "wins": 97
+    },
+    {
+      "actual_rate": 0.1981981981981982,
+      "binary_brier_delta": -0.000840403206393329,
+      "market_mean": 0.1988864817043634,
+      "maximum_exclusive": 5,
+      "minimum": 3,
+      "model_mean": 0.19826458754613324,
+      "runners": 222,
+      "wins": 44
+    },
+    {
+      "actual_rate": 0.0858085808580858,
+      "binary_brier_delta": -0.0005287722634529735,
+      "market_mean": 0.11449639848586038,
+      "maximum_exclusive": 10,
+      "minimum": 5,
+      "model_mean": 0.11336635688411033,
+      "runners": 303,
+      "wins": 26
+    },
+    {
+      "actual_rate": 0.025423728813559324,
+      "binary_brier_delta": 3.2485468430828575e-05,
+      "market_mean": 0.057883982761757644,
+      "maximum_exclusive": 20,
+      "minimum": 10,
+      "model_mean": 0.05727677891293949,
+      "runners": 236,
+      "wins": 6
+    },
+    {
+      "actual_rate": 0.0136986301369863,
+      "binary_brier_delta": -3.428347371088595e-05,
+      "market_mean": 0.023491647063163583,
+      "maximum_exclusive": 10000,
+      "minimum": 20,
+      "model_mean": 0.02288997357485053,
+      "runners": 292,
+      "wins": 4
+    }
+  ],
+  "selected_ensemble": [
+    {
+      "actual_rate": 0.4898989898989899,
+      "binary_brier_delta": 0.0024984915797248435,
+      "market_mean": 0.3920939972030154,
+      "maximum_exclusive": 3,
+      "minimum": 1,
+      "model_mean": 0.42708491719661845,
+      "runners": 198,
+      "wins": 97
+    },
+    {
+      "actual_rate": 0.1981981981981982,
+      "binary_brier_delta": 0.002871145536121099,
+      "market_mean": 0.1988864817043634,
+      "maximum_exclusive": 5,
+      "minimum": 3,
+      "model_mean": 0.19802521708591786,
+      "runners": 222,
+      "wins": 44
+    },
+    {
+      "actual_rate": 0.0858085808580858,
+      "binary_brier_delta": 5.332353928965489e-05,
+      "market_mean": 0.11449639848586038,
+      "maximum_exclusive": 10,
+      "minimum": 5,
+      "model_mean": 0.10342292384796584,
+      "runners": 303,
+      "wins": 26
+    },
+    {
+      "actual_rate": 0.025423728813559324,
+      "binary_brier_delta": -0.00031696331355885463,
+      "market_mean": 0.057883982761757644,
+      "maximum_exclusive": 20,
+      "minimum": 10,
+      "model_mean": 0.04909729047883658,
+      "runners": 236,
+      "wins": 6
+    },
+    {
+      "actual_rate": 0.0136986301369863,
+      "binary_brier_delta": -0.00022651113105087457,
+      "market_mean": 0.023491647063163583,
+      "maximum_exclusive": 10000,
+      "minimum": 20,
+      "model_mean": 0.01901192370909826,
+      "runners": 292,
+      "wins": 4
+    }
+  ],
+  "selected_linear": [
+    {
+      "actual_rate": 0.4898989898989899,
+      "binary_brier_delta": 0.004215772958423644,
+      "market_mean": 0.3920939972030154,
+      "maximum_exclusive": 3,
+      "minimum": 1,
+      "model_mean": 0.43658671835376334,
+      "runners": 198,
+      "wins": 97
+    },
+    {
+      "actual_rate": 0.1981981981981982,
+      "binary_brier_delta": 0.0033635012127103438,
+      "market_mean": 0.1988864817043634,
+      "maximum_exclusive": 5,
+      "minimum": 3,
+      "model_mean": 0.19808556319671516,
+      "runners": 222,
+      "wins": 44
+    },
+    {
+      "actual_rate": 0.0858085808580858,
+      "binary_brier_delta": 0.00034024443197040196,
+      "market_mean": 0.11449639848586038,
+      "maximum_exclusive": 10,
+      "minimum": 5,
+      "model_mean": 0.10056481062583736,
+      "runners": 303,
+      "wins": 26
+    },
+    {
+      "actual_rate": 0.025423728813559324,
+      "binary_brier_delta": -0.0003696627821383307,
+      "market_mean": 0.057883982761757644,
+      "maximum_exclusive": 20,
+      "minimum": 10,
+      "model_mean": 0.04646638814341897,
+      "runners": 236,
+      "wins": 6
+    },
+    {
+      "actual_rate": 0.0136986301369863,
+      "binary_brier_delta": -0.00025721536476172146,
+      "market_mean": 0.023491647063163583,
+      "maximum_exclusive": 10000,
+      "minimum": 20,
+      "model_mean": 0.017615169571261993,
+      "runners": 292,
+      "wins": 4
+    }
+  ],
+  "selected_market_calibration": [
+    {
+      "actual_rate": 0.4898989898989899,
+      "binary_brier_delta": 0.0006396496109113729,
+      "market_mean": 0.3920939972030154,
+      "maximum_exclusive": 3,
+      "minimum": 1,
+      "model_mean": 0.44028074714967863,
+      "runners": 198,
+      "wins": 97
+    },
+    {
+      "actual_rate": 0.1981981981981982,
+      "binary_brier_delta": 0.0017115365761133752,
+      "market_mean": 0.1988864817043634,
+      "maximum_exclusive": 5,
+      "minimum": 3,
+      "model_mean": 0.19769652761859097,
+      "runners": 222,
+      "wins": 44
+    },
+    {
+      "actual_rate": 0.0858085808580858,
+      "binary_brier_delta": 0.0006856712300540238,
+      "market_mean": 0.11449639848586038,
+      "maximum_exclusive": 10,
+      "minimum": 5,
+      "model_mean": 0.10046604582638072,
+      "runners": 303,
+      "wins": 26
+    },
+    {
+      "actual_rate": 0.025423728813559324,
+      "binary_brier_delta": -0.0005944642195908023,
+      "market_mean": 0.057883982761757644,
+      "maximum_exclusive": 20,
+      "minimum": 10,
+      "model_mean": 0.04548290329952183,
+      "runners": 236,
+      "wins": 6
+    },
+    {
+      "actual_rate": 0.0136986301369863,
+      "binary_brier_delta": -0.000263477210108881,
+      "market_mean": 0.023491647063163583,
+      "maximum_exclusive": 10000,
+      "minimum": 20,
+      "model_mean": 0.01630344475669841,
+      "runners": 292,
+      "wins": 4
+    }
+  ],
+  "selected_nonlinear": [
+    {
+      "actual_rate": 0.4898989898989899,
+      "binary_brier_delta": -0.0002733410002325098,
+      "market_mean": 0.3920939972030154,
+      "maximum_exclusive": 3,
+      "minimum": 1,
+      "model_mean": 0.40189065480421843,
+      "runners": 198,
+      "wins": 97
+    },
+    {
+      "actual_rate": 0.1981981981981982,
+      "binary_brier_delta": -0.00027047080688787426,
+      "market_mean": 0.1988864817043634,
+      "maximum_exclusive": 5,
+      "minimum": 3,
+      "model_mean": 0.19640814361509112,
+      "runners": 222,
+      "wins": 44
+    },
+    {
+      "actual_rate": 0.0858085808580858,
+      "binary_brier_delta": -0.00011599058042427691,
+      "market_mean": 0.11449639848586038,
+      "maximum_exclusive": 10,
+      "minimum": 5,
+      "model_mean": 0.11171766470143799,
+      "runners": 303,
+      "wins": 26
+    },
+    {
+      "actual_rate": 0.025423728813559324,
+      "binary_brier_delta": -8.187005274103719e-05,
+      "market_mean": 0.057883982761757644,
+      "maximum_exclusive": 20,
+      "minimum": 10,
+      "model_mean": 0.056312346410134294,
+      "runners": 236,
+      "wins": 6
+    },
+    {
+      "actual_rate": 0.0136986301369863,
+      "binary_brier_delta": -2.950133687068388e-05,
+      "market_mean": 0.023491647063163583,
+      "maximum_exclusive": 10000,
+      "minimum": 20,
+      "model_mean": 0.02288656270166818,
+      "runners": 292,
+      "wins": 4
+    }
+  ],
+  "uniform": [
+    {
+      "actual_rate": 0.4898989898989899,
+      "binary_brier_delta": 0.10991799981577383,
+      "market_mean": 0.3920939972030154,
+      "maximum_exclusive": 3,
+      "minimum": 1,
+      "model_mean": 0.1477392977392977,
+      "runners": 198,
+      "wins": 97
+    },
+    {
+      "actual_rate": 0.1981981981981982,
+      "binary_brier_delta": 0.0004898099622008755,
+      "market_mean": 0.1988864817043634,
+      "maximum_exclusive": 5,
+      "minimum": 3,
+      "model_mean": 0.14343093093093093,
+      "runners": 222,
+      "wins": 44
+    },
+    {
+      "actual_rate": 0.0858085808580858,
+      "binary_brier_delta": 0.002918485112768393,
+      "market_mean": 0.11449639848586038,
+      "maximum_exclusive": 10,
+      "minimum": 5,
+      "model_mean": 0.14106553512494102,
+      "runners": 303,
+      "wins": 26
+    },
+    {
+      "actual_rate": 0.025423728813559324,
+      "binary_brier_delta": 0.012520907678207113,
+      "market_mean": 0.057883982761757644,
+      "maximum_exclusive": 20,
+      "minimum": 10,
+      "model_mean": 0.13891242937853107,
+      "runners": 236,
+      "wins": 6
+    },
+    {
+      "actual_rate": 0.0136986301369863,
+      "binary_brier_delta": 0.016407122629967793,
+      "market_mean": 0.023491647063163583,
+      "maximum_exclusive": 10000,
+      "minimum": 20,
+      "model_mean": 0.1382868558382257,
+      "runners": 292,
+      "wins": 4
+    }
+  ]
+}

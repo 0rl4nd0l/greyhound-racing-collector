@@ -22,7 +22,16 @@ UNITS = (
 )
 
 
-def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False, observation_minutes=90):
+def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False, observation_minutes=90, comparison_plan=None):
+    comparison_binding = None
+    if comparison_plan is not None:
+        if not operational_predictions:
+            raise ValueError("comparison_requires_existing_prediction_path")
+        from src.predictor.future_comparison import load_plan
+        comparison_plan = comparison_plan.resolve(strict=True)
+        comparison_sha = hashlib.sha256(comparison_plan.read_bytes()).hexdigest()
+        load_plan(comparison_plan, comparison_sha)
+        comparison_binding = {"path": str(comparison_plan), "sha256": comparison_sha}
     if (type(observation_minutes) is not int or observation_minutes not in (60, 90)
             or (observation_minutes == 60 and not (campaign_root and operational_predictions))):
         raise ValueError("invalid_operational_observation_duration")
@@ -49,7 +58,7 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
     identities = {}
     for name in files:
         path = Path(name)
-        frozen = operational_predictions and (name in {"artifacts/frozen_models/market_form_residual_v1/model.json", "artifacts/frozen_models/market_form_residual_v1/manifest.json", "accuracy_program/repaired_non_tgr_schema.json", "tests/test_run_shadow_non_tgr_rf_evaluation.py"})
+        frozen = operational_predictions and (name in {"artifacts/frozen_models/market_form_residual_v1/model.json", "artifacts/frozen_models/market_form_residual_v1/manifest.json", "accuracy_program/repaired_non_tgr_schema.json", "tests/test_run_shadow_non_tgr_rf_evaluation.py"} or name.startswith("artifacts/research_comparison/frozen_20260924/"))
         if path.parts[0] in {"tests", "artifacts", ".git", "docs"} and not frozen:
             continue
         if not frozen and path.suffix != ".py" and not (
@@ -201,6 +210,8 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
             "max_jobs": campaign.value['max_capture_attempts'] - len(json.loads((campaign.root / "ledger.json").read_bytes())["attempts"]),
             "result_access": False, "research_activation": False,
         }
+        if comparison_binding is not None:
+            plan["frozen_comparison"] = comparison_binding
     create_once(output / "plan.json", plan)
     return {
         "plan": str(output / "plan.json"),
@@ -215,6 +226,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--campaign-root", type=Path)
     parser.add_argument("--operational-predictions", action="store_true")
+    parser.add_argument("--comparison-plan", type=Path, help="Explicit approved comparison binding; omitted by default")
     parser.add_argument("--observation-minutes", type=int, choices=(60, 90), default=90)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--start", required=True)
@@ -229,6 +241,7 @@ def main():
             prepare(
                 campaign_root=args.campaign_root,
                 operational_predictions=args.operational_predictions,
+                comparison_plan=args.comparison_plan,
                 observation_minutes=args.observation_minutes,
                 output=args.output,
                 start=datetime.fromisoformat(args.start),

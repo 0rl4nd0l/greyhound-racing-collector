@@ -1,0 +1,4 @@
+{"event": "FOUNDATION_REBUILT", "races": 331, "runners": 2360, "excluded_race": "Race 2 - TAREE - 2026-06-13", "reason": "source sidecar jump differs20minutes; no source metadata rewritten"}
+{"event": "FEATURE_BUILD_FAILED", "reason": "implementation KeyError faster_neighbors before dictionary update", "model_fits": 0, "output_written": false}
+{"event": "FEATURE_BUILD_FIXED_AND_COMPLETED", "races": 331, "runners": 2360, "source": "features/feature_audit.json", "model_fits": 0}
+{"event": "TESTS_PASSED", "systematic_seams": 9, "loader_seams": 5}

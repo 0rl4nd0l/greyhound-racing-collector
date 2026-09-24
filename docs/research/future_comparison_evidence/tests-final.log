@@ -1,0 +1,43 @@
+.F..F................................................................... [ 75%]
+.......................                                                  [100%]
+=================================== FAILURES ===================================
+__________ test_consumed_comparison_cannot_replace_sealed_predictions __________
+
+executed = {'root': PosixPath('/tmp/pytest-of-l4nd0/pytest-324/comparison0'), 'evidence': PosixPath('/tmp/pytest-of-l4nd0/pytest-...l4nd0/pytest-324/comparison0/evidence/shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json'), ...}
+
+    def test_consumed_comparison_cannot_replace_sealed_predictions(executed):
+        case=executed;old={p:p.read_bytes() for p in admission(case).parent.rglob("*") if p.is_file()}
+        result=execute(case,output_name="duplicate")
+>       assert result["phase"]=="PREDICTION_READY"
+E       AssertionError: assert 'REJECTED' == 'PREDICTION_READY'
+E         
+E         - PREDICTION_READY
+E         + REJECTED
+
+tests/test_frozen_comparison.py:54: AssertionError
+____ test_subprocess_rejects_changed_retained_inputs_and_preserves_failure _____
+
+executed = {'root': PosixPath('/tmp/pytest-of-l4nd0/pytest-324/comparison0'), 'evidence': PosixPath('/tmp/pytest-of-l4nd0/pytest-...l4nd0/pytest-324/comparison0/evidence/shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json'), ...}
+
+    def test_subprocess_rejects_changed_retained_inputs_and_preserves_failure(executed):
+        case=dict(executed);root=case["root"]/"bad-retention";shutil.copytree(case["retained_root"].parent,root)
+        case["retained_root"]=root/"bundle"
+        manifest=json.loads((case["retained_root"]/"manifest.json").read_bytes())
+        source=case["retained_root"]/manifest["files"]["normalized_form"]["path"]
+        source.write_text("Dog Name|PLC|DATE\n1. Alpha Fast|1|2026-07-09\n")
+        plan=json.loads(case["comparison"].read_bytes());plan["programme_root"]=str(root/"programme")
+        case["comparison"]=root/"plan.json";case["comparison"].write_bytes(canonical_bytes(plan))
+        result=execute(case,output_name="retention-failure")
+        assert result["phase"]!="PREDICTION_READY"
+        summary=json.loads((bundle(case,"retention-failure")/"comparison/summary.json").read_bytes())
+>       assert summary["shared_failure"]=="RETAINED_INPUT_INVALID"
+E       AssertionError: assert 'COLLECTOR_PROTOCOL_INVALID' == 'RETAINED_INPUT_INVALID'
+E         
+E         - RETAINED_INPUT_INVALID
+E         + COLLECTOR_PROTOCOL_INVALID
+
+tests/test_frozen_comparison.py:100: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_frozen_comparison.py::test_consumed_comparison_cannot_replace_sealed_predictions
+FAILED tests/test_frozen_comparison.py::test_subprocess_rejects_changed_retained_inputs_and_preserves_failure
+2 failed, 93 passed in 40.07s

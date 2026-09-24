@@ -518,6 +518,8 @@ def _seal_and_publish_v2(state: dict[str, Any], result: Mapping[str, Any]) -> No
     entry = prediction_bundle_index_entry(bundle=bundle, result=result, manifest_raw=manifest_raw)
     publish_prediction_bundle_index_entry(bundle.parent, entry)
     state["catalog_published"] = True
+    if state.get("comparison") is not None:
+        state["comparison"].close(entry)
 
 
 def _selected_variant(prediction: Mapping[str, Any], variant: str) -> dict[str, Any]:
@@ -586,6 +588,8 @@ def _persist_blocked_bundle(
     """Seal the smallest post-bundle blocker as a research-only result."""
 
     bundle = Path(state["bundle"])
+    if state.get("comparison") is not None:
+        state["comparison"].finish(production_failure=exc.code)
     if exc.code == "COLLECTOR_PROTOCOL_INVALID":
         # Preserve the bounded cause before the public result strips details.
         # Never retain arbitrary exception text, source paths or payloads.
@@ -1017,6 +1021,17 @@ def _run_prediction(
         _copy_exact(model.model_path, bundle / "model" / "model.json")
         _copy_exact(model.manifest_path, bundle / "model" / "manifest.json")
 
+    if getattr(args, "comparison_plan", None) is not None:
+        from src.predictor.future_comparison import Comparison
+        state["comparison"] = Comparison(
+            state=state, plan_path=args.comparison_plan,
+            plan_sha256=getattr(args, "comparison_plan_sha256", None),
+            now=dependencies.now, repository_root=ROOT,
+            retained_digest=retained_digest, odds_source=args.odds_source,
+            opportunities=[{"race_id":stable_race_id(r),"jump_timestamp":off.isoformat()}
+                for r in races if stable_race_id(r) and (off:=_parse_race_jump_datetime(r,now=current_time)) is not None],
+        )
+
     protocol=ManualPredictionCollectorProtocol(
             Path(getattr(args,"collector_request_root",DEFAULT_COLLECTOR_REQUEST_ROOT))
         )
@@ -1195,6 +1210,10 @@ def _run_prediction(
             "replay_paths": replay_paths,
         }
 
+    if state.get("comparison") is not None:
+        state["comparison"].finish(
+            prediction=prediction, receipt=receipt, form=form_csv, sidecar=sidecar,
+        )
     completed_time = dependencies.now()
     if completed_time.tzinfo is None or completed_time.utcoffset() is None:
         raise PredictionBlocked("CURRENT_TIME_TIMEZONE_MISSING")
@@ -1418,6 +1437,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", default="latest-research")
     parser.add_argument("--job-id")
     parser.add_argument("--operational-index-provenance")
+    parser.add_argument("--comparison-plan", type=Path, help="Default-off frozen research comparison; requires retained receipt inputs")
+    parser.add_argument("--comparison-plan-sha256")
     parser.add_argument(
         "--config", type=Path, default=ROOT / "configs/prediction/manual-default.json"
     )

@@ -1,0 +1,39 @@
+{
+  "activated_at": "2026-10-31T12:00:00+11:00",
+  "authority_reference": null,
+  "betting": false,
+  "bootstrap_replicates": 20000,
+  "bootstrap_seed": 20260924,
+  "candidate_registry": {
+    "path": "/home/l4nd0/greyhound-future-comparison-20260924/artifacts/research_comparison/frozen_20260924/registry.json",
+    "sha256": "938f433133057591e4ebd17a1ceef4fb25da252b5e3d6aba903194eb54b96ca9"
+  },
+  "decision_seconds_before_jump": 120,
+  "denied_history_intervals": [
+    [
+      "2026-07-15",
+      "2026-10-31"
+    ]
+  ],
+  "ends_at": "2027-04-18T00:00:00+10:00",
+  "exclusive_population_allocation_reference": null,
+  "family_contrasts": 4,
+  "fixed_closure_days": 14,
+  "machine_history_authority_reference": null,
+  "no_interim_metrics": true,
+  "precision_target_nats": 0.01,
+  "prediction_output_roots": [
+    "/home/l4nd0/greyhound-frozen-comparison-20261101/operational-predictions/bundles"
+  ],
+  "production_promotion": false,
+  "programme_root": "/home/l4nd0/greyhound-frozen-comparison-20261101/comparison",
+  "quote_lead_seconds": [
+    120,
+    600
+  ],
+  "reservation_review_sha256": "4df76c6a9e6b0cd01340a2f69c32d10347c30285c40e47a1b99e288e27c218ff",
+  "schema_version": "frozen_four_way_comparison_plan_v1",
+  "starts_at": "2026-11-01T00:00:00+11:00",
+  "status": "PREPARED_NOT_AUTHORIZED",
+  "target_scoreable_dates": 119
+}

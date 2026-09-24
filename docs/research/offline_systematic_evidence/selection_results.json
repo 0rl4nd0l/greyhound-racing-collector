@@ -1,0 +1,158 @@
+{
+  "favorite": {
+    "overall": {
+      "abstention_races": 161,
+      "eligible_races": 177,
+      "eligible_runners": 1251,
+      "losses": 9,
+      "mean_market": 0.40281356342979313,
+      "mean_model": 0.33688326654629336,
+      "odds_quantiles": [
+        1.5,
+        1.65,
+        1.95,
+        2.1125,
+        2.9
+      ],
+      "selected_races": 16,
+      "selection_race_fraction": 0.0903954802259887,
+      "selections": 16,
+      "win_rate": 0.4375,
+      "wins": 7
+    },
+    "periods": {
+      "final_later_block": {
+        "abstention_races": 75,
+        "eligible_races": 75,
+        "eligible_runners": 516,
+        "losses": 0,
+        "mean_market": null,
+        "mean_model": null,
+        "odds_quantiles": null,
+        "selected_races": 0,
+        "selection_race_fraction": 0.0,
+        "selections": 0,
+        "win_rate": null,
+        "wins": 0
+      },
+      "period1": {
+        "abstention_races": 72,
+        "eligible_races": 86,
+        "eligible_runners": 626,
+        "losses": 8,
+        "mean_market": 0.40912868501098776,
+        "mean_model": 0.3357491906687957,
+        "odds_quantiles": [
+          1.5,
+          1.65,
+          1.95,
+          2.0875,
+          2.9
+        ],
+        "selected_races": 14,
+        "selection_race_fraction": 0.16279069767441862,
+        "selections": 14,
+        "win_rate": 0.42857142857142855,
+        "wins": 6
+      },
+      "period2": {
+        "abstention_races": 14,
+        "eligible_races": 16,
+        "eligible_runners": 109,
+        "losses": 1,
+        "mean_market": 0.3586077123614305,
+        "mean_model": 0.34482179768877685,
+        "odds_quantiles": [
+          1.9,
+          2.1,
+          2.3,
+          2.5,
+          2.7
+        ],
+        "selected_races": 2,
+        "selection_race_fraction": 0.125,
+        "selections": 2,
+        "win_rate": 0.5,
+        "wins": 1
+      }
+    }
+  },
+  "outsider": {
+    "overall": {
+      "abstention_races": 145,
+      "eligible_races": 177,
+      "eligible_runners": 1251,
+      "losses": 32,
+      "mean_market": 0.04611711501179156,
+      "mean_model": 0.05825287982172593,
+      "odds_quantiles": [
+        10.0,
+        13.0,
+        20.0,
+        23.0,
+        35.0
+      ],
+      "selected_races": 32,
+      "selection_race_fraction": 0.1807909604519774,
+      "selections": 35,
+      "win_rate": 0.08571428571428572,
+      "wins": 3
+    },
+    "periods": {
+      "final_later_block": {
+        "abstention_races": 75,
+        "eligible_races": 75,
+        "eligible_runners": 516,
+        "losses": 0,
+        "mean_market": null,
+        "mean_model": null,
+        "odds_quantiles": null,
+        "selected_races": 0,
+        "selection_race_fraction": 0.0,
+        "selections": 0,
+        "win_rate": null,
+        "wins": 0
+      },
+      "period1": {
+        "abstention_races": 59,
+        "eligible_races": 86,
+        "eligible_runners": 626,
+        "losses": 26,
+        "mean_market": 0.049053946814419866,
+        "mean_model": 0.06148795936768876,
+        "odds_quantiles": [
+          10.0,
+          13.0,
+          16.0,
+          21.0,
+          35.0
+        ],
+        "selected_races": 27,
+        "selection_race_fraction": 0.313953488372093,
+        "selections": 29,
+        "win_rate": 0.10344827586206896,
+        "wins": 3
+      },
+      "period2": {
+        "abstention_races": 11,
+        "eligible_races": 16,
+        "eligible_runners": 109,
+        "losses": 6,
+        "mean_market": 0.031922427965754736,
+        "mean_model": 0.04261666201623898,
+        "odds_quantiles": [
+          21.0,
+          21.0,
+          23.5,
+          26.75,
+          31.0
+        ],
+        "selected_races": 5,
+        "selection_race_fraction": 0.3125,
+        "selections": 6,
+        "win_rate": 0.0,
+        "wins": 0
+      }
+    }
+  }
+}

@@ -39,9 +39,18 @@ class WorkerConfig:
     capture_evidence_roots:tuple[Path,...]; collector_request_root:Path; current_index_path:Path; current_index_evidence_root:Path
     current_index_timeout_seconds:float; fetch_timeout_seconds:float; process_timeout_seconds:float; cancellation_grace_seconds:float=15.0
     retained_input_bindings:Mapping[str,Mapping[str,str]]|None=None
+    comparison_plan:Path|None=None
+    comparison_plan_sha256:str|None=None
     _identities:Mapping[str,tuple[tuple[int,int],...]]=field(init=False,repr=False,compare=False)
     _runtime:tuple[tuple[Path,tuple[int,int],str],...]=field(init=False,repr=False,compare=False)
     def __post_init__(self):
+        if (self.comparison_plan is None) != (self.comparison_plan_sha256 is None):
+            raise ValueError("comparison plan and hash must be supplied together")
+        if self.comparison_plan is not None:
+            from src.predictor.future_comparison import checked
+            checked(self.comparison_plan,self.comparison_plan_sha256)
+            if self.retained_input_bindings is None:
+                raise ValueError("comparison requires retained inputs")
         if self.retained_input_bindings is not None:
             from src.predictor.retained_inputs import validate_bindings
             from types import MappingProxyType
@@ -111,6 +120,10 @@ def fixed_argv(job:Job,config:WorkerConfig)->tuple[str,...]:
     if provenance is None: raise WorkerRejected("OPERATIONAL_INDEX_PROVENANCE_MISSING")
     provenance_json=json.dumps(provenance.fields(),sort_keys=True,separators=(",",":"))
     argv=[str(config.pinned_python),str(config.script),"--race-id",job.input.race_id,"--model",job.input.model_selector,"--job-id",job.job_id,"--config",str(choice.config_path),"--odds-source",job.input.odds_source,"--operational-index-provenance",provenance_json,"--db",str(config.canonical_db),"--output-root",str(config.output_root)]
+    if config.comparison_plan is not None:
+        from src.predictor.future_comparison import checked
+        checked(config.comparison_plan,config.comparison_plan_sha256)
+        argv.extend(("--comparison-plan",str(config.comparison_plan),"--comparison-plan-sha256",config.comparison_plan_sha256))
     if config.retained_input_bindings is None and job.input.retained_input_manifest_sha256 is not None:
         raise WorkerRejected("RETAINED_INPUT_BINDING_CHANGED")
     if config.retained_input_bindings is not None:
@@ -384,10 +397,20 @@ def _stop_and_reap(process,grace):
 def run_once(store:JobStore,job_id:str,config:WorkerConfig,*,now:Callable[[],datetime],confirm_audit:AuditConfirmation,popen:Callable[...,Any]=subprocess.Popen,reader=bounded_current_race_index,cancel_requested:Callable[[],bool]|None=None)->Job:
     job=store.get(job_id)
     if job.phase is not Phase.WAITING_FOR_CLAIM or job.attempt_claimed:raise WorkerRejected("JOB_NOT_CLAIMABLE")
-    _validate_runtime(config); _validate_choice(job,config); race=revalidate_current_race(job,config,now=now(),reader=reader,completion_clock=now); _validate_choice(job,config); _validate_runtime(config)
-    validate_receipt_before_claim(job,config,race,current_time=now(),completion_clock=now)
-    revalidate_current_race(job,config,now=now(),reader=reader,completion_clock=now)
-    fixed_argv(job,config)
+    comparison_claim=None
+    if config.comparison_plan is not None:
+        from src.predictor.future_comparison import observe_worker_job
+        comparison_claim=observe_worker_job(job,config,now())
+    try:
+        _validate_runtime(config); _validate_choice(job,config); race=revalidate_current_race(job,config,now=now(),reader=reader,completion_clock=now); _validate_choice(job,config); _validate_runtime(config)
+        validate_receipt_before_claim(job,config,race,current_time=now(),completion_clock=now)
+        revalidate_current_race(job,config,now=now(),reader=reader,completion_clock=now)
+        fixed_argv(job,config)
+    except Exception as exc:
+        if comparison_claim is not None:
+            from src.predictor.future_comparison import put
+            put(comparison_claim/"worker_failure.json",{"job_id":job_id,"failed_at":now().isoformat(),"reason":str(exc),"predictions_missing":True})
+        raise
     job,attempt_id=store.claim_attempt(job_id,now=now(),confirm_audit=confirm_audit)
     argv=fixed_argv(job,config); process=None; owner=None; started=False; runtime_fds=()
     try:
