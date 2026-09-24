@@ -389,3 +389,11 @@ unexpired finite authority and unchanged rate limits. Both collector entrypoints
 must acquire the existing collector lock before provider work. STOP, denial,
 recovery and cooldown continue blocking admission. No service is force-restarted,
 no collector lock is stolen and no consumed capture is retried.
+
+
+Pre-launch independent review rejected the prepared 18:48 package before any
+service admission or provider request: run_freshness_service repeated strict
+source admission after ExecCondition, preventing the intended queue. Preserve
+that package as unexecuted. Apply the same service-only admission at both
+entrypoints, with a network-denied actual wrapper subprocess regression; actual
+source operation acquisition and ordinary preflight remain strict.

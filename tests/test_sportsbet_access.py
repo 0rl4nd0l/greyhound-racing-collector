@@ -529,3 +529,41 @@ def test_service_condition_can_queue_behind_owned_operation_without_transport_ad
         gate.check_admission()
         with gate.operation("python"):
             pass
+
+
+@pytest.mark.parametrize("phase, expected_returncode", [("OPEN", 42), ("STOP", 1)])
+def test_actual_service_wrapper_queues_before_configuration_while_owner_is_active(
+    tmp_path, phase, expected_returncode,
+):
+    from pathlib import Path
+    from utils.sportsbet_access import SportsbetAccess
+
+    root = Path(__file__).resolve().parents[1]
+    gate = SportsbetAccess(tmp_path / "access.json")
+    gate.initialize(access_basis={"status": "permitted", "reference": "synthetic wrapper fixture"})
+    bootstrap = """
+import os, runpy, sys
+from pathlib import Path
+sys.argv = sys.argv[1:]
+sys.path.insert(0, str(Path(sys.argv[0]).resolve().parents[1]))
+from scripts.check_freshness_service import deny_network
+deny_network()
+import race_collection.live_execution as execution
+execution.configure_profile_execution = lambda contract: os._exit(42)
+runpy.run_path(sys.argv[0], run_name='__main__')
+"""
+    with gate.operation("browser") as operation:
+        operation.value["phase"] = phase
+        gate.write(operation.value)
+        original = gate.path.read_bytes()
+        result = subprocess.run(
+            [sys.executable, "-B", "-c", bootstrap,
+             str(root / "scripts/run_freshness_service.py"),
+             "--live-freshness-contract", str(tmp_path / "unread-contract.json")],
+            env={**os.environ, "GREYHOUND_SPORTSBET_ACCESS_STATE": str(gate.path)},
+            cwd=root, capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == expected_returncode, result.stderr
+        if phase == "STOP":
+            assert "sportsbet_source_hold" in result.stderr
+        assert gate.path.read_bytes() == original
