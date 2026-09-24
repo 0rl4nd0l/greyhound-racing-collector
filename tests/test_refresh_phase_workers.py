@@ -8,6 +8,16 @@ import pytest
 from scripts import refresh_prejump_upcoming as refresh
 
 
+@pytest.fixture(autouse=True)
+def isolated_metadata_snapshot(tmp_path, monkeypatch):
+    """Timing-only fixtures must never acquire provider metadata."""
+    from utils import prejump_sportsbet
+
+    monkeypatch.setenv("GREYHOUND_SPORTSBET_ACCESS_STATE", str(tmp_path / "never-live-access.json"))
+    monkeypatch.setattr(prejump_sportsbet, "fetch_sportsbet_next_events_snapshot",
+                        lambda **kwargs: {"events": []})
+
+
 @pytest.mark.parametrize(
     "observed,wall,max_minutes,requested,expected",
     [
@@ -243,7 +253,7 @@ def test_refresh_accounts_for_every_download_and_does_not_redate_overrun(
     import sys
 
     observed = "2026-07-19T12:00:00+10:00"
-    clock = iter([0, 20, 90, 101])
+    clock = iter([0, 20, *([20] if workers == 2 else []), 90, 101])
     monkeypatch.setattr(refresh, "time", SimpleNamespace(monotonic=lambda: next(clock)))
     monkeypatch.setenv("UPCOMING_RACES_DIR", str(tmp_path))
     selected = [{"url": f"fixture-{number}"} for number in range(3)]
@@ -253,6 +263,8 @@ def test_refresh_accounts_for_every_download_and_does_not_redate_overrun(
     downloads = []
 
     class Browser:
+        session = None
+
         def get_upcoming_races(self, **kwargs):
             return selected
 
