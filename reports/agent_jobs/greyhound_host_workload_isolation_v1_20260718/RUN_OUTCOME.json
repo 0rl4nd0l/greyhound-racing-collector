@@ -1,0 +1,43 @@
+{
+  "blocked_by": [],
+  "changed_claims": [
+    "greyhound_heavy_offline_filesystem_work_is_fail_closed_exact_root_single_worker_and_hard_io_limited"
+  ],
+  "decision_delta": "Greyhound heavy read-only agent and offline filesystem work advanced from an established unbounded-scan risk to a repository-owned exact-root wrapper that verifies cgroup-v2 physical-read ceilings, defaults to one worker and safe exclusions, cleans up on timeout or interruption, and was measured without disrupting natural odds collection.",
+  "new_evidence": [
+    "Docker 29.1.3 on cgroup v2/systemd applied and exposed io.max 259:2 rbps=1048576 riops=16 while the user manager lacked the io controller.",
+    "Eighteen focused tests plus compilation, diff hygiene, unsafe-root rejection, exact-root hash, test discovery, and representative bounded-search smokes passed.",
+    "The controlled process interval attributed 1318912 physical read bytes to the child versus 1306624 whole-device read bytes while the host remained interactively responsive.",
+    "Two natural odds-capture executions completed successfully during the bounded scan, with no service or database mutation."
+  ],
+  "new_goal_permitted": false,
+  "produced_artifacts": [
+    "reports/agent_jobs/greyhound_host_workload_isolation_v1_20260718/README.md",
+    "reports/agent_jobs/greyhound_host_workload_isolation_v1_20260718/STATE.md",
+    "reports/agent_jobs/greyhound_host_workload_isolation_v1_20260718/VALIDATION.md",
+    "reports/agent_jobs/greyhound_host_workload_isolation_v1_20260718/MEASUREMENT.md",
+    "reports/agent_jobs/greyhound_host_workload_isolation_v1_20260718/measurement.json",
+    "reports/agent_jobs/greyhound_host_workload_isolation_v1_20260718/PR_REVIEW.md",
+    "reports/agent_jobs/greyhound_host_workload_isolation_v1_20260718/RUN_OUTCOME.json",
+    "reports/agent_jobs/greyhound_host_workload_isolation_v1_20260718/DECISION_ENTRY.json",
+    "reports/agent_jobs/greyhound_host_workload_isolation_v1_20260718/status.json",
+    "reports/agent_jobs/greyhound_host_workload_isolation_v1_20260718/guard-preflight.json",
+    "reports/agent_jobs/greyhound_host_workload_isolation_v1_20260718/commands.log"
+  ],
+  "resume_only_if": "The wrapper, canonical host cgroup/Docker support, exclusion policy, live collection safety evidence, or draft-PR state changes after this closeout.",
+  "reused_claims": [
+    "latency_explanation_20260718_established_unbounded_rg_device_saturation_cause",
+    "current_canonical_origin_master_c1dfd464",
+    "unchanged_live_greyhound_collection_boundary"
+  ],
+  "scope_fingerprint": "479cb6504f301b92351f8b009e53d85451a190c0d70f8b3bfaf9014944be7780",
+  "state_after": "fail_closed_bounded_offline_wrapper_validated_under_unchanged_live_collection",
+  "state_before": "verified_unbounded_offline_scan_incident_with_user_systemd_io_controller_not_delegated",
+  "status": "ADVANCED",
+  "used_capabilities": [
+    "READ",
+    "REPORT_WRITE",
+    "CODE_EDIT",
+    "PUBLISH"
+  ]
+}

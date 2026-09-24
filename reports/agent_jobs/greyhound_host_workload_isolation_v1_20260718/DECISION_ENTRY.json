@@ -1,0 +1,42 @@
+{
+  "blocks": [
+    "broad_greyhound_offline_scan_without_exact_root_and_verified_hard_io_limit",
+    "claim_that_user_systemd_scopes_enforce_io_max_on_this_host"
+  ],
+  "claim_id": "greyhound_host_workload_isolation_v1_20260718",
+  "dataset_version": "canonical_c1dfd464_systemd249_docker29_cgroup2_20260718",
+  "decision": "PASS",
+  "decision_delta": "Greyhound heavy read-only agent and offline filesystem work advanced from an established unbounded-scan risk to a repository-owned exact-root wrapper that verifies cgroup-v2 physical-read ceilings, defaults to one worker and safe exclusions, cleans up on timeout or interruption, and was measured without disrupting natural odds collection.",
+  "decision_id": "greyhound-host-workload-isolation-v1-20260718-pass-v1",
+  "does_not_block": [
+    "normal_narrow_interactive_source_search",
+    "live_odds_collection",
+    "separately_authorised_system_level_or_physical_archive_isolation"
+  ],
+  "evidence_hash": "sha256:3038b59f84b49352e6bac5da4956e26505c7ead2c36e1887ea4e7ee7bdbeb1ae",
+  "evidence_refs": [
+    "reports/agent_jobs/greyhound_host_workload_isolation_v1_20260718/RUN_OUTCOME.json",
+    "reports/agent_jobs/greyhound_host_workload_isolation_v1_20260718/VALIDATION.md",
+    "reports/agent_jobs/greyhound_host_workload_isolation_v1_20260718/MEASUREMENT.md"
+  ],
+  "hypothesis_id": "docker_cgroup_v2_exact_root_offline_wrapper_v1",
+  "invalidation_conditions": [
+    "Docker no longer uses cgroup v2 with the systemd driver or can no longer expose the physical backing device io.max.",
+    "The wrapper exclusion, containment, cleanup, or hard-limit read-back tests regress.",
+    "Bounded scans materially disrupt collection or host responsiveness in later representative evidence."
+  ],
+  "outcome_status": "ADVANCED",
+  "phase_after": "fail_closed_bounded_offline_wrapper_validated_under_unchanged_live_collection",
+  "phase_before": "verified_unbounded_offline_scan_incident_with_user_systemd_io_controller_not_delegated",
+  "program_track": "offline_development",
+  "project_id": "greyhound_racing_collector",
+  "reopen_conditions": [
+    "The wrapper, canonical host cgroup/Docker support, exclusion policy, live collection safety evidence, or draft-PR state changes after this closeout."
+  ],
+  "run_id": "l4nd0-System-Product-Name:2111306:greyhound_host_workload_isolation_v1_20260718",
+  "scope_fingerprint": "479cb6504f301b92351f8b009e53d85451a190c0d70f8b3bfaf9014944be7780",
+  "source_class": "verified_host_process_kernel_device_systemd_docker_and_repository_evidence",
+  "target_transition": "fail_closed_bounded_offline_wrapper_validated_under_unchanged_live_collection",
+  "task_id": "greyhound_host_workload_isolation_v1_20260718",
+  "validated_at": "2026-07-18T07:17:28+00:00"
+}
