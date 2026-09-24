@@ -77,6 +77,52 @@ def test_route_redacts_secrets_and_marks_incomplete_route():
     assert safe_route("https://www.sportsbet.com.au.evil/apigw/") is None
 
 
+@pytest.mark.parametrize("suffix", [
+    "AllRacing/2099-01-01", "Events/12345678/Racecard",
+    "Events/12345678/RacecardWithContext", "Events/MultipleRacecards",
+])
+def test_documented_racing_routes_keep_names_but_not_target_values(suffix):
+    route = safe_route(
+        "https://www.sportsbet.com.au/apigw/sportsbook-racing/Sportsbook/Racing/"
+        + suffix + "?eventIds=12345678,87654321&selectionNames=PRIVATE_RUNNER"
+    )
+    text = json.dumps(route)
+    for secret in ("2099-01-01", "12345678", "87654321", "PRIVATE_RUNNER"):
+        assert secret not in text
+    assert route["omitted_query_fields"] == 2
+    assert any(name in route["path"] for name in (
+        "AllRacing", "Racecard", "MultipleRacecards"
+    ))
+
+
+def test_racing_shape_distinguishes_price_lists_without_exposing_values():
+    # Fabricated, documentation-shaped horse example; no greyhound claim.
+    raw = json.dumps({"racecardEvent": {
+        "id": 12345678, "type": "horse", "bettingStatus": "PRICED",
+        "markets": [{"numPlaces": 3, "statusCode": "A", "selections": [{
+            "runnerNumber": 1, "drawNumber": 3, "isOut": False,
+            "prices": [{"priceCode": "L", "winPrice": 8.75, "placePrice": 2.65}],
+            "result": "PRIVATE_RESULT", "shortForm": "PRIVATE_FORM",
+            "statistics": {"PRIVATE_KEY": 998877},
+        }]}], "results": ["PRIVATE_OUTCOME"], "Authorization": "PRIVATE_TOKEN",
+    }})
+    report = response_shape(raw)
+    event = report["shape"]["fields"]["racecardEvent"]["fields"]
+    market = event["markets"]["sample"][0]["fields"]
+    runner = market["selections"]["sample"][0]["fields"]
+    assert market["numPlaces"] == {"type": "number"}
+    assert runner["isOut"] == {"type": "boolean"}
+    assert runner["prices"]["sample"][0]["fields"] == {
+        "priceCode": {"type": "string"}, "winPrice": {"type": "number"},
+        "placePrice": {"type": "number"},
+    }
+    text = json.dumps(report)
+    for private in ("PRIVATE", "12345678", "horse", "PRICED", '"L"',
+                    "8.75", "2.65", "998877", "shortForm", "statistics", "results"):
+        assert private not in text
+    assert report["truncated"] is False
+
+
 def test_complete_response_is_schema_only_and_body_is_read_once():
     rec = inspector()
     rec.navigate()
