@@ -130,13 +130,16 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
                            else "required_paired_markets_not_ready_within_readiness_budget")
         assert terminal_capture["operational_capture_outcome"]["reason"] == expected_marker
         if landing_missing == "paired_missing":
-            assert inspection["body_reads"] >= 0
+            assert inspection["paired_readiness"][-1]["card_count"] == 4
+            assert inspection["paired_readiness"][-1]["paired_card_count"] == 0
             assert any(m["name"] == "paired_readiness_expired" for m in inspection["marks"])
         assert not list((campaign.root/"operational-predictions/races").glob("*/terminal.json"))
         with sqlite3.connect(plan['db_path']) as capture_conn:
             assert capture_conn.execute('SELECT count(*) FROM live_odds').fetchone()[0] == 0
         return
     assert service.returncode == 0, (tmp_path/'collector.log').read_text()[-3000:]
+    assert inspection['paired_readiness'][-1]['card_count'] == 4
+    assert inspection['paired_readiness'][-1]['paired_card_count'] == 4
     claims = allowance.claims()
     assert len(claims) == 1
     result = subprocess.run([sys.executable,'-B','-m','race_collection.operational_prediction',str(package/'plan.json'),str(claims[0])],
