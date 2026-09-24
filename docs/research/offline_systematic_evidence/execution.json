@@ -1,0 +1,61 @@
+{
+  "cpu_seconds": 12.235610972,
+  "executable": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/.venv/bin/python",
+  "fits": 277,
+  "folds": [
+    {
+      "chosen_recipe": "add_draw_track",
+      "config": {
+        "family": "linear",
+        "l2": 0.3,
+        "recipe": "add_draw_track",
+        "strength": 1.0
+      },
+      "outer": "period1",
+      "test_races": 86,
+      "train_races": 154,
+      "tree": "tree5",
+      "tree_weight": 0
+    },
+    {
+      "chosen_recipe": "add_margin_improvement",
+      "config": {
+        "family": "linear",
+        "l2": 0.3,
+        "recipe": "add_margin_improvement",
+        "strength": 1.0
+      },
+      "outer": "period2",
+      "test_races": 16,
+      "train_races": 240,
+      "tree": "tree4",
+      "tree_weight": 0
+    },
+    {
+      "chosen_recipe": "market_power",
+      "config": {
+        "family": "power",
+        "power": 1.5
+      },
+      "outer": "final_later_block",
+      "test_races": 75,
+      "train_races": 256,
+      "tree": "tree4",
+      "tree_weight": 0.25
+    }
+  ],
+  "packages": {
+    "numpy": "1.26.4",
+    "scikit-learn": "1.7.1",
+    "scipy": "1.16.1"
+  },
+  "peak_rss_kib": 253936,
+  "python": "3.11.15 (main, Mar 24 2026, 22:50:29) [Clang 22.1.1 ]",
+  "thread_env": {
+    "MKL_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1"
+  },
+  "validation_trials": 219,
+  "wall_seconds": 13.282602117978968
+}

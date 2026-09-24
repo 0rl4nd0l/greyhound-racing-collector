@@ -1,0 +1,45 @@
+{
+  "schema": "systematic_stage_plan_v1",
+  "recorded_before_new_model_performance": true,
+  "basis_commit": "e09c16e78bd5824b4494602204b9af44b4cc4e94",
+  "population": "retain previous qualified332 unless independent audit demonstrates exclusion; assess new dates by identity-only inventory; no expansion based on scores",
+  "exposure": "all previous177 evaluated races are now development, no pristine holdout is claimed",
+  "stages": [
+    {
+      "id": "foundation",
+      "question": "Are identity, timing, protection and scoring sound?",
+      "budget": "metadata/hash/source audit and synthetic regressions; no fits"
+    },
+    {
+      "id": "groups",
+      "question": "Which plausible pre-race feature groups add beyond market plus form?",
+      "budget": "at most24 fixed groups/additions/removals per outer fold, at most6 inner fits each; 180CPU seconds"
+    },
+    {
+      "id": "tuning",
+      "question": "Does validation select a stable penalty/strength or justified interaction?",
+      "budget": "best3 group recipes per outer fold; L2 {0.1,0.3,1,3}; strength{0.25,0.5,1}; at most216 additional fits, 300CPU seconds"
+    },
+    {
+      "id": "nonlinear",
+      "question": "Can limited nonlinear structure or out-of-sample blending help?",
+      "budget": "up to6 fixed tree configurations per outer fold, at most3 inner folds, 120CPU seconds; validation-only blend grid"
+    },
+    {
+      "id": "outer",
+      "question": "Does the full selection procedure survive later chronological blocks?",
+      "budget": "at most3 predeclared selector families plus market/frozen anchors; all decisions from earlier validation only; one outer scoring pass after all selections frozen"
+    },
+    {
+      "id": "diagnostics",
+      "question": "Do gains or selections survive date/venue/odds stability and dependence?",
+      "budget": "3000 date-block paired/max-statistic bootstrap, leave-one-date-out, fixed nearby thresholds; <=60CPU seconds"
+    }
+  ],
+  "stopping": "complete these distinct stages; do not add combinations in response to outer metrics. Stop expansion if no stable advantage or sample cannot distinguish. Any revised budget recorded before that stage runs.",
+  "returns": "Only if actionable quote/deduction evidence is qualified; otherwise no financial estimates.",
+  "compute": "single BLAS/OMP thread, nice10, recheck host load before fits",
+  "model_seeds": [
+    20260924
+  ]
+}
