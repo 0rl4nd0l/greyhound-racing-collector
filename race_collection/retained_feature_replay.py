@@ -48,7 +48,7 @@ def replay_retained_inputs(root: Path) -> dict:
             raise ValueError("SCHEDULED_RETENTION_NOT_ACCEPTED")
     if not datetime.fromisoformat(completion["inputs_sealed_at"]) < datetime.fromisoformat(manifest["prediction_cutoff"]):
         raise ValueError("RETENTION_COMPLETED_LATE")
-    for entry in list(manifest["files"].values()) + [manifest["history"]]:
+    for entry in list(manifest["files"].values()) + [manifest["history"]] + ([manifest["history_seal"]] if "history_seal" in manifest else []):
         path = (root / entry["path"]).resolve()
         if root.resolve() not in path.parents or hashlib.sha256(path.read_bytes()).hexdigest() != entry["sha256"]:
             raise ValueError("RETAINED_INPUT_CHANGED")

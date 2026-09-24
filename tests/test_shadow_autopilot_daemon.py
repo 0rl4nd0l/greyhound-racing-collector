@@ -1001,6 +1001,7 @@ def test_run_once_repeated_odds_priority_cannot_starve_full_primary(
     )
 
     monkeypatch.setattr(daemon, "ROOT", tmp_path)
+    monkeypatch.setattr(daemon, "protected_hashes", lambda: {})
     monkeypatch.setattr(daemon, "copy_if_exists", lambda source, dest: None)
     monkeypatch.setattr(
         daemon,
@@ -1167,16 +1168,11 @@ def test_run_once_non_deferred_validates_run_owned_service_files(
         "release_lock",
         lambda *args, **kwargs: {"status": "RELEASED"},
     )
-    monkeypatch.setattr(
-        daemon,
-        "run_command",
-        lambda **kwargs: {
-            "name": kwargs["name"],
-            "returncode": 0,
-            "timed_out": False,
-            "status": "PASS",
-        },
-    )
+    commands = {}
+    def recorded_command(**kwargs):
+        commands[kwargs["name"]] = kwargs["command"]
+        return {"name": kwargs["name"], "returncode": 0, "timed_out": False, "status": "PASS"}
+    monkeypatch.setattr(daemon, "run_command", recorded_command)
     monkeypatch.setattr(
         daemon,
         "rejoin_pending_shadow_runs",
@@ -1212,6 +1208,12 @@ def test_run_once_non_deferred_validates_run_owned_service_files(
         assert source_timer.read_text(encoding="utf-8") == (
             "reviewed timer template\n"
         )
+        from scripts import shadow_autopilot_v1 as autopilot
+        child = autopilot.parse_args(commands["autopilot_cycle"][2:])
+        assert child.r3_job_store == tmp_path / "r3-jobs.db"
+        assert child.r3_prediction_bundles == tmp_path / "r3-bundles"
+        assert child.skip_shadow_run and child.enable_autonomous_result_capture
+        assert "--skip-shadow-run" in service_path.read_text()
         raise ServiceValidationReached
 
     monkeypatch.setattr(daemon, "systemd_verify", verify_run_owned_service_files)
@@ -1219,6 +1221,12 @@ def test_run_once_non_deferred_validates_run_owned_service_files(
     args = daemon.parse_args(
         [
             "run-once",
+            "--state-path", str(tmp_path / "runtime/daemon_state.json"),
+            "--odds-capture-state-path", str(tmp_path / "runtime/odds_state.json"),
+            "--db", str(tmp_path / "fixture.db"),
+            "--enable-autonomous-result-capture", "--skip-shadow-run",
+            "--r3-job-store", str(tmp_path / "r3-jobs.db"),
+            "--r3-prediction-bundles", str(tmp_path / "r3-bundles"),
             "--run-id",
             "validation",
             "--evidence-root",
@@ -1824,6 +1832,7 @@ def test_run_once_lock_held_surfaces_latest_odds_capture_state(tmp_path, monkeyp
     )
 
     monkeypatch.setattr(daemon, "ROOT", tmp_path)
+    monkeypatch.setattr(daemon, "protected_hashes", lambda: {})
     monkeypatch.setattr(daemon, "copy_if_exists", lambda source, dest: None)
     monkeypatch.setattr(
         daemon,

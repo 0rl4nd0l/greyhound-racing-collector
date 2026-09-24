@@ -667,7 +667,8 @@ def generate_package(*, source_root: Path, pinned_python: Path, evidence_root: P
                      source_tree: str, ui_version: str, profile_id: str,
                      bind_address: str = "127.0.0.1", port: int = 5055,
                      live_authority: Path | None = None, enabled: bool = False,
-                     journal_activation: Path | None = None) -> dict[str, Any]:
+                     journal_activation: Path | None = None,
+                     retained_input_bindings: Path | None = None) -> dict[str, Any]:
     """Validate every authority input, then write one finite generated package."""
     if not _COMMIT.fullmatch(source_commit) or not _COMMIT.fullmatch(source_tree):
         raise DeploymentRejected("source commit/tree identity is invalid")
@@ -735,6 +736,18 @@ def generate_package(*, source_root: Path, pinned_python: Path, evidence_root: P
             },
             "roots": {"source_root": str(source), "pinned_python": str(python), "evidence_root": str(evidence), "producer_root": str(producer), "canonical_db": str(database), "operations_root": str(operations)},
         }
+    if retained_input_bindings is not None:
+        from src.predictor.retained_inputs import validate_bindings
+        try:
+            retained = validate_bindings(_strict_json(_retained_file_read(
+                _safe_existing(retained_input_bindings, directory=False), 65536)))
+            for entry in retained.values():
+                retained_root = _safe_existing(Path(entry["path"]), directory=True)
+                if not retained_root.is_relative_to(evidence):
+                    raise ValueError("retained inputs must be beneath collector evidence")
+            binding["retained_inputs"] = retained
+        except (ValueError, TypeError, KeyError) as exc:
+            raise DeploymentRejected("invalid retained input bindings") from exc
     active = bool(enabled)
     live = _live_authority(_safe_existing(live_authority, directory=False)) if active and live_authority is not None else None
     if active and live is None:
@@ -818,6 +831,7 @@ def _parser() -> argparse.ArgumentParser:
     generate.add_argument("--bind-address", default="127.0.0.1"); generate.add_argument("--port", type=int, default=5055); generate.add_argument("--enable", action="store_true", dest="enabled")
     generate.add_argument("--live-authority", type=Path)
     generate.add_argument("--journal-activation", type=Path)
+    generate.add_argument("--retained-input-bindings", type=Path)
     manual = commands.add_parser("generate-manual")
     for name in (
         "source-root", "pinned-python", "manual-root", "browser-profile-root",

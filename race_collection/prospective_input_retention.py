@@ -114,6 +114,11 @@ def retain_inputs(
             target_race_id=race_id, cutoff=jump_at, runner_names=runner_names,
             runner_scope_only=True,
         )
+        history_raw = (json.dumps(history, sort_keys=True, separators=(",", ":")) + "\n").encode()
+        with (stage / "history_seal.json").open("xb") as stream:
+            stream.write(history_raw)
+            stream.flush()
+            os.fsync(stream.fileno())
         if generate_features:
             from race_collection.retained_feature_replay import generate_retained_features
 
@@ -145,6 +150,7 @@ def retain_inputs(
                 "cutoff_basis": history["cutoff_basis"],
                 "scope": "active_runner_names_using_feature_loader_normalization",
             },
+            "history_seal": {"path": "history_seal.json", "sha256": hashlib.sha256(history_raw).hexdigest()},
             "feature_values_sha256": hashlib.sha256(generated).hexdigest() if generate_features else None,
             "bundle_bytes": bundle_bytes,
             "predictions_generated": False,

@@ -38,9 +38,15 @@ class WorkerConfig:
     python_executable:Path; repository_root:Path; choices:Mapping[str,ServerChoice]; canonical_db:Path; output_root:Path
     capture_evidence_roots:tuple[Path,...]; collector_request_root:Path; current_index_path:Path; current_index_evidence_root:Path
     current_index_timeout_seconds:float; fetch_timeout_seconds:float; process_timeout_seconds:float; cancellation_grace_seconds:float=15.0
+    retained_input_bindings:Mapping[str,Mapping[str,str]]|None=None
     _identities:Mapping[str,tuple[tuple[int,int],...]]=field(init=False,repr=False,compare=False)
     _runtime:tuple[tuple[Path,tuple[int,int],str],...]=field(init=False,repr=False,compare=False)
     def __post_init__(self):
+        if self.retained_input_bindings is not None:
+            from src.predictor.retained_inputs import validate_bindings
+            from types import MappingProxyType
+            values = validate_bindings(self.retained_input_bindings)
+            object.__setattr__(self, "retained_input_bindings", MappingProxyType({key: MappingProxyType(value) for key, value in values.items()}))
         if not self.capture_evidence_roots or not self.choices: raise ValueError("worker allowlists must be non-empty")
         expected_index=self.capture_evidence_roots[0]/"shadow_autopilot_daemon_runtime"/"manual_prediction_current_race_index.json"
         if self.current_index_path.absolute()!=expected_index.absolute(): raise ValueError("current index binding disagrees with evidence root")
@@ -105,6 +111,13 @@ def fixed_argv(job:Job,config:WorkerConfig)->tuple[str,...]:
     if provenance is None: raise WorkerRejected("OPERATIONAL_INDEX_PROVENANCE_MISSING")
     provenance_json=json.dumps(provenance.fields(),sort_keys=True,separators=(",",":"))
     argv=[str(config.pinned_python),str(config.script),"--race-id",job.input.race_id,"--model",job.input.model_selector,"--job-id",job.job_id,"--config",str(choice.config_path),"--odds-source",job.input.odds_source,"--operational-index-provenance",provenance_json,"--db",str(config.canonical_db),"--output-root",str(config.output_root)]
+    if config.retained_input_bindings is None and job.input.retained_input_manifest_sha256 is not None:
+        raise WorkerRejected("RETAINED_INPUT_BINDING_CHANGED")
+    if config.retained_input_bindings is not None:
+        binding = config.retained_input_bindings.get(job.input.race_id)
+        if binding is None or binding["manifest_sha256"] != job.input.retained_input_manifest_sha256 or job.input.odds_source != "receipt":
+            raise WorkerRejected("RETAINED_INPUT_BINDING_MISSING")
+        argv.extend(("--retained-input-bundle", binding["path"], "--retained-input-manifest-sha256", binding["manifest_sha256"]))
     for root in config.capture_evidence_roots: argv.extend(("--capture-evidence-root",str(root)))
     argv.extend(("--collector-request-root",str(config.collector_request_root),"--fetch-timeout-seconds",str(config.fetch_timeout_seconds)))
     return tuple(argv)
@@ -373,6 +386,7 @@ def run_once(store:JobStore,job_id:str,config:WorkerConfig,*,now:Callable[[],dat
     _validate_runtime(config); _validate_choice(job,config); race=revalidate_current_race(job,config,now=now(),reader=reader,completion_clock=now); _validate_choice(job,config); _validate_runtime(config)
     validate_receipt_before_claim(job,config,race,current_time=now(),completion_clock=now)
     revalidate_current_race(job,config,now=now(),reader=reader,completion_clock=now)
+    fixed_argv(job,config)
     job,attempt_id=store.claim_attempt(job_id,now=now(),confirm_audit=confirm_audit)
     argv=fixed_argv(job,config); process=None; owner=None; started=False; runtime_fds=()
     try:

@@ -1,0 +1,86 @@
+{
+  "schema": "r3_offline_integration_validation_v1",
+  "implementation_commit": "d5705e4f486bf8a8e638784d6da1552b3fe9c7bb",
+  "base_commit": "89d22067a737222a053e73e02726ba352eec08e3",
+  "collector_pr_head": "fe3d984a13a7446ca0af301dd736fed20bab0b96",
+  "prepared_execution_commit": "6e7fa6e423655df22a6769e524b18c975359b2f6",
+  "installed_r3_commit": "5013ff039fda418f47a59373041d7bc7c4124f07",
+  "combined_uncommitted_tree": "6546b4179c91846246a000d54b4bd1bd4ce45a3f",
+  "python": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-python311-20260803-9d58f340/bin/python",
+  "checks": [
+    {
+      "name": "affected_regression",
+      "passed": 956,
+      "deselected": 2,
+      "seconds": 104.9
+    },
+    {
+      "name": "exported_source",
+      "passed": 80,
+      "deselected": 119,
+      "seconds": 17.48
+    },
+    {
+      "name": "combined_collector_head",
+      "passed": 341,
+      "deselected": 2,
+      "seconds": 12.05
+    },
+    {
+      "name": "independent_spec_recheck",
+      "passed": 2,
+      "seconds": 1.87
+    }
+  ],
+  "baseline_exclusions": [
+    "test_autopilot_default_min_joined_races_matches_review_target",
+    "test_autonomous_live_odds_capture_runs_before_daily_shadow_run"
+  ],
+  "reviews": {
+    "standards_unresolved": 0,
+    "spec_initial_p2": 1,
+    "spec_unresolved": 0
+  },
+  "archive": {
+    "file": "integration-source-d5705e4f-v2.tar",
+    "sha256": "53b7248d01171c358e539d2034d727de669cb43d914c92bdbd87de23f3e405e6",
+    "regular_files": 1018,
+    "scope": "source/static config/frozen residual model/synthetic test code only"
+  },
+  "evidence_root": "/home/l4nd0/greyhound-r3-integration-evidence-20260923",
+  "evidence_sha256": {
+    "d5705e4f-pinned-regression.log": "34afc66b344ab29d10c0c926e19e2e71e8964fef7291a3cac7eb4150026cef76",
+    "d5705e4f-package-v2-tests.log": "3bfbd027f813c9ca821dd11538c8b6e8dd3ef9adc493c6c3edd485c86db2bd86",
+    "combined-6546b417-tests.log": "e7374c06d911590b485dcb353945e3439c405951db222a6070987d85d67b2625",
+    "handoff-red.log": "29d42679c3f694dd3f0722a7d7eb44ba7d38cae160de05e8523c2467cc1af98c",
+    "retained_consumer_baseline.log": "a5c0756130bc33b18e0c0a4df5667198a530a1ba0195f7930d34ca93b3c496aa",
+    "retained_verifier_review_red.log": "6afa17655c6d2a52dda944394b0e9227870c0214134bd910b65a42e63aaa8b84",
+    "retained_verifier_review_green.log": "40b4bc43f41de54464dd371e8a6a7de8fe16570c3e315216e2374f50651abf9c",
+    "daemon-fixture-isolation-green.log": "43070f769e236d6133131b818344f14b9cc70eb0b06d977dc080afb56e79db89",
+    "review-standards.md": "3266fd85abf08de4d674829517522ba757d40610af24058475b07d7305afa892",
+    "review-spec.md": "8f192327e7583c071e919ffe7301e8c4a032af8d89f35cfd11cddfe476caa476",
+    "review-standards-followup.md": "5dc7887378757243f87eb2b81e7769ae2568cd7a13d16052f055d404cc9aef1a",
+    "review-spec-followup.md": "631f71c7f57e1383cc29b8630ec1d9f578409f05bf6e202c3bc6e711f8252836",
+    "sitecustomize.py": "659f8672f4c087875da33980992a8928355f001ad9c68837b7a61632e3e85bf9",
+    "package_source.py": "9134927c4e89a87a3a32fcf90acc90faa62adbb39582c5c6025cfca54d69484a",
+    "preservation-current.json": "42e0badd6a087d875ab3f324209d1d1f64206ddefb23c1000d002b345b2bb8b1"
+  },
+  "campaign": {
+    "changed_paths": [],
+    "unit_state_identical": true,
+    "capture_attempts": 1,
+    "logical_requests": 405,
+    "charged_seconds": 721.058807
+  },
+  "claims": {
+    "live_capture": false,
+    "real_history_access": false,
+    "real_race_prediction": false,
+    "live_result_access": false,
+    "performance_scoring": false,
+    "runtime_change": false,
+    "activation": false,
+    "deployment": false,
+    "merge": false
+  }
+}
