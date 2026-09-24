@@ -67,6 +67,9 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch):
         lock=tmp_path/'collector.lock', reconciliation_roots={}, installed_dir=installed,
         campaign_root=campaign.root, operational_predictions=True)
     plan = json.loads((package/'plan.json').read_bytes())
+    assert Path(plan['db_path']).resolve() != db.resolve()
+    with sqlite3.connect(db) as history_conn:
+        initial_odds = history_conn.execute('SELECT count(*) FROM live_odds').fetchone()[0]
     accounting = dict(schema_version='freshness_attempt_reconciliation_v1',complete=True,consumed=[],sources=[{'sha256':'a'*64}])
     keys = ('profile','rehearsal_id','starts_at','ends_at','lock_path','evidence_root','db_path','cleanup_seconds',
         'max_capture_attempts','max_logical_requests','source_identity_sha256','runtime_sha256',
@@ -93,6 +96,8 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch):
     terminals = list((campaign.root/'operational-predictions/races').glob('*/terminal.json'))
     assert len(terminals) == 1, result.stderr
     terminal = json.loads(terminals[0].read_bytes())
+    with sqlite3.connect(db) as history_conn:
+        assert history_conn.execute('SELECT count(*) FROM live_odds').fetchone()[0] == initial_odds
     assert terminal['status'] == 'PREDICTION_READY', terminal
     assert terminal['seconds_to_jump_at_verification'] > 60
     from src.operator_ui.job_store import JobStore

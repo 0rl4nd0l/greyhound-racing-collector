@@ -1021,7 +1021,7 @@ def _trusted_sportsbet_url(value: Any, race_id: str) -> bool:
     if tokens & POST_RACE_URL_TOKENS:
         return False
     path_match = re.fullmatch(
-        r"/greyhound-racing/.+/race-(\d+)-\d+/?", parsed.path.lower()
+        r"/(?:betting/)?greyhound-racing/.+/race-(\d+)-\d+/?", parsed.path.lower()
     )
     race_match = re.fullmatch(
         rf"Race (\d+) - {VENUE_CODE_PATTERN} - \d{{4}}-\d{{2}}-\d{{2}}",

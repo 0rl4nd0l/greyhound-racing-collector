@@ -700,7 +700,7 @@ def execute(plan_path, expected_digest, approval_id):
             raise ValueError("natural_quiescence_not_reached")
         accounting = reconcile(
             roots=plan["reconciliation_roots"],
-            db_path=Path(plan["db_path"]),
+            db_path=Path(plan.get("operational_predictions", {}).get("history_db_path", plan["db_path"])),
             source_date=start.astimezone(__import__("zoneinfo").ZoneInfo("Australia/Melbourne"))
             .date()
             .isoformat(),
@@ -789,9 +789,8 @@ def execute(plan_path, expected_digest, approval_id):
                 with campaign.ledger() as ledger:
                     begun = plan["rehearsal_id"] in ledger["launches"]
                 if begun:
-                    lifetimes = list((output / "operational-workers").glob("*.json"))
-                    if any(not json.loads(p.read_bytes()).get("children_reaped") for p in lifetimes):
-                        raise RuntimeError("prediction_lifetime_unknown_campaign_lease_retained")
+                    from race_collection.operational_prediction import require_completed_lifetimes
+                    require_completed_lifetimes(output, campaign)
                     campaign.close(plan["rehearsal_id"], now=now())
                 campaign_owner.close()
             for sig, handler in previous_handlers.items():
@@ -833,6 +832,8 @@ def main():
                 with campaign.ledger() as ledger:
                     begun = plan["rehearsal_id"] in ledger["launches"]
                 if begun:
+                    from race_collection.operational_prediction import require_completed_lifetimes
+                    require_completed_lifetimes(args.plan.parent, campaign)
                     campaign.close(plan["rehearsal_id"], now=now())
         else:
             restore(args.plan.parent, plan, SystemdControl())

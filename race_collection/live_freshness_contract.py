@@ -75,6 +75,15 @@ class FreshnessContract:
         for key in ("lock_path", "evidence_root", "db_path"):
             if not Path(value[key]).is_absolute():
                 raise ValueError("absolute_scope_paths_required")
+        operational = value.get("operational_predictions")
+        if operational:
+            if self.campaign is None:
+                raise ValueError("operational_campaign_required")
+            expected = self.campaign.root / "operational-predictions/capture.sqlite3"
+            capture = Path(value["db_path"]).resolve()
+            if (capture != expected.resolve() or capture != Path(operational["capture_db_path"]).resolve()
+                    or capture == Path(operational["history_db_path"]).resolve()):
+                raise ValueError("operational_database_separation_required")
         if not value.get("rehearsal_id") or not value.get("reconciliation_sha256"):
             raise ValueError("scope_identity_required")
         self.root = Path(value["lock_path"]).parent / "live-freshness-attempts-v1"

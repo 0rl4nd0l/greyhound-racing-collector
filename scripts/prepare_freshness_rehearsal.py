@@ -27,6 +27,16 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
     output.mkdir(parents=True, exist_ok=False)
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT, text=True).strip()
+    history_db = db.resolve(strict=True)
+    if operational_predictions:
+        if campaign_root is None:
+            raise ValueError("operational_predictions_require_existing_campaign")
+        db = campaign_root.resolve() / "operational-predictions/capture.sqlite3"
+        db.parent.mkdir(parents=True, exist_ok=True)
+        if db.resolve() == history_db:
+            raise ValueError("operational_history_write_collision")
+        from sportsbet_odds_integrator import SportsbetOddsIntegrator
+        SportsbetOddsIntegrator(str(db), allow_auto_scrape_odds=False)
     source = output / "source"
     source.mkdir()
     files = subprocess.check_output(
@@ -179,6 +189,8 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
             "authorization": "user:collection-to-prediction-20260924",
             "retention_config_sha256": prepare_retention(output, source, python),
             "operation": "operational_prediction",
+            "history_db_path": str(history_db),
+            "capture_db_path": str(db),
             "max_jobs": 12 - len(json.loads((campaign.root / "ledger.json").read_bytes())["attempts"]),
             "result_access": False, "research_activation": False,
         }

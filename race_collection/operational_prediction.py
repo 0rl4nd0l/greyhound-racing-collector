@@ -77,7 +77,9 @@ class Supervisor:
                 continue
             self.scope.admit(now(), seconds=200)
             create_once(root / "dispatches" / (identity + ".json"), {
-                "race_id": item["race_id"], "capture_claim": str(claim), "dispatched_at": now().isoformat()})
+                "race_id": item["race_id"], "capture_claim": str(claim), "dispatched_at": now().isoformat(),
+                "plan": str(self.output / "plan.json"),
+                "lifecycle": str(self.output / "operational-workers" / (claim.parent.name + ".json"))})
             self.log = (root / "dispatches" / (identity + ".log")).open("xb")
             self.child = subprocess.Popen([self.plan["python"], "-B", "-m", "race_collection.operational_prediction",
                 str(self.output / "plan.json"), str(claim)], cwd=self.plan["source_root"],
@@ -89,6 +91,17 @@ class Supervisor:
             self.child.wait(timeout=240)
             self.log.close()
             self.child = None
+
+
+
+def require_completed_lifetimes(output, campaign):
+    paths = set((output / "operational-workers").glob("*.json"))
+    for path in (campaign.root / "operational-predictions/dispatches").glob("*.json"):
+        row = json.loads(path.read_bytes())
+        if row.get("plan") == str(output / "plan.json"):
+            paths.add(Path(row["lifecycle"]))
+    if any(not p.is_file() or not json.loads(p.read_bytes()).get("children_reaped") for p in paths):
+        raise RuntimeError("prediction_lifetime_unknown_campaign_lease_retained")
 
 
 def now():
@@ -112,8 +125,15 @@ def bounded_run(plan_path, claim_path, *, timeout=200):
             children = [int(v) for v in Path(f"/proc/{pid}/task/{pid}/children").read_text().split()]
         except FileNotFoundError:
             return []
-        return [(c, Path(f"/proc/{c}/stat").read_text().rsplit(")", 1)[1].split()[19])
-                for c in children if Path(f"/proc/{c}/stat").exists()] + [v for c in children for v in descendants(c)]
+        result = []
+        for child_pid in children:
+            try:
+                birth = Path(f"/proc/{child_pid}/stat").read_text().rsplit(")", 1)[1].split()[19]
+            except FileNotFoundError:
+                continue
+            result.append((child_pid, birth))
+            result.extend(descendants(child_pid))
+        return result
     def interrupt(signum, frame):
         raise TimeoutError("prediction_supervisor_interrupted")
     for sig in (signal.SIGTERM, signal.SIGINT):
@@ -210,13 +230,13 @@ def run(plan_path: Path, claim_path: Path):
         config = json.loads(config_raw)
         config.update(output_root=str(record / "retention"), authority={
             "approved": True, "scope": SCOPE, "approval_reference": plan["operational_predictions"]["authorization"],
-            "race_ids": [race_id], "history_source": plan["db_path"],
+            "race_ids": [race_id], "history_source": plan["operational_predictions"]["history_db_path"],
             "not_before": plan["starts_at"], "expires_at": plan["ends_at"],
         })
         config_path = record / "retention-config.json"
         create_once(config_path, config)
         retainer = ScheduledInputRetention(config_path=config_path, evidence_root=evidence,
-            protocol_root=protocol_root, collector_run_id=source["collector_run_id"], history_source=plan["db_path"])
+            protocol_root=protocol_root, collector_run_id=source["collector_run_id"], history_source=plan["operational_predictions"]["history_db_path"])
         # Replay the authenticated scheduled handoff, not a mutable capture plan.
         retained = retainer(plan_item=source["source_plan_item"], attempt=source["source_attempt"], receipt_publish=None)
         timing["retention_seconds"] = time.monotonic() - phase_start
