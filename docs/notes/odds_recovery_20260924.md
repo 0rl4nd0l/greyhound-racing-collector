@@ -338,3 +338,28 @@ spellings while preserving exact native runner IDs, active runner sets, API box
 agreement, unique effective boxes and pre-jump timestamps. Casino R10's scratch
 price conflict and Warrnambool R10's runner/export disagreement remain rejected.
 The failed run and its source receipts are preserved; no capture job is retried.
+
+
+## 18:10 capture and protocol snapshot diagnosis
+
+Candidate eca5232bef2d962fea3cecce0634325ecc23ef1f published three valid index
+races and captured Casino R11 at 18:11:00.295359, appending at 18:11:12.282768
+AEST. The complete receipt passed and input retention took 2.722552 seconds.
+Prediction job job_2c6b21a042e144d9938de8975e06df40 was rejected before scoring
+with COLLECTOR_PROTOCOL_INVALID at 18:11:20.496770; it remains consumed. No new
+provider denial occurred. This is a capture success, not a prediction success.
+
+The sealed blocker omitted its nested protocol error. Read-only historical-clock
+receipt discovery/snapshot now passes; source hashes match and members are below
+the 1 MiB limit. An independent network-denied fixture reproduces
+PROTOCOL_DIRECTORY_CHANGED when the supervisor atomically replaces an unrelated
+progress file under an ancestor. The selected receipt and source bytes, directory
+device and inode remain unchanged. The actual progress file was replaced at
+18:11:20.221568, during prediction processing. This proves a reachable mechanism,
+not the discarded original exception code.
+
+The snapshot repair compares retained directory device/inode identities while
+preserving no-follow traversal, named-path identity, exact selected-file size,
+mtime and content hashes. Directory replacement and source mutation still reject.
+A sealed value-free protocol failure artifact retains an allowlisted nested code;
+arbitrary exception details and paths are excluded. No failed job is replayed.
