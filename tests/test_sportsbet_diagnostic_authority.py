@@ -98,7 +98,9 @@ def test_quiet_revision_rejects_malformed_denial_clock(tmp_path, field, bad):
     gate=SportsbetAccess(tmp_path/'access.json',clock=lambda:10000)
     gate.initialize(access_basis={'status':'permitted','reference':'synthetic'})
     gate.retain_denial(429)
-    value=gate.read();value['denials'][-1][field]=bad;gate.write(value)
+    value=gate.read();value['denials'][-1][field]=bad
+    # Simulate a malformed external file; the normal writer rejects NaN/Inf.
+    gate.path.write_text(json.dumps(value))
     before=gate.path.read_bytes()
     with pytest.raises(SportsbetAccessBlocked):
         gate.authorize_diagnostic(reference='user',expected_sha256=hashlib.sha256(before).hexdigest(),
