@@ -66,6 +66,8 @@ graph TB
 - **[Architecture](architecture/system_overview.md)**: System design and components
 - **[Data Dictionary](data_dictionary/database_schema.md)**: Database schema and data models
 - **[Race Evidence Inventory](race_evidence_inventory.md)**: Evidence roots, output guards, and readiness evidence boundaries
+- **[Active Workstreams](ACTIVE_WORKSTREAMS.md)**: Canonical ownership,
+  blockers, parked lanes, and next safe actions
 - **[Predictive Research Roadmap](predictive_research_roadmap.md)**: Strategy, evidence boundaries, research priorities, and revisit conditions
 - **[Monitoring](monitoring/prometheus_metrics.md)**: Metrics, alerts, and performance monitoring
 - **[Model Governance](governance/champion_challenger.md)**: Model deployment and management

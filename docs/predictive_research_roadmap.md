@@ -12,6 +12,10 @@ cohort access, or betting. Canonical repository evidence, frozen experiment
 artifacts, current data, and tests remain authoritative for claims. If this
 roadmap conflicts with those sources, those sources win.
 
+Current ownership, execution state, blockers, and next safe actions are tracked
+in the canonical [active-workstream ledger](ACTIVE_WORKSTREAMS.md). This roadmap
+must not be used as an active queue.
+
 The objective is not to find the most complicated model. It is to identify
 **trustworthy incremental information beyond the market**, convert that
 information into calibrated probability adjustments, and eventually determine
@@ -26,7 +30,7 @@ A major historical WIN/PLACE provenance problem was repaired, substantially
 changing runner probabilities. All modelling conclusions must use the corrected
 market surface.
 
-### Frozen Betfair forward candidate
+### Historical Betfair forward candidate
 
 Official Betfair scheduled-off data has produced the clearest incremental signal
 discovered so far. Historical development and validation selected this frozen
@@ -35,10 +39,13 @@ candidate:
 Frozen candidate: **95% normalized Betfair scheduled-off + 5% corrected
 Sportsbet WIN**.
 
-The candidate is frozen for an untouched forward evaluation covering
-**2026-08-18 through 2026-09-30**. It must not be retuned, replaced with
-Betfair-only, or evaluated early. The exact authority and evidence boundaries
-are defined by the
+The original candidate was frozen for an untouched forward evaluation covering
+**2026-08-18 through 2026-09-30**, but later outcome-bearing diagnostic exposure
+made it `COMPROMISED_FOR_PRISTINE_CONFIRMATION`. Its replacement is
+`BLOCKED_NO_OUTCOME_FREE_BETFAIR_SCHEDULED_OFF_SOURCE`; it has zero replacement
+population and outcomes. The original freeze remains immutable historical
+development evidence. The exact authority and evidence boundaries are defined
+by the
 [Sportsbet + Betfair forward consensus protocol](sportsbet_betfair_forward_consensus_protocol.md).
 
 ### Frozen overround successor
