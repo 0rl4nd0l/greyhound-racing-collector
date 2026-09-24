@@ -229,6 +229,16 @@ def create_sportsbet_driver(factory, **kwargs):
                 with state_lock:
                     admission.__exit__(None, None, None)
 
+    def navigation_remaining():
+        """Planning information only; get() remains the enforcing boundary."""
+        with state_lock:
+            operation.check()
+            cap = operation.value.get('operating_policy', {}).get(
+                'browser_navigation_cap', 2 if operation.recovery else None)
+            return None if cap is None else max(0, cap - navigations)
+
+    driver.sportsbet_navigation_remaining = navigation_remaining
+
     def accept_data():
         events.join()
         with state_lock:

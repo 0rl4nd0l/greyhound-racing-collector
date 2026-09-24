@@ -5,6 +5,7 @@ from pathlib import Path
 import sqlite3
 import subprocess
 import sys
+import pytest
 from datetime import timedelta
 
 from tests.test_freshness_capture_e2e import fixture_data
@@ -14,7 +15,8 @@ from tests.test_freshness_campaign import make_campaign
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch):
+@pytest.mark.parametrize("landing_missing", [False, True])
+def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, landing_missing):
     from scripts.prepare_freshness_rehearsal import prepare, UNITS
     from scripts.check_freshness_service import service_command
     from sportsbet_odds_integrator import SportsbetOddsIntegrator
@@ -51,6 +53,8 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch):
     http.write_text(json.dumps(payload))
     for name in ('Alpha', 'Bravo', 'Charlie', 'Delta'):
         browser['race_html'] = browser['race_html'].replace(name, 'Synthetic '+name)
+    if landing_missing:
+        browser['landing_html'] = '<a href="https://www.sportsbet.com.au/greyhound-racing/australia-nz/murray-bridge-straight">Murray Bridge Straight</a>'
     browser_path = tmp_path / 'browser.json'
     browser_path.write_text(json.dumps(browser))
     installed = tmp_path / 'installed'
@@ -87,6 +91,13 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch):
     launcher = 'from scripts.check_freshness_service import deny_network; import os,sys; deny_network(); os.execv(sys.argv[1],sys.argv[1:])'
     service = subprocess.run([sys.executable,'-c',launcher,*command],cwd=cwd,env=env,capture_output=True,text=True,timeout=100)
     (tmp_path/'collector.log').write_text(service.stdout+service.stderr)
+    if landing_missing:
+        assert len(allowance.claims()) == 1
+        assert json.loads(gate.read_bytes())['phase'] == 'OPEN'
+        assert 'target_race_not_visible_within_navigation_allowance' in (tmp_path/'collector.log').read_text() or any('target_race_not_visible_within_navigation_allowance' in p.read_text() for p in (package/'evidence').glob('**/autonomous_live_odds_capture_report.json'))
+        with sqlite3.connect(plan['db_path']) as capture_conn:
+            assert capture_conn.execute('SELECT count(*) FROM live_odds').fetchone()[0] == 0
+        return
     assert service.returncode == 0, (tmp_path/'collector.log').read_text()[-3000:]
     claims = allowance.claims()
     assert len(claims) == 1
