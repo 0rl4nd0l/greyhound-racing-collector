@@ -1,0 +1,36 @@
+{
+  "findings": [
+    "July protected/closed study membership remains excluded; no recovery or outcome access.",
+    "Sportsbet/Betfair August 18 predecessor and August 20-September 30 replacement remain protected.",
+    "October overround successor has unbounded first-1000 accrual after separately approved activation, earliest October 1; November is NOT automatically available.",
+    "September 16 separate residual proposal is PROPOSED_NOT_AUTHORIZED, no allocated population; must remain inactive for the proposed exclusive four-way window.",
+    "Current operational acceptance and collector campaigns grant no scientific population or result access.",
+    "Propose exclusive November 1 2026-April 18 2027 allocation, conditional on owner explicitly keeping both future proposals inactive until after this window or proving completed disjoint membership.",
+    "No authority or activation is created by this review. Refresh all reservation sources and resolve additions before allocation."
+  ],
+  "incident": "58 reserved races / 393 labels decoded earlier; timing aggregates influenced original T-2 context. Exclusion did not reverse access. No new protected outcomes read.",
+  "proposed_history_firewall": {
+    "deny_dates_inclusive": [
+      [
+        "2026-07-15",
+        "2026-10-31"
+      ]
+    ],
+    "effect": "conservative rejection, never filter history to rescue a prediction",
+    "required_future_authority": "machine-only strictly earlier history in exclusively allocated population; no human target-result access or interim metrics"
+  },
+  "schema_version": "four_way_reservation_review_v1",
+  "separate_residual_proposal": {
+    "path": "/home/l4nd0/greyhound-prospective-readiness-20260916/PROSPECTIVE_EVALUATION_PROPOSAL.md",
+    "sha256": "ab1b98f4b27551a96a003b9ede88c56d90b22b2051785b6959847828ca1dde99"
+  },
+  "sources": {
+    "docs/agent_tasks/prospective_market_form_residual_cohort_v2_20260716.md": "27f8476181e0adc69f41da60b456cadd05fe94729a9b7fef10b369d7741c1bcf",
+    "docs/forward_overround_successor_protocol.md": "4c0c17a0bfb5c1e97561919187952c3110e7a2b475fe4da3e5ec328a000e6949",
+    "docs/prospective_residual_evaluation_assessment.md": "4bea9b5d773c05646595da89dea426dc26030d406fea4be0b409db39fdc3865d",
+    "docs/research/offline_20260924_access_incident.json": "724b4bf449aaa17f3f1419b579bf38ea4e836a776a6b1366339c44f821eb5f58",
+    "docs/research/offline_systematic_evidence/protected_records.json": "9fddce8fa70ea96c4d7a6c33ef61594ddeb47e254cd08bb87555b2d94fc4da88",
+    "docs/sportsbet_betfair_forward_consensus_protocol.md": "fa5c61cb7753069aafdd1b066157e20affc9f79888db161ecf2c788d5d84d9cb"
+  },
+  "status": "PREPARED_NO_ALLOCATION"
+}
