@@ -9,7 +9,9 @@ from utils.sportsbet_access import SportsbetAccess, SportsbetAccessBlocked
 
 def main():
     try:
-        SportsbetAccess().check_admission()
+        # Both services acquire the collector lock before any provider access.
+        # An active OPEN operation may finish while this service waits there.
+        SportsbetAccess().check_admission(allow_active=True)
     except SportsbetAccessBlocked as error:
         print(str(error))
         return 1

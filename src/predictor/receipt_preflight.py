@@ -16,7 +16,7 @@ from race_collection.manual_prediction_collector_request import (
     runner_set_sha256,
 )
 from src.predictor.on_demand import PredictionBlocked, receipt_from_handoff
-from utils.csv_metadata import canonical_thedogs_race_identity
+from utils.csv_metadata import canonical_thedogs_race_identity, canonical_thedogs_venue_identity
 from utils.race_identity_equivalence import (
     configured_venue_identity,
     race_id_parts,
@@ -76,10 +76,16 @@ def _sportsbet_source_matches(source_url: Any, race_id: str) -> bool:
         return False
     number, venue, _ = caller
     source_venue = configured_venue_identity(match.group(1).upper())
+    expected_venue = configured_venue_identity(venue)
     return bool(
         int(match.group(2)) == number
         and source_venue is not None
-        and source_venue == configured_venue_identity(venue)
+        and expected_venue is not None
+        and (
+            source_venue == expected_venue
+            or canonical_thedogs_venue_identity(match.group(1))
+            == canonical_thedogs_venue_identity(venue)
+        )
     )
 
 

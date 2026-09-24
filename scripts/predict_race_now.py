@@ -79,6 +79,9 @@ from src.predictor.receipt_preflight import (
     ExactReceiptReady,
     discover_exact_receipt_ready,
 )
+from config.venue_mapping import VENUE_MAPPING
+from utils.race_identity_equivalence import configured_venue_identity
+
 from utils.csv_metadata import (
     canonical_thedogs_race_identity,
     canonical_thedogs_venue_identity,
@@ -586,6 +589,21 @@ def _persist_blocked_bundle(
     """Seal the smallest post-bundle blocker as a research-only result."""
 
     bundle = Path(state["bundle"])
+    if exc.code == "COLLECTOR_PROTOCOL_INVALID":
+        # Preserve the bounded cause before the public result strips details.
+        # Never retain arbitrary exception text, source paths or payloads.
+        reason = exc.details.get("reason")
+        known = {
+            "PROTOCOL_DIRECTORY_CHANGED", "PROTOCOL_MEMBER_CHANGED",
+            "PROTOCOL_PATH_UNSAFE", "HASH_DRIFT", "EXACT_RECEIPT_MALFORMED",
+            "PROTOCOL_MEMBER_OVERSIZED", "TIMESTAMP_ORDER_INVALID",
+            "IDENTITY_MISMATCH",
+        }
+        _write_canonical(bundle / "protocol-failure.json", {
+            "schema_version": "prediction_protocol_failure_v1",
+            "code": exc.code,
+            "reason": reason if isinstance(reason, str) and reason in known else "UNCLASSIFIED",
+        })
     result = _sealed_result(
         state=state, generated_at=generated_at, blocker=exc, prediction=None
     )
@@ -629,7 +647,10 @@ def _request_race(
         or identity["race_number"] != race_number
         or url_venue is None
         or canonical_thedogs_venue_identity(venue) != url_venue
-        or venue != url_venue
+        or (
+            venue != url_venue
+            and (VENUE_MAPPING.get(venue) != venue or configured_venue_identity(venue) != url_venue)
+        )
         or stable_race_id(projection) != race_id
         or race_id not in stable_race_id_variants(projection)
     ):

@@ -70,6 +70,8 @@ def stop_owned_processes(pid, birth, retained=None):
 def create_sportsbet_driver(factory, *, response_inspection=None, **kwargs):
     admission = SportsbetAccess().operation('browser')
     operation = admission.__enter__()
+    if response_inspection is not None:
+        response_inspection.operation_id = operation.value["active"]
     driver = connection = None
     expected_disconnect = threading.Event()
     observation_failed = threading.Event()
@@ -121,6 +123,12 @@ def create_sportsbet_driver(factory, *, response_inspection=None, **kwargs):
 
     try:
         driver = factory(**kwargs)
+        if response_inspection is not None:
+            capabilities = getattr(driver, 'capabilities', {})
+            response_inspection.browser_identity = {
+                'browser_version': capabilities.get('browserVersion'),
+                'driver_version': capabilities.get('chrome', {}).get('chromedriverVersion', '').split(' ')[0],
+            }
         owner_pid = driver.service.process.pid
         if owner_pid == os.getpid():
             raise RuntimeError('invalid_browser_process_owner')
@@ -155,6 +163,7 @@ def create_sportsbet_driver(factory, *, response_inspection=None, **kwargs):
         watcher.start()
         channel('Network.enable')
         if response_inspection is not None:
+            channel('Page.enable')
             response_inspection.mark('browser_ready')
     except BaseException:
         import sys
@@ -253,6 +262,14 @@ def create_sportsbet_driver(factory, *, response_inspection=None, **kwargs):
 
     driver.sportsbet_navigation_remaining = navigation_remaining
 
+    def check_access():
+        # Drain already observed responses; this is not a new provider request.
+        events.join()
+        with state_lock:
+            operation.check()
+
+    driver.sportsbet_check_access = check_access
+
     def accept_data():
         events.join()
         with state_lock:
@@ -277,5 +294,17 @@ def create_sportsbet_driver(factory, *, response_inspection=None, **kwargs):
 
     driver.sportsbet_accept_validated_data = accept_data
     driver.sportsbet_inspect_response_shapes = inspect_response_shapes
+    def snapshot_dom_counts():
+        # Reading the already delivered DOM does not admit source traffic. Use
+        # the independent two-second CDP transport and a one-second renderer cap.
+        value = channel('Runtime.evaluate', {
+            'expression': """({runner_elements: document.querySelectorAll(
+                '[data-automation-id*=racecard-outcome-name]').length,
+                price_elements: document.querySelectorAll(
+                '[data-automation-id*=price-text]').length})""",
+            'returnByValue': True, 'timeout': 1000,
+        })
+        return value.get('result', {}).get('value')
+    driver.sportsbet_snapshot_dom_counts = snapshot_dom_counts
     driver.get, driver.get_log, driver.quit = get, logs, quit
     return driver

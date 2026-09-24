@@ -70,6 +70,8 @@ def configure_profile_execution(contract_path):
     os.environ["GREYHOUND_LIVE_EXECUTION"] = "bounded80-v1"
     os.environ["GREYHOUND_LIVE_CONTRACT"] = str(contract_path)
     os.environ["GREYHOUND_RUNTIME_MANIFEST"] = str(manifest)
+    if Path(contract_path).exists() and contract.get("operational_predictions"):
+        os.environ["GREYHOUND_SPORTSBET_RESPONSE_INSPECTION"] = "1"
     global _installer_guard_installed
     if not _installer_guard_installed:
 

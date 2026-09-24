@@ -151,7 +151,16 @@ def test_all_minute_calendar_native_lanes_publish_after_overlap(
                     "race_url": "fixture",
                     "source_native_race_id": "native-fixture",
                     "runner_set_sha256": "fixture-runners",
-                    "jump_datetime": "2026-09-22T16:00:00+10:00",
+                    # The scoped path now consumes an exact runner-bound T10
+                    # reservation. Keep its synthetic race naturally eligible
+                    # during the first refresh, without bypassing window checks.
+                    "jump_datetime": (
+                        origin + timedelta(minutes=10 if proposed_budget else 240)
+                    ).isoformat(),
+                    "runners": [
+                        {"box": 1, "display_name": "Fixture One", "identity": "FIXTURE ONE"},
+                        {"box": 2, "display_name": "Fixture Two", "identity": "FIXTURE TWO"},
+                    ],
                 }
             ],
         )

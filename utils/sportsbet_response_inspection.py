@@ -21,6 +21,22 @@ _FIELDS = frozenset(
     "id eventId raceId marketId selectionId runnerId name eventName marketName runnerName competitionId competitionName raceNumber startTime status state active suspended closed scratched isScratched isSuspended isActive markets selections runners events prices price odds decimal win place fixed fixedWin fixedPlace numerator denominator places numberOfPlaces placeTerms timestamp sequence version data payload snapshot updates type".split()
 )
 
+# Endpoint names and field names only, from the pinned external racing review.
+# These do not assert a provider schema or enable acquisition/receipt acceptance.
+# Keep event IDs, dates, runner filters, all scalar values and unknown names
+# redacted. In particular, do not add results, form or account fields here.
+_ROUTE_TOKENS |= frozenset({
+    "AllRacing", "Racecard", "RacecardWithContext", "MultipleRacecards",
+})
+_FIELDS |= frozenset({
+    "dates", "meetingDate", "sections", "raceType", "meetings", "classId",
+    "racecardEvent", "racecardContext", "bettingStatus", "statusCode",
+    "marketType", "marketSort", "availablePriceTypes", "livePriceAvailable",
+    "numPlaces", "eachwayAvailable", "placeAvailable", "isDisplayed",
+    "runnerNumber", "drawNumber", "isOut", "priceCode", "winPrice",
+    "placePrice", "winPriceNum", "winPriceDen", "placePriceNum", "placePriceDen",
+})
+
 
 def safe_route(url):
     """Only gateway metadata; never persist credentials or arbitrary text."""
@@ -148,6 +164,14 @@ class ResponseInspection:
         self.dropped = 0
         self.websocket_frames = 0
         self.body_reads = 0
+        self.operation_id = None
+        self.network_responses = []
+        self.browser_identity = {}
+        self.dom_snapshot = {"state": "not_observed"}
+        self.paired_readiness = []
+        self.landing_selection = None
+        self.dropped_responses = 0
+        self.frame_roles = {}
         self.mark("browser_start")
 
     def _stamp(self):
@@ -171,6 +195,8 @@ class ResponseInspection:
             "navigation_start",
             "navigation_complete",
             "rendered_extraction_complete",
+            "paired_rows_ready",
+            "paired_readiness_expired",
             "inspection_complete",
         }:
             raise ValueError("unknown_inspection_mark")
@@ -183,6 +209,30 @@ class ResponseInspection:
             self.navigation += 1
             self.mark("navigation_start")
 
+    def record_paired_readiness(self, boundary, counts):
+        """Two value-free DOM count observations; never price or runner text."""
+        keys = ("card_count", "single_header_count", "paired_card_count", "unique_box_count")
+        if boundary not in {"start", "end"} or any(
+            type(counts.get(key)) is not int or counts[key] < 0 for key in keys
+        ):
+            raise ValueError("invalid_paired_readiness_counts")
+        with self.lock:
+            if len(self.paired_readiness) < 2:
+                self.paired_readiness.append({"boundary": boundary,
+                    **{key: counts[key] for key in keys}, **self._stamp()})
+
+    def record_landing_selection(self, counts):
+        """One value-free observation of the already inspected landing links."""
+        keys = ("anchors_total", "anchors_examined", "parsed_race_links",
+                "race_number_matches", "exact_matches")
+        if any(type(counts.get(key)) is not int or counts[key] < 0 for key in keys):
+            raise ValueError("invalid_landing_selection_counts")
+        with self.lock:
+            if self.landing_selection is None:
+                self.landing_selection = {
+                    **{key: counts[key] for key in keys}, **self._stamp(),
+                }
+
     def fail(self):
         with self.lock:
             self.stopped = "inspection_error"
@@ -192,6 +242,45 @@ class ResponseInspection:
             if not self._open():
                 return
             method, params = event.get("method"), event.get("params", {})
+            if method in {"Page.frameAttached", "Page.frameNavigated"}:
+                frame = params.get("frame", params)
+                frame_id = frame.get("id", frame.get("frameId"))
+                if isinstance(frame_id, str) and len(self.frame_roles) < 64:
+                    self.frame_roles[frame_id] = (
+                        "child" if frame.get("parentId", frame.get("parentFrameId"))
+                        else "top_level"
+                    )
+                return
+            if method == "Network.responseReceived" and len(self.network_responses) >= 256:
+                self.dropped_responses += 1
+            if method == "Network.responseReceived" and len(self.network_responses) < 256:
+                from utils.sportsbet_access import is_sportsbet
+                from utils.http_client import source_retry_headers
+                response = params.get("response", {})
+                url = response.get("url", "")
+                if is_sportsbet(url):
+                    import hashlib
+                    parsed = urlsplit(url)
+                    resource = params.get("type", "unknown")
+                    route = safe_route(url)
+                    category = ("document" if resource == "Document" else
+                                "structured_data" if resource in {"XHR", "Fetch"} else
+                                "static_asset" if resource in {"Image", "Font", "Stylesheet"} else
+                                "script" if resource == "Script" else "unknown")
+                    self.network_responses.append({
+                        "host": parsed.hostname, "route": route,
+                        "path_sha256": hashlib.sha256(parsed.path.encode()).hexdigest(),
+                        "resource_type": resource, "category": category,
+                        "frame_role": self.frame_roles.get(params.get("frameId"), "unknown"),
+                        "frame_id_sha256": (hashlib.sha256(params["frameId"].encode()).hexdigest()
+                                            if isinstance(params.get("frameId"), str) else None),
+                        "navigation": self.navigation,
+                        "from_cache": bool(response.get("fromDiskCache") or response.get("fromPrefetchCache")),
+                        "from_service_worker": bool(response.get("fromServiceWorker")),
+                        "status": response.get("status"),
+                        "retry_headers": source_retry_headers(response.get("headers", {})),
+                        **self._stamp(),
+                    })
             if method == "Network.webSocketFrameReceived":
                 self.websocket_frames += 1
                 return  # Never inspect stream payloads or infer ordering.
@@ -324,6 +413,13 @@ class ResponseInspection:
                         "dropped_requests": self.dropped,
                         "websocket_frame_count": self.websocket_frames,
                         "body_reads": self.body_reads,
+                        "operation_id": self.operation_id,
+                        "network_responses": self.network_responses,
+                        "dropped_responses": self.dropped_responses,
+                        "browser_identity": self.browser_identity,
+                        "dom_snapshot": self.dom_snapshot,
+                        "paired_readiness": self.paired_readiness,
+                        "landing_selection": self.landing_selection,
                         "marks": self.marks,
                         "responses": list(self.rows.values()),
                     }

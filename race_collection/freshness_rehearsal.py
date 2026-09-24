@@ -81,10 +81,13 @@ def native_observation(*, now, paths, units, evidence_root, index_path, authorit
                 time_field,
                 identity_fields=("schema_version",) if schema else (),
                 max_items=100000,
+                # Completed refresh reports embed bounded encoded source-page
+                # evidence; these are larger than UI-facing scalar strings.
+                max_string_bytes=128 * 1024,
                 serialization_policy=JsonSerializationPolicy.PRODUCER_PRETTY_SORTED,
                 timestamp_syntax=TimestampSyntax.AWARE_ISO8601,
             ),
-            max_bytes=512 * 1024,
+            max_bytes=2 * 1024 * 1024,
         )
     adapter = LiveEvidenceAdapters(
         OperatorEvidenceReader(sources, clock=lambda: now),
@@ -143,6 +146,8 @@ def completed_service_overhead(status, report, lifecycle=None):
         return None
     timing = report["timing"]
     if timing.get("service_invocation_id"):
+        if timing['service_invocation_id'] != status.get('InvocationID'):
+            return None  # A retained report cannot measure a newer activation.
         if lifecycle is None:
             return None
         if (

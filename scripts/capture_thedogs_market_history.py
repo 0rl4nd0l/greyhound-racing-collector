@@ -68,6 +68,9 @@ RECEIPT_HTTP_HEADERS = (
     "x-request-id",
     "x-runtime",
     "x-varnish-cache",
+    "retry-after",
+    "ratelimit-reset",
+    "x-ratelimit-reset",
 )
 EXACT_ODDS_PATH = re.compile(
     r"^/racing/([a-z0-9-]+)/([0-9]{4}-[0-9]{2}-[0-9]{2})/"
@@ -77,6 +80,11 @@ EXACT_ODDS_PATH = re.compile(
 
 class CaptureError(ValueError):
     """Raised when capture evidence cannot satisfy the prospective contract."""
+
+    def __init__(self, message, *, source_http_status=None, source_retry_headers=None):
+        super().__init__(message)
+        self.source_http_status = source_http_status
+        self.source_retry_headers = source_retry_headers or {}
 
 
 @dataclass(frozen=True)
@@ -308,7 +316,7 @@ class _RunnerParser(HTMLParser):
                 if len(effective_box_texts) != 1:
                     raise CaptureError("effective_box_source_ambiguous_in_odds_page")
                 match = re.fullmatch(
-                    r"\(\s*from\s+box\s+([1-8])\s*\)",
+                    r"\(\s*(?:from|into)\s+box\s+([1-8])\s*\)",
                     effective_box_texts[0],
                     flags=re.IGNORECASE,
                 )
@@ -429,7 +437,12 @@ def validate_response(
     content_type_prefix: str,
 ) -> None:
     if response.status_code != 200:
-        raise CaptureError(f"source_http_status_{response.status_code}")
+        from utils.http_client import source_retry_headers
+        raise CaptureError(
+            f"source_http_status_{response.status_code}",
+            source_http_status=response.status_code,
+            source_retry_headers=source_retry_headers(response.headers),
+        )
     if response.final_url != exact_url or response.requested_url != exact_url:
         raise CaptureError("source_redirect_or_url_mismatch")
     content_type = response.headers.get("content-type", "").lower()

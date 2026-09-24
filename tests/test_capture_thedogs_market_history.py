@@ -952,10 +952,50 @@ def test_native_id_replacement_resolves_only_from_explicit_matching_boxes(tmp_pa
     assert rows["102"]["effective_box"] is None
 
 
+@pytest.mark.parametrize("effective_box", [2, 3, 5])
+def test_into_box_reserve_preserves_native_identity_and_effective_box(tmp_path, effective_box):
+    from dataclasses import replace
+
+    body = replacement_source_html(from_box_text=f"(into box {effective_box})")
+    api_body = replacement_api_payload(replacement_run_box=effective_box)
+    result, _session = capture(
+        tmp_path,
+        plan_payload=plan(expected_active_runner_ids=["101", "104"]),
+        source_body=body,
+        api_body=api_body,
+    )
+    receipt = json.loads(Path(result["receipt_path"]).read_text())
+    reserve = next(row for row in receipt["runners"] if row["native_runner_id"] == "104")
+    assert reserve["active"] is True
+    assert reserve["box"] == reserve["page_box"] == 9
+    assert reserve["page_effective_box"] == reserve["api_run_box"] == reserve["effective_box"] == effective_box
+    assert reserve["effective_box_provenance"]["resolution"] == "explicit_replacement_box_match"
+
+    observed = JUMP - timedelta(minutes=20)
+    evidence = subject.capture_native_identity_from_retained_race_page(
+        session=FakeSession(server_time=observed, source_body=body, api_body=api_body),
+        race_page=replace(retained_primary_race_page(observed), body=body),
+        expected_active_runner_boxes=[("101", 1), ("104", effective_box)],
+        expected_jump_utc=JUMP,
+        current_time=observed + timedelta(seconds=1),
+        clock=FakeClock(observed + timedelta(milliseconds=100)),
+    )
+    assert evidence["active_native_runner_boxes"] == {"101": 1, "104": effective_box}
+    valid, reason = subject.validate_primary_native_identity_evidence(
+        evidence,
+        expected_race_url=RACE_URL,
+        expected_native_race_id="9001",
+        expected_active_runner_boxes=[("101", 1), ("104", effective_box)],
+        metadata_captured_at=evidence["odds_api_http"]["request_end_utc"],
+    )
+    assert valid, reason
+
+
 @pytest.mark.parametrize(
     ("source_body", "api_body"),
     [
         (replacement_source_html(), replacement_api_payload(replacement_run_box=3)),
+        (replacement_source_html(from_box_text="(into box 2)"), replacement_api_payload(replacement_run_box=3)),
         (source_html(), mismatched_normal_api_payload()),
     ],
 )
@@ -1020,9 +1060,20 @@ def test_ambiguous_native_id_mapping_in_page_fails_closed():
         parse_source_runners(body)
 
 
-def test_malformed_explicit_replacement_box_fails_closed():
+@pytest.mark.parametrize("text", ["(box 2)", "(into box 0)", "(into box 9)", "(into box 22)", "prefix (into box 2)", "(into box 2) suffix", "(into box 2 or 3)"])
+def test_malformed_explicit_replacement_box_fails_closed(text):
     with pytest.raises(CaptureError, match="effective_box_source_invalid_in_odds_page"):
-        parse_source_runners(replacement_source_html(from_box_text="(box 2)"))
+        parse_source_runners(replacement_source_html(from_box_text=text))
+
+
+@pytest.mark.parametrize("second_text", ["(into box 2)", "(into box 3)", "(from box 2)"])
+def test_multiple_explicit_replacement_boxes_fail_closed(second_text):
+    body = replacement_source_html(from_box_text="(into box 2)").replace(
+        b"(into box 2)</span>",
+        f'(into box 2)</span><span class="race-runners__name__box">{second_text}</span>'.encode(),
+    )
+    with pytest.raises(CaptureError, match="effective_box_source_ambiguous_in_odds_page"):
+        parse_source_runners(body)
 
 
 def test_provider_unknown_is_preserved_without_rejection(tmp_path):

@@ -22,7 +22,12 @@ UNITS = (
 )
 
 
-def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False):
+def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False, observation_minutes=90):
+    operational = bool(campaign_root and operational_predictions)
+    if (type(observation_minutes) is not int
+            or not (5 <= observation_minutes <= 90 if operational else observation_minutes == 90)):
+        raise ValueError("invalid_operational_observation_duration")
+    short_observation = observation_minutes < 60
     output = output.absolute()
     output.mkdir(parents=True, exist_ok=False, mode=0o700)
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
@@ -63,8 +68,11 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
     create_once(source / "SOURCE_IDENTITY.json", identity)
     runtime_identity = probe_runtime(python=python, source_root=source)
     create_once(output / "runtime-identity.json", runtime_identity)
-    evidence = output / "evidence"
-    evidence.mkdir()
+    # Publication retains its root parent's mutation witnesses. Supervisor
+    # progress/receipt files change independently, so give the collector a
+    # dedicated parent that observers never write into.
+    evidence = output / "collector" / "evidence"
+    evidence.mkdir(parents=True)
     runtime = evidence / "shadow_autopilot_daemon_runtime"
     runtime.mkdir()
     contract_path = output / "contract.json"
@@ -92,6 +100,13 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         state_path=runtime / "odds_capture_state.json",
         refresh_limit=16,
     )
+    if short_observation:
+        timer_path = output / "units" / UNITS[1]
+        timer = timer_path.read_text()
+        expected = f"OnActiveSec={daemon.DEFAULT_TIMER_FREQUENCY}"
+        if timer.count(expected) != 1:
+            raise ValueError("unexpected_full_timer_start")
+        timer_path.write_text(timer.replace(expected, "OnActiveSec=1s"))
     service_checks = {}
     for name in (UNITS[0], UNITS[2]):
         completed = subprocess.run(
@@ -147,15 +162,18 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         "python_sha256": hashlib.sha256(python.resolve().read_bytes()).hexdigest(),
         "runtime_sha256": digest(runtime_identity),
         "starts_at": start.isoformat(),
-        "ends_at": (start + timedelta(minutes=90)).isoformat(),
+        "ends_at": (start + timedelta(minutes=observation_minutes)).isoformat(),
         "admission_starts_at": (start - timedelta(minutes=30)).isoformat(),
         "cleanup_seconds": 1860 if campaign else 1200,
         "sample_period_seconds": 2,
         "max_sample_gap_seconds": 5,
-        "readiness_warmup_seconds": 1200,
+        "readiness_warmup_seconds": 180 if short_observation else 1200,
+        **({"minimum_completed_full_cycles": 1, "minimum_distinct_captures": 1}
+           if short_observation else {}),
+        **({"minimum_completed_odds_cycles": 3} if observation_minutes < 10 else {}),
         "first_index_deadline_seconds": 180,
         "profile": "bounded80-v1",
-        "max_capture_attempts": 12 if campaign else 1,
+        "max_capture_attempts": campaign.value['max_capture_attempts'] if campaign else 1,
         "max_logical_requests": 48000 if campaign else 24000,
         "capture_allowance": "PENDING_QUIESCENT_RECONCILIATION",
         "evidence_root": str(evidence),
@@ -192,7 +210,7 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
             "operation": "operational_prediction",
             "history_db_path": str(history_db),
             "capture_db_path": str(db),
-            "max_jobs": 12 - len(json.loads((campaign.root / "ledger.json").read_bytes())["attempts"]),
+            "max_jobs": campaign.value['max_capture_attempts'] - len(json.loads((campaign.root / "ledger.json").read_bytes())["attempts"]),
             "result_access": False, "research_activation": False,
         }
     create_once(output / "plan.json", plan)
@@ -209,6 +227,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--campaign-root", type=Path)
     parser.add_argument("--operational-predictions", action="store_true")
+    parser.add_argument("--observation-minutes", type=int, default=90)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--start", required=True)
     parser.add_argument("--python", type=Path, required=True)
@@ -222,6 +241,7 @@ def main():
             prepare(
                 campaign_root=args.campaign_root,
                 operational_predictions=args.operational_predictions,
+                observation_minutes=args.observation_minutes,
                 output=args.output,
                 start=datetime.fromisoformat(args.start),
                 python=args.python,

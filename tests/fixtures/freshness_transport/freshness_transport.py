@@ -81,6 +81,17 @@ def install():
 
         def find_elements(self, by, selector):
             if by == "xpath":
+                if selector == "//*[contains(@data-automation-id,'racecard-outcome-name')]/ancestor::*[contains(@data-automation-id,'racecard-outcome')][1]":
+                    # Execute the source selector's ancestor semantics against
+                    # the fabricated HTML, rather than making XPath always empty.
+                    rows = []
+                    for name in self.node.select("[data-automation-id*='racecard-outcome-name']"):
+                        for ancestor in name.parents:
+                            if "racecard-outcome" in ancestor.get("data-automation-id", ""):
+                                if all(row is not ancestor for row in rows):
+                                    rows.append(ancestor)
+                                break
+                    return [Element(row) for row in rows]
                 return []
             return [Element(x) for x in self.node.select(selector)]
 

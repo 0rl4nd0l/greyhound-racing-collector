@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import sys
 import time
@@ -69,16 +70,19 @@ def classify_unready_capture(claim_path, result, evidence, source_root):
         return None
     attempt = attempts[0]
     fetch = attempt.get("fetch_result", {})
-    marker = "target_race_not_visible_within_navigation_allowance"
+    markers = {
+        "sportsbet_landing_exact_race_unavailable": "target_race_not_visible_within_navigation_allowance",
+        "sportsbet_exact_race_paired_markets_unready": "required_paired_markets_not_ready_within_readiness_budget",
+    }
+    marker = markers.get(fetch.get("discovery_method"))
     item = reserved["item"]
-    if (attempt.get("race_id") != item["race_id"]
+    if (marker is None or attempt.get("race_id") != item["race_id"]
             or attempt.get("capture_window_minutes") != item["capture_window_minutes"]
             or attempt.get("status") != "BLOCKED_VALIDATION_FAILED"
             or attempt.get("inserted_rows") != 0
             or fetch.get("success") is not False or fetch.get("write_performed") is not False
             or fetch.get("warnings") != [marker]
-            or fetch.get("win_count") != 0 or fetch.get("place_count") != 0
-            or fetch.get("discovery_method") != "sportsbet_landing_exact_race_unavailable"):
+            or fetch.get("win_count") != 0 or fetch.get("place_count") != 0):
         return None
     fetch_at = datetime.fromisoformat(attempt["fetch_time"])
     if fetch_at < datetime.fromisoformat(reserved["reserved_at"]):
@@ -226,6 +230,18 @@ def bounded_run(plan_path, claim_path, *, timeout=200):
     return code
 
 
+def failure_reason(error):
+    """Retain a bounded prediction rejection code, never its private details."""
+    from src.operator_ui.prediction_worker import WorkerRejected
+    from src.predictor.on_demand import PredictionBlocked
+    if isinstance(error, (WorkerRejected, PredictionBlocked)):
+        value = error.code if isinstance(error, PredictionBlocked) else str(error)
+        if not isinstance(value, str):
+            return type(error).__name__
+        return value if re.fullmatch(r"[A-Z][A-Z0-9_]{0,95}", value) else type(error).__name__
+    return str(error) if isinstance(error, ValueError) else type(error).__name__
+
+
 def run(plan_path: Path, claim_path: Path):
     from race_collection.manual_prediction_collector_request import ManualPredictionCollectorProtocol
     from race_collection.scheduled_input_retention import ScheduledInputRetention, SCOPE
@@ -357,7 +373,7 @@ def run(plan_path: Path, claim_path: Path):
         if job.phase is not Phase.PREDICTION_READY:
             timing["reason"] = job.reason
     except Exception as exc:
-        timing.update(status="FAILED", stage=stage, reason=str(exc) if isinstance(exc, ValueError) else type(exc).__name__)
+        timing.update(status="FAILED", stage=stage, reason=failure_reason(exc))
     finally:
         timing.update(total_seconds=time.monotonic()-started, completed_at=now().isoformat())
         atomic_json(record / "terminal.json", timing)
