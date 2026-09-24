@@ -1363,6 +1363,83 @@ def test_fetch_odds_for_target_race_uses_read_only_integrator(monkeypatch, tmp_p
     assert not db_path.exists()
 
 
+@pytest.mark.parametrize("venue", ["SAN", "SANDOWN"])
+@pytest.mark.parametrize("include_target", [True, False])
+def test_fetch_sandown_park_selects_only_exact_landing_race(
+    monkeypatch, tmp_path, venue, include_target
+):
+    import sportsbet_odds_integrator as odds_module
+    import json
+
+    monkeypatch.setenv("GREYHOUND_SPORTSBET_RESPONSE_INSPECTION", "1")
+    monkeypatch.delenv("GREYHOUND_LIVE_EXECUTION", raising=False)
+    monkeypatch.setattr(odds_auto_integrator.time, "sleep", lambda _seconds: None)
+    # Synthetic destinations are never requested; the provider's observed
+    # display label is the regression input, not a guessed live race URL.
+    links = [
+        _FakeAnchor("R3 Sandown Park", "https://fixture.invalid/greyhound-racing/wrong-race"),
+        _FakeAnchor("R2 Horsham", "https://fixture.invalid/greyhound-racing/wrong-venue"),
+    ]
+    target_url = "https://fixture.invalid/greyhound-racing/exact-target"
+    if include_target:
+        links.append(_FakeAnchor("R2 Sandown Park", target_url))
+    driver = _FakeDriver(landing_anchors=links)
+    driver.sportsbet_navigation_remaining = lambda: 1
+    driver.sportsbet_inspect_response_shapes = lambda: None
+    selected = []
+    closed = []
+
+    class FakeIntegrator:
+        base_url = "https://fixture.invalid"
+        greyhound_url = base_url + "/betting/greyhound-racing"
+
+        def __init__(self, *_args, **_kwargs):
+            self.driver = driver
+
+        def setup_driver(self):
+            return True
+
+        def get_race_odds_from_page(self, race_info):
+            selected.append(race_info)
+            return {**race_info, "odds_data": [{"box_number": 1}],
+                    "odds_data_place": [{"box_number": 1}]}
+
+        def _canonical_race_id(self, *_args):
+            return "SAN_2026-09-24_2"
+
+        def close_driver(self):
+            closed.append(True)
+
+    monkeypatch.setattr(odds_module, "SportsbetOddsIntegrator", FakeIntegrator)
+    summary = odds_auto_integrator.fetch_odds_for_target_race(
+        str(tmp_path / "unused.db"), venue, 2, "2026-09-24",
+        allow_auto_scrape_odds=True,
+        request_metrics_path=tmp_path / "requests.json",
+    )
+    assert summary["success"] is include_target
+    assert summary["write_performed"] is False
+    assert closed == [True]
+    assert driver.urls == [FakeIntegrator.greyhound_url]
+    if include_target:
+        assert len(selected) == 1
+        assert selected[0]["venue_url"] == target_url
+        assert selected[0]["race_number"] == 2
+        assert summary["discovery_method"] == "sportsbet_landing"
+    else:
+        assert selected == []
+        assert summary["warnings"] == ["target_race_not_visible_within_navigation_allowance"]
+    assert not (tmp_path / "unused.db").exists()
+    report = json.loads((tmp_path / "requests.responses.json").read_text())
+    selection = report["landing_selection"]
+    assert selection["anchors_total"] == (3 if include_target else 2)
+    assert selection["anchors_examined"] == (3 if include_target else 2)
+    assert selection["parsed_race_links"] == (3 if include_target else 2)
+    assert selection["race_number_matches"] == (2 if include_target else 1)
+    assert selection["exact_matches"] == int(include_target)
+    assert "fixture.invalid" not in json.dumps(report)
+    assert "Sandown" not in json.dumps(report)
+
+
 def test_dom_fallback_page_scraping_requires_opt_in_and_is_limited(tmp_path, monkeypatch):
     db_path = tmp_path / "dom.db"
     integrator = SportsbetOddsIntegrator(

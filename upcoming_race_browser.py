@@ -26,7 +26,7 @@ try:
 except Exception as _bs4_import_error:
     bs4 = None
 
-from utils.http_client import get_shared_session
+from utils.http_client import get_shared_session, source_retry_headers
 from utils.runner_completeness import (
     analyze_csv_text_runner_completeness,
     extract_canonical_runner_set_from_html,
@@ -68,6 +68,15 @@ try:
     from config.venue_mapping import normalize_venue as _normalize_venue
 except Exception:
     _normalize_venue = None
+
+
+def _raise_supervised_http_failure(response):
+    if os.environ.get("GREYHOUND_LIVE_EXECUTION") and response.status_code != 200:
+        raise NativeIdentityCaptureError(
+            f"source_http_status_{response.status_code}",
+            source_http_status=int(response.status_code),
+            source_retry_headers=source_retry_headers(response.headers),
+        )
 
 
 class UpcomingRaceBrowser:
@@ -219,6 +228,8 @@ class UpcomingRaceBrowser:
         fallback_trigger: str | None = None,
         rejected_export: dict | None = None,
     ):
+        if os.environ.get("GREYHOUND_LIVE_EXECUTION"):
+            return None
         try:
             print("   🔁 Fallback: attempting expert-form scraper path")
             from expert_form_csv_scraper import ExpertFormCsvScraper
@@ -1970,6 +1981,7 @@ class UpcomingRaceBrowser:
             response = self.session.get(
                 expert_form_url,
                 timeout=15,
+                **({"allow_redirects": False} if os.environ.get("GREYHOUND_LIVE_EXECUTION") else {}),
                 headers={
                     "Referer": base_race_url,
                     "Origin": self.base_url,
@@ -1982,6 +1994,7 @@ class UpcomingRaceBrowser:
                     "DNT": "1",
                 },
             )
+            _raise_supervised_http_failure(response)
             if response.status_code != 200:
                 return {
                     "schema_version": "thedogs_expert_form_metadata_v1",
@@ -2026,6 +2039,8 @@ class UpcomingRaceBrowser:
             expert_soup = bs4.BeautifulSoup(body, "html.parser") if bs4 else None
             return metadata, expert_soup
         except Exception as exc:
+            if os.environ.get("GREYHOUND_LIVE_EXECUTION") and getattr(exc, "source_http_status", None) is not None:
+                raise
             return {
                 "schema_version": "thedogs_expert_form_metadata_v1",
                 "source": "thedogs_expert_form_page",
@@ -2061,6 +2076,7 @@ class UpcomingRaceBrowser:
                     allow_redirects=False,
                 )
                 race_request_end = datetime.now(timezone.utc)
+                _raise_supervised_http_failure(response)
 
                 if response.status_code == 404:
                     return {
@@ -2213,6 +2229,8 @@ class UpcomingRaceBrowser:
                     return fallback
 
                 result = {"success": False, "error": "No CSV download link found"}
+                if os.environ.get("GREYHOUND_LIVE_EXECUTION") and retained_expert_soup is not None:
+                    result["source_failure_category"] = "observed_export_absent"
                 if existing_quarantine_result:
                     result["existing_quarantine"] = existing_quarantine_result
                 return result
@@ -2226,10 +2244,16 @@ class UpcomingRaceBrowser:
                     # We already have the CSV data
                     content = csv_info.get("data")
                     print(f"   ✅ Using CSV data returned from form submission")
+                elif isinstance(csv_info, dict) and csv_info.get("type") == "form_get":
+                    csv_response = self.session.get(
+                        csv_info["url"], params=csv_info["data"], timeout=30,
+                        allow_redirects=False,
+                    )
                 elif isinstance(csv_info, dict) and csv_info.get("type") == "form_post":
                     # Handle form POST request
                     csv_response = self.session.post(
-                        csv_info["url"], data=csv_info["data"], timeout=30
+                        csv_info["url"], data=csv_info["data"], timeout=30,
+                        **({"allow_redirects": False} if os.environ.get("GREYHOUND_LIVE_EXECUTION") else {}),
                     )
                 else:
                     # Handle direct URL request
@@ -2247,8 +2271,25 @@ class UpcomingRaceBrowser:
                     if not csv_url:
                         return {"success": False, "error": "No valid CSV URL found"}
 
-                    csv_response = self.session.get(csv_url, timeout=30)
+                    csv_response = self.session.get(csv_url, timeout=30,
+                        **({"allow_redirects": False} if os.environ.get("GREYHOUND_LIVE_EXECUTION") else {}))
 
+                # A source-observed export form can return its download URL.
+                # Follow that exact URL once; never probe alternative endpoints.
+                if csv_response is not None:
+                    _raise_supervised_http_failure(csv_response)
+                    if (os.environ.get("GREYHOUND_LIVE_EXECUTION")
+                            and isinstance(csv_info, dict)
+                            and csv_info.get("type") in {"form_get", "form_post"}
+                            and csv_response.text.strip().startswith("http")):
+                        delivered_url = self._observed_export_url(csv_response.text.strip(), csv_info["url"])
+                        if delivered_url is None:
+                            return {"success": False, "error": "Observed export URL invalid"}
+                        csv_response.close()
+                        csv_response = None
+                        csv_info = delivered_url
+                        csv_response = self.session.get(delivered_url, timeout=30, allow_redirects=False)
+                        _raise_supervised_http_failure(csv_response)
                 # Get content from response if we made a request
                 if content is None:
                     if csv_response and csv_response.status_code != 200:
@@ -2407,6 +2448,8 @@ class UpcomingRaceBrowser:
                         current_time=datetime.now(timezone.utc),
                     )
                 except (NativeIdentityCaptureError, UnicodeError, ValueError) as exc:
+                    if os.environ.get("GREYHOUND_LIVE_EXECUTION") and getattr(exc, "source_http_status", None) is not None:
+                        raise
                     canonical_runner_set["native_identity_reasons"] = [
                         f"native_identity_evidence_rejected:{exc}"
                     ]
@@ -2498,6 +2541,17 @@ class UpcomingRaceBrowser:
             }
 
         except Exception as e:
+            status = getattr(e, "source_http_status", None)
+            if os.environ.get("GREYHOUND_LIVE_EXECUTION") and type(status) is int:
+                guidance = getattr(e, "source_retry_headers", {})
+                return {
+                    "success": False,
+                    "error": f"Source HTTP status {status}",
+                    "source_http_status": status,
+                    "source_retry_after": guidance.get("retry-after"),
+                    "source_rate_limit_reset": guidance.get("ratelimit-reset") or guidance.get("x-ratelimit-reset"),
+                    "source_retry_headers": guidance,
+                }
             return {"success": False, "error": f"Error downloading race CSV: {str(e)}"}
 
     def extract_detailed_race_info(self, soup, race_url):
@@ -2583,8 +2637,59 @@ class UpcomingRaceBrowser:
             print(f"   ❌ Error extracting race info: {e}")
             return None
 
+    def _observed_export_url(self, value, document_url):
+        url = urljoin(document_url, value)
+        try:
+            parsed = urlsplit(url)
+            if (parsed.scheme == "https" and parsed.hostname == urlsplit(self.base_url).hostname
+                    and parsed.port in {None, 443} and parsed.username is None
+                    and parsed.password is None and not parsed.fragment
+                    and not {"result", "results", "dividend", "dividends", "payout", "payouts"}.intersection(parsed.path.lower().split("/"))):
+                return url
+        except ValueError:
+            pass
+        return None
+
+    def _find_observed_csv_export(self, soup, race_url, expert_soup):
+        """Inspect retained documents only; submit one explicitly observed export."""
+        _, expert_url = self._normalize_race_url(race_url)
+        for document, document_url in ((expert_soup, expert_url), (soup, race_url)):
+            if not document:
+                continue
+            for link in document.find_all("a", href=True):
+                if re.search("csv|export|download", link.get_text() + " " + link["href"], re.I):
+                    url = self._observed_export_url(link["href"], document_url)
+                    if url and url != document_url:
+                        return url
+            for form in document.find_all("form"):
+                controls = form.find_all(["input", "button"])
+                exports = [control for control in controls if re.search(
+                    "csv|export|download", " ".join(str(control.get(key, "")) for key in ("name", "value")) + control.get_text(), re.I)]
+                method = form.get("method", "get").lower()
+                url = self._observed_export_url(form.get("action", ""), document_url)
+                if not exports or not url or method not in {"get", "post"}:
+                    continue
+                data = {}
+                for control in form.find_all(["input", "select", "textarea", "button"]):
+                    name = control.get("name")
+                    kind = control.get("type", "submit" if control.name == "button" else "text").lower()
+                    if not name or control.has_attr("disabled") or (kind in {"checkbox", "radio"} and not control.has_attr("checked")):
+                        continue
+                    if kind in {"submit", "button", "image"} and control is not exports[0]:
+                        continue
+                    if control.name == "select":
+                        option = control.find("option", selected=True) or control.find("option")
+                        if option is not None:
+                            data[name] = option.get("value", option.get_text())
+                    else:
+                        data[name] = control.get_text() if control.name == "textarea" else control.get("value", "")
+                return {"type": "form_" + method, "url": url, "data": data}
+        return None
+
     def find_csv_download_link(self, soup, race_url, *, retained_expert_soup=False):
         """Find CSV download link on the race page"""
+        if os.environ.get("GREYHOUND_LIVE_EXECUTION"):
+            return self._find_observed_csv_export(soup, race_url, retained_expert_soup)
         try:
             # Try the expert-form page method first (normalized)
             base_race_url, expert_form_url = self._normalize_race_url(race_url)
@@ -3025,6 +3130,9 @@ class UpcomingRaceBrowser:
 
     def _scrape_race_time_from_page(self, race_url, max_retries=3):
         """Scrape actual race time from individual race page"""
+        supervised = bool(os.environ.get("GREYHOUND_LIVE_EXECUTION"))
+        if supervised:
+            max_retries = 1
         try:
             retry_count = 0
             while retry_count < max_retries:
@@ -3032,7 +3140,11 @@ class UpcomingRaceBrowser:
                     print(
                         f"     🕐 Scraping race time from: {race_url} (attempt {retry_count + 1})"
                     )
-                    response = self.session.get(race_url, timeout=15)
+                    response = self.session.get(race_url, timeout=15,
+                        **({"allow_redirects": False} if supervised else {}))
+                    if supervised and response.status_code != 200:
+                        response.close()
+                        return None
 
                     if response.status_code == 429:  # Too Many Requests
                         retry_delay = int(response.headers.get("Retry-After", 30))

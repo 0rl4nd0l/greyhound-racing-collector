@@ -33,6 +33,7 @@ VENUE_NAME_HINTS = {
     "CASO": "Casino",
     "NOWRA": "Nowra",
     "SHEP": "Shepparton",
+    "SAN": "Sandown Park",
     "QOT": ("Ladbrokes Q", "Q1 Lakeside", "Q2 Parklands"),
 }
 
@@ -508,18 +509,28 @@ def fetch_odds_for_target_race(
         time.sleep(5)
         anchors = driver.find_elements("css selector", "a[href*='greyhound-racing']")
         selected = None
+        selection_counts = {
+            "anchors_total": len(anchors), "anchors_examined": 0,
+            "parsed_race_links": 0, "race_number_matches": 0, "exact_matches": 0,
+        }
         for anchor in anchors:
+            selection_counts["anchors_examined"] += 1
             href = anchor.get_attribute("href") or ""
             text = (anchor.text or "").strip()
             parsed = _parse_anchor(text, href, target_date)
             if not parsed:
                 continue
+            selection_counts["parsed_race_links"] += 1
             if int(parsed["race_number"]) != int(race_number):
                 continue
+            selection_counts["race_number_matches"] += 1
             if target_names and _norm(parsed["venue"]) not in target_names:
                 continue
             selected = parsed
+            selection_counts["exact_matches"] += 1
             break
+        if inspection is not None:
+            inspection.record_landing_selection(selection_counts)
         if not selected:
             remaining = getattr(driver, "sportsbet_navigation_remaining", lambda: None)()
             # A meeting lookup and the subsequent exact race load require two

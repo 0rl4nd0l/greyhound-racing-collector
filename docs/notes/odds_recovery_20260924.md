@@ -397,3 +397,53 @@ source admission after ExecCondition, preventing the intended queue. Preserve
 that package as unexecuted. Apply the same service-only admission at both
 entrypoints, with a network-denied actual wrapper subprocess regression; actual
 source operation acquisition and ordinary preflight remain strict.
+
+## 19:00 observation and bounded refresh recovery
+
+Candidate 0b17ea7bf84b21325d39e43eb3af12836ae7f693 produced five verified
+pre-jump predictions: Hobart R1/R2, Warragul R6, Wentworth Park R2 and Gunnedah R3.
+Seven distinct eligible windows were consumed; Sandown R2 had no accepted exact
+landing link and Angle Park R2 had no complete paired prices within the bounded
+readiness wait. Both misses wrote zero odds and created no prediction. No new
+Sportsbet denial occurred. One full and 19 odds cycles completed. The first full
+activation acquired the collector lock while the concurrent odds activation
+correctly deferred; it did not demonstrate a full activation waiting behind an
+already active browser.
+
+At 19:21:56 AEST the observation stopped on native_readiness_failed after all
+four selected form downloads failed. Three explicit errors identify The Dogs
+HTTP502 responses; Mandurah R2 had no CSV link. The prior index remained fresh
+at 114.033053 seconds. Restoration completed at 19:26:01.406473, original paired
+units restored, timers held, R3 unchanged. Cumulative accounting remains 22
+captures, 20,156 logical requests, 9,848.187108 charged seconds, 124 Sportsbet
+operations and four historical denials. The private final summary and independent
+outage audit preserve this failed observation; it is not a sustained pass.
+
+Retained NextEvents identifies the Sandown race as Sandown Park. The exported
+browser selector rejects that exact name while accepting Sandown; an offline
+regression proves the alias defect. Actual landing anchors were not retained,
+so that attempt's causal attribution remains a strong hypothesis. The narrow
+repair adds the explicit alias and records bounded counts from already inspected
+links, without retaining names, prices or adding browser requests.
+
+The live HTTP adapter already used zero retries; its MaxRetryError label could
+occur on the first 502 response. However, the separate application fallback
+issued additional speculative CSV requests and repeated expert-form work.
+Supervised downloads now use observed export links/forms and their delivered
+download URL only, preserve the working form-to-URL-to-CSV sequence, and stop
+fallback probing. Typed HTTP status and bounded retry guidance are retained.
+Discovery's own retry loop is also disabled in supervised mode. Ordinary
+non-supervised behavior is unchanged. A representative prior successful refresh
+still made 168 distinct discovery calls; reducing that broader discovery cost
+requires a separate evidence-backed change. It is not proof of the 502 cause.
+
+The next observation may retain up to two failed refresh cycles with explicit
+502/503/504 evidence, waiting only for the existing normal timer. No request
+retry is added. A separately identified missing observed export may coexist;
+unclassified errors, access denial, retry/reset guidance and integrity failures
+do not qualify. Native failure status and failed-cycle accounting remain visible.
+At every such observation, including warmup, the prior authenticated index must
+remain available and younger than 270 seconds, with valid authority and an OPEN
+source gate. Final recovery requires a successful new index whose source time
+follows the failed observation; a merely ACTIVE service is insufficient. R3's
+300-second rejection and all exact receipt/source checks remain unchanged.

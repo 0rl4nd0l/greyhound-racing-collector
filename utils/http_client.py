@@ -84,6 +84,7 @@ def get_shared_session() -> requests.Session:
         s = SourceCoordinatedSession()
         retry = AccessDenialAwareRetry(
             total=0 if os.environ.get("GREYHOUND_LIVE_EXECUTION") else 2,
+            raise_on_status=not bool(os.environ.get("GREYHOUND_LIVE_EXECUTION")),
             backoff_factor=0.1,
             status_forcelist=(500, 502, 503, 504),
             allowed_methods=("GET", "POST", "PUT", "DELETE"),

@@ -481,6 +481,85 @@ def verify_claim_receipt(claim, handoff, evidence, source_root):
     AttemptAllowance.check_window(reserved["item"], now=datetime.fromisoformat(sealed["append_time"]))
 
 
+def record_refresh_outage(output, plan, run_id, failures):
+    """Allow two scheduled 5xx refresh misses; never retry requests or accept data.
+
+    The native failed state remains visible. Observation may continue only while
+    its independently read, previously published index stays fresh.
+    """
+    if (not plan.get("operational_predictions") or not isinstance(run_id, str)
+            or not re.fullmatch(r"[A-Za-z0-9_+.-]+", run_id)):
+        return False
+    from utils.sportsbet_access import SportsbetAccess
+    access = SportsbetAccess(plan["sportsbet_access_state"]).read()
+    if access.get("phase") != "OPEN" or access["access_basis"]["status"] != "permitted":
+        return False
+    if run_id in failures:
+        return True
+    if len(failures) >= 2:
+        return False
+    evidence = Path(plan["evidence_root"])
+    root = evidence / ("shadow_autopilot_daemonization_v1_" + run_id)
+    try:
+        checkpoint = json.loads((root / "phase-checkpoint.json").read_bytes())
+        phases = checkpoint["phases"]
+        if (checkpoint["cycle_id"] != run_id or len(phases) != 1
+                or phases[0]["kind"] != "refresh" or phases[0]["status"] != "COMPLETE"
+                or phases[0]["budget_exceeded"]):
+            return False
+        raw = (root / "phase-0-result.json").read_bytes()
+        if hashlib.sha256(raw).hexdigest() != phases[0]["result_sha256"]:
+            return False
+        result = json.loads(raw)
+        if result.get("collection_phase") != "refresh" or result.get("final_verdict") != "COLLECTION_PHASE_BLOCKED":
+            return False
+        name = "odds_capture_refresh_report.json" if run_id.endswith("_odds_capture") else "refresh_prejump_report.json"
+        refresh_path = evidence / ("shadow_autopilot_v1_" + run_id + "_phase_0") / name
+        refresh_raw = refresh_path.read_bytes()
+        refresh = json.loads(refresh_raw)
+        if (refresh.get("status") != "METADATA_COVERAGE_INCOMPLETE"
+                or refresh.get("reason") != "no_selected_race_csv_sidecars"
+                or refresh.get("accepted_csv_count") != 0 or refresh.get("sidecar_count") != 0):
+            return False
+        statuses = []
+        for download in refresh["downloads"]:
+            item = download["result"]
+            if download.get("success") or item.get("success"):
+                return False
+            if item.get("source_retry_after") or item.get("source_rate_limit_reset"):
+                return False
+            status = item.get("source_http_status")
+            if type(status) is int and status in {502, 503, 504}:
+                statuses.append(status)
+            elif (status is not None or item.get("source_failure_category") != "observed_export_absent"):
+                return False
+        if not statuses:
+            return False
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    failures.add(run_id)
+    create_once(output / "refresh-deferrals" / (run_id + ".json"), {
+        "status": "FAILED_REFRESH_AWAITING_NORMAL_TIMER",
+        "run_id": run_id, "observed_at": now().isoformat(),
+        "refresh_sha256": hashlib.sha256(refresh_raw).hexdigest(),
+        "phase_result_sha256": hashlib.sha256(raw).hexdigest(),
+        "upstream_statuses": statuses, "request_retries_added": 0,
+        "maximum_failed_cycles": 2, "failed_cycle_count": len(failures),
+    })
+    return True
+
+
+def refresh_recovery_proven(output, current, failures):
+    if current["collector_status"] != "AVAILABLE/FRESH":
+        return False
+    # ACTIVE alone is not recovery. The authenticated index must come from a
+    # new successful refresh begun after the last retained failed observation.
+    latest_failure = max(datetime.fromisoformat(json.loads(
+        (output / "refresh-deferrals" / (run_id + ".json")).read_bytes()
+    )["observed_at"]) for run_id in failures)
+    return datetime.fromisoformat(current["source_at"].replace("Z", "+00:00")) > latest_failure
+
+
 def observe(output, plan, control, scope, predictions=None):
     from race_collection.freshness_rehearsal import assess_interval, TimerAccounting
 
@@ -498,6 +577,7 @@ def observe(output, plan, control, scope, predictions=None):
     window_rows = []
     exclusions = []
     seen = set()
+    refresh_failures = set()
     external_overheads = {"full": [], "odds": []}
     while now() < end:
         tick = time.monotonic()
@@ -562,7 +642,9 @@ def observe(output, plan, control, scope, predictions=None):
                 "DEFERRED_LOCK_HELD",
                 "DEFERRED_FULL_LOCK_HANDOFF",
             }:
-                raise ValueError("candidate_terminal_failure")
+                if (report["runtime_action"] != "LIVE_PHASE_FAILED" or not
+                        record_refresh_outage(output, plan, value["cycle_id"], refresh_failures)):
+                    raise ValueError("candidate_terminal_failure")
             seen.add(str(checkpoint))
             lane = "odds" if "odds_capture" in value["cycle_id"] else "full"
             if report["runtime_action"] == "LIVE_COLLECTION_COMPLETE":
@@ -644,17 +726,33 @@ def observe(output, plan, control, scope, predictions=None):
             for key in ("index_status", "collector_status", "authority_status")
         ):
             raise ValueError("native_integrity_or_authority_failed")
+        if refresh_failures and not (
+            current["authority_status"] == "AVAILABLE/FRESH"
+            and current["index_status"] == "AVAILABLE/FRESH"
+            and 0 <= current["source_age_seconds"] < 270
+        ):
+            raise ValueError("failed_refresh_previous_index_unusable")
         if (
             current["collector_status"] != "AVAILABLE/FRESH"
             or current["authority_status"] != "AVAILABLE/FRESH"
         ):
             unavailable += 1
-            if age_from_start >= plan["readiness_warmup_seconds"]:
-                raise ValueError("native_readiness_failed")
+            failed_lanes = [lane for lane in current["lanes"] if lane["status"] == "CAPTURE_FAILED"]
+            if age_from_start >= plan["readiness_warmup_seconds"] or refresh_failures or failed_lanes:
+                if not (current["authority_status"] == "AVAILABLE/FRESH"
+                        and current["index_status"] == "AVAILABLE/FRESH"
+                        and 0 <= current["source_age_seconds"] < 270
+                        and failed_lanes
+                        and all(lane["status"] in {"CAPTURE_FAILED", "RECEIPT_READY", "ACTIVE", "WAITING_FOR_PEER"}
+                                for lane in current["lanes"])
+                        and all(record_refresh_outage(output, plan, lane["run_id"], refresh_failures)
+                                for lane in failed_lanes)):
+                    raise ValueError("native_readiness_failed")
         atomic_json(
             output / "progress.json",
             {
                 "completed_cycles": {key: len(value) for key, value in completed.items()},
+                "failed_refresh_cycles": sorted(refresh_failures),
                 "lock_wait_seconds": waits,
                 "logical_requests": current["logical_requests"],
                 "python_network": current["python_network"],
@@ -665,6 +763,8 @@ def observe(output, plan, control, scope, predictions=None):
             },
         )
         time.sleep(max(0, plan["sample_period_seconds"] - (time.monotonic() - tick)))
+    if refresh_failures and not refresh_recovery_proven(output, current, refresh_failures):
+        raise ValueError("refresh_recovery_unproven")
     if len(completed["full"]) < 3 or len(completed["odds"]) < 6 or not waits or max(waits) <= 0:
         raise ValueError("lane_progress_or_handoff_unproven")
     if not all(external_overheads.values()):
@@ -687,6 +787,7 @@ def observe(output, plan, control, scope, predictions=None):
             "unavailable_samples_including_warmup": unavailable,
             "maximum_conservative_source_age": maximum,
             "completed_cycles": {key: len(value) for key, value in completed.items()},
+            "failed_refresh_cycles": sorted(refresh_failures),
             "max_lock_wait_seconds": max(waits),
             "maximum_external_overhead_seconds": {
                 key: max(value) for key, value in external_overheads.items()
