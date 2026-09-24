@@ -467,6 +467,13 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                             }
                         )
                         continue
+                    if scope.value.get("operational_predictions") and (
+                        datetime.fromisoformat(task["race_identity"]["jump_datetime"]) - daemon.wall_clock_now()
+                    ).total_seconds() < 300:
+                        checkpoint.value.setdefault("exclusions", []).append({
+                            "race_id": task["race_id"], "capture_window_minutes": task["capture_window_minutes"],
+                            "reason": "insufficient_capture_retention_prediction_margin"})
+                        continue
                     try:
                         allowance.check_window(task, now=daemon.wall_clock_now(), required_seconds=50)
                     except ValueError as error:
@@ -543,14 +550,14 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                 "--days-ahead",
                 str(args.days_ahead),
                 "--refresh-limit",
-                str(args.refresh_limit),
+                str(min(args.refresh_limit, 4) if scope and scope.value.get("operational_predictions") else args.refresh_limit),
             ]
             if odds_only:
                 command += [
                     "--skip-primary-refresh",
                     "--enable-autonomous-odds-capture",
                     "--odds-capture-refresh-limit",
-                    str(args.odds_capture_refresh_limit),
+                    str(min(args.odds_capture_refresh_limit, 4) if scope and scope.value.get("operational_predictions") else args.odds_capture_refresh_limit),
                     "--odds-capture-min-minutes",
                     str(args.odds_capture_min_minutes),
                     "--odds-capture-max-minutes",

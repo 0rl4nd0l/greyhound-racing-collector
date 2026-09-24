@@ -12,6 +12,7 @@ import os
 import re
 import shutil
 import tempfile
+import time
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
@@ -72,6 +73,8 @@ def retain_inputs(
     Protected earlier dates still require caller authority before this call.
     No retrospective timestamp is accepted as a substitute for the real clock.
     """
+    monotonic_start = time.monotonic()
+    stage_timing = {}
     start = _aware(clock())
     if not _aware(observed_at) <= start < _aware(prediction_cutoff) < _aware(jump_at):
         raise RetentionRejected("NOT_PROSPECTIVE")
@@ -109,11 +112,14 @@ def retain_inputs(
                 "original_path": str(source.absolute()), "bytes": len(raw),
             }
         # Reuse the existing verified-copy/immutable-SQLite cutoff implementation.
+        stage_timing["input_copy_seconds"] = time.monotonic() - monotonic_start
+        history_started = time.monotonic()
         history = seal_history_database(
             source=history_source, target=stage / "history.db",
             target_race_id=race_id, cutoff=jump_at, runner_names=runner_names,
             runner_scope_only=True,
         )
+        stage_timing["history_snapshot_seconds"] = time.monotonic() - history_started
         history_raw = (json.dumps(history, sort_keys=True, separators=(",", ":")) + "\n").encode()
         with (stage / "history_seal.json").open("xb") as stream:
             stream.write(history_raw)
@@ -122,7 +128,9 @@ def retain_inputs(
         if generate_features:
             from race_collection.retained_feature_replay import generate_retained_features
 
+            feature_started = time.monotonic()
             generated = generate_retained_features(stage, manifest_files)
+            stage_timing["feature_subprocess_seconds"] = time.monotonic() - feature_started
             with (stage / "feature_values.json").open("xb") as stream:
                 stream.write(generated)
                 stream.flush()
@@ -135,6 +143,7 @@ def retain_inputs(
             raise RetentionRejected("CUTOFF_PASSED_DURING_RETENTION")
         manifest = {
             "schema_version": "prospective_input_retention_v1",
+            "monotonic_stage_seconds": stage_timing,
             "authorization_config_sha256": authorization_config_sha256,
             "status": "INPUTS_PENDING_COMPLETION",
             "race_id": race_id,

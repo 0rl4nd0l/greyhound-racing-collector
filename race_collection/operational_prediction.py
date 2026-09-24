@@ -177,6 +177,10 @@ def run(plan_path: Path, claim_path: Path):
     reserved = json.loads(claim_path.read_bytes())
     item = reserved["item"]
     race_id = item["race_id"]
+    with scope.campaign.ledger() as ledger:
+        matches = [row for row in ledger["attempts"] if row["claim"] == str(claim_path)]
+        if len(matches) != 1 or matches[0]["item"] != item:
+            raise ValueError("prediction_capture_not_in_campaign_ledger")
     root = scope.campaign.root / "operational-predictions"
     record = root / "races" / hashlib.sha256(race_id.encode()).hexdigest()
     record.mkdir(parents=True, exist_ok=False, mode=0o700)
@@ -260,8 +264,8 @@ def run(plan_path: Path, claim_path: Path):
         job = store.create(actor_identity="operational-campaign", actor_level=2, operation=OPERATION,
             idempotency_key=hashlib.sha256(race_id.encode()).hexdigest(), job_input=inp, now=now(), confirm_audit=confirm)
         create_once(record / "job.json", {"job_id": job.job_id, "input_sha256": inp.identity_sha256})
-        for phase, status in ((Phase.VALIDATED, "VALID"), (Phase.WAITING_FOR_CLAIM, "WAITING")):
-            job = store.transition(job.job_id, phase, now=now(), status=status, reason="operational_admission", confirm_audit=confirm)
+        for phase, status, reason in ((Phase.VALIDATED, "VALID", "validated"), (Phase.WAITING_FOR_CLAIM, "WAITING", "ready")):
+            job = store.transition(job.job_id, phase, now=now(), status=status, reason=reason, confirm_audit=confirm)
         timing.update(index_observed_at=view.source_generated_at, index_age_at_dispatch_seconds=(now()-observed).total_seconds(),
                       seconds_to_jump_at_dispatch=(jump-now()).total_seconds())
         stage = "prediction_subprocess"

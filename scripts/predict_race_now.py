@@ -17,6 +17,7 @@ import argparse
 import json
 import re
 import sys
+import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta
@@ -414,10 +415,15 @@ def default_dependencies(args: argparse.Namespace) -> Dependencies:
             timeout_seconds=float(values["timeout_seconds"]),
         )
 
+    def timed_scorer(**values):
+        timing = {}
+        result = score_from_artifacts(**values, timing=timing)
+        return {**result, "_operational_timing": timing}
+
     return Dependencies(
         schedule=_default_schedule,
         seal_features=seal_live_features,
-        score_residual=score_from_artifacts,
+        score_residual=timed_scorer,
         now=lambda: datetime.now().astimezone(),
         capture_one=capture_one,
     )
@@ -500,6 +506,8 @@ def _sealed_result(
 def _seal_and_publish_v2(state: dict[str, Any], result: Mapping[str, Any]) -> None:
     bundle = Path(state["bundle"])
     _write_canonical(bundle / "result.json", result)
+    if state.get("timing") is not None:
+        _write_canonical(bundle / "stage-timing.json", state["timing"])
     manifest = build_prediction_bundle_manifest_v2(
         bundle, prediction_id=str(state["prediction_id"]), job_id=state["job_id"]
     )
@@ -1045,6 +1053,7 @@ def _run_prediction(
     runner_names = [str(row["dog_name"]) for row in receipt["markets"]["win"]]
     sealed_db = bundle / "features" / "sealed_history.db"
     history_path = bundle / "features" / "history_seal.json"
+    history_started = time.monotonic()
     retained = None
     if retained_root is not None:
         from src.predictor.retained_inputs import consume_retained_inputs
@@ -1072,6 +1081,7 @@ def _run_prediction(
         raise PredictionBlocked("TARGET_EXCLUSION_WEAK")
     state["authenticated_cutoff"]={"history_seal_sha256":sha256_file(history_path),"cutoff_timestamp":str(history["cutoff_timestamp"]),"source_sha256":str(history["source_sha256"]),"sealed_sha256":str(history["sealed_sha256"])}
 
+    state["timing"]["history_or_retained_input_seconds"] = time.monotonic() - history_started
     score_time = dependencies.now()
     if score_time >= jump:
         raise PredictionBlocked("POST_JUMP", race_id=race_id)
@@ -1081,6 +1091,7 @@ def _run_prediction(
     else:
         feature_dir = bundle / "features" / "sealed"
         try:
+            feature_started = time.monotonic()
             sealed = dependencies.seal_features(
                 form_csv=form_csv,
                 db_path=sealed_db,
@@ -1093,6 +1104,7 @@ def _run_prediction(
             raise PredictionBlocked(
                 "FEATURE_SEAL_FAILED", error=type(exc).__name__
             ) from exc
+        state["timing"]["feature_generation_seconds"] = time.monotonic() - feature_started
         feature_rows = json.loads(Path(sealed["feature_rows"]).read_bytes())
         if retained is not None:
             from src.predictor.retained_inputs import verify_retained_features
@@ -1108,6 +1120,7 @@ def _run_prediction(
         if unsafe_rows:
             raise PredictionBlocked("TARGET_EXCLUSION_WEAK")
         try:
+            scorer_started = time.monotonic()
             artifact_prediction = dependencies.score_residual(
                 race_id=race_id,
                 form_csv_path=form_csv,
@@ -1126,6 +1139,8 @@ def _run_prediction(
             raise PredictionBlocked(
                 "RESIDUAL_SCORER_FAILED", error=type(exc).__name__
             ) from exc
+        state["timing"]["scorer_validation_load_inference_seconds"] = time.monotonic() - scorer_started
+        state["timing"].update(artifact_prediction.get("_operational_timing", {}))
         if (
             artifact_prediction.get("model_sha256") != model.model_sha256
             or artifact_prediction.get("manifest_sha256") != model.manifest_sha256
@@ -1217,7 +1232,7 @@ def _run_prediction(
 def run_prediction(
     args: argparse.Namespace, dependencies: Dependencies
 ) -> dict[str, Any]:
-    state: dict[str, Any] = {}
+    state: dict[str, Any] = {"timing": {}}
     try:
         return _run_prediction(args, dependencies, state)
     except PredictionBlocked as exc:
