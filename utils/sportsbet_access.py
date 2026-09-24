@@ -135,14 +135,41 @@ class SportsbetAccess:
                 or value["phase"] != "OPEN" or value["active"] is not None)
 
     def authorize_diagnostic(self, *, reference, expected_sha256, expires_at,
-                             max_operations, rationale):
+                             max_operations, rationale, engineering_quiet_seconds=None):
         """Explicit prospective user authority; never automatic denial recovery."""
         with self.locked():
             value = self.read()
             now = self.clock()
+            effective_not_before = value['not_before']
+            cooldown_revision = None
+            if engineering_quiet_seconds is not None:
+                if (type(engineering_quiet_seconds) is not int
+                        or not 1800 <= engineering_quiet_seconds <= 7200
+                        or not value['denials'] or value['denials'][-1].get('status') != 429):
+                    raise ValueError('invalid_engineering_cooldown_revision')
+                # Explicit policy revision only. Never reinterpret or shorten
+                # provider retry guidance, including unparsed guidance.
+                deadlines = []
+                for denial in value['denials']:
+                    guidance = denial.get('retry_headers', {})
+                    if any(key in guidance for key in ('retry-after', 'ratelimit-reset', 'x-ratelimit-reset')):
+                        raise SportsbetAccessBlocked('provider_guidance_requires_original_cooldown')
+                    stamp = denial.get('recorded_at_epoch')
+                    if not isinstance(stamp, (int, float)) or not math.isfinite(stamp):
+                        raise SportsbetAccessBlocked('denial_time_unknown')
+                    deadlines.append(stamp + engineering_quiet_seconds)
+                    provider = denial.get('provider_not_before_epoch')
+                    if provider is not None:
+                        if not isinstance(provider, (int, float)) or not math.isfinite(provider):
+                            raise SportsbetAccessBlocked('provider_deadline_unknown')
+                        deadlines.append(provider)
+                effective_not_before = max(deadlines)
+                cooldown_revision = dict(prior_not_before=value['not_before'],
+                    effective_not_before=effective_not_before,
+                    engineering_quiet_seconds=engineering_quiet_seconds)
             if (hashlib.sha256(self.path.read_bytes()).hexdigest() != expected_sha256
                     or value['active'] is not None or value['access_basis']['status'] != 'permitted'
-                    or now < value['not_before']):
+                    or now < effective_not_before):
                 raise SportsbetAccessBlocked('diagnostic_authority_state_or_cooldown')
             if (not reference or not rationale or not math.isfinite(expires_at)
                     or not now < expires_at <= now + 10800
@@ -154,6 +181,8 @@ class SportsbetAccess:
                        prior_phase=value['phase'], prior_state_sha256=expected_sha256,
                        prior_recovery_attempts=value['recovery_attempts'],
                        prior_denial_count=len(value['denials']))
+            if cooldown_revision is not None:
+                row['cooldown_revision'] = cooldown_revision
             value.setdefault('diagnostic_authorizations', []).append(row)
             value['diagnostic_authority'] = row
             value.setdefault('operating_policy', dict(reference=reference,
