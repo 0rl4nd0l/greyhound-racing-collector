@@ -96,6 +96,10 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     launcher = 'from scripts.check_freshness_service import deny_network; import os,sys; deny_network(); os.execv(sys.argv[1],sys.argv[1:])'
     service = subprocess.run([sys.executable,'-c',launcher,*command],cwd=cwd,env=env,capture_output=True,text=True,timeout=100)
     (tmp_path/'collector.log').write_text(service.stdout+service.stderr)
+    inspection_path = allowance.claims()[0].with_suffix('.requests.responses.json')
+    inspection = json.loads(inspection_path.read_bytes())
+    assert inspection['operation_id'].startswith('browser:')
+    assert any(mark['name'] == 'browser_ready' for mark in inspection['marks'])
     if landing_missing:
         assert service.returncode == 0, (tmp_path/"collector.log").read_text()[-1500:]
         assert not (scope.session/"STOP.json").exists()

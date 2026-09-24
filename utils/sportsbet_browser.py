@@ -123,6 +123,12 @@ def create_sportsbet_driver(factory, *, response_inspection=None, **kwargs):
 
     try:
         driver = factory(**kwargs)
+        if response_inspection is not None:
+            capabilities = getattr(driver, 'capabilities', {})
+            response_inspection.browser_identity = {
+                'browser_version': capabilities.get('browserVersion'),
+                'driver_version': capabilities.get('chrome', {}).get('chromedriverVersion', '').split(' ')[0],
+            }
         owner_pid = driver.service.process.pid
         if owner_pid == os.getpid():
             raise RuntimeError('invalid_browser_process_owner')

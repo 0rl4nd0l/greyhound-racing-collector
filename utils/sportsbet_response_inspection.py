@@ -150,6 +150,9 @@ class ResponseInspection:
         self.body_reads = 0
         self.operation_id = None
         self.network_responses = []
+        self.browser_identity = {}
+        self.dom_snapshot = {"state": "not_observed"}
+        self.dropped_responses = 0
         self.mark("browser_start")
 
     def _stamp(self):
@@ -194,6 +197,8 @@ class ResponseInspection:
             if not self._open():
                 return
             method, params = event.get("method"), event.get("params", {})
+            if method == "Network.responseReceived" and len(self.network_responses) >= 256:
+                self.dropped_responses += 1
             if method == "Network.responseReceived" and len(self.network_responses) < 256:
                 from utils.sportsbet_access import is_sportsbet
                 from utils.http_client import source_retry_headers
@@ -350,6 +355,9 @@ class ResponseInspection:
                         "body_reads": self.body_reads,
                         "operation_id": self.operation_id,
                         "network_responses": self.network_responses,
+                        "dropped_responses": self.dropped_responses,
+                        "browser_identity": self.browser_identity,
+                        "dom_snapshot": self.dom_snapshot,
                         "marks": self.marks,
                         "responses": list(self.rows.values()),
                     }
