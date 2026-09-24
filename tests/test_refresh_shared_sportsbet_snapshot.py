@@ -184,4 +184,4 @@ def test_meeting_jump_change_rejected_before_publication(tmp_path):
     payload.write_text(json.dumps(data))
     report = refresh(tmp_path,payload,access(tmp_path),1,lane='full')
     assert report['current_index_race_count'] == 0
-    assert report['downloads'][0]['error'] == 'meeting_canonical_jump_changed'
+    assert report['downloads'][0]['result']['error'] == 'meeting_canonical_jump_changed'

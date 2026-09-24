@@ -24,7 +24,7 @@ UNITS = (
 
 def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False):
     output = output.absolute()
-    output.mkdir(parents=True, exist_ok=False)
+    output.mkdir(parents=True, exist_ok=False, mode=0o700)
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT, text=True).strip()
     history_db = db.resolve(strict=True)
@@ -32,11 +32,12 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         if campaign_root is None:
             raise ValueError("operational_predictions_require_existing_campaign")
         db = campaign_root.resolve() / "operational-predictions/capture.sqlite3"
-        db.parent.mkdir(parents=True, exist_ok=True)
+        db.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         if db.resolve() == history_db:
             raise ValueError("operational_history_write_collision")
         from sportsbet_odds_integrator import SportsbetOddsIntegrator
         SportsbetOddsIntegrator(str(db), allow_auto_scrape_odds=False)
+        db.chmod(0o600)
     source = output / "source"
     source.mkdir()
     files = subprocess.check_output(

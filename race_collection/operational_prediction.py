@@ -61,8 +61,11 @@ class Supervisor:
         if self.child is not None:
             if self.child.poll() is None:
                 return
+            result = self.child.returncode
             self.log.close()
             self.child = None
+            if result != 0:
+                raise ValueError("operational_prediction_failed_preserved_consumption")
         if not self.plan.get("operational_predictions") or (self.scope.end-now()).total_seconds() < 200:
             return
         from race_collection.live_freshness_contract import AttemptAllowance
@@ -88,9 +91,11 @@ class Supervisor:
 
     def drain(self):
         if self.child is not None:
-            self.child.wait(timeout=240)
+            result = self.child.wait(timeout=240)
             self.log.close()
             self.child = None
+            if result != 0:
+                raise ValueError("operational_prediction_failed_preserved_consumption")
 
 
 

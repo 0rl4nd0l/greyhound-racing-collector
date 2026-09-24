@@ -563,3 +563,21 @@ def test_retained_job_rejects_reconfigured_manifest_before_claim(tmp_path):
         run_once(store,job.job_id,cfg,now=lambda:NOW,confirm_audit=CONFIRM,
             popen=lambda *a,**k:pytest.fail("must not launch"),reader=lambda **k:view())
     assert not store.get(job.job_id).attempt_claimed
+
+
+def test_native_and_prediction_runner_hashes_are_independently_enforced(tmp_path):
+    from src.operator_ui.prediction_worker import _bounded_result
+    cfg,store,legacy=setup(tmp_path)
+    assert store.get(legacy.job_id).input.identity_sha256 == legacy.input.identity_sha256
+    assert 'prediction_runner_set_sha256' not in legacy.input.fields()
+    inp=replace(legacy.input,prediction_runner_set_sha256='f'*64)
+    job=replace(legacy,input=inp)
+    result=json.loads(ready(job));result['evidence']['runner_set_sha256']='f'*64
+    raw=canonical_bytes(result)
+    phase,_,_=_bounded_result(job,raw,len(raw),hashlib.sha256(raw).hexdigest(),b'',0,hashlib.sha256(b'').hexdigest(),0)
+    assert phase is Phase.PRODUCER_COMPLETED
+    wrong=ready(job)
+    phase,reason,_=_bounded_result(job,wrong,len(wrong),hashlib.sha256(wrong).hexdigest(),b'',0,hashlib.sha256(b'').hexdigest(),0)
+    assert phase is Phase.FAILED and reason=='PROCESS_OUTPUT_INVALID'
+    with pytest.raises(WorkerRejected,match='RUNNER_SET_CHANGED'):
+        revalidate_current_race(job,cfg,now=NOW,reader=lambda **_:view([{'race_id':RACE_ID,'jump_datetime':inp.jump_timestamp,'runner_set_sha256':'f'*64}]))

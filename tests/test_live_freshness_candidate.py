@@ -1058,3 +1058,14 @@ def test_prediction_lifetime_unknown_prevents_campaign_close(tmp_path):
         require_completed_lifetimes(output,campaign)
     lifetime.write_text('{"children_reaped":true}')
     require_completed_lifetimes(output,campaign)
+
+
+def test_operational_prediction_failure_stops_before_next_race(tmp_path):
+    from types import SimpleNamespace
+    from race_collection.operational_prediction import Supervisor
+    supervisor=Supervisor(tmp_path,{},None)
+    supervisor.child=SimpleNamespace(poll=lambda:2,returncode=2)
+    supervisor.log=(tmp_path/'worker.log').open('w')
+    with pytest.raises(ValueError,match='preserved_consumption'):
+        supervisor.tick()
+    assert supervisor.child is None
