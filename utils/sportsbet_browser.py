@@ -285,5 +285,17 @@ def create_sportsbet_driver(factory, *, response_inspection=None, **kwargs):
 
     driver.sportsbet_accept_validated_data = accept_data
     driver.sportsbet_inspect_response_shapes = inspect_response_shapes
+    def snapshot_dom_counts():
+        # Reading the already delivered DOM does not admit source traffic. Use
+        # the independent two-second CDP transport and a one-second renderer cap.
+        value = channel('Runtime.evaluate', {
+            'expression': """({runner_elements: document.querySelectorAll(
+                '[data-automation-id*=racecard-outcome-name]').length,
+                price_elements: document.querySelectorAll(
+                '[data-automation-id*=price-text]').length})""",
+            'returnByValue': True, 'timeout': 1000,
+        })
+        return value.get('result', {}).get('value')
+    driver.sportsbet_snapshot_dom_counts = snapshot_dom_counts
     driver.get, driver.get_log, driver.quit = get, logs, quit
     return driver

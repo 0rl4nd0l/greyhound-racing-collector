@@ -570,16 +570,13 @@ def fetch_odds_for_target_race(
                 network_accounting.drain()
         finally:
             try:
-                if inspection is not None and integrator.driver is not None:
+                if (inspection is not None and integrator.driver is not None
+                        and inspection.clock() < inspection.expires_at
+                        and time.monotonic() - inspection.started < 40):
                     # Read only the existing DOM, including after stopped loading.
                     # Counts are diagnostic evidence, never market/receipt proof.
                     try:
-                        counts = integrator.driver.execute_script("""
-                            return {runner_elements: document.querySelectorAll(
-                                '[data-automation-id*=racecard-outcome-name]').length,
-                                price_elements: document.querySelectorAll(
-                                '[data-automation-id*=price-text]').length};
-                        """)
+                        counts = integrator.driver.sportsbet_snapshot_dom_counts()
                         if isinstance(counts, dict) and all(
                             type(counts.get(key)) is int and counts[key] >= 0
                             for key in ('runner_elements', 'price_elements')
@@ -588,14 +585,18 @@ def fetch_odds_for_target_race(
                                 'state': 'counts_only_not_validated_prices',
                                 **{key: counts[key] for key in ('runner_elements', 'price_elements')},
                             }
+                    except TimeoutError:
+                        raise
                     except Exception:
                         inspection.dom_snapshot = {'state': 'unavailable'}
-                integrator.close_driver()
             finally:
-                if inspection is not None:
-                    from pathlib import Path
-                    from race_collection.live_phase_checkpoint import atomic_json
-                    atomic_json(Path(request_metrics_path).with_suffix(".responses.json"), inspection.report())
+                try:
+                    integrator.close_driver()
+                finally:
+                    if inspection is not None:
+                        from pathlib import Path
+                        from race_collection.live_phase_checkpoint import atomic_json
+                        atomic_json(Path(request_metrics_path).with_suffix(".responses.json"), inspection.report())
 
 
 def ensure_odds_for_target_race(

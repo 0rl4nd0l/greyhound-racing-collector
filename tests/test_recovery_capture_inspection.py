@@ -16,6 +16,7 @@ def test_capture_retains_inspection_even_when_navigation_is_denied(tmp_path, mon
     monkeypatch.setenv('GREYHOUND_SPORTSBET_RESPONSE_INSPECTION', '1')
     SportsbetAccess().initialize(access_basis={'status':'permitted','reference':'synthetic'})
     transport = BrowserTransport()
+    unbounded_dom_calls = []
     class Driver:
         service = SimpleNamespace(process=transport.process)
         def start_devtools(self): return None, transport
@@ -24,6 +25,9 @@ def test_capture_retains_inspection_even_when_navigation_is_denied(tmp_path, mon
                                {'Retry-After':'3600'}, resource_type=resource_type)
             assert transport.stopped.wait(3)
         def get_log(self, name): return []
+        def execute_script(self, script):
+            unbounded_dom_calls.append(script)
+            raise RuntimeError('unresponsive renderer')
         def quit(self): transport.quit()
     monkeypatch.setattr(drivers, 'get_chrome_driver', lambda **kwargs: Driver())
     metrics = tmp_path/'requests.json'
@@ -39,3 +43,4 @@ def test_capture_retains_inspection_even_when_navigation_is_denied(tmp_path, mon
     assert 'secret' not in json.dumps(report)
     assert transport.process.poll() is not None
     assert len(SportsbetAccess().read()['denials']) == 1
+    assert unbounded_dom_calls == []
