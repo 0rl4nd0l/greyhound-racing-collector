@@ -83,3 +83,25 @@ def test_configured_display_name_is_not_a_source_code_substitution():
     result=ready_result();result['race']['venue']='GUNNEDAH'
     with pytest.raises(PredictionBlocked,match='PREDICTION_BUNDLE_INVALID'):
         validate_prediction_result_v2(result)
+
+
+@pytest.mark.parametrize('caller,evidence,slug,expected',[
+    ('AP_K','AP_K','angle-park',True),
+    ('APWE','APWE','angle-park',True),
+    ('AP_K','APWE','angle-park',False),
+    ('AP_K','AP_K','albion-park',False),
+    ('AP','AP','angle-park',False),
+    ('AP','AP','albion-park',True),
+    ('AP_K','AP_K','a-p-k',False),
+    ('UNKNOWN','UNKNOWN','angle-park',False),
+])
+def test_structured_source_equivalence_requires_three_configured_identities(caller,evidence,slug,expected):
+    from utils.race_identity_equivalence import race_identity_equivalent
+    assert race_identity_equivalent(RACE_ID.replace('AP_K',caller),RACE_ID.replace('AP_K',evidence),
+        source_url=URL.replace('angle-park',slug)) is expected
+
+
+@pytest.mark.parametrize('url',[URL.replace('/7/','/8/'),URL.replace('2026-07-19','2026-07-20')])
+def test_structured_angle_park_source_keeps_exact_number_and_date(url):
+    from utils.race_identity_equivalence import race_identity_equivalent
+    assert not race_identity_equivalent(RACE_ID,RACE_ID,source_url=url)

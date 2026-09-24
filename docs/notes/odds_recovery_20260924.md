@@ -671,10 +671,20 @@ fe1faad8d6a9d9f08822a320c9d9b621f91d34d84cf7b73779eb3301de0166cf.
 The final identity correction accepts a noncanonical spelling only when it is
 an exact checked-in self-mapped venue code, resolves to the exact source venue
 and preserves both stable race-ID checks. This permits AP_K while rejecting
-display-name substitution. The shared venue map and general equivalence helper
+display-name substitution. The shared venue map and configured-spelling helper
 are unchanged. Receipt matching retains its configured-membership proof and
 legacy comparison, adding direct canonical equality only after both spellings
 are known. Regression controls preserve APWE and Launceston behavior and reject
 Angle/Albion confusion, unknown spellings, wrong dates/race numbers and altered
 sealed identity. PredictionBlocked now retains only a bounded uppercase code;
 private exception details remain suppressed. Its diagnostic tests passed 14 cases.
+
+Candidate c9e87b0c passed four of five real packaged scenarios; the Angle Park
+case advanced beyond admission, then exposed EXACT_RACE_IDENTITY_UNAVAILABLE
+at prediction-subprocess preflight. Its prepared live package was not executed.
+The remaining structured three-way race comparison now permits direct canonical
+equality only after caller, sealed evidence and source venue all pass existing
+configured-membership checks. Legacy comparisons remain accepted, but mixed
+AP_K/APWE identities, Angle/Albion substitution, unknown spellings, wrong dates
+and wrong race numbers remain rejected. This is separate from the unchanged
+configured-spelling helper and does not relabel stored source identities.
