@@ -163,6 +163,10 @@ def test_browser_observes_failure_during_pending_navigation(tmp_path, monkeypatc
         driver.quit()
     assert transport.process.poll() is not None
     assert SportsbetAccess().read()["phase"] == ("COOLDOWN" if failure == "denial" else "STOP")
+    if failure in {"denial", "xhr_retry"}:
+        observed=SportsbetAccess().read()["denials"][-1]["response_observation"]
+        assert observed["source_url_without_query"] == "https://www.sportsbet.com.au/fixture"
+        assert observed["resource_type"] == ("XHR" if failure == "xhr_retry" else "Document")
     with pytest.raises(SportsbetAccessBlocked):
         with SportsbetAccess().operation("python"):
             pytest.fail("restart bypassed hold")
@@ -231,10 +235,10 @@ def test_queued_denial_is_drained_before_navigation(tmp_path, monkeypatch):
     SportsbetAccess().initialize(access_basis={'status': 'permitted', 'reference': 'fabricated fixture'})
     processing, release, navigated = threading.Event(), threading.Event(), threading.Event()
     original = SourceOperation.response
-    def paused_response(self, *args):
+    def paused_response(self, *args, **kwargs):
         processing.set()
         assert release.wait(3)
-        return original(self, *args)
+        return original(self, *args, **kwargs)
     monkeypatch.setattr(SourceOperation, 'response', paused_response)
     transport = BrowserTransport()
     driver = SimpleNamespace(service=SimpleNamespace(process=transport.process),
@@ -369,3 +373,15 @@ def test_operating_policy_stops_combined_lane_bursts_and_survives_restart(tmp_pa
     with pytest.raises(SportsbetAccessBlocked):
         with SportsbetAccess(gate.path, clock=lambda: 2000).operation('browser'):
             pytest.fail('policy stop expired on restart')
+
+
+def test_denial_observation_omits_credentials_queries_and_fragments(tmp_path):
+    from utils.sportsbet_access import SportsbetAccess
+    gate=SportsbetAccess(tmp_path/'access.json')
+    gate.initialize(access_basis={'status':'permitted','reference':'invented offline test'})
+    with gate.operation('python') as operation:
+        operation.response(429,{},source_url='https://user:secret@www.sportsbet.com.au/api/events?token=private#secret',resource_type='python')
+    observed=gate.read()['denials'][0]['response_observation']
+    assert observed['source_url_without_query']=='https://www.sportsbet.com.au/api/events'
+    assert observed['resource_type']=='python' and observed['monotonic_seconds']>0
+    assert gate.read()['phase']=='COOLDOWN'

@@ -1053,6 +1053,18 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
             max_minutes=float(args.max_minutes),
         ),
         "selected_races": list(selected_records),
+        "considered_races": [
+            {
+                **record,
+                "selection_decision": (
+                    "selected_for_download" if record.get("selection_order")
+                    else "missing_race_url" if record.get("selected") and not record.get("race_url")
+                    else "download_limit" if record.get("selected")
+                    else record.get("excluded_reason") or record["bucket"]
+                ),
+            }
+            for record in records
+        ],
         "current_index_race_count": len(current_index_races),
         "current_index_races": current_index_races,
         "current_index_metadata_selection": current_index_selection,

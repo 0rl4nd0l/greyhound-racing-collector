@@ -136,7 +136,7 @@ class SportsbetAccess:
             value = self.read()
             self._denial(value, status, headers, reason, observed_at=observed_at)
 
-    def _denial(self, value, status, headers, reason, *, observed_at):
+    def _denial(self, value, status, headers, reason, *, observed_at, observation=None):
         from utils.http_client import source_retry_headers
 
         now = self.clock()
@@ -167,6 +167,7 @@ class SportsbetAccess:
             "status": status, "retry_headers": guidance,
             "provider_not_before_epoch": deadline, "fallback_seconds": fallback,
             "reason": reason,
+            **({"response_observation": observation} if observation else {}),
         })
         unclear_reset = any(key in guidance for key in ("ratelimit-reset", "x-ratelimit-reset"))
         value["phase"] = (
@@ -237,12 +238,20 @@ class SourceOperation:
         if self.value["phase"] in {"COOLDOWN", "STOP"}:
             raise SportsbetAccessBlocked("sportsbet_source_hold")
 
-    def response(self, status, headers):
+    def response(self, status, headers, *, source_url=None, resource_type=None):
         from utils.http_client import source_retry_headers
         guidance = source_retry_headers(headers)
         instructed = any(key in guidance for key in ("retry-after", "ratelimit-reset", "x-ratelimit-reset"))
         if status in {401, 403, 429} or (status >= 400 and instructed):
-            self.gate._denial(self.value, status, headers, "source_response", observed_at=self.gate.clock())
+            observation = {"monotonic_seconds": time.monotonic()}
+            if source_url and is_sportsbet(source_url):
+                from urllib.parse import urlunsplit
+                parsed = urlsplit(source_url)
+                observation["source_url_without_query"] = urlunsplit((parsed.scheme, parsed.hostname, parsed.path, "", ""))
+            if isinstance(resource_type, str):
+                observation["resource_type"] = resource_type[:64]
+            self.gate._denial(self.value, status, headers, "source_response",
+                              observed_at=self.gate.clock(), observation=observation)
         elif 200 <= status < 300:
             self.transport_success = True
         elif self.recovery:

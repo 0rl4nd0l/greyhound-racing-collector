@@ -108,7 +108,8 @@ def create_sportsbet_driver(factory, **kwargs):
                 status = source['status']
                 with state_lock:
                     if status >= 400 or params.get('type') == 'Document':
-                        operation.response(status, source.get('headers', {}))
+                        operation.response(status, source.get('headers', {}),
+                                           source_url=source.get('url'), resource_type=params.get('type'))
                     held = operation.value['phase'] in {'COOLDOWN', 'STOP'}
                 if held and not expected_disconnect.is_set():
                     channel('Network.setBlockedURLs', {'urls': ['*://*.sportsbet.com.au/*', '*://sportsbet.com.au/*']})
