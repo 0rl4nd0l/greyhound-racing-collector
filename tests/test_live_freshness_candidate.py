@@ -1093,3 +1093,99 @@ def test_operational_prediction_failure_stops_before_next_race(tmp_path):
     with pytest.raises(ValueError,match='preserved_consumption'):
         supervisor.tick()
     assert supervisor.child is None
+
+
+@pytest.mark.parametrize('offset,retry_status,expected_calls', [
+    (0.004928, 'AVAILABLE/FRESH', 2),
+    (0.004928, 'INVALID/INTEGRITY_FAILED', 2),
+    (0.1, 'AVAILABLE/FRESH', 1),
+    (-0.1, 'AVAILABLE/FRESH', 1),
+])
+def test_clock_boundary_resample_is_local_bounded_and_retained(tmp_path, monkeypatch, offset, retry_status, expected_calls):
+    import json
+    from scripts import run_freshness_rehearsal as run
+    start = datetime(2026, 9, 24, 6, 4, 2, 189239, tzinfo=timezone.utc)
+    first = dict(read_start=start.isoformat(), read_end=(start+timedelta(seconds=.057385)).isoformat(),
+        monotonic_start=10., monotonic_end=10.057385, index_status='AVAILABLE/FRESH',
+        authority_status='AVAILABLE/FRESH', collector_status='INVALID/INTEGRITY_FAILED',
+        lanes=[dict(lane='ODDS_ONLY',status='INTEGRITY_FAILED',run_id='new-run',
+            reference_hashes={'report':'a'*64,'state':'b'*64},
+            component_identity={'rejection':'producer_timestamp_after_observation',
+                'report_generated_at':(start+timedelta(seconds=offset)).isoformat(),
+                'state_updated_at':(start-timedelta(seconds=10)).isoformat()})])
+    second = {**first, 'collector_status':retry_status, 'read_start':(start+timedelta(seconds=.08)).isoformat(),
+        'read_end':(start+timedelta(seconds=.13)).isoformat(), 'monotonic_start':10.08,'monotonic_end':10.13}
+    calls=[]
+    def read(*args):
+        calls.append(None)
+        return dict(first if len(calls)==1 else second)
+    monkeypatch.setattr(run, '_sample_once', read)
+    actual=run.sample({},tmp_path,None)
+    assert len(calls)==expected_calls
+    assert actual['monotonic_start']==10.
+    assert actual['read_start']==first['read_start']
+    if expected_calls==2:
+        assert actual['collector_status']==retry_status
+        assert actual['monotonic_end']==10.13
+        retained=json.loads(Path(actual['clock_boundary_resample']['initial_observation_path']).read_bytes())
+        assert retained==first
+    else:
+        assert actual==first
+
+
+@pytest.mark.parametrize('malformed_status', [False, True])
+def test_native_future_report_retains_authenticated_clock_diagnostic(tmp_path, malformed_status):
+    from tests.operator_ui.test_live_adapters import actual_payloads, make_live, NOW
+    values=actual_payloads()
+    stamp=(NOW+timedelta(microseconds=4928)).isoformat()
+    values['odds_report']['generated_at']=stamp
+    if malformed_status:
+        values['odds_report']['final_status']='INVALID_STATUS'
+    lane=make_live(tmp_path,values).collector(NOW).data['lanes'][1]
+    assert lane['status']=='INTEGRITY_FAILED'
+    if malformed_status:
+        assert lane['component_identity'].get('rejection') is None
+        return
+    assert lane['component_identity']['report_generated_at']==stamp
+    assert lane['component_identity']['rejection']=='producer_timestamp_after_observation'
+    assert len(lane['reference_hashes']['report'])==64
+
+
+def test_clock_retry_preserves_first_failure_when_second_read_raises(tmp_path, monkeypatch):
+    import json
+    from scripts import run_freshness_rehearsal as run
+    first={'read_start':'2026-09-24T06:04:02+00:00','monotonic_start':10.,'collector_status':'INVALID/INTEGRITY_FAILED'}
+    calls=[]
+    def read(*args):
+        calls.append(None)
+        if len(calls)==2:
+            raise ValueError('identity_changed')
+        return first
+    monkeypatch.setattr(run,'_sample_once',read)
+    monkeypatch.setattr(run,'_clock_boundary_rejection',lambda value:True)
+    with pytest.raises(ValueError,match='identity_changed'):
+        run.sample({},tmp_path,None)
+    assert len(calls)==2
+    assert json.loads(next((tmp_path/'clock-boundary-samples').glob('*.json')).read_bytes())==first
+
+
+@pytest.mark.parametrize('change', ['future','naive','malformed','missing_hash','index_invalid','authority_invalid','clock_jump'])
+def test_clock_retry_rejects_unrelated_or_unauthenticated_failures(change):
+    from scripts.run_freshness_rehearsal import _clock_boundary_rejection
+    start=datetime(2026,9,24,6,tzinfo=timezone.utc)
+    value=dict(read_start=start.isoformat(),read_end=(start+timedelta(seconds=.05)).isoformat(),
+        monotonic_start=1.,monotonic_end=1.05,index_status='AVAILABLE/FRESH',
+        authority_status='AVAILABLE/FRESH',collector_status='INVALID/INTEGRITY_FAILED',
+        lanes=[dict(status='INTEGRITY_FAILED',run_id='run',reference_hashes={'report':'a'*64,'state':'b'*64},
+            component_identity={'rejection':'producer_timestamp_after_observation',
+                'report_generated_at':(start+timedelta(seconds=.005)).isoformat()})])
+    lane=value['lanes'][0]
+    if change in {'future','naive','malformed'}:
+        lane['component_identity']['report_generated_at']={
+            'future':(start+timedelta(seconds=1)).isoformat(),
+            'naive':'2026-09-24T06:00:00.005','malformed':'bad'}[change]
+    elif change=='missing_hash':lane['reference_hashes'].pop('report')
+    elif change=='index_invalid':value['index_status']='INVALID/INTEGRITY_FAILED'
+    elif change=='authority_invalid':value['authority_status']='INVALID/INTEGRITY_FAILED'
+    else:value['monotonic_end']=2.
+    assert not _clock_boundary_rejection(value)

@@ -27,11 +27,14 @@ class Campaign:
                         (self.root / 'authorization.json').read_bytes()).hexdigest()
                     or not extra.get('authority_reference') or not extra.get('rationale')
                     or type(extra.get('max_capture_attempts')) is not int
-                    or not 12 <= extra['max_capture_attempts'] <= 64):
+                    or not 12 <= extra['max_capture_attempts'] <= 64
+                    or type(extra.get('max_live_seconds', 10800)) is not int
+                    or not 10800 <= extra.get('max_live_seconds', 10800) <= 21600):
                 raise ValueError('invalid_prospective_campaign_amendment')
             # The original authority bytes and all ledger consumption remain.
             # A new package binds the effective authority, including this record.
             self.value = {**self.value, 'max_capture_attempts': extra['max_capture_attempts'],
+                          'max_live_seconds': extra.get('max_live_seconds', 10800),
                           'prospective_amendment': extra}
 
     @contextmanager

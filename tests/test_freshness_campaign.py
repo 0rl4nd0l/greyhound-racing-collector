@@ -71,6 +71,7 @@ def test_prospective_capture_allowance_preserves_consumption_and_other_limits(tm
 @pytest.mark.parametrize('change', [
     {'prior_authorization_sha256':'0'*64}, {'max_capture_attempts':65},
     {'max_capture_attempts':0}, {'max_capture_attempts':True}, {'authority_reference':''},
+    {'max_live_seconds':True}, {'max_live_seconds':21601}, {'max_live_seconds':10799},
 ])
 def test_invalid_prospective_allowance_fails_closed(tmp_path, change):
     make_campaign(tmp_path)
@@ -96,3 +97,24 @@ def test_live_lease_charges_crashes_and_only_restoration_releases_time(tmp_path)
     campaign.close('second', now=now + timedelta(seconds=6720))
     with pytest.raises(ValueError, match='time_exhausted'):
         campaign.begin('third', now=now + timedelta(seconds=6720), deadline=now + timedelta(seconds=13320))
+
+
+def test_prospective_live_time_change_preserves_charged_history(tmp_path):
+    campaign=make_campaign(tmp_path)
+    stamp=datetime.now(timezone.utc)
+    campaign.begin('old',now=stamp,deadline=stamp+timedelta(seconds=10000))
+    campaign.close('old',now=stamp+timedelta(seconds=10000))
+    before=(tmp_path/'ledger.json').read_bytes()
+    base=(tmp_path/'authorization.json').read_bytes()
+    create_once(tmp_path/'prospective-authorization-amendment.json',dict(
+        schema_version='collector_engineering_amendment_v1',campaign_id='synthetic',
+        prior_authorization_sha256=hashlib.sha256(base).hexdigest(),
+        authority_reference='explicit-user-autonomous-repair',rationale='one corrected observation plus cleanup',
+        max_capture_attempts=64,max_live_seconds=18000))
+    revised=Campaign(tmp_path)
+    assert (tmp_path/'ledger.json').read_bytes()==before
+    assert (tmp_path/'authorization.json').read_bytes()==base
+    revised.begin('corrected',now=stamp+timedelta(seconds=10000),deadline=stamp+timedelta(seconds=17260))
+    with revised.ledger() as ledger:
+        assert ledger['launches']['old']['charged_seconds']==10000
+        assert sum(x['charged_seconds'] for x in ledger['launches'].values())==17260

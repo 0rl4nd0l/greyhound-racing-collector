@@ -1276,8 +1276,7 @@ class LiveEvidenceAdapters:
         except (ValueError, OverflowError, TypeError):
             return _status(report_env, "INVALID/INTEGRITY_FAILED"), _lane_data(lane, "INTEGRITY_FAILED")
         observed = now.astimezone(timezone.utc)
-        if report_at > observed or (state_at is not None and state_at > observed):
-            return _status(report_env, "INVALID/INTEGRITY_FAILED"), _lane_data(lane, "INTEGRITY_FAILED", run_id=run_id)
+        clock_rejection = report_at > observed or (state_at is not None and state_at > observed)
         raw_status = report.get("status")
         report_verdict = report.get("final_status") if odds else report.get("final_verdict")
         if (raw_status is not None and not isinstance(raw_status, str)) or not isinstance(report_verdict, str):
@@ -1332,8 +1331,8 @@ class LiveEvidenceAdapters:
                 operational_context["lock_owner"]["started_at"]
                 if operational_context["lock_owner"] is not None else None
             )
-            if owner_started_at is not None and _time(owner_started_at) > observed:
-                raise ValueError("producer lock-owner timestamp is future")
+            if owner_started_at is not None and _time(owner_started_at) > max(observed, report_at):
+                raise ValueError("producer lock-owner timestamp is future beyond its report")
         except (ValueError, OverflowError, TypeError):
             return _status(report_env, "INVALID/INTEGRITY_FAILED"), _lane_data(
                 lane, "INTEGRITY_FAILED", run_id=run_id
@@ -1434,6 +1433,16 @@ class LiveEvidenceAdapters:
             if refresh_env.age_seconds is None or refresh_env.generated_at != embedded.get("generated_at"):
                 return _status(refresh_env, "INVALID/INTEGRITY_FAILED"), _lane_data(lane, "INTEGRITY_FAILED", run_id=run_id)
             deadline = min(deadline, refresh_at + timedelta(seconds=300))
+        # Diagnose a write during observation only after every non-time
+        # validation passes. Malformed lifecycle evidence remains ineligible.
+        if clock_rejection:
+            return _status(report_env, "INVALID/INTEGRITY_FAILED"), _lane_data(
+                lane, "INTEGRITY_FAILED", run_id=run_id,
+                references={"report": report_env.content_sha256, "state": state_env.content_sha256},
+                identity={"rejection": "producer_timestamp_after_observation",
+                          "report_generated_at": report_at.isoformat(),
+                          **({"state_updated_at": state_at.isoformat()} if state_at is not None else {})},
+            )
         if observed > deadline:
             outer_status, lane_status = "STALE", "STALE"
         elif active:

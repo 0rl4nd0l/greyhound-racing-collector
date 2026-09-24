@@ -235,6 +235,53 @@ def snapshot(output, plan, control):
 
 
 def sample(plan, output, control):
+    first = _sample_once(plan, output, control)
+    if not _clock_boundary_rejection(first):
+        return first
+    # Retain the original failed read before a single full local resample.
+    # No source requests occur here and no native validator is relaxed.
+    retained = output / "clock-boundary-samples" / (uuid.uuid4().hex + ".json")
+    create_once(retained, first)
+    second = _sample_once(plan, output, control)
+    second.update(read_start=first['read_start'], monotonic_start=first['monotonic_start'],
+                  clock_boundary_resample={'initial_observation_path':str(retained),
+                    'initial_observation_sha256':digest(first), 'attempts':2})
+    return second
+
+
+def _clock_boundary_rejection(value):
+    if (value.get('collector_status') != 'INVALID/INTEGRITY_FAILED'
+            or value.get('index_status') != 'AVAILABLE/FRESH'
+            or value.get('authority_status') != 'AVAILABLE/FRESH'):
+        return False
+    failed = [lane for lane in value.get('lanes', []) if lane.get('status') in {'INTEGRITY_FAILED', 'DIVERGENT'}]
+    if not failed:
+        return False
+    try:
+        start, end = (datetime.fromisoformat(value[key]) for key in ('read_start', 'read_end'))
+        elapsed = value['monotonic_end'] - value['monotonic_start']
+        if (start.tzinfo is None or end.tzinfo is None or not 0 <= elapsed <= 1
+                or abs((end-start).total_seconds()-elapsed) > .25):
+            return False
+        for lane in failed:
+            identity = lane['component_identity']
+            if (lane['status'] != 'INTEGRITY_FAILED'
+                    or identity.get('rejection') != 'producer_timestamp_after_observation'
+                    or not lane.get('run_id') or lane['run_id'] == 'unavailable'
+                    or any(not re.fullmatch('[0-9a-f]{64}', lane['reference_hashes'].get(key, ''))
+                           for key in ('report', 'state'))):
+                return False
+            stamps = [datetime.fromisoformat(identity[key]) for key in
+                      ('report_generated_at', 'state_updated_at') if key in identity]
+            if (not stamps or any(stamp.tzinfo is None or stamp > end for stamp in stamps)
+                    or not any(stamp > start for stamp in stamps)):
+                return False
+        return True
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return False
+
+
+def _sample_once(plan, output, control):
     from race_collection.freshness_rehearsal import native_observation, completed_service_overhead
     from race_collection.synchronous_manual_capture import current_race_index_path
     from src.operator_ui.live_adapters import InstalledUnits

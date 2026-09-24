@@ -35,7 +35,7 @@ state/dynamic content and extract rendered rows. The successful run made three
 sequential complete captures (~35.5–40.1s each); full wire request counts were not
 retained. Both lanes use the collector lock. No evidenced cross-agent breach.
 
-Extraction code is unchanged. The experimental pinned driver removes the legacy
+The initial candidate retained the legacy extraction parser. The experimental pinned driver removes the legacy
 window-size/asset options and legacy automation-concealment/UA settings, adds
 background suppression and independent CDP denial monitoring. Do not reintroduce
 concealment or blindly restore packages. Launch differences alone are not causes.
@@ -117,9 +117,9 @@ denial still stops source traffic, and no challenge resource is suppressed.
 The failed R7 reservation remains consumed. Restoration completed at
 14:47:00.610 AEST with both collector timers held, original unit hashes restored,
 and R3 unchanged. Three cumulative denials, recovery_attempts=1 and all source
-operations remain retained. The next comparison honors the recorded engineering
-quiet interval through 16:41:14.988 AEST. That interval is local policy, not a
-provider-supplied Retry-After.
+operations remain retained. The initially selected engineering quiet interval extended through
+16:41:14.988 AEST. It was subsequently revised explicitly as described below;
+it was local policy, not a provider-supplied Retry-After.
 
 Before the sustained comparison, a separate prospective campaign amendment
 raises only the cumulative capture ceiling from 12 to 64. The four prior
@@ -150,3 +150,77 @@ quiet period far longer than normal admission cadence. It is not an unchanged
 retry loop. The optional transition refuses provider retry/reset headers
 (including unparsed guidance), preserves the old deadline and every denial,
 records the effective deadline, and still stops on any renewed denial.
+
+
+## Successful repaired capture and observer correction
+
+Candidate 2b761b32faa5d6517b3721a27ca5ba1870d70147 captured Casino R3 on
+24 September, fetch 15:31:01.396818 and append 15:31:18.757412 AEST, in
+17.360594 seconds. All six exact runners have both WIN and PLACE prices.
+Independent reservation and receipt verification passes at the retained append
+clock plus one second; this later check creates no new live prediction. Receipt
+report SHA256 is 7d2c21c50035f8a65956c4b22f43045d090631c93116991207c20b0025ef839a,
+runner SHA256 ac6573c5c7f730299c5100ef31c52e70c48f4fa507ac7d7a43d62386365e50f0.
+Evidence: `casino-r3-receipt-verified.json` in the private evidence root.
+
+The recorder was attached to operation
+`browser:35610b39bc024082bb83aaf1a0fe90c5`; it retained all responses, observed
+no denial and read two already delivered JSON bodies. NextEvents was cached on
+the second navigation. No Racecard route or structured odds response was
+established. This does not justify inventing or replaying an API endpoint.
+
+The supervisor then rejected a valid approximately 716 KiB native report and
+its approximately 65 KiB encoded page strings against 512 KiB document and
+4 KiB string limits. It stopped before prediction dispatch. Casino R3 remains a
+missed prediction with a consumed capture; the later stale index was not
+accepted. A synthetic report reproduced both bound failures. Candidate
+ed18200079f1a493393063a80cec866300333212 raises only these native-reader bounds
+to 2 MiB and 128 KiB, retaining item/depth, serialization, identity and freshness
+checks. An old service invocation's report now yields unmeasured overhead
+rather than a false lifecycle mismatch; mismatches within the same invocation
+still reject. Forty-four tests passed in 58.57 seconds in the pinned environment
+with network denied, including actual packaged frozen prediction and verification.
+
+The unchanged ed182000 candidate is scheduled for observation 15:47–17:17 AEST
+with cleanup reserved through 17:48. Package plan SHA256
+479028ad19afe789e7e9e441178f737dac65d43905dff240a96b3f13eaeb609e;
+source archive SHA256 a01c52ab36725e3d0680a5af34ca643a123c20002fd6c07fa356d8079d82418c.
+Before launch, cumulative consumption is five captures, 1,627 logical requests,
+13 source operations and three retained denials. No new source denial requires
+an additional quiet interval. Remaining source operations are bounded at 187;
+all previous totals and the original denial deadline remain recorded.
+
+The ed182000 observation produced two real independently verified predictions:
+Mount Gambier R10 (five WIN/five PLACE), verification 15:48:18.580294 AEST,
+521.419721 seconds before jump, and Casino R4 (five WIN/five PLACE), verification
+15:58:12.636010, 527.364005 seconds before jump. Prediction processing took
+3.807549–3.824856 seconds, price age 24.687139–25.556508 seconds, and index age
+70.414310–76.336278 seconds at verification. The first chain additionally received
+read-only independent review of all 801 packaged source files, 14 retained inputs,
+19 prediction files, and the exact five-by-sixteen frozen feature projection.
+Both full and odds lanes completed; measured external overhead was about 2–3s.
+
+At 16:04:02, observation stopped on a local clock-boundary bug. Sample 000511
+started at 02.189239, read a new RUNNING report generated at 02.194167, and finished
+at 02.246624. The report was incorrectly future relative to the frozen read-start
+clock. Offline replay of identical retained bytes and captured service identity
+reproduces INVALID at read-start and AVAILABLE/FRESH at read-end. Evidence is
+`clock-boundary-live-reproduction.json`. No provider denial occurred. Paired unit
+restoration finished at 16:05:00.726095 with timers held and R3 unchanged. This
+interrupted observation is not a sustained-reliability pass.
+
+The correction retains authenticated report timestamps/hashes on clock rejection
+only after all other lifecycle and identity checks pass. Exactly one full local
+resample is permitted when that timestamp lies inside the measured read interval.
+The first rejection is durably retained before retry; the second observation
+reacquires all paths, units and evidence and reruns unchanged native checks. The
+whole elapsed interval remains charged. Real future timestamps and unrelated
+corruption do not qualify. This is local evidence sampling, not a provider retry.
+The final focused suite passed 318 checks under kernel network denial.
+
+The existing prospective campaign amendment additionally permits finite cumulative
+wall time up to 21,600 seconds; this execution selects 18,000. The previous amendment
+is retained verbatim and hash-linked. Original authority bytes, 3,807.809229 charged
+seconds, seven consumed captures, 4,767 logical requests, 31 source operations and
+three denials remain unchanged. This funds a corrected 90-minute observation plus
+31-minute cleanup without resetting any historical accounting.
