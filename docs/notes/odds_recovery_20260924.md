@@ -363,3 +363,29 @@ preserving no-follow traversal, named-path identity, exact selected-file size,
 mtime and content hashes. Directory replacement and source mutation still reject.
 A sealed value-free protocol failure artifact retains an allowlisted nested code;
 arbitrary exception details and paths are excluded. No failed job is replayed.
+
+
+## 18:23 unchanged-candidate observation
+
+Candidate a15f588245a8ac918bbc0922e98ad2e00d338b2d produced verified operational
+predictions for Casino R12 and Warragul R5, both from complete live receipts.
+Casino R12 independently verified at 18:31:16.578594 AEST, 523.421406 seconds
+before jump; capture took 12.993014 seconds and retention/prediction took
+3.847546 seconds. Its recorder retained 50 network responses with no drops and
+observed eight ready paired cards immediately after target navigation.
+
+At 18:38:00 the full-lane timer fired while the odds lane owned its browser
+operation. The network-free systemd ExecCondition called strict source admission,
+classified active ownership as sportsbet_source_hold and skipped the full service.
+This prevented waiting on the existing collector lock; the next 15-minute timer
+would miss the 20-minute both-lane readiness check. There was no provider denial.
+The owner deliberately stopped observation at 18:40:28 and retained both verified
+predictions, all samples, the journal finding and the scope STOP record.
+
+The repair permits only service admission to queue while the shared source has
+an active owner and is otherwise OPEN. Strict preflight remains the default;
+actual provider acquisition still requires exclusive ownership, valid access,
+unexpired finite authority and unchanged rate limits. Both collector entrypoints
+must acquire the existing collector lock before provider work. STOP, denial,
+recovery and cooldown continue blocking admission. No service is force-restarted,
+no collector lock is stolen and no consumed capture is retried.

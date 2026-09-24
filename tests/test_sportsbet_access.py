@@ -475,3 +475,48 @@ def test_supervised_transport_has_no_implicit_retry_for_any_provider(monkeypatch
             assert session.get_adapter(url).max_retries.total == 0
     finally:
         session.close()
+
+
+@pytest.mark.parametrize("condition", ["OPEN", "STOP", "RECOVERY", "COOLDOWN", "cooldown_elapsed", "denial", "expired", "operation_cap", "unresolved"])
+def test_service_condition_can_queue_behind_owned_operation_without_transport_admission(
+    tmp_path, monkeypatch, condition,
+):
+    from scripts import check_sportsbet_access as service_condition
+    from utils.sportsbet_access import SportsbetAccess, SportsbetAccessBlocked
+
+    gate = SportsbetAccess(tmp_path / "access.json", clock=lambda: 1000)
+    gate.initialize(access_basis={"status": "permitted", "reference": "synthetic admission fixture"})
+    monkeypatch.setattr(service_condition, "SportsbetAccess", lambda: gate)
+    with gate.operation("browser") as operation:
+        if condition in {"STOP", "RECOVERY", "COOLDOWN"}:
+            operation.value["phase"] = condition
+            operation.value["not_before"] = 1100
+        elif condition in {"expired", "operation_cap"}:
+            operation.value["diagnostic_authority"] = {
+                "expires_at": 999 if condition == "expired" else 1100,
+                "operation_start": 0,
+                "max_operations": 2 if condition == "expired" else 1,
+            }
+            operation.value["operations"] = [{"kind": "browser", "at": 1000}]
+        elif condition == "unresolved":
+            operation.value["access_basis"]["status"] = "unresolved"
+        elif condition == "denial":
+            operation.response(403, {})
+        elif condition == "cooldown_elapsed":
+            operation.value["phase"] = "COOLDOWN"
+            operation.value["not_before"] = 900
+        gate.write(operation.value)
+        before = gate.path.read_bytes()
+
+        assert service_condition.main() == (0 if condition == "OPEN" else 1)
+        with pytest.raises(SportsbetAccessBlocked):
+            gate.check_admission()
+        with pytest.raises(SportsbetAccessBlocked):
+            with gate.operation("python"):
+                pytest.fail("service admission granted concurrent provider ownership")
+        assert gate.path.read_bytes() == before
+        assert gate.read()["active"] == operation.value["active"]
+    if condition == "OPEN":
+        gate.check_admission()
+        with gate.operation("python"):
+            pass
