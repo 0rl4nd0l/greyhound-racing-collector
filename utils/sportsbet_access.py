@@ -155,12 +155,12 @@ class SportsbetAccess:
                     if any(key in guidance for key in ('retry-after', 'ratelimit-reset', 'x-ratelimit-reset')):
                         raise SportsbetAccessBlocked('provider_guidance_requires_original_cooldown')
                     stamp = denial.get('recorded_at_epoch')
-                    if not isinstance(stamp, (int, float)) or not math.isfinite(stamp):
+                    if type(stamp) not in {int, float} or not math.isfinite(stamp):
                         raise SportsbetAccessBlocked('denial_time_unknown')
                     deadlines.append(stamp + engineering_quiet_seconds)
                     provider = denial.get('provider_not_before_epoch')
                     if provider is not None:
-                        if not isinstance(provider, (int, float)) or not math.isfinite(provider):
+                        if type(provider) not in {int, float} or not math.isfinite(provider):
                             raise SportsbetAccessBlocked('provider_deadline_unknown')
                         deadlines.append(provider)
                 effective_not_before = max(deadlines)

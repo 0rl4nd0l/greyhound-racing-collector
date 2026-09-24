@@ -90,3 +90,17 @@ def test_engineering_revision_cannot_override_provider_guidance(tmp_path, header
         gate.authorize_diagnostic(reference='user',expected_sha256=hashlib.sha256(before).hexdigest(),
             expires_at=18000,max_operations=10,rationale='new candidate',engineering_quiet_seconds=2700)
     assert gate.path.read_bytes()==before
+
+
+@pytest.mark.parametrize('field', ['recorded_at_epoch','provider_not_before_epoch'])
+@pytest.mark.parametrize('bad', [True, '123', float('nan'), float('inf')])
+def test_quiet_revision_rejects_malformed_denial_clock(tmp_path, field, bad):
+    gate=SportsbetAccess(tmp_path/'access.json',clock=lambda:10000)
+    gate.initialize(access_basis={'status':'permitted','reference':'synthetic'})
+    gate.retain_denial(429)
+    value=gate.read();value['denials'][-1][field]=bad;gate.write(value)
+    before=gate.path.read_bytes()
+    with pytest.raises(SportsbetAccessBlocked):
+        gate.authorize_diagnostic(reference='user',expected_sha256=hashlib.sha256(before).hexdigest(),
+            expires_at=18000,max_operations=10,rationale='new candidate',engineering_quiet_seconds=2700)
+    assert gate.path.read_bytes()==before
