@@ -25,7 +25,7 @@ UNITS = (
 def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False, observation_minutes=90):
     operational = bool(campaign_root and operational_predictions)
     if (type(observation_minutes) is not int
-            or not (10 <= observation_minutes <= 90 if operational else observation_minutes == 90)):
+            or not (5 <= observation_minutes <= 90 if operational else observation_minutes == 90)):
         raise ValueError("invalid_operational_observation_duration")
     short_observation = observation_minutes < 60
     output = output.absolute()
@@ -170,6 +170,7 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         "readiness_warmup_seconds": 180 if short_observation else 1200,
         **({"minimum_completed_full_cycles": 1, "minimum_distinct_captures": 1}
            if short_observation else {}),
+        **({"minimum_completed_odds_cycles": 3} if observation_minutes < 10 else {}),
         "first_index_deadline_seconds": 180,
         "profile": "bounded80-v1",
         "max_capture_attempts": campaign.value['max_capture_attempts'] if campaign else 1,

@@ -38,7 +38,7 @@ def prepared(tmp_path, monkeypatch):
         reconciliation_roots=[],installed_dir=installed,campaign_root=root,operational_predictions=True)
 
 
-@pytest.mark.parametrize('minutes', [10, 59, 60, 61, 90])
+@pytest.mark.parametrize('minutes', [5, 9, 10, 59, 60, 61, 90])
 def test_prepared_short_scope_timer_and_native_warmup(prepared, minutes):
     prep.prepare(**prepared, observation_minutes=minutes)
     output = prepared['output']
@@ -50,13 +50,14 @@ def test_prepared_short_scope_timer_and_native_warmup(prepared, minutes):
     assert plan['readiness_warmup_seconds'] == (180 if short else 1200)
     assert plan.get('minimum_completed_full_cycles', 3) == (1 if short else 3)
     assert plan.get('minimum_distinct_captures', 3) == (1 if short else 3)
+    assert plan.get('minimum_completed_odds_cycles', 6) == (3 if minutes < 10 else 6)
     assert plan['cleanup_seconds'] == 1860
     assert plan['first_index_deadline_seconds'] == 180
     value = dict(plan, schema_version='freshness_rehearsal_contract_v1',source_date='2026-09-24',reconciliation_sha256='b'*64)
     assert (FreshnessContract(value).end - prepared['start']).total_seconds() == minutes * 60
 
 
-@pytest.mark.parametrize('minutes', [0, 9, 10.5, True, 91])
+@pytest.mark.parametrize('minutes', [0, 4, 5.5, True, 91])
 def test_prepare_rejects_invalid_operational_duration(prepared, minutes):
     with pytest.raises(ValueError, match='invalid_operational_observation_duration'):
         prep.prepare(**prepared, observation_minutes=minutes)

@@ -103,7 +103,7 @@ class FreshnessContract:
             raise ValueError("invalid_scope_duration")
         duration = (self.end - self.start).total_seconds()
         operational = bool(value.get("campaign_root") and value.get("operational_predictions"))
-        valid_duration = (600 <= duration <= 5400 and duration % 60 == 0) if operational else duration == 5400
+        valid_duration = (300 <= duration <= 5400 and duration % 60 == 0) if operational else duration == 5400
         if (
             self.start.utcoffset() is None
             or self.end.utcoffset() is None
