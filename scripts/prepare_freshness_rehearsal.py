@@ -63,8 +63,11 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
     create_once(source / "SOURCE_IDENTITY.json", identity)
     runtime_identity = probe_runtime(python=python, source_root=source)
     create_once(output / "runtime-identity.json", runtime_identity)
-    evidence = output / "evidence"
-    evidence.mkdir()
+    # Publication retains its root parent's mutation witnesses. Supervisor
+    # progress/receipt files change independently, so give the collector a
+    # dedicated parent that observers never write into.
+    evidence = output / "collector" / "evidence"
+    evidence.mkdir(parents=True)
     runtime = evidence / "shadow_autopilot_daemon_runtime"
     runtime.mkdir()
     contract_path = output / "contract.json"

@@ -76,6 +76,14 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
         lock=tmp_path/'collector.lock', reconciliation_roots={}, installed_dir=installed,
         campaign_root=campaign.root, operational_predictions=True)
     plan = json.loads((package/'plan.json').read_bytes())
+    from race_collection.synchronous_manual_capture import _atomic_replace_canonical
+    from race_collection.live_phase_checkpoint import atomic_json
+    # The real supervisor replaces this sibling on every observation tick.
+    # Force that overlap at the publisher's final retained-directory check.
+    evidence = Path(plan['evidence_root'])
+    _atomic_replace_canonical(evidence/'runtime/overlap-probe.json', {'synthetic': True},
+        evidence_root=evidence,
+        _pre_replace=lambda: atomic_json(package/'progress.json', {'synthetic_tick': 1}))
     assert Path(plan['db_path']).resolve() != db.resolve()
     with sqlite3.connect(db) as history_conn:
         initial_odds = history_conn.execute('SELECT count(*) FROM live_odds').fetchone()[0]
@@ -107,7 +115,7 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
         terminal_capture=json.loads(allowance.claims()[0].with_suffix(".terminal.json").read_bytes())["result"]
         assert terminal_capture["operational_capture_outcome"]["status"] == "UNREADY_NO_CAPTURE"
         assert json.loads(gate.read_bytes())['phase'] == 'OPEN'
-        assert 'target_race_not_visible_within_navigation_allowance' in (tmp_path/'collector.log').read_text() or any('target_race_not_visible_within_navigation_allowance' in p.read_text() for p in (package/'evidence').glob('**/autonomous_live_odds_capture_report.json'))
+        assert 'target_race_not_visible_within_navigation_allowance' in (tmp_path/'collector.log').read_text() or any('target_race_not_visible_within_navigation_allowance' in p.read_text() for p in evidence.glob('**/autonomous_live_odds_capture_report.json'))
         with sqlite3.connect(plan['db_path']) as capture_conn:
             assert capture_conn.execute('SELECT count(*) FROM live_odds').fetchone()[0] == 0
         return
