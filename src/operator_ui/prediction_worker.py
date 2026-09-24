@@ -357,7 +357,7 @@ def _bounded_result(job:Job,stdout:bytes,stdout_len:int,stdout_hash:str,stderr:b
         if not isinstance(status,str) or not status or len(status)>128:raise ValueError
         if schema=="on_demand_race_prediction_v2":
             validate_prediction_result_v2(value)
-            if value["job_id"]!=job.job_id or value["race"]["race_id"]!=job.input.race_id or value["race"]["jump_timestamp"]!=job.input.jump_timestamp or value["evidence"]["runner_set_sha256"]!=job.input.runner_set_sha256 or value["config"]!={"sha256":job.input.config_sha256}:raise ValueError
+            if value["job_id"]!=job.job_id or value["race"]["race_id"]!=job.input.race_id or value["race"]["jump_timestamp"]!=job.input.jump_timestamp or value["evidence"]["runner_set_sha256"]!=job.input.expected_prediction_runner_sha256 or value["config"]!={"sha256":job.input.config_sha256}:raise ValueError
             model=value["model"]
             if model.get("resolved")!=job.input.resolved_model_identity or model.get("artifact_sha256")!=job.input.model_sha256 or model.get("artifact_manifest_sha256")!=job.input.model_manifest_sha256 or model.get("schema_sha256")!=job.input.model_schema_sha256:raise ValueError
             prediction_id=value["prediction_id"]

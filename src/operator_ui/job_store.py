@@ -338,6 +338,7 @@ class JobInput:
     ordered_runners:tuple[Mapping[str,Any],...]=()
     operational_index_provenance:OperationalIndexProvenance|None=None
     retained_input_manifest_sha256:str|None=None
+    prediction_runner_set_sha256:str|None=None
     def __post_init__(self):
         if isinstance(self.ordered_runners,list): object.__setattr__(self,"ordered_runners",tuple(self.ordered_runners))
         if isinstance(self.operational_index_provenance,Mapping):
@@ -346,6 +347,7 @@ class JobInput:
         values={n:getattr(self,n) for n in self.__dataclass_fields__}
         provenance=values.pop("operational_index_provenance")
         retained_digest=values.pop("retained_input_manifest_sha256")
+        prediction_digest=values.pop("prediction_runner_set_sha256")
         for n,v in values.items():
             if n == "ordered_runners": continue
             _hash(v,n) if n.endswith("sha256") else _identifier(v,n)
@@ -368,9 +370,15 @@ class JobInput:
         if retained_digest is not None:
             values["retained_input_manifest_sha256"]=_hash(retained_digest,"retained_input_manifest_sha256")
             if self.odds_source != "receipt": raise ValueError("retained inputs require exact receipt")
+        if prediction_digest is not None:
+            if provenance is None: raise ValueError("prediction runner identity requires index provenance")
+            values["prediction_runner_set_sha256"]=_hash(prediction_digest,"prediction_runner_set_sha256")
         parsed=datetime.fromisoformat(self.jump_timestamp.replace("Z","+00:00"))
         if parsed.tzinfo is None or parsed.utcoffset() is None: raise ValueError("jump_timestamp must be timezone aware")
         return values
+    @property
+    def expected_prediction_runner_sha256(self)->str:
+        return self.prediction_runner_set_sha256 or self.runner_set_sha256
     @property
     def identity_sha256(self)->str:return _sha(canonical(self.fields()))
 
@@ -378,7 +386,9 @@ class JobInput:
 def _job_input_from_mapping(value:Any)->JobInput:
     if not isinstance(value,Mapping): raise ValueError("invalid input shape")
     keys=set(JobInput.__dataclass_fields__)
-    allowed={frozenset(keys),frozenset(keys-{"retained_input_manifest_sha256"}),frozenset(keys-{"retained_input_manifest_sha256","operational_index_provenance"})}
+    keys.remove("prediction_runner_set_sha256")
+    legacy={frozenset(keys),frozenset(keys-{"retained_input_manifest_sha256"}),frozenset(keys-{"retained_input_manifest_sha256","operational_index_provenance"})}
+    allowed=legacy | {key | {"prediction_runner_set_sha256"} for key in legacy}
     if frozenset(value) not in allowed: raise ValueError("invalid input shape")
     return JobInput(**value)
 

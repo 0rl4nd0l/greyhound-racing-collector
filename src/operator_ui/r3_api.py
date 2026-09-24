@@ -124,7 +124,7 @@ def _sealed_request_matches_job(job: Job, value: Any) -> bool:
     if request.get("retained_input_manifest_sha256") != job.input.retained_input_manifest_sha256:
         return False
     model=request.get("model",{})
-    if (request.get("job_id"),request.get("race_id"),request.get("jump_timestamp"),request.get("runner_set_sha256"),request.get("odds_source"),request.get("config_sha256")) != (job.job_id,job.input.race_id,job.input.jump_timestamp,job.input.runner_set_sha256,job.input.odds_source,job.input.config_sha256):
+    if (request.get("job_id"),request.get("race_id"),request.get("jump_timestamp"),request.get("runner_set_sha256"),request.get("odds_source"),request.get("config_sha256")) != (job.job_id,job.input.race_id,job.input.jump_timestamp,job.input.expected_prediction_runner_sha256,job.input.odds_source,job.input.config_sha256):
         return False
     if (model.get("requested"),model.get("resolved"),model.get("model_sha256"),model.get("manifest_sha256"),model.get("schema_sha256")) != (job.input.model_selector,job.input.resolved_model_identity,job.input.model_sha256,job.input.model_manifest_sha256,job.input.model_schema_sha256):
         return False
@@ -237,7 +237,7 @@ def _verified_result(job: Job, value: Any, events: list[Mapping[str,Any]] | None
     if (entry.get("prediction_id"),manifest.get("prediction_id")) != (result.get("prediction_id"),result.get("prediction_id")):
         return None
     race=result.get("race",{}); model=result.get("model",{}); config=result.get("config",{}); evidence=result.get("evidence",{})
-    if (race.get("race_id"),race.get("jump_timestamp"),evidence.get("runner_set_sha256")) != (job.input.race_id,job.input.jump_timestamp,job.input.runner_set_sha256):
+    if (race.get("race_id"),race.get("jump_timestamp"),evidence.get("runner_set_sha256")) != (job.input.race_id,job.input.jump_timestamp,job.input.expected_prediction_runner_sha256):
         return None
     if (model.get("requested"),model.get("resolved"),model.get("artifact_sha256"),model.get("artifact_manifest_sha256"),model.get("schema_sha256"),config.get("sha256")) != (job.input.model_selector,job.input.resolved_model_identity,job.input.model_sha256,job.input.model_manifest_sha256,job.input.model_schema_sha256,job.input.config_sha256):
         return None

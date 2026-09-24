@@ -264,11 +264,16 @@ def run(plan_path: Path, claim_path: Path):
         config_path = source_root / "configs/prediction/manual-default.json"
         choice = ServerChoice(config_path, "manual-default", sha256_file(config_path), model.resolved,
             model.model_sha256, model.manifest_sha256, model.schema_sha256, model.model_path, model.manifest_path, model.schema_path)
+        from scripts.predict_race_now import _request_race, _request_expected_runners
+        from src.predictor.on_demand import sealed_runner_set_sha256
+        prediction_runner_hash = sealed_runner_set_sha256(
+            _request_race(race, race_id=race_id, jump=jump), _request_expected_runners(race))
         inp = JobInput(race_id, race["jump_datetime"], race["runner_set_sha256"], "latest-research", model.resolved,
             model.model_sha256, model.manifest_sha256, model.schema_sha256, "manual-default", choice.config_sha256,
             "receipt", tuple({"box": r["box"], "name": r["display_name"], "identity": r["identity"],
                               "source_native_runner_id": r["source_native_runner_id"]} for r in race["runners"]),
-            OperationalIndexProvenance.from_verified_current_race_index(view), retained["manifest_sha256"])
+            OperationalIndexProvenance.from_verified_current_race_index(view), retained["manifest_sha256"],
+            prediction_runner_set_sha256=prediction_runner_hash)
         authority = object()
         store = JobStore(root / "jobs.sqlite3", separate_from=(Path(plan["db_path"]),), verifier_authority=authority)
         def confirm(intent):
