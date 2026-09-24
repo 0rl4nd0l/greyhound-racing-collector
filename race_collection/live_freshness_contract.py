@@ -58,6 +58,10 @@ class FreshnessContract:
         zone = ZoneInfo("Australia/Melbourne")
         local_start, local_end = self.start.astimezone(zone), self.end.astimezone(zone)
         cutoff = local_start.replace(hour=21, minute=20, second=0, microsecond=0)
+        if value.get("campaign_root") and value.get("operational_predictions"):
+            # Operational recovery has prospective scheduling authority. Keep
+            # execution and cleanup on the source date, not an old launch cutoff.
+            cutoff = local_start.replace(hour=23, minute=59, second=59, microsecond=999999)
         if (
             local_start.date().isoformat() != value["source_date"]
             or local_end.date() != local_start.date()

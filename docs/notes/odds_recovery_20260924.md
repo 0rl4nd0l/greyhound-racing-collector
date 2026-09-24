@@ -447,3 +447,14 @@ remain available and younger than 270 seconds, with valid authority and an OPEN
 source gate. Final recovery requires a successful new index whose source time
 follows the failed observation; a merely ACTIVE service is insufficient. R3's
 300-second rejection and all exact receipt/source checks remain unchanged.
+
+The prepared 19:50 candidate 2851cfff stopped during admission, before provider
+requests, on an inherited hard-coded 21:20 cleanup cutoff: its 20:50 observation
+end plus 31 minutes of cleanup reaches 21:21. The package and failure are
+preserved, and original units were restored at 19:46:40.569128. The user's
+prospective operational scheduling authority supersedes this old fixed window.
+Operational campaign contracts now require observation and reserved cleanup to
+finish on the same local source date, preserving the finite duration, cumulative
+budget, cleanup reserve and identity checks. Ordinary rehearsal defaults retain
+their old cutoff. Network-denied boundary tests cover acceptance after 21:20
+and rejection when cleanup would cross the source date.
