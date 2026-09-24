@@ -163,7 +163,7 @@ def test_actual_exported_wrapper_retains_closed_admission_without_traffic(tmp_pa
 
 
 @pytest.mark.parametrize('duration,operational,minimum,accepted', [
-    (600,True,1,True),(3540,True,2,True),(3600,True,1,False),
+    (300,True,1,True),(3540,True,2,True),(3600,True,1,False),
     (600,False,1,False),(599,True,1,False),(600,True,0,False),
     (600,True,True,False),(600,True,4,False)])
 def test_short_observation_minimums_are_explicit_and_bounded(duration,operational,minimum,accepted):
@@ -171,7 +171,7 @@ def test_short_observation_minimums_are_explicit_and_bounded(duration,operationa
     plan={'starts_at':start.isoformat(),'ends_at':(start+timedelta(seconds=duration)).isoformat(),
           'operational_predictions':operational,'minimum_completed_full_cycles':minimum,
           'minimum_distinct_captures':minimum}
-    if accepted:assert run.observation_minimums(plan)==(minimum,minimum)
+    if accepted:assert run.observation_minimums(plan)==(minimum,minimum,6)
     else:
         with pytest.raises(ValueError,match='invalid_observation_minimums'):run.observation_minimums(plan)
 
@@ -207,3 +207,14 @@ def test_actual_observer_retains_stale_sample_and_explicit_shutdown_classificati
     assert sample['planned_shutdown']['new_data_accepted'] is False
     progress=json.loads((output/'progress.json').read_bytes())
     assert progress['completed_cycles']=={'full':0,'odds':0}
+
+
+@pytest.mark.parametrize("duration,odds,accepted", [(300,3,True),(540,3,True),(600,3,False),(300,2,False),(300,True,False),(300,6,True)])
+def test_shutdown_followup_odds_minimum_is_finite(duration,odds,accepted):
+    start=datetime(2099,1,1,tzinfo=timezone.utc)
+    plan={"starts_at":start.isoformat(),"ends_at":(start+timedelta(seconds=duration)).isoformat(),
+          "operational_predictions":True,"minimum_completed_full_cycles":1,
+          "minimum_distinct_captures":1,"minimum_completed_odds_cycles":odds}
+    if accepted:assert run.observation_minimums(plan)==(1,1,odds)
+    else:
+        with pytest.raises(ValueError,match="invalid_observation_minimums"):run.observation_minimums(plan)

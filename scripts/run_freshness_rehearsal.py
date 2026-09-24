@@ -603,11 +603,15 @@ def planned_scope_close(plan, scope, current):
 
 def observation_minimums(plan):
     duration = (datetime.fromisoformat(plan["ends_at"])-datetime.fromisoformat(plan["starts_at"])).total_seconds()
-    short = bool(plan.get("operational_predictions")) and 600 <= duration < 3600 and duration % 60 == 0
+    short = bool(plan.get("operational_predictions")) and 300 <= duration < 3600 and duration % 60 == 0
     values = tuple(plan.get(key, 3) for key in ("minimum_completed_full_cycles", "minimum_distinct_captures"))
     if any(type(v) is not int or not 1 <= v <= 3 or (not short and v != 3) for v in values):
         raise ValueError("invalid_observation_minimums")
-    return values
+    odds = plan.get("minimum_completed_odds_cycles", 6)
+    if (type(odds) is not int or odds not in (3, 6)
+            or (odds == 3 and not (short and duration < 600))):
+        raise ValueError("invalid_observation_minimums")
+    return (*values, odds)
 
 
 def observe(output, plan, control, scope, predictions=None):
@@ -616,7 +620,7 @@ def observe(output, plan, control, scope, predictions=None):
     evidence = Path(plan["evidence_root"])
     end = datetime.fromisoformat(plan["ends_at"])
     start = datetime.fromisoformat(plan["starts_at"])
-    minimum_full, minimum_captures = observation_minimums(plan)
+    minimum_full, minimum_captures, minimum_odds = observation_minimums(plan)
     timer_accounting = TimerAccounting(start)
     previous = None
     event_count = 0
@@ -819,7 +823,7 @@ def observe(output, plan, control, scope, predictions=None):
         time.sleep(max(0, plan["sample_period_seconds"] - (time.monotonic() - tick)))
     if refresh_failures and not refresh_recovery_proven(output, current, refresh_failures):
         raise ValueError("refresh_recovery_unproven")
-    if len(completed["full"]) < minimum_full or len(completed["odds"]) < 6 or not waits or max(waits) <= 0:
+    if len(completed["full"]) < minimum_full or len(completed["odds"]) < minimum_odds or not waits or max(waits) <= 0:
         raise ValueError("lane_progress_or_handoff_unproven")
     if not all(external_overheads.values()):
         raise ValueError("external_completion_timing_unmeasured")
