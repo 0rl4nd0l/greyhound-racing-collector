@@ -385,3 +385,77 @@ def test_denial_observation_omits_credentials_queries_and_fragments(tmp_path):
     assert observed['source_url_without_query']=='https://www.sportsbet.com.au/api/events'
     assert observed['resource_type']=='python' and observed['monotonic_seconds']>0
     assert gate.read()['phase']=='COOLDOWN'
+
+
+def test_denial_links_durable_operation_and_process_without_rewriting_history(tmp_path):
+    import os
+    from utils.sportsbet_access import SportsbetAccess
+    gate = SportsbetAccess(tmp_path / 'access.json', clock=lambda: 10000)
+    gate.initialize(access_basis={'status': 'permitted', 'reference': 'synthetic fixture'})
+    previous = {'at': 1, 'kind': 'python'}
+    with gate.locked():
+        value = gate.read()
+        value['operating_policy'] = {'reference': 'synthetic fixture',
+                                    'python_per_60_seconds': 10,
+                                    'browser_per_60_seconds': 1,
+                                    'browser_navigation_cap': 2}
+        value['operations'] = [previous.copy()]
+        value['recovery_attempts'] = 1
+        gate.write(value)
+    with gate.operation('python') as operation:
+        active = gate.read()['active']
+        row = gate.read()['operations'][-1]
+        assert row['operation_id'] == active
+        assert row['owner_pid'] == os.getpid()
+        assert row['owner_parent_pid'] == os.getppid()
+        assert row['owner_process_start_ticks']
+        assert row['owner_boot_id']
+        assert 'closed_at' not in row
+        operation.response(429, {}, source_url='https://www.sportsbet.com.au/fixture')
+        assert gate.read()['denials'][-1]['operation_id'] == active
+    value = gate.read()
+    assert value['operations'][0] == previous
+    assert value['operations'][-1]['closed_at'] == 10000
+    assert value['operations'][-1]['final_phase'] == 'STOP'
+    assert value['recovery_attempts'] == 1
+
+
+@pytest.mark.parametrize('kind', ['python', 'browser'])
+def test_consumed_recovery_stop_blocks_independent_process_before_transport(tmp_path, kind):
+    import os
+    import subprocess
+    import sys
+    from utils.sportsbet_access import SportsbetAccess
+    path = tmp_path / 'access.json'
+    gate = SportsbetAccess(path)
+    gate.initialize(access_basis={'status': 'permitted', 'reference': 'synthetic fixture'})
+    with gate.locked():
+        state = gate.read()
+        state['recovery_attempts'] = 1
+        gate.write(state)
+    with gate.operation('python') as operation:
+        operation.response(429, {})
+    before = path.read_bytes()
+    code = '''
+import sys
+import requests
+from utils.sportsbet_access import SportsbetAccessBlocked
+from utils.http_client import SourceCoordinatedSession
+from utils.sportsbet_browser import create_sportsbet_driver
+
+def forbidden(*args, **kwargs):
+    raise AssertionError('transport or browser factory invoked despite shared STOP')
+requests.adapters.HTTPAdapter.send = forbidden
+try:
+    if sys.argv[1] == 'python':
+        SourceCoordinatedSession().get('https://www.sportsbet.com.au/fabricated')
+    else:
+        create_sportsbet_driver(forbidden)
+except SportsbetAccessBlocked:
+    pass
+else:
+    raise AssertionError('independent process ignored shared STOP')
+'''
+    subprocess.run([sys.executable, '-c', code, kind], check=True, timeout=10,
+                   env={**os.environ, 'GREYHOUND_SPORTSBET_ACCESS_STATE': str(path)})
+    assert path.read_bytes() == before
