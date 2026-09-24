@@ -40,3 +40,17 @@ def test_new_denial_stops_diagnostic_without_automatic_recovery(tmp_path):
     assert gate.read()['not_before']==19000
     with pytest.raises(SportsbetAccessBlocked):
         with gate.operation('python'): pytest.fail('recovery must be reassessed')
+
+
+@pytest.mark.parametrize('limit', [0, True, 193, float('inf')])
+def test_sustained_authority_has_finite_upper_bound(tmp_path, limit):
+    gate=SportsbetAccess(tmp_path/'access.json',clock=lambda:10000)
+    gate.initialize(access_basis={'status':'permitted','reference':'synthetic'})
+    before=gate.path.read_bytes()
+    with pytest.raises(ValueError, match='invalid_finite'):
+        gate.authorize_diagnostic(reference='user',expected_sha256=hashlib.sha256(before).hexdigest(),
+            expires_at=10500,max_operations=limit,rationale='sustained comparison')
+    assert gate.path.read_bytes()==before
+    gate.authorize_diagnostic(reference='user',expected_sha256=hashlib.sha256(before).hexdigest(),
+        expires_at=10500,max_operations=192,rationale='sustained comparison')
+    assert gate.read()['diagnostic_authority']['max_operations']==192

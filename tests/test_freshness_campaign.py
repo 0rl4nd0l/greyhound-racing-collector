@@ -1,5 +1,6 @@
 """Cumulative limits never depend on package or process identity."""
 import json
+import hashlib
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -38,6 +39,48 @@ def test_request_limit_survives_new_launch(tmp_path):
         Campaign(tmp_path).request()
     with campaign.ledger() as value:
         assert value['logical_requests'] == 48000
+
+
+def test_prospective_capture_allowance_preserves_consumption_and_other_limits(tmp_path):
+    campaign = make_campaign(tmp_path)
+    base = (tmp_path / 'authorization.json').read_bytes()
+    item = dict(race_id='canonical', race_id_aliases=['canonical'], capture_window_minutes=10)
+    campaign.consume(tmp_path / 'first', item)
+    campaign.request()
+    before = (tmp_path / 'ledger.json').read_bytes()
+    amendment = dict(schema_version='collector_engineering_amendment_v1',
+        campaign_id='synthetic', prior_authorization_sha256=hashlib.sha256(base).hexdigest(),
+        authority_reference='explicit-user-recovery', rationale='finite sustained comparison',
+        max_capture_attempts=64)
+    create_once(tmp_path / 'prospective-authorization-amendment.json', amendment)
+    revised = Campaign(tmp_path)
+    assert (tmp_path / 'authorization.json').read_bytes() == base
+    assert (tmp_path / 'ledger.json').read_bytes() == before
+    assert revised.value['max_capture_attempts'] == 64
+    assert revised.value['max_live_seconds'] == 10800
+    assert revised.value['max_logical_requests'] == 48000
+    with pytest.raises(ValueError, match='window_consumed'):
+        revised.consume(tmp_path / 'retry', item)
+    with revised.ledger() as value:
+        value['attempts'] *= 64
+    assert not revised.available()
+    with pytest.raises(ValueError, match='allowance_consumed'):
+        revised.consume(tmp_path / 'extra', {**item, 'race_id':'new'})
+
+
+@pytest.mark.parametrize('change', [
+    {'prior_authorization_sha256':'0'*64}, {'max_capture_attempts':65},
+    {'max_capture_attempts':0}, {'max_capture_attempts':True}, {'authority_reference':''},
+])
+def test_invalid_prospective_allowance_fails_closed(tmp_path, change):
+    make_campaign(tmp_path)
+    base = (tmp_path / 'authorization.json').read_bytes()
+    amendment = dict(schema_version='collector_engineering_amendment_v1',
+        campaign_id='synthetic', prior_authorization_sha256=hashlib.sha256(base).hexdigest(),
+        authority_reference='explicit-user-recovery', rationale='bounded', max_capture_attempts=64)
+    create_once(tmp_path / 'prospective-authorization-amendment.json', {**amendment, **change})
+    with pytest.raises(ValueError, match='invalid_prospective_campaign_amendment'):
+        Campaign(tmp_path)
 
 
 def test_live_lease_charges_crashes_and_only_restoration_releases_time(tmp_path):

@@ -158,7 +158,7 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         "readiness_warmup_seconds": 1200,
         "first_index_deadline_seconds": 180,
         "profile": "bounded80-v1",
-        "max_capture_attempts": 12 if campaign else 1,
+        "max_capture_attempts": campaign.value['max_capture_attempts'] if campaign else 1,
         "max_logical_requests": 48000 if campaign else 24000,
         "capture_allowance": "PENDING_QUIESCENT_RECONCILIATION",
         "evidence_root": str(evidence),
@@ -195,7 +195,7 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
             "operation": "operational_prediction",
             "history_db_path": str(history_db),
             "capture_db_path": str(db),
-            "max_jobs": 12 - len(json.loads((campaign.root / "ledger.json").read_bytes())["attempts"]),
+            "max_jobs": campaign.value['max_capture_attempts'] - len(json.loads((campaign.root / "ledger.json").read_bytes())["attempts"]),
             "result_access": False, "research_activation": False,
         }
     create_once(output / "plan.json", plan)

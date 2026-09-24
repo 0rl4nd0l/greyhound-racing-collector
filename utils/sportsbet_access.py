@@ -146,7 +146,7 @@ class SportsbetAccess:
                 raise SportsbetAccessBlocked('diagnostic_authority_state_or_cooldown')
             if (not reference or not rationale or not math.isfinite(expires_at)
                     or not now < expires_at <= now + 10800
-                    or type(max_operations) is not int or not 1 <= max_operations <= 128):
+                    or type(max_operations) is not int or not 1 <= max_operations <= 192):
                 raise ValueError('invalid_finite_diagnostic_authority')
             row = dict(reference=reference, rationale=rationale, authorized_at=now,
                        expires_at=expires_at, max_operations=max_operations,

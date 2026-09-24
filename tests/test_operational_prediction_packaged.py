@@ -71,11 +71,19 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     with sqlite3.connect(db) as conn:
         conn.executescript('CREATE TABLE IF NOT EXISTS race_metadata(race_id TEXT,race_date TEXT,data_source TEXT,url TEXT); CREATE TABLE IF NOT EXISTS dog_race_data(race_id TEXT,dog_name TEXT,finish_position INTEGER,data_source TEXT);')
     campaign = make_campaign(tmp_path/'campaign')
+    if not landing_missing:
+        import hashlib
+        from race_collection.live_freshness_contract import create_once
+        create_once(campaign.root/'prospective-authorization-amendment.json', dict(
+            schema_version='collector_engineering_amendment_v1', campaign_id='synthetic',
+            prior_authorization_sha256=hashlib.sha256((campaign.root/'authorization.json').read_bytes()).hexdigest(),
+            authority_reference='synthetic-explicit-user', rationale='sustained comparison', max_capture_attempts=64))
     package = tmp_path/'package'
     prepare(output=package, start=stamp-timedelta(seconds=5), python=Path(sys.executable), db=db,
         lock=tmp_path/'collector.lock', reconciliation_roots={}, installed_dir=installed,
         campaign_root=campaign.root, operational_predictions=True)
     plan = json.loads((package/'plan.json').read_bytes())
+    assert plan['max_capture_attempts'] == (12 if landing_missing else 64)
     from race_collection.synchronous_manual_capture import _atomic_replace_canonical
     from race_collection.live_phase_checkpoint import atomic_json
     # The real supervisor replaces this sibling on every observation tick.

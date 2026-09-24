@@ -1,5 +1,6 @@
 """Durable cumulative engineering limits, independent of launch/package identity."""
 import fcntl
+import hashlib
 import json
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -17,6 +18,21 @@ class Campaign:
                 or self.value['max_logical_requests'] != 48000
                 or self.value['max_live_seconds'] != 10800):
             raise ValueError('invalid_campaign_authorization')
+        amendment = self.root / 'prospective-authorization-amendment.json'
+        if amendment.exists():
+            extra = json.loads(amendment.read_bytes())
+            if (extra.get('schema_version') != 'collector_engineering_amendment_v1'
+                    or extra.get('campaign_id') != self.value['campaign_id']
+                    or extra.get('prior_authorization_sha256') != hashlib.sha256(
+                        (self.root / 'authorization.json').read_bytes()).hexdigest()
+                    or not extra.get('authority_reference') or not extra.get('rationale')
+                    or type(extra.get('max_capture_attempts')) is not int
+                    or not 12 <= extra['max_capture_attempts'] <= 64):
+                raise ValueError('invalid_prospective_campaign_amendment')
+            # The original authority bytes and all ledger consumption remain.
+            # A new package binds the effective authority, including this record.
+            self.value = {**self.value, 'max_capture_attempts': extra['max_capture_attempts'],
+                          'prospective_amendment': extra}
 
     @contextmanager
     def ledger(self):
