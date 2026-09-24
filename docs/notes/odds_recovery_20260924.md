@@ -317,3 +317,24 @@ A 30-minute engineering quiet interval is selected for the materially different
 readiness comparison; it is not provider guidance or a claim that access will
 succeed. No Retry-After/reset guidance was supplied. The original deadline and all
 STOPs remain recorded; any prospective transition must preserve those records.
+
+
+## 17:55 refresh diagnosis
+
+Candidate 5720c70a completed a 42.382976-second source refresh but published no
+index: three accepted form files lacked verified native identity and a fourth
+failed canonical runner alignment. No browser capture or prediction was attempted;
+Sportsbet metadata returned without denial. Original units were restored at
+17:55:46.796312 AEST. This failure remains recorded in the same campaign: 12
+consumed captures, 12,358 logical requests, 6,545.422858 charged seconds and 75
+Sportsbet operations, with the prior four denials unchanged.
+
+Retained primary HTML for Warragul R3 and Casino R11 uses `(into box N)` reserve
+annotations. The identity parser recognizes only `(from box N)`, although the
+canonical runner parser already recognizes both. Earlier successful candidates
+also excluded races for this reason, so this is an existing coverage defect,
+not evidence of a new provider change. The narrow repair accepts both explicit
+spellings while preserving exact native runner IDs, active runner sets, API box
+agreement, unique effective boxes and pre-jump timestamps. Casino R10's scratch
+price conflict and Warrnambool R10's runner/export disagreement remain rejected.
+The failed run and its source receipts are preserved; no capture job is retried.
