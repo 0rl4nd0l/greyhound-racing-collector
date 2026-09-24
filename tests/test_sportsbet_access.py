@@ -509,6 +509,15 @@ def test_service_condition_can_queue_behind_owned_operation_without_transport_ad
         before = gate.path.read_bytes()
 
         assert service_condition.main() == (0 if condition == "OPEN" else 1)
+        if condition == "OPEN":
+            # Exercise the exact systemd condition CLI in the pinned interpreter
+            # while this process retains provider ownership and its mutex.
+            result = subprocess.run(
+                [sys.executable, "-B", service_condition.__file__],
+                env={**os.environ, "GREYHOUND_SPORTSBET_ACCESS_STATE": str(gate.path)},
+                capture_output=True, text=True, timeout=5,
+            )
+            assert result.returncode == 0, result.stdout + result.stderr
         with pytest.raises(SportsbetAccessBlocked):
             gate.check_admission()
         with pytest.raises(SportsbetAccessBlocked):
