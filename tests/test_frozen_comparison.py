@@ -188,3 +188,21 @@ def test_existing_supervisor_records_opportunities_without_prediction(tmp_path):
     before=opportunities[0].read_bytes()
     supervisor.observe_comparison_schedule()
     assert opportunities[0].read_bytes()==before
+
+
+@pytest.mark.parametrize('endpoint_future',[True,False])
+def test_endpoint_and_outcome_authority_precede_any_result_access(tmp_path,monkeypatch,endpoint_future):
+    from datetime import datetime,timedelta,timezone
+    from scripts.evaluate_frozen_comparison import evaluate
+    from src.operator_ui import journal_results
+    monkeypatch.setattr(journal_results,'OfficialResultSource',lambda *a:pytest.fail('result access must remain closed'))
+    plan=json.loads((ROOT/'docs/research/future_comparison_evidence/prepared_plan.json').read_bytes())
+    now=datetime.now(timezone.utc)
+    plan.update(status='AUTHORIZED',authority_reference='synthetic gate test',exclusive_population_allocation_reference='synthetic allocation',machine_history_authority_reference='synthetic history',
+        activated_at=(now-timedelta(days=100)).isoformat(),starts_at=(now-timedelta(days=99)).isoformat(),ends_at=(now+timedelta(days=1) if endpoint_future else now-timedelta(days=15)).isoformat(),programme_root=str(tmp_path/'programme'))
+    p=tmp_path/'plan.json';p.write_bytes(canonical_bytes(plan))
+    authority=tmp_path/'authority.json';authority.write_bytes(canonical_bytes({'status':'NOT_AUTHORIZED'}))
+    expected='fixed_result_closure_endpoint_not_reached' if endpoint_future else 'outcome_authority_missing'
+    with pytest.raises(ValueError,match=expected):
+        evaluate(p,sha256_file(p),authority,sha256_file(authority),tmp_path/'never-open-results',tmp_path/'out')
+    assert not (tmp_path/'programme').exists() and not (tmp_path/'out').exists()

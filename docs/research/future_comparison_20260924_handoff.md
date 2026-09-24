@@ -2,7 +2,8 @@
 
 Status: implemented offline; default off; no scientific activation. Historical
 search #193 is preserved at `956d8289b8be062e9fe5ccdf554b9a9462391c20`.
-This isolated branch merges collector prerequisites `729fb9fa`; the main owner
+Tested integration commit: `9b3b38fdf231c7d8ec5dd7e2445844c769e43124`.
+This isolated branch merges collector prerequisites through `a15f5882`; the main owner
 continues provider repairs independently. No provider, service or live-state
 operation was performed by this track. Review/merge these opt-in changes into
 the owner's current branch; do not roll back newer collector repairs.

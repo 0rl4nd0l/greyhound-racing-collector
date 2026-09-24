@@ -1,0 +1,20 @@
+...F.....                                                                [100%]
+=================================== FAILURES ===================================
+_____ test_subprocess_rejects_late_comparison_without_changing_production ______
+
+tmp_path = PosixPath('/tmp/pytest-of-l4nd0/pytest-320/test_subprocess_rejects_late_c0')
+
+    def test_subprocess_rejects_late_comparison_without_changing_production(tmp_path):
+        case=prepare(tmp_path,late=True);case["db"].unlink()
+        result=execute(case)
+>       assert result["phase"]=="PREDICTION_READY",result
+E       AssertionError: {'phase': 'FAILED', 'reason': 'PROCESS_OUTPUT_INVALID', 'subprocess_seconds': 1.4806442399858497, 'output_root': '/tmp/pytest-of-l4nd0/pytest-320/test_subprocess_rejects_late_c0/predictions', ...}
+E       assert 'FAILED' == 'PREDICTION_READY'
+E         
+E         - PREDICTION_READY
+E         + FAILED
+
+tests/test_frozen_comparison.py:83: AssertionError
+=========================== short test summary info ============================
+FAILED tests/test_frozen_comparison.py::test_subprocess_rejects_late_comparison_without_changing_production
+1 failed, 8 passed in 12.42s
