@@ -95,6 +95,67 @@ def now():
     return datetime.now(timezone.utc)
 
 
+def bounded_run(plan_path, claim_path, *, timeout=200):
+    """Own/reap descendants even when a nested worker starts its own session."""
+    import ctypes
+    import signal
+    import subprocess
+    if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
+        raise RuntimeError("prediction_subreaper_unavailable")
+    lifecycle = plan_path.parent / "operational-workers" / (claim_path.parent.name + ".json")
+    started = time.monotonic()
+    record = {"pid": os.getpid(), "started_at": now().isoformat(), "children_reaped": False}
+    atomic_json(lifecycle, record)
+    child = subprocess.Popen([sys.executable, "-B", "-m", "race_collection.operational_prediction", "--worker", str(plan_path), str(claim_path)])
+    def descendants(pid):
+        try:
+            children = [int(v) for v in Path(f"/proc/{pid}/task/{pid}/children").read_text().split()]
+        except FileNotFoundError:
+            return []
+        return [(c, Path(f"/proc/{c}/stat").read_text().rsplit(")", 1)[1].split()[19])
+                for c in children if Path(f"/proc/{c}/stat").exists()] + [v for c in children for v in descendants(c)]
+    def interrupt(signum, frame):
+        raise TimeoutError("prediction_supervisor_interrupted")
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, interrupt)
+    try:
+        code = child.wait(timeout=timeout)
+    except (subprocess.TimeoutExpired, TimeoutError):
+        record["status"] = "TIME_LIMIT_OR_INTERRUPTION"
+        code = 2
+    finally:
+        for sig in (signal.SIGTERM, signal.SIGINT):
+            signal.signal(sig, signal.SIG_IGN)
+        # All of these processes are descendants of this dedicated wrapper.
+        # Collector lock owners and unrelated service processes are never touched.
+        deadline = time.monotonic() + 10
+        while True:
+            owned = descendants(os.getpid())
+            for pid, birth in owned:
+                try:
+                    if Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[19] == birth:
+                        os.kill(pid, signal.SIGKILL)
+                except (FileNotFoundError, ProcessLookupError):
+                    pass
+            while True:
+                try:
+                    if os.waitpid(-1, os.WNOHANG)[0] == 0:
+                        break
+                except ChildProcessError:
+                    record["children_reaped"] = True
+                    break
+            if record["children_reaped"]:
+                break
+            if time.monotonic() >= deadline:
+                record["status"] = "LIFETIME_UNKNOWN"
+                atomic_json(lifecycle, record)
+                raise RuntimeError("prediction_lifetime_unknown")
+            time.sleep(0.05)
+        record.update(returncode=code, elapsed_seconds=time.monotonic()-started, completed_at=now().isoformat())
+        atomic_json(lifecycle, record)
+    return code
+
+
 def run(plan_path: Path, claim_path: Path):
     from race_collection.manual_prediction_collector_request import ManualPredictionCollectorProtocol
     from race_collection.scheduled_input_retention import ScheduledInputRetention, SCOPE
@@ -133,11 +194,16 @@ def run(plan_path: Path, claim_path: Path):
         verify_claim_receipt(claim_path, handoff, evidence, Path(plan["source_root"]))
         source = json.loads(handoff["_report_bytes"])
         jump = datetime.fromisoformat(item["race_identity"]["jump_datetime"])
-        timing["price_observed_at"] = handoff["append_timestamp"]
+        timing["price_observed_at"] = source["source_attempt"]["fetch_time"]
+        timing["price_observation_basis"] = "conservative_fetch_start"
+        timing["odds_appended_at"] = handoff["append_timestamp"]
         timing["receipt_validation_seconds"] = time.monotonic() - started
         stage = "retention"
         phase_start = time.monotonic()
-        config = json.loads((plan_path.parent / "operational-retention.json").read_bytes())
+        config_raw = (plan_path.parent / "operational-retention.json").read_bytes()
+        if hashlib.sha256(config_raw).hexdigest() != plan["operational_predictions"]["retention_config_sha256"]:
+            raise ValueError("operational_retention_configuration_changed")
+        config = json.loads(config_raw)
         config.update(output_root=str(record / "retention"), authority={
             "approved": True, "scope": SCOPE, "approval_reference": plan["operational_predictions"]["authorization"],
             "race_ids": [race_id], "history_source": plan["db_path"],
@@ -207,7 +273,7 @@ def run(plan_path: Path, claim_path: Path):
         job = finalize_producer_bundle(root / "bundles", store, job, capability=authority, now=now(), confirm_audit=confirm)
         timing["bundle_verification_seconds"] = time.monotonic() - phase_start
         timing.update(status=job.phase.value, job_id=job.job_id, seconds_to_jump_at_verification=(jump-now()).total_seconds(),
-                      price_to_verification_seconds=(now()-datetime.fromisoformat(handoff["append_timestamp"])).total_seconds(),
+                      price_to_verification_seconds=(now()-datetime.fromisoformat(timing["price_observed_at"])).total_seconds(),
                       index_to_verification_seconds=(now()-observed).total_seconds())
         if job.phase is not Phase.PREDICTION_READY:
             timing["reason"] = job.reason
@@ -224,6 +290,8 @@ if __name__ == "__main__":
     from scripts.check_freshness_service import deny_network
     deny_network()
     os.umask(0o077)
-    result = run(Path(sys.argv[1]), Path(sys.argv[2]))
-    print(json.dumps({k: result[k] for k in ("status", "total_seconds")}))
-    raise SystemExit(0 if result["status"] == "PREDICTION_READY" else 2)
+    if sys.argv[1] == "--worker":
+        result = run(Path(sys.argv[2]), Path(sys.argv[3]))
+        print(json.dumps({k: result[k] for k in ("status", "total_seconds")}))
+        raise SystemExit(0 if result["status"] == "PREDICTION_READY" else 2)
+    raise SystemExit(bounded_run(Path(sys.argv[1]), Path(sys.argv[2])))

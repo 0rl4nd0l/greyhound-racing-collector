@@ -134,7 +134,7 @@ def _sealed_request_matches_job(job: Job, value: Any) -> bool:
 
 
 def finalize_producer_bundle(root: Path, store: JobStore, job: Job, *, capability: object,
-                             now: datetime, confirm_audit) -> Job:
+                             now: datetime, confirm_audit, completion_clock=None) -> Job:
     """Finalize one producer completion only from its verified indexed bundle."""
     if job.phase is not Phase.PRODUCER_COMPLETED:
         return job
@@ -197,6 +197,11 @@ def finalize_producer_bundle(root: Path, store: JobStore, job: Job, *, capabilit
         "research_only":result["research_only"],"production_persisted":result["production_persisted"],
         "betting_output":result["betting_output"],"verification_status":verification,"blocker":blocker,
     }
+    if job.operation == "operational_prediction":
+        from datetime import timedelta
+        now = (completion_clock or (lambda: datetime.now(timezone.utc)))()
+        if now >= datetime.fromisoformat(job.input.jump_timestamp) - timedelta(seconds=60):
+            return fail("OPERATIONAL_VERIFICATION_DEADLINE_EXCEEDED")
     return store.verifier_transition(job.job_id,phase,capability=capability,now=now,status=status,reason=reason,facts=facts,confirm_audit=confirm_audit)
 
 

@@ -789,6 +789,9 @@ def execute(plan_path, expected_digest, approval_id):
                 with campaign.ledger() as ledger:
                     begun = plan["rehearsal_id"] in ledger["launches"]
                 if begun:
+                    lifetimes = list((output / "operational-workers").glob("*.json"))
+                    if any(not json.loads(p.read_bytes()).get("children_reaped") for p in lifetimes):
+                        raise RuntimeError("prediction_lifetime_unknown_campaign_lease_retained")
                     campaign.close(plan["rehearsal_id"], now=now())
                 campaign_owner.close()
             for sig, handler in previous_handlers.items():
