@@ -231,10 +231,13 @@ def bounded_run(plan_path, claim_path, *, timeout=200):
 
 
 def failure_reason(error):
-    """Retain a bounded worker rejection code, never its arbitrary message."""
+    """Retain a bounded prediction rejection code, never its private details."""
     from src.operator_ui.prediction_worker import WorkerRejected
-    if isinstance(error, WorkerRejected):
-        value = str(error)
+    from src.predictor.on_demand import PredictionBlocked
+    if isinstance(error, (WorkerRejected, PredictionBlocked)):
+        value = error.code if isinstance(error, PredictionBlocked) else str(error)
+        if not isinstance(value, str):
+            return type(error).__name__
         return value if re.fullmatch(r"[A-Z][A-Z0-9_]{0,95}", value) else type(error).__name__
     return str(error) if isinstance(error, ValueError) else type(error).__name__
 

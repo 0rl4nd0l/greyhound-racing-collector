@@ -79,6 +79,9 @@ from src.predictor.receipt_preflight import (
     ExactReceiptReady,
     discover_exact_receipt_ready,
 )
+from config.venue_mapping import VENUE_MAPPING
+from utils.race_identity_equivalence import configured_venue_identity
+
 from utils.csv_metadata import (
     canonical_thedogs_race_identity,
     canonical_thedogs_venue_identity,
@@ -644,7 +647,10 @@ def _request_race(
         or identity["race_number"] != race_number
         or url_venue is None
         or canonical_thedogs_venue_identity(venue) != url_venue
-        or venue != url_venue
+        or (
+            venue != url_venue
+            and (VENUE_MAPPING.get(venue) != venue or configured_venue_identity(venue) != url_venue)
+        )
         or stable_race_id(projection) != race_id
         or race_id not in stable_race_id_variants(projection)
     ):

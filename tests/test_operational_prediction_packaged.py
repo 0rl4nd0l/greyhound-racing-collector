@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.mark.parametrize("landing_missing,venue_case", [
     (False, "murray"), (True, "murray"), ("paired_missing", "murray"),
-    (False, "sandown_park"),
+    (False, "sandown_park"), (False, "angle_park"),
 ])
 def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, landing_missing, venue_case):
     from scripts.prepare_freshness_rehearsal import prepare, UNITS
@@ -36,6 +36,12 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
         browser = json.loads(json.dumps(browser).replace(
             "sportsbet.com.au/betting/greyhound-racing/australia-nz/sandown/",
             "sportsbet.com.au/betting/greyhound-racing/australia-nz/sandown-park/"))
+    elif venue_case == "angle_park":
+        browser = json.loads(json.dumps(browser).replace("murray-bridge-straight", "angle-park")
+            .replace("MURRAY-BRIDGE-STRAIGHT", "AP_K").replace("Murray Bridge Straight", "Angle Park")
+            .replace('"MURR"', '"AP_K"').replace('"race_number": 9', '"race_number": 7')
+            .replace("Race 9", "Race 7").replace("R9", "R7")
+            .replace("race-9-", "race-7-").replace("/9/fabricated", "/7/fabricated"))
     from datetime import datetime
     operational_jump = (stamp + timedelta(minutes=9)).replace(second=0, microsecond=0)
     browser["sidecar"]["prejump_shadow_metadata"]["jump_time"] = operational_jump.isoformat()
@@ -49,16 +55,18 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     # The invented HTTP and browser observations refer to the same race/runners.
     responses = {}
     import re
+    venue_slug = {'sandown_park': 'sandown', 'angle_park': 'angle-park'}.get(venue_case, 'murray-bridge-straight')
+    venue_name = {'sandown_park': 'Sandown Park', 'angle_park': 'Angle Park'}.get(venue_case, 'Murray Bridge Straight')
+    race_number = 7 if venue_case == 'angle_park' else 9
     for key, value in payload['responses'].items():
-        venue_slug = 'sandown' if venue_case == 'sandown_park' else 'murray-bridge-straight'
-        key = key.replace('/sale/', '/' + venue_slug + '/').replace('/1/invented', '/9/fabricated')
-        body = value['body'].replace('/sale/', '/' + venue_slug + '/').replace('/1/invented', '/9/fabricated')
-        body = body.replace('Race 1', 'Race 9').replace('>R1<', '>R9<')
+        key = key.replace('/sale/', '/' + venue_slug + '/').replace('/1/invented', f'/{race_number}/fabricated')
+        body = value['body'].replace('/sale/', '/' + venue_slug + '/').replace('/1/invented', f'/{race_number}/fabricated')
+        body = body.replace('Race 1', f'Race {race_number}').replace('>R1<', f'>R{race_number}<')
         body = re.sub(r'(<formatted-time[^>]*>).*?(</formatted-time>)', r'\g<1>'+jump_dt.strftime('%H:%M')+r'\g<2>', body)
         if 'NextEvents' in key:
             events = json.loads(body)
-            events[0].update(competitionName='Sandown Park' if venue_case == 'sandown_park' else 'Murray Bridge Straight',
-                             raceNumber=9, startTime=int(jump_dt.timestamp()))
+            events[0].update(competitionName=venue_name,
+                             raceNumber=race_number, startTime=int(jump_dt.timestamp()))
             body = json.dumps(events)
         if 'open-meteo' in key:
             weather = json.loads(body)
@@ -164,8 +172,9 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     with sqlite3.connect(db) as history_conn:
         assert history_conn.execute('SELECT count(*) FROM live_odds').fetchone()[0] == initial_odds
     assert terminal['status'] == 'PREDICTION_READY', terminal
-    if venue_case == 'sandown_park':
-        assert terminal['race_id'] == f"Race 9 - SAN - {stamp.date().isoformat()}"
+    if venue_case in {'sandown_park', 'angle_park'}:
+        venue_code = 'SAN' if venue_case == 'sandown_park' else 'AP_K'
+        assert terminal['race_id'] == f"Race {race_number} - {venue_code} - {stamp.date().isoformat()}"
         retained = list(terminals[0].parent.glob('retention/*/bundle/manifest.json'))
         assert len(retained) == 1
         manifest = json.loads(retained[0].read_bytes())

@@ -631,3 +631,50 @@ remaining 85 operations under the same cumulative ceiling of 252. All 167 prior
 operations, four denials and elapsed not-before timestamp remain unchanged.
 Observation started under existing preflight and rollback controls; no sustained
 success is claimed at preparation.
+
+The 21:30 observation stopped at 21:34:10.169657 AEST after two naturally
+eligible captures. SAN R8 completed all 28 independent chain checks with seven
+WIN/seven PLACE markets, original verification 351.175991 seconds before jump
+and 21.502608 seconds after conservative price-observation time. Its chain audit
+SHA256 is 33c447b4b728495f06be55dc66ccfc275ab0bdd03c16251ad146bd8059012fe9.
+AP_K R7 also captured a complete five-runner paired market and retained its
+inputs, but prediction failed at job admission before any job was created.
+Its exact receipt SHA256 is
+d16e5ad43a0a1b0463d824160b92b86ee2bc9d536a4c8c77c95cefe5c6db4556.
+All 93 recorded browser responses were HTTP200 with zero recorder drops.
+The observation remains failed; its two consumed captures are preserved.
+
+The AP_K source URL is Angle Park, not Albion Park despite a misleading legacy
+venue-map comment. The actual exported implementation reproduces
+EXACT_RACE_IDENTITY_UNAVAILABLE against the retained current-index packet:
+raw venue AP_K and URL angle-park both canonically resolve to APK; exact stable
+race-ID and variants checks pass, but a redundant raw equality fails. The
+original exception code was not retained, so this is a deterministic
+reproduction, not recovery of the original exception. The packaged synthetic
+Angle Park regression reproduces the same capture-success/admission-failure
+seam in 25.79 seconds under network denial. Additional downstream raw venue
+equality and legacy-config-first Sportsbet identity matching require the same
+consistent canonical interpretation without rewriting stored race identity.
+
+Restoration completed at 21:41:00.693899 AEST with original unit hashes, disabled
+collector timers and unchanged R3. Cumulative consumption is 33 captures, 27,761
+logical requests and 13,077.406989 charged seconds; shared source state is OPEN,
+173 operations, four historical denials, no active owner. The existing
+prospective amendment now permits 21,600 cumulative charged seconds, preserving
+the prior amendment as immutable snapshot SHA256
+e47145490f77486516a2616d58b47e89711044a99131d3833f23b6eb3c7eadae.
+The finite 3,600-second increment covers another corrected 60-minute observation
+and 31-minute cleanup; capture/request ceilings stay 64/48,000 and all prior
+consumption remains. New amendment SHA256
+fe1faad8d6a9d9f08822a320c9d9b621f91d34d84cf7b73779eb3301de0166cf.
+
+The final identity correction accepts a noncanonical spelling only when it is
+an exact checked-in self-mapped venue code, resolves to the exact source venue
+and preserves both stable race-ID checks. This permits AP_K while rejecting
+display-name substitution. The shared venue map and general equivalence helper
+are unchanged. Receipt matching retains its configured-membership proof and
+legacy comparison, adding direct canonical equality only after both spellings
+are known. Regression controls preserve APWE and Launceston behavior and reject
+Angle/Albion confusion, unknown spellings, wrong dates/race numbers and altered
+sealed identity. PredictionBlocked now retains only a bounded uppercase code;
+private exception details remain suppressed. Its diagnostic tests passed 14 cases.
