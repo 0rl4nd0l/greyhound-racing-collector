@@ -7,6 +7,7 @@ required; started.json is consumed even if admission fails. No retry/resume mode
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import signal
@@ -531,12 +532,91 @@ def refresh_recovery_proven(output, current, failures):
     return datetime.fromisoformat(current["source_at"].replace("Z", "+00:00")) > latest_failure
 
 
+def planned_scope_close(plan, scope, current):
+    """Prove idle final-window admission closure without making native data fresh."""
+    try:
+        observed = datetime.fromisoformat(current["observed_at"])
+        end = datetime.fromisoformat(plan["ends_at"])
+        age = current["source_age_seconds"]
+        if (not plan.get("operational_predictions") or not 0 <= (end-observed).total_seconds() < 90
+                or current["collector_status"] != "STALE"
+                or any(current[key] != "AVAILABLE/FRESH" for key in ("index_status", "authority_status"))
+                or type(age) not in {int, float} or not math.isfinite(age) or not 0 <= age < 270
+                or current.get("lock") is not None or Path(plan["lock_path"]).exists()
+                or (scope.session / "STOP.json").exists()):
+            return None
+        lanes = {lane["lane"]: lane for lane in current["lanes"]}
+        odds = lanes["ODDS_ONLY"]
+        if (set(lanes) != {"FULL_DAEMON", "ODDS_ONLY"}
+                or lanes["FULL_DAEMON"]["status"] != "RECEIPT_READY"
+                or odds["status"] != "STALE" or odds["phase"] != "ODDS_CAPTURE_ONLY_READY"
+                or not re.fullmatch(r"[A-Za-z0-9_+.-]+", odds["run_id"])):
+            return None
+        unit = current["unit_status"]["odds"]
+        invocation = unit["InvocationID"]
+        if (not re.fullmatch(r"[0-9a-f]{32}", invocation) or int(unit["MainPID"]) != 0
+                or (unit["ActiveState"], unit["SubState"]) not in {("inactive", "dead"), ("failed", "failed")}):
+            return None
+        from utils.sportsbet_access import SportsbetAccess
+        access = SportsbetAccess(plan["sportsbet_access_state"]).read()
+        if access["phase"] != "OPEN" or access["access_basis"]["status"] != "permitted" or access.get("active"):
+            return None
+        marker_path = scope.session / "admission-closures" / (invocation + ".json")
+        marker_raw = marker_path.read_bytes()
+        marker = json.loads(marker_raw)
+        evidence = Path(plan["evidence_root"])
+        lifecycle_path = evidence / "shadow_autopilot_daemon_runtime/service-lifecycles" / (invocation + ".json")
+        lifecycle_raw = lifecycle_path.read_bytes()
+        lifecycle = json.loads(lifecycle_raw)
+        marked = datetime.fromisoformat(marker["observed_at"])
+        monotonic = [lifecycle["launch_started_monotonic"], marker["observed_monotonic"], lifecycle["completed_monotonic"]]
+        if (any(type(v) not in {int, float} or not math.isfinite(v) for v in monotonic)
+                or not 0 <= monotonic[0] <= monotonic[1] <= monotonic[2]
+                or not 0 <= (end-marked).total_seconds() < 90 or marked > observed
+                or any(marker.get(k) != v for k, v in {
+                    "schema_version": "live_admission_closed_v1", "lane": "odds",
+                    "runtime_action": "OPERATING_SCOPE_CLOSED", "required_seconds": 90,
+                    "rehearsal_id": plan["rehearsal_id"], "ends_at": plan["ends_at"],
+                    "contract_sha256": digest(scope.value), "service_invocation_id": invocation}.items())
+                or type(marker["process_pid"]) is not int or marker["process_pid"] <= 0
+                or lifecycle["child_pid"] != marker["process_pid"]
+                or lifecycle["invocation_id"] != invocation or lifecycle["status"] != "COMPLETE"
+                or lifecycle["children_reaped"] is not True or lifecycle["interrupted"] is not False
+                or lifecycle["returncode"] != 2 or lifecycle["wrapper_pid"] != int(unit["ExecMainPID"])):
+            return None
+        report_path = evidence / ("shadow_autopilot_daemonization_v1_" + odds["run_id"]) / "odds_capture_only_daemon_report.json"
+        report_raw = report_path.read_bytes()
+        report = json.loads(report_raw)
+        if (hashlib.sha256(report_raw).hexdigest() != odds["reference_hashes"]["report"]
+                or report["run_id"] != odds["run_id"] or report["runtime_action"] != "LIVE_COLLECTION_COMPLETE"
+                or report["final_status"] != "ODDS_CAPTURE_ONLY_READY" or report["status"] != "READY"
+                or datetime.fromisoformat(report["generated_at"]) > marked):
+            return None
+        return {"status": "PLANNED_ADMISSION_CLOSED", "native_collector_status": "STALE",
+                "service_invocation_id": invocation, "new_data_accepted": False,
+                "marker_sha256": hashlib.sha256(marker_raw).hexdigest(),
+                "lifecycle_sha256": hashlib.sha256(lifecycle_raw).hexdigest(),
+                "prior_report_sha256": hashlib.sha256(report_raw).hexdigest()}
+    except (OSError, KeyError, ValueError, TypeError, OverflowError):
+        return None
+
+
+def observation_minimums(plan):
+    duration = (datetime.fromisoformat(plan["ends_at"])-datetime.fromisoformat(plan["starts_at"])).total_seconds()
+    short = bool(plan.get("operational_predictions")) and 600 <= duration < 3600 and duration % 60 == 0
+    values = tuple(plan.get(key, 3) for key in ("minimum_completed_full_cycles", "minimum_distinct_captures"))
+    if any(type(v) is not int or not 1 <= v <= 3 or (not short and v != 3) for v in values):
+        raise ValueError("invalid_observation_minimums")
+    return values
+
+
 def observe(output, plan, control, scope, predictions=None):
     from race_collection.freshness_rehearsal import assess_interval, TimerAccounting
 
     evidence = Path(plan["evidence_root"])
     end = datetime.fromisoformat(plan["ends_at"])
     start = datetime.fromisoformat(plan["starts_at"])
+    minimum_full, minimum_captures = observation_minimums(plan)
     timer_accounting = TimerAccounting(start)
     previous = None
     event_count = 0
@@ -656,7 +736,10 @@ def observe(output, plan, control, scope, predictions=None):
                 current["campaign_logical_requests"] = ledger["logical_requests"]
             current["capture_requests"] = [json.loads(path.read_bytes()) for path in
                 scope.session.glob("captures/*/capture-reservation.requests.json")]
-        # Preserve the failing observation before assessing it.
+        closure = planned_scope_close(plan, scope, current) if current["collector_status"] == "STALE" else None
+        if closure:
+            current["planned_shutdown"] = closure
+        # Preserve native staleness even when final admission is proven closed.
         atomic_json(output / "samples" / f"{samples:06d}.json", current)
         samples += 1
         timer_accounting.observe(current)
@@ -709,7 +792,7 @@ def observe(output, plan, control, scope, predictions=None):
         ):
             unavailable += 1
             failed_lanes = [lane for lane in current["lanes"] if lane["status"] == "CAPTURE_FAILED"]
-            if age_from_start >= plan["readiness_warmup_seconds"] or refresh_failures or failed_lanes:
+            if not closure and (age_from_start >= plan["readiness_warmup_seconds"] or refresh_failures or failed_lanes):
                 if not (current["authority_status"] == "AVAILABLE/FRESH"
                         and current["index_status"] == "AVAILABLE/FRESH"
                         and 0 <= current["source_age_seconds"] < 270
@@ -736,7 +819,7 @@ def observe(output, plan, control, scope, predictions=None):
         time.sleep(max(0, plan["sample_period_seconds"] - (time.monotonic() - tick)))
     if refresh_failures and not refresh_recovery_proven(output, current, refresh_failures):
         raise ValueError("refresh_recovery_unproven")
-    if len(completed["full"]) < 3 or len(completed["odds"]) < 6 or not waits or max(waits) <= 0:
+    if len(completed["full"]) < minimum_full or len(completed["odds"]) < 6 or not waits or max(waits) <= 0:
         raise ValueError("lane_progress_or_handoff_unproven")
     if not all(external_overheads.values()):
         raise ValueError("external_completion_timing_unmeasured")
@@ -748,7 +831,7 @@ def observe(output, plan, control, scope, predictions=None):
                 == "AUTONOMOUS_LIVE_ODDS_CAPTURE_APPENDED"]
     verified = (list((output / "capture-verifications").glob("*.json")) if scope.campaign
                 else list(output.glob("capture-receipt-verification.json")))
-    if len(captures) < (3 if scope.campaign else 1) or len(verified) != len(captures):
+    if len(captures) < (minimum_captures if scope.campaign else 1) or len(verified) != len(captures):
         raise ValueError("required_distinct_captures_not_demonstrated")
     atomic_json(
         output / "measurement.json",

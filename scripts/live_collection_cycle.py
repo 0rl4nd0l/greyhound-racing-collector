@@ -50,6 +50,25 @@ def run_live_collection_cycle(args, *, odds_only: bool):
             raise ValueError("live_profile_forbids_result_access")
         now = daemon.wall_clock_now()
         if scope.start <= now <= scope.end and (scope.end - now).total_seconds() < 90:
+            # Closing admission is not a successful collection. Retain evidence
+            # that the real service child deliberately made no source request.
+            scope.admit(now, seconds=0)
+            invocation = os.environ.get("GREYHOUND_SERVICE_INVOCATION", "")
+            if len(invocation) == 32 and all(c in "0123456789abcdef" for c in invocation):
+                from race_collection.live_freshness_contract import create_once, digest
+                create_once(scope.session / "admission-closures" / (invocation + ".json"), {
+                    "schema_version": "live_admission_closed_v1",
+                    "runtime_action": "OPERATING_SCOPE_CLOSED",
+                    "lane": "odds" if odds_only else "full",
+                    "rehearsal_id": scope.value["rehearsal_id"],
+                    "contract_sha256": digest(scope.value),
+                    "ends_at": scope.value["ends_at"],
+                    "service_invocation_id": invocation,
+                    "process_pid": os.getpid(),
+                    "observed_at": now.isoformat(),
+                    "observed_monotonic": time.monotonic(),
+                    "required_seconds": 90,
+                })
             return {"runtime_action": "OPERATING_SCOPE_CLOSED", "status": "SKIPPED"}
         scope.admit(now, seconds=90)
         allowance = AttemptAllowance(scope)
