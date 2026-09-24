@@ -79,6 +79,16 @@ def _weighted(history: list[dict], field: str):
     return sum(v * w for v, w in pairs) / sum(w for _, w in pairs) if pairs else None
 
 
+def _validate_source_timing(metadata, race_id, capture, jump):
+    """Corroborate acquisition metadata against its hash-bound primary sidecar."""
+    if canonical.capture_timestamp(metadata, require_timezone=True) != capture:
+        raise ValueError('capture timestamp disagrees with source sidecar')
+    if canonical.sidecar_jump_timestamp(metadata, race_id) != jump:
+        raise ValueError('jump timestamp disagrees with source sidecar')
+    if (jump - capture).total_seconds() < 3600:
+        raise ValueError('pre-race T-60 timing failed')
+
+
 def load_features(*, excluded_race_ids=(), excluded_race_keys=()):
     """Return (runner rows, audit metadata); never load labels or a database.
 
@@ -118,6 +128,7 @@ def load_features(*, excluded_race_ids=(), excluded_race_keys=()):
             card = _verified(Path(race['card_source_path']), race['card_source_sha256'], int(race['card_source_bytes']))
             sidecar_bytes = _verified(Path(race['card_sidecar_path']), race['card_sidecar_sha256'], int(race['card_sidecar_bytes']))
             metadata = json.loads(sidecar_bytes)
+            _validate_source_timing(metadata, rid, capture, jump)
             if metadata.get('metadata_is_leakage_safe') is not True or metadata['runner_completeness']['status'] != 'COMPLETE':
                 raise ValueError('unsafe or incomplete sidecar')
             if metadata['content_sha256'] != race['card_source_sha256'] or metadata['content_length'] != len(card):
@@ -142,6 +153,8 @@ def load_features(*, excluded_race_ids=(), excluded_race_keys=()):
                     raise ValueError('runner history block missing')
                 history, rejected = canonical.accepted_history(blocks[token], target_date)
                 rejected_history.update(reason for reason, _ in rejected)
+                if any(h['date'] > capture.date() for h in history):
+                    raise ValueError('history performance after card capture date')
                 raw = canonical.feature_row(rid, target_date, venue, distance, grade, len(roster), box, token, history)
                 features = {name: _number(raw.get(ALIASES.get(name, name))) for name in FEATURES}
                 finishes = [h['finish'] for h in history[:5] if h['finish'] is not None]

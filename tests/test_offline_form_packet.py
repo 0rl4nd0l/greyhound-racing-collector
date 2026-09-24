@@ -1,5 +1,5 @@
 """Safety and temporal tests for the isolated historical research loader."""
-from datetime import date
+from datetime import date, datetime
 import tempfile
 import unittest
 from pathlib import Path
@@ -56,12 +56,28 @@ def test_distance_uses_explicit_metres_suffix_without_guessing():
     assert packet._metres('') is None
 
 
+def test_manifest_jump_must_match_primary_sidecar():
+    metadata = {'created_at': '2026-06-13T07:06:25+10:00', 'race_info': {
+        'race_time_mapping_status': 'exact_url_match',
+        'race_time_source': 'canonical_race_url', 'date': '2026-06-13',
+        'race_time': '07:59 AM'}}
+    with unittest.TestCase().assertRaisesRegex(ValueError, 'jump timestamp disagrees'):
+        packet._validate_source_timing(metadata, 'Race 2 - TAREE - 2026-06-13',
+            datetime.fromisoformat(metadata['created_at']),
+            datetime.fromisoformat('2026-06-13T08:19:00+10:00'))
+    with unittest.TestCase().assertRaisesRegex(ValueError, 'T-60'):
+        packet._validate_source_timing(metadata, 'Race 2 - TAREE - 2026-06-13',
+            datetime.fromisoformat(metadata['created_at']),
+            datetime.fromisoformat('2026-06-13T07:59:00+10:00'))
+
+
 if __name__ == '__main__':
     suite = unittest.TestSuite(unittest.FunctionTestCase(test) for test in (
         test_protected_race_excluded_before_card_read,
         test_future_history_removed_before_recency_and_weighting,
         test_source_mutation_rejected,
         test_distance_uses_explicit_metres_suffix_without_guessing,
+        test_manifest_jump_must_match_primary_sidecar,
     ))
     if not unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful():
         raise SystemExit(1)

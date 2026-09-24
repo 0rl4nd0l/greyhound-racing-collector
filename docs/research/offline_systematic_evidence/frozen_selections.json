@@ -1,0 +1,1106 @@
+[
+  {
+    "calibration": {
+      "config": {
+        "family": "power",
+        "power": 1.0
+      },
+      "loss": 1.5461938008523057,
+      "name": "market_power",
+      "trial": 61
+    },
+    "ensemble": {
+      "config": {
+        "tree_weight": 0
+      },
+      "loss": 1.52837920185246,
+      "name": "ensemble",
+      "trial": 70
+    },
+    "group_ranking": [
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_draw_track",
+          "strength": 1.0
+        },
+        "loss": 1.5345079672189401,
+        "name": "add_draw_track",
+        "trial": 5
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_margin_improvement",
+          "strength": 1.0
+        },
+        "loss": 1.5364879120702677,
+        "name": "add_margin_improvement",
+        "trial": 7
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "margin_recency",
+          "strength": 1.0
+        },
+        "loss": 1.5371909383859241,
+        "name": "margin_recency",
+        "trial": 23
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_grade_change",
+          "strength": 1.0
+        },
+        "loss": 1.5385112754845436,
+        "name": "add_grade_change",
+        "trial": 11
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "remove_long",
+          "strength": 1.0
+        },
+        "loss": 1.5422077162344787,
+        "name": "remove_long",
+        "trial": 18
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "remove_recent",
+          "strength": 1.0
+        },
+        "loss": 1.5435166437274108,
+        "name": "remove_recent",
+        "trial": 17
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "base16",
+          "strength": 1.0
+        },
+        "loss": 1.5438534462081852,
+        "name": "base16",
+        "trial": 1
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_uncertainty",
+          "strength": 1.0
+        },
+        "loss": 1.544530581135832,
+        "name": "add_uncertainty",
+        "trial": 14
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_recency",
+          "strength": 1.0
+        },
+        "loss": 1.544830690508997,
+        "name": "add_recency",
+        "trial": 6
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_market_shape",
+          "strength": 1.0
+        },
+        "loss": 1.545208539720894,
+        "name": "add_market_shape",
+        "trial": 15
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "base_box",
+          "strength": 1.0
+        },
+        "loss": 1.545797917787473,
+        "name": "base_box",
+        "trial": 2
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_experience",
+          "strength": 1.0
+        },
+        "loss": 1.5458141545908541,
+        "name": "add_experience",
+        "trial": 12
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_draw_distance",
+          "strength": 1.0
+        },
+        "loss": 1.5466967297390095,
+        "name": "add_draw_distance",
+        "trial": 4
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_field_form",
+          "strength": 1.0
+        },
+        "loss": 1.5468876439473866,
+        "name": "add_field_form",
+        "trial": 13
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_draw",
+          "strength": 1.0
+        },
+        "loss": 1.547681778786602,
+        "name": "add_draw",
+        "trial": 3
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_mechanism_interactions",
+          "strength": 1.0
+        },
+        "loss": 1.5501999107672473,
+        "name": "add_mechanism_interactions",
+        "trial": 16
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_pace_pressure",
+          "strength": 1.0
+        },
+        "loss": 1.5514978486133022,
+        "name": "add_pace_pressure",
+        "trial": 10
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_sectionals",
+          "strength": 1.0
+        },
+        "loss": 1.5519591429920825,
+        "name": "add_sectionals",
+        "trial": 9
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "recent_only",
+          "strength": 1.0
+        },
+        "loss": 1.5542315208872435,
+        "name": "recent_only",
+        "trial": 20
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "section_pressure",
+          "strength": 1.0
+        },
+        "loss": 1.5546831525498526,
+        "name": "section_pressure",
+        "trial": 22
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_times",
+          "strength": 1.0
+        },
+        "loss": 1.5553214870130996,
+        "name": "add_times",
+        "trial": 8
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "draw_times",
+          "strength": 1.0
+        },
+        "loss": 1.5566080772862776,
+        "name": "draw_times",
+        "trial": 21
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "remove_context",
+          "strength": 1.0
+        },
+        "loss": 1.5578305267872543,
+        "name": "remove_context",
+        "trial": 19
+      }
+    ],
+    "inner_dates": 8,
+    "inner_races": 101,
+    "linear": {
+      "config": {
+        "family": "linear",
+        "l2": 0.3,
+        "recipe": "add_draw_track",
+        "strength": 1.0
+      },
+      "loss": 1.52837920185246,
+      "name": "add_draw_track",
+      "trial": 29
+    },
+    "nonlinear_features": [
+      "prior_start_count",
+      "days_since_last_start",
+      "recent_finish_mean_3",
+      "recent_finish_best_5",
+      "recent_win_rate_5",
+      "recent_place_rate_5",
+      "recent_avg_margin_5",
+      "career_win_rate",
+      "career_place_rate",
+      "career_avg_finish",
+      "starts_same_venue",
+      "win_rate_same_venue",
+      "starts_same_distance",
+      "win_rate_same_distance",
+      "same_grade_start_count",
+      "same_grade_win_rate",
+      "__box_track__",
+      "log_market",
+      "market_squared",
+      "favorite_indicator",
+      "logp_x_concentration",
+      "logp_x_entropy",
+      "logp_x_overround"
+    ],
+    "outer": {
+      "inner": [
+        [
+          "2026-06-13",
+          "2026-06-14",
+          "2026-06-17"
+        ],
+        [
+          "2026-06-17",
+          "2026-06-18",
+          "2026-06-21"
+        ]
+      ],
+      "name": "period1",
+      "test_end": "2026-06-30",
+      "test_start": "2026-06-24",
+      "train_end": "2026-06-17",
+      "val_end": "2026-06-21",
+      "val_start": "2026-06-18"
+    },
+    "rules": {
+      "favorite": {
+        "dates": 7,
+        "mean_binary_brier_improvement": 0.003784389111940871,
+        "qualified": true,
+        "rule": {
+          "condition": "any",
+          "kind": "favorite",
+          "threshold": 0.05
+        },
+        "selected_races": 22,
+        "selections": 22
+      },
+      "outsider": {
+        "dates": 7,
+        "mean_binary_brier_improvement": 0.0004494337384468356,
+        "qualified": true,
+        "rule": {
+          "condition": "improving_margin",
+          "kind": "outsider",
+          "minimum_odds": 10,
+          "threshold": 0.005
+        },
+        "selected_races": 35,
+        "selections": 42
+      }
+    },
+    "tree": {
+      "config": {
+        "depth": 2,
+        "family": "residual_tree",
+        "iterations": 60,
+        "min_leaf": 30,
+        "tree_index": 5
+      },
+      "loss": 1.5472172343022057,
+      "name": "tree5",
+      "trial": 69
+    }
+  },
+  {
+    "calibration": {
+      "config": {
+        "family": "power",
+        "power": 1.25
+      },
+      "loss": 1.4557961572241769,
+      "name": "market_power",
+      "trial": 135
+    },
+    "ensemble": {
+      "config": {
+        "tree_weight": 0
+      },
+      "loss": 1.4557835931836935,
+      "name": "ensemble",
+      "trial": 143
+    },
+    "group_ranking": [
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "margin_recency",
+          "strength": 1.0
+        },
+        "loss": 1.4560934477468015,
+        "name": "margin_recency",
+        "trial": 96
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_margin_improvement",
+          "strength": 1.0
+        },
+        "loss": 1.4563678491272525,
+        "name": "add_margin_improvement",
+        "trial": 80
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "remove_context",
+          "strength": 1.0
+        },
+        "loss": 1.4653116886779671,
+        "name": "remove_context",
+        "trial": 92
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_field_form",
+          "strength": 1.0
+        },
+        "loss": 1.465680826726519,
+        "name": "add_field_form",
+        "trial": 86
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_draw_distance",
+          "strength": 1.0
+        },
+        "loss": 1.4663734475134025,
+        "name": "add_draw_distance",
+        "trial": 77
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_market_shape",
+          "strength": 1.0
+        },
+        "loss": 1.46641809719638,
+        "name": "add_market_shape",
+        "trial": 88
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "recent_only",
+          "strength": 1.0
+        },
+        "loss": 1.4666969935345486,
+        "name": "recent_only",
+        "trial": 93
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_draw",
+          "strength": 1.0
+        },
+        "loss": 1.4667332135213578,
+        "name": "add_draw",
+        "trial": 76
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_experience",
+          "strength": 1.0
+        },
+        "loss": 1.4668373056000499,
+        "name": "add_experience",
+        "trial": 85
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_recency",
+          "strength": 1.0
+        },
+        "loss": 1.4669070679106473,
+        "name": "add_recency",
+        "trial": 79
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "base_box",
+          "strength": 1.0
+        },
+        "loss": 1.467097132716729,
+        "name": "base_box",
+        "trial": 75
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_uncertainty",
+          "strength": 1.0
+        },
+        "loss": 1.4671110925214093,
+        "name": "add_uncertainty",
+        "trial": 87
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "base16",
+          "strength": 1.0
+        },
+        "loss": 1.4674490415232289,
+        "name": "base16",
+        "trial": 74
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_pace_pressure",
+          "strength": 1.0
+        },
+        "loss": 1.46788246410538,
+        "name": "add_pace_pressure",
+        "trial": 83
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "remove_long",
+          "strength": 1.0
+        },
+        "loss": 1.468008235376389,
+        "name": "remove_long",
+        "trial": 91
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_grade_change",
+          "strength": 1.0
+        },
+        "loss": 1.46854839471873,
+        "name": "add_grade_change",
+        "trial": 84
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_sectionals",
+          "strength": 1.0
+        },
+        "loss": 1.4693255208437408,
+        "name": "add_sectionals",
+        "trial": 82
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "section_pressure",
+          "strength": 1.0
+        },
+        "loss": 1.4700114325478502,
+        "name": "section_pressure",
+        "trial": 95
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_draw_track",
+          "strength": 1.0
+        },
+        "loss": 1.470448240103846,
+        "name": "add_draw_track",
+        "trial": 78
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "remove_recent",
+          "strength": 1.0
+        },
+        "loss": 1.4712376211871028,
+        "name": "remove_recent",
+        "trial": 90
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "draw_times",
+          "strength": 1.0
+        },
+        "loss": 1.4737725259617305,
+        "name": "draw_times",
+        "trial": 94
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_times",
+          "strength": 1.0
+        },
+        "loss": 1.4745592015616362,
+        "name": "add_times",
+        "trial": 81
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_mechanism_interactions",
+          "strength": 1.0
+        },
+        "loss": 1.4751070686982812,
+        "name": "add_mechanism_interactions",
+        "trial": 89
+      }
+    ],
+    "inner_dates": 11,
+    "inner_races": 127,
+    "linear": {
+      "config": {
+        "family": "linear",
+        "l2": 0.3,
+        "recipe": "add_margin_improvement",
+        "strength": 1.0
+      },
+      "loss": 1.4557835931836935,
+      "name": "add_margin_improvement",
+      "trial": 114
+    },
+    "nonlinear_features": [
+      "prior_start_count",
+      "days_since_last_start",
+      "recent_finish_mean_3",
+      "recent_finish_best_5",
+      "recent_win_rate_5",
+      "recent_place_rate_5",
+      "recent_avg_margin_5",
+      "career_win_rate",
+      "career_place_rate",
+      "career_avg_finish",
+      "starts_same_venue",
+      "win_rate_same_venue",
+      "starts_same_distance",
+      "win_rate_same_distance",
+      "same_grade_start_count",
+      "same_grade_win_rate",
+      "margin_recent_long_gap",
+      "margin_slope",
+      "finish_slope",
+      "improving_margin_weak_finish",
+      "ewma_finish_h1",
+      "ewma_finish_h2",
+      "ewma_finish_h5",
+      "ewma_margin_h2",
+      "finish_recent_long_gap",
+      "log_market",
+      "market_squared",
+      "favorite_indicator",
+      "logp_x_concentration",
+      "logp_x_entropy",
+      "logp_x_overround"
+    ],
+    "outer": {
+      "inner": [
+        [
+          "2026-06-17",
+          "2026-06-18",
+          "2026-06-21"
+        ],
+        [
+          "2026-06-21",
+          "2026-06-24",
+          "2026-06-30"
+        ]
+      ],
+      "name": "period2",
+      "test_end": "2026-07-02",
+      "test_start": "2026-07-01",
+      "train_end": "2026-06-24",
+      "val_end": "2026-06-30",
+      "val_start": "2026-06-25"
+    },
+    "rules": {
+      "favorite": {
+        "dates": 8,
+        "mean_binary_brier_improvement": 0.002643794981472936,
+        "qualified": true,
+        "rule": {
+          "condition": "improving_margin",
+          "kind": "favorite",
+          "threshold": 0
+        },
+        "selected_races": 21,
+        "selections": 21
+      },
+      "outsider": {
+        "dates": 9,
+        "mean_binary_brier_improvement": 0.0010652381960438663,
+        "qualified": true,
+        "rule": {
+          "condition": "improving_margin",
+          "kind": "outsider",
+          "minimum_odds": 15,
+          "threshold": 0.005
+        },
+        "selected_races": 21,
+        "selections": 22
+      }
+    },
+    "tree": {
+      "config": {
+        "depth": 1,
+        "family": "residual_tree",
+        "iterations": 80,
+        "min_leaf": 30,
+        "tree_index": 4
+      },
+      "loss": 1.4728505813445802,
+      "name": "tree4",
+      "trial": 141
+    }
+  },
+  {
+    "calibration": {
+      "config": {
+        "family": "power",
+        "power": 1.5
+      },
+      "loss": 1.3915879617008906,
+      "name": "market_power",
+      "trial": 209
+    },
+    "ensemble": {
+      "config": {
+        "tree_weight": 0.25
+      },
+      "loss": 1.389066070660987,
+      "name": "ensemble",
+      "trial": 217
+    },
+    "group_ranking": [
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_margin_improvement",
+          "strength": 1.0
+        },
+        "loss": 1.405510425953137,
+        "name": "add_margin_improvement",
+        "trial": 153
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "margin_recency",
+          "strength": 1.0
+        },
+        "loss": 1.4056032114365613,
+        "name": "margin_recency",
+        "trial": 169
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_market_shape",
+          "strength": 1.0
+        },
+        "loss": 1.4081954537932917,
+        "name": "add_market_shape",
+        "trial": 161
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_field_form",
+          "strength": 1.0
+        },
+        "loss": 1.4101088766705667,
+        "name": "add_field_form",
+        "trial": 159
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_draw_distance",
+          "strength": 1.0
+        },
+        "loss": 1.4114532358926764,
+        "name": "add_draw_distance",
+        "trial": 150
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_draw",
+          "strength": 1.0
+        },
+        "loss": 1.4120838590398435,
+        "name": "add_draw",
+        "trial": 149
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "remove_context",
+          "strength": 1.0
+        },
+        "loss": 1.412128040768792,
+        "name": "remove_context",
+        "trial": 165
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_grade_change",
+          "strength": 1.0
+        },
+        "loss": 1.4123576142764902,
+        "name": "add_grade_change",
+        "trial": 157
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "base16",
+          "strength": 1.0
+        },
+        "loss": 1.4123658315033518,
+        "name": "base16",
+        "trial": 147
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "base_box",
+          "strength": 1.0
+        },
+        "loss": 1.4123682894751,
+        "name": "base_box",
+        "trial": 148
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_pace_pressure",
+          "strength": 1.0
+        },
+        "loss": 1.4126449230052307,
+        "name": "add_pace_pressure",
+        "trial": 156
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_recency",
+          "strength": 1.0
+        },
+        "loss": 1.41266781460655,
+        "name": "add_recency",
+        "trial": 152
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "remove_long",
+          "strength": 1.0
+        },
+        "loss": 1.4129973099267605,
+        "name": "remove_long",
+        "trial": 164
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_uncertainty",
+          "strength": 1.0
+        },
+        "loss": 1.413394661825449,
+        "name": "add_uncertainty",
+        "trial": 160
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_draw_track",
+          "strength": 1.0
+        },
+        "loss": 1.4138354868621563,
+        "name": "add_draw_track",
+        "trial": 151
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_sectionals",
+          "strength": 1.0
+        },
+        "loss": 1.413925263660884,
+        "name": "add_sectionals",
+        "trial": 155
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "recent_only",
+          "strength": 1.0
+        },
+        "loss": 1.4140175440909044,
+        "name": "recent_only",
+        "trial": 166
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_experience",
+          "strength": 1.0
+        },
+        "loss": 1.414137398823862,
+        "name": "add_experience",
+        "trial": 158
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "section_pressure",
+          "strength": 1.0
+        },
+        "loss": 1.414591311480235,
+        "name": "section_pressure",
+        "trial": 168
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "remove_recent",
+          "strength": 1.0
+        },
+        "loss": 1.4160185925452866,
+        "name": "remove_recent",
+        "trial": 163
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "draw_times",
+          "strength": 1.0
+        },
+        "loss": 1.4187659531201464,
+        "name": "draw_times",
+        "trial": 167
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_times",
+          "strength": 1.0
+        },
+        "loss": 1.4191203523780733,
+        "name": "add_times",
+        "trial": 154
+      },
+      {
+        "config": {
+          "family": "linear",
+          "l2": 1.0,
+          "recipe": "add_mechanism_interactions",
+          "strength": 1.0
+        },
+        "loss": 1.420203315841772,
+        "name": "add_mechanism_interactions",
+        "trial": 162
+      }
+    ],
+    "inner_dates": 13,
+    "inner_races": 143,
+    "linear": {
+      "config": {
+        "family": "power",
+        "power": 1.5
+      },
+      "loss": 1.3915879617008906,
+      "name": "market_power",
+      "trial": 209
+    },
+    "nonlinear_features": [
+      "prior_start_count",
+      "days_since_last_start",
+      "recent_finish_mean_3",
+      "recent_finish_best_5",
+      "recent_win_rate_5",
+      "recent_place_rate_5",
+      "recent_avg_margin_5",
+      "career_win_rate",
+      "career_place_rate",
+      "career_avg_finish",
+      "starts_same_venue",
+      "win_rate_same_venue",
+      "starts_same_distance",
+      "win_rate_same_distance",
+      "same_grade_start_count",
+      "same_grade_win_rate",
+      "margin_recent_long_gap",
+      "margin_slope",
+      "finish_slope",
+      "improving_margin_weak_finish",
+      "log_market",
+      "market_squared",
+      "favorite_indicator",
+      "logp_x_concentration",
+      "logp_x_entropy",
+      "logp_x_overround"
+    ],
+    "outer": {
+      "inner": [
+        [
+          "2026-06-17",
+          "2026-06-18",
+          "2026-06-21"
+        ],
+        [
+          "2026-06-21",
+          "2026-06-24",
+          "2026-06-30"
+        ],
+        [
+          "2026-06-30",
+          "2026-07-01",
+          "2026-07-02"
+        ]
+      ],
+      "name": "final_later_block",
+      "test_end": "2026-07-09",
+      "test_start": "2026-07-03",
+      "train_end": "2026-06-30",
+      "val_end": "2026-07-02",
+      "val_start": "2026-07-01"
+    },
+    "rules": {
+      "favorite": null,
+      "outsider": null
+    },
+    "tree": {
+      "config": {
+        "depth": 1,
+        "family": "residual_tree",
+        "iterations": 80,
+        "min_leaf": 30,
+        "tree_index": 4
+      },
+      "loss": 1.4195730304821081,
+      "name": "tree4",
+      "trial": 214
+    }
+  }
+]
