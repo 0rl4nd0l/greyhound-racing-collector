@@ -15,8 +15,11 @@ from tests.test_freshness_campaign import make_campaign
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.mark.parametrize("landing_missing", [False, True, "paired_missing"])
-def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, landing_missing):
+@pytest.mark.parametrize("landing_missing,venue_case", [
+    (False, "murray"), (True, "murray"), ("paired_missing", "murray"),
+    (False, "sandown_park"),
+])
+def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, landing_missing, venue_case):
     from scripts.prepare_freshness_rehearsal import prepare, UNITS
     from scripts.check_freshness_service import service_command
     from sportsbet_odds_integrator import SportsbetOddsIntegrator
@@ -25,6 +28,14 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     gate = access(tmp_path)
     monkeypatch.setenv("GREYHOUND_SPORTSBET_ACCESS_STATE", str(gate))
     stamp, browser = fixture_data(tmp_path, "canonical_alias")
+    if venue_case == "sandown_park":
+        browser = json.loads(json.dumps(browser).replace("murray-bridge-straight", "sandown")
+            .replace("MURRAY-BRIDGE-STRAIGHT", "SANDOWN").replace("Murray Bridge Straight", "Sandown Park")
+            .replace('"MURR"', '"SAN"'))
+        # The two normally observed providers use different venue spellings.
+        browser = json.loads(json.dumps(browser).replace(
+            "sportsbet.com.au/betting/greyhound-racing/australia-nz/sandown/",
+            "sportsbet.com.au/betting/greyhound-racing/australia-nz/sandown-park/"))
     from datetime import datetime
     operational_jump = (stamp + timedelta(minutes=9)).replace(second=0, microsecond=0)
     browser["sidecar"]["prejump_shadow_metadata"]["jump_time"] = operational_jump.isoformat()
@@ -39,13 +50,15 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     responses = {}
     import re
     for key, value in payload['responses'].items():
-        key = key.replace('/sale/', '/murray-bridge-straight/').replace('/1/invented', '/9/fabricated')
-        body = value['body'].replace('/sale/', '/murray-bridge-straight/').replace('/1/invented', '/9/fabricated')
+        venue_slug = 'sandown' if venue_case == 'sandown_park' else 'murray-bridge-straight'
+        key = key.replace('/sale/', '/' + venue_slug + '/').replace('/1/invented', '/9/fabricated')
+        body = value['body'].replace('/sale/', '/' + venue_slug + '/').replace('/1/invented', '/9/fabricated')
         body = body.replace('Race 1', 'Race 9').replace('>R1<', '>R9<')
         body = re.sub(r'(<formatted-time[^>]*>).*?(</formatted-time>)', r'\g<1>'+jump_dt.strftime('%H:%M')+r'\g<2>', body)
         if 'NextEvents' in key:
             events = json.loads(body)
-            events[0].update(competitionName='Murray Bridge Straight', raceNumber=9, startTime=int(jump_dt.timestamp()))
+            events[0].update(competitionName='Sandown Park' if venue_case == 'sandown_park' else 'Murray Bridge Straight',
+                             raceNumber=9, startTime=int(jump_dt.timestamp()))
             body = json.dumps(events)
         if 'open-meteo' in key:
             weather = json.loads(body)
@@ -151,6 +164,19 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     with sqlite3.connect(db) as history_conn:
         assert history_conn.execute('SELECT count(*) FROM live_odds').fetchone()[0] == initial_odds
     assert terminal['status'] == 'PREDICTION_READY', terminal
+    if venue_case == 'sandown_park':
+        assert terminal['race_id'] == f"Race 9 - SAN - {stamp.date().isoformat()}"
+        retained = list(terminals[0].parent.glob('retention/*/bundle/manifest.json'))
+        assert len(retained) == 1
+        manifest = json.loads(retained[0].read_bytes())
+        features = json.loads((retained[0].parent / 'feature_values.json').read_bytes())
+        assert len(features) == 4
+        assert {row['race_id'] for row in features} == {terminal['race_id']}
+        assert {row['box_number'] for row in features} == {1, 2, 3, 4}
+        assert all(len(row['features']) == 16 for row in features)
+        frozen = json.loads((package / 'operational-retention.json').read_bytes())['static_files']
+        for identity in ('model', 'model_manifest', 'configuration', 'feature_schema', 'feature_replay_worker'):
+            assert manifest['files'][identity]['sha256'] == frozen[identity]['sha256']
     assert terminal['seconds_to_jump_at_verification'] > 60
     from src.operator_ui.job_store import JobStore
     store = JobStore(campaign.root/'operational-predictions/jobs.sqlite3',readonly=True)

@@ -506,3 +506,41 @@ The existing source authority expiry moves to 21:20 with 127 operations remainin
 and cumulative ceiling 252; 125 prior operations, four denials, 22 consumed
 captures, 20,342 logical requests and 9,895.009819 charged seconds are preserved.
 These are preparation/validation findings, not a live acceptance result.
+
+The 20:20 observation demonstrated the corrected export path: all four initially
+selected races supplied valid CSV/native inputs, later five distinct selected
+races were available. Both naturally eligible windows produced complete valid
+receipts. Gunnedah R6 passed all 28 independent chain checks with 8 WIN/8 PLACE
+runners, job job_283fcd35b77d4d52be8758e8bd0bdf8b, verified at
+20:21:24.722134 AEST (335.277866 seconds before jump), processing 4.019985 seconds,
+and prices 20.499959 seconds old at verification. Receipt SHA256
+640b5306de90c71d9cae765f9d7a6a21a436256261621b6c33505cacf98db9ea.
+Independent audit SHA256 c0f7f36a3af5cdf45161197d0929c04057f7333fdbc54f54faacbf95ff09520f.
+
+Sandown R5 retained its valid capture and inputs but prediction preparation
+failed before worker claim at 20:22:29.831381. The exception wrapper discarded
+the worker rejection code. Pure offline validation of the actual sealed
+Sportsbet source URL proves a second alias defect: `sandown-park` resolves to
+no configured venue in the shared receipt preflight, although SAN and Sandown
+resolve to SAN. This deterministically produces RECEIPT_INVALID and is consistent
+with the failure; the original exception code cannot be recovered. Diagnosis
+SHA256 c9ce23ef0e55c5bce3efc4bf327113e83d86c951e776afaf62772b1b1b169ab1.
+The run stopped at 20:22:30.153693; its failed job and STOP stay consumed.
+Restoration completed before 20:26:30, original paired units/timer hold restored.
+No new denial: 98 recorded browser responses were all HTTP200, with zero drops.
+The source state is OPEN, no active owner, 129 cumulative operations/four denials;
+campaign totals are 24 captures, 20,753 logical requests and 10,256.035737 seconds.
+
+The next narrow repair adds the observed Sandown Park spelling to the shared
+canonical venue map and retains bounded uppercase WorkerRejected codes while
+suppressing arbitrary exception payloads. Prior source archives stay unchanged;
+the prospective generator archive includes the updated identity-map member,
+without changing the frozen model, scoring configuration or feature algorithm.
+A real packaged Sandown flow must pass before further source execution.
+
+Inspection of already observed structured responses added no requests. Across
+the two successful captures, 22 responses were categorized as structured data;
+five body shapes were inspected. NextEvents exposed discovery field types, but
+no usable runner/market/price schema was established. Cached, truncated and
+uninspected responses remain unassessed. Verified odds still come from DOM
+extraction, not an invented API schema.
