@@ -160,3 +160,16 @@ def test_exact_meeting_link_time_avoids_duplicate_discovery_fetch(tmp_path):
     calls = [json.loads(x) for x in (tmp_path/'transport.jsonl').read_text().splitlines()]
     canonical = [x for x in calls if x['path'].endswith('/invented')]
     assert len(canonical) == 6, 'exact meeting times must not cause discovery plus download page fetches'
+
+
+@pytest.mark.parametrize('meeting_clock', ['', '<formatted-time data-format="time_24">12:00</formatted-time><formatted-time data-format="time_24">13:00</formatted-time>'])
+def test_missing_or_conflicting_meeting_times_use_canonical_page(tmp_path, meeting_clock):
+    payload = fixture(tmp_path, 1)
+    data = json.loads(payload.read_text())
+    date_key = next(k for k in data['responses'] if k.startswith('www.thedogs.com.au/racing/') and k.count('/') == 2)
+    data['responses'][date_key]['body'] = data['responses'][date_key]['body'].replace('</a>', meeting_clock+'</a>')
+    payload.write_text(json.dumps(data))
+    report = refresh(tmp_path, payload, access(tmp_path), 1, lane='full')
+    assert report['current_index_race_count'] == 1
+    calls = [json.loads(x) for x in (tmp_path/'transport.jsonl').read_text().splitlines()]
+    assert sum(x['path'].endswith('/invented') for x in calls) == 2

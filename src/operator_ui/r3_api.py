@@ -187,7 +187,7 @@ def finalize_producer_bundle(root: Path, store: JobStore, job: Job, *, capabilit
     facts={
         "prediction_id":result["prediction_id"],"job_id":job.job_id,
         "race_id":result["race"]["race_id"],"jump_timestamp":result["race"]["jump_timestamp"],
-        "runner_set_sha256":result["evidence"]["runner_set_sha256"],
+        "runner_set_sha256":job.input.runner_set_sha256,
         "resolved_model_identity":result["model"]["resolved"],"model_sha256":result["model"]["artifact_sha256"],
         "model_manifest_sha256":result["model"]["artifact_manifest_sha256"],"model_schema_sha256":result["model"]["schema_sha256"],
         "config_id":job.input.config_id,"config_sha256":result["config"]["sha256"],
