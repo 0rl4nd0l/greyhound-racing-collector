@@ -7,7 +7,15 @@ from dataclasses import replace
 import pytest
 
 
-def collector_readiness(tmp_path, job_input, *, changed_native=False):
+def collector_readiness(
+    tmp_path,
+    job_input,
+    *,
+    changed_native=False,
+    source_race_id=None,
+    index_race_id=None,
+    race_url=None,
+):
     """Real, outcome-free filesystem evidence for the existing collector lane."""
     import hashlib
     import json
@@ -21,13 +29,23 @@ def collector_readiness(tmp_path, job_input, *, changed_native=False):
     evidence.mkdir()
     source = evidence / "source.csv"
     _write_shadow_source_csv(source)
+    source_race_id = source_race_id or job_input.race_id
+    index_race_id = index_race_id or job_input.race_id
+    race_url = race_url or (
+        "https://www.thedogs.com.au/racing/wentworth-park/2026-09-15/1/test-race"
+    )
     _write_shadow_run(
         evidence,
         source_csv=source,
-        race_id=job_input.race_id,
+        race_id=source_race_id,
         race_time_minutes=610,
         dirname="daily_race_ingest_shadow_collector-run_daemon_autopilot",
     )
+    feature_path = evidence / "daily_race_ingest_shadow_collector-run_daemon_autopilot" / "shadow_feature_rows.json"
+    feature_rows = json.loads(feature_path.read_bytes())
+    for row in feature_rows:
+        row["target_metadata_source_url"] = race_url
+    feature_path.write_text(json.dumps(feature_rows))
     collector = tmp_path / "collector"
     collector.mkdir()
     unit = tmp_path / "full.service"
@@ -46,9 +64,9 @@ def collector_readiness(tmp_path, job_input, *, changed_native=False):
         },
     }
     race = {
-        "race_id": job_input.race_id,
+        "race_id": index_race_id,
         "jump_datetime": job_input.jump_timestamp,
-        "race_url": "https://www.thedogs.com.au/racing/wentworth-park/2026-09-15/1/test-race",
+        "race_url": race_url,
         "runner_set_sha256": job_input.runner_set_sha256,
         "runners": [
             {
@@ -68,6 +86,192 @@ def test_disabled_tick_does_not_construct_stores_or_read_sources(tmp_path):
     coordinator = JournalCoordinator()
     assert coordinator.tick() == {"state": "DISABLED"}
     assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize(
+    ("requested", "source", "url"),
+    [
+        (
+            "Race 1 - SHEP - 2026-09-15",
+            "Race 1 - SHEPPARTON - 2026-09-15",
+            "https://www.thedogs.com.au/racing/shepparton/2026-09-15/1/test-race",
+        ),
+        (
+            "Race 2 - QOT - 2026-09-15",
+            "Race 2 - LADBROKES-Q-STRAIGHT - 2026-09-15",
+            "https://www.thedogs.com.au/racing/ladbrokes-q-straight/2026-09-15/2/test-race",
+        ),
+    ],
+)
+def test_readiness_accepts_declared_source_race_aliases(tmp_path, requested, source, url):
+    from types import SimpleNamespace
+
+    from tests.operator_ui.test_r3_api import provenance
+
+    runners = tuple(
+        {
+            "box": box,
+            "name": name,
+            "identity": name,
+            "source_native_runner_id": str(100 + box),
+        }
+        for box, name in enumerate(("ALPHA", "BRAVO", "CHARLIE", "DELTA"), 1)
+    )
+    job_input = SimpleNamespace(
+        race_id=requested,
+        jump_timestamp="2026-09-15T10:10:00+10:00",
+        runner_set_sha256="f" * 64,
+        ordered_runners=runners,
+        operational_index_provenance=provenance(),
+    )
+    readiness = collector_readiness(
+        tmp_path,
+        job_input,
+        source_race_id=source,
+        index_race_id=requested,
+        race_url=url,
+    )
+
+    readiness.require(job_input, now=datetime(2026, 9, 14, 23, 0, tzinfo=timezone.utc))
+
+
+def test_readiness_rejects_alias_with_cross_venue_source_url(tmp_path):
+    from types import SimpleNamespace
+
+    from src.operator_ui.r3_api import R3Rejected
+    from utils.race_identity_equivalence import race_identity_equivalent
+    from tests.operator_ui.test_r3_api import provenance
+
+    runners = tuple(
+        {
+            "box": box,
+            "name": name,
+            "identity": name,
+            "source_native_runner_id": str(100 + box),
+        }
+        for box, name in enumerate(("ALPHA", "BRAVO", "CHARLIE", "DELTA"), 1)
+    )
+    job_input = SimpleNamespace(
+        race_id="Race 1 - SHEP - 2026-09-15",
+        jump_timestamp="2026-09-15T10:10:00+10:00",
+        runner_set_sha256="f" * 64,
+        ordered_runners=runners,
+        operational_index_provenance=provenance(),
+    )
+    race_url = "https://www.thedogs.com.au/racing/ladbrokes-q-straight/2026-09-15/1/test-race"
+    assert race_identity_equivalent(
+        "Race 1 - QOT - 2026-09-15",
+        "Race 1 - QOT - 2026-09-15",
+        source_url=race_url,
+    )
+    readiness = collector_readiness(
+        tmp_path,
+        job_input,
+        source_race_id="Race 1 - SHEPPARTON - 2026-09-15",
+        race_url=race_url,
+    )
+
+    with pytest.raises(R3Rejected, match="RESULT_ACQUISITION_NOT_READY"):
+        readiness.require(job_input, now=datetime(2026, 9, 14, 23, 0, tzinfo=timezone.utc))
+
+
+@pytest.mark.parametrize("precursor", ["predictions", "features"])
+def test_readiness_rejects_mixed_equivalent_precursor_ids(tmp_path, precursor):
+    import json
+    from types import SimpleNamespace
+
+    from src.operator_ui.r3_api import R3Rejected
+    from tests.operator_ui.test_r3_api import provenance
+
+    requested = "Race 1 - SHEP - 2026-09-15"
+    source = "Race 1 - SHEPPARTON - 2026-09-15"
+    race_url = "https://www.thedogs.com.au/racing/shepparton/2026-09-15/1/test-race"
+    runners = tuple(
+        {
+            "box": box,
+            "name": name,
+            "identity": name,
+            "source_native_runner_id": str(100 + box),
+        }
+        for box, name in enumerate(("ALPHA", "BRAVO", "CHARLIE", "DELTA"), 1)
+    )
+    job_input = SimpleNamespace(
+        race_id=requested,
+        jump_timestamp="2026-09-15T10:10:00+10:00",
+        runner_set_sha256="f" * 64,
+        ordered_runners=runners,
+        operational_index_provenance=provenance(),
+    )
+    readiness = collector_readiness(
+        tmp_path,
+        job_input,
+        source_race_id=source,
+        index_race_id=requested,
+        race_url=race_url,
+    )
+    shadow_dir = (
+        tmp_path
+        / "collector-evidence"
+        / "daily_race_ingest_shadow_collector-run_daemon_autopilot"
+    )
+    if precursor == "predictions":
+        path = shadow_dir / "stage2_shadow_predictions.jsonl"
+        rows = [json.loads(line) for line in path.read_text().splitlines()]
+        rows[0]["race_id"] = requested
+        path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    else:
+        path = shadow_dir / "shadow_feature_rows.json"
+        rows = json.loads(path.read_text())
+        rows[0]["race_id"] = requested
+        path.write_text(json.dumps(rows))
+
+    with pytest.raises(R3Rejected, match="RESULT_ACQUISITION_NOT_READY") as rejected:
+        readiness.require(job_input, now=datetime(2026, 9, 14, 23, 0, tzinfo=timezone.utc))
+    assert str(rejected.value.__cause__) == "ambiguous race identity"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "Race 1 - SHEPPARTON - 2026-09-16",
+        "Race 2 - SHEPPARTON - 2026-09-15",
+    ],
+)
+def test_readiness_rejects_alias_cross_date_or_race_number(tmp_path, source):
+    from types import SimpleNamespace
+
+    from src.operator_ui.r3_api import R3Rejected
+    from tests.operator_ui.test_r3_api import provenance
+
+    requested = "Race 1 - SHEP - 2026-09-15"
+    race_url = "https://www.thedogs.com.au/racing/shepparton/2026-09-15/1/test-race"
+    runners = tuple(
+        {
+            "box": box,
+            "name": name,
+            "identity": name,
+            "source_native_runner_id": str(100 + box),
+        }
+        for box, name in enumerate(("ALPHA", "BRAVO", "CHARLIE", "DELTA"), 1)
+    )
+    job_input = SimpleNamespace(
+        race_id=requested,
+        jump_timestamp="2026-09-15T10:10:00+10:00",
+        runner_set_sha256="f" * 64,
+        ordered_runners=runners,
+        operational_index_provenance=provenance(),
+    )
+    readiness = collector_readiness(
+        tmp_path,
+        job_input,
+        source_race_id=source,
+        index_race_id=requested,
+        race_url=race_url,
+    )
+
+    with pytest.raises(R3Rejected, match="RESULT_ACQUISITION_NOT_READY") as rejected:
+        readiness.require(job_input, now=datetime(2026, 9, 14, 23, 0, tzinfo=timezone.utc))
+    assert str(rejected.value.__cause__) == "race not collector-owned"
 
 
 def test_recurrence_stops_after_terminal_coordinator_state(monkeypatch):
@@ -418,6 +622,14 @@ def test_verified_fixture_prediction_closes_once_from_collector_rows(tmp_path, r
     config_path = Path(__file__).resolve().parents[2] / "configs/prediction/manual-default.json"
 
     if result_case == "complete":
+        # Native index admission requires native identity for every runner.
+        from tests import test_predict_race_now as native_fixture
+        original_race = native_fixture.race
+        def fully_identified_race(*args, **kwargs):
+            item = original_race(*args, **kwargs)
+            item["participants"][1]["source_native_runner_id"] = "102"
+            return item
+        monkeypatch.setattr(native_fixture, "race", fully_identified_race)
         readonly_cwd = tmp_path / "readonly-cwd"
         readonly_cwd.mkdir(mode=0o500)
         request.addfinalizer(lambda: readonly_cwd.chmod(0o700))
@@ -579,12 +791,16 @@ def test_verified_fixture_prediction_closes_once_from_collector_rows(tmp_path, r
     )
     results_db = tmp_path / "official.db"
     with sqlite3.connect(results_db) as db:
-        db.execute(
-            "CREATE TABLE autonomous_official_result_evidence_races(race_id TEXT, row_json TEXT)"
-        )
-        db.execute(
-            "CREATE TABLE autonomous_official_result_evidence_runners(race_id TEXT, row_json TEXT)"
-        )
+        if result_case == "complete":
+            from scripts.autonomous_official_result_capture import ensure_official_result_evidence_tables
+            ensure_official_result_evidence_tables(db)
+        else:
+            db.execute(
+                "CREATE TABLE autonomous_official_result_evidence_races(race_id TEXT, row_json TEXT)"
+            )
+            db.execute(
+                "CREATE TABLE autonomous_official_result_evidence_runners(race_id TEXT, row_json TEXT)"
+            )
     coordinator_args = dict(
         activation=activation,
         root=tmp_path / "journal",
@@ -594,6 +810,36 @@ def test_verified_fixture_prediction_closes_once_from_collector_rows(tmp_path, r
         clock=lambda: clock[0],
         results=OfficialResultSource(results_db),
     )
+    if result_case == "complete":
+        from race_collection.synchronous_manual_capture import VerifiedCurrentRaceIndex
+        from src.operator_ui.journal_readiness import ResultAcquisitionReadiness
+        evidence = tmp_path / "collector-evidence"
+        evidence.mkdir()
+        collector = tmp_path / "collector"
+        collector.mkdir()
+        unit = tmp_path / "collector.service"
+        unit.write_text(
+            f"[Service]\nWorkingDirectory={collector}\n"
+            f"ExecStart=/python {collector}/scripts/shadow_autopilot_daemon.py run-once "
+            f"--evidence-root {evidence} --enable-autonomous-result-capture "
+            f"--r3-job-store {store.path} --r3-prediction-bundles {bundles}\n")
+        authority_metadata = {"working_directory": str(collector), "units": {"full_service": {
+            "path": str(unit), "sha256": hashlib.sha256(unit.read_bytes()).hexdigest()}}}
+        current_race = {"race_id": inp.race_id, "jump_datetime": inp.jump_timestamp,
+                        "race_url": value["url"], "runner_set_sha256": inp.runner_set_sha256,
+                        "runners": [{"box": r["box"], "display_name": r["name"],
+                                     "identity": r["identity"], "source_native_runner_id": r["source_native_runner_id"]}
+                                    for r in runners]}
+        pin = inp.operational_index_provenance
+        view = VerifiedCurrentRaceIndex(
+            pin.index_schema_version, pin.run_id, NOW.isoformat(), pin.packet_sha256,
+            b"invented typed publication; native publisher tested separately", (current_race,),
+            str(evidence / "refresh.json"), pin.source_refresh_sha256,
+            pin.publication_sha256, pin.state_sha256, pin.report_sha256)
+        readiness = ResultAcquisitionReadiness(
+            evidence, authority=authority_metadata, races=lambda: view.races,
+            verified_index=lambda: view, result_job_store=store.path, result_prediction_bundles=bundles)
+        coordinator_args["result_readiness"] = readiness
     coordinator = JournalCoordinator(**coordinator_args)
     coordinator.tick()
     clock[0] = NOW
@@ -601,24 +847,41 @@ def test_verified_fixture_prediction_closes_once_from_collector_rows(tmp_path, r
     # never suppress closure of this existing, immutable prediction.
     from src.operator_ui.r3_api import submit_prediction, confirm_prediction_operation
 
-    job, _ = submit_prediction(
-        services,
-        {
-            "race_id": inp.race_id,
-            "model_id": "latest-research",
-            "config_id": "manual-default",
-            "odds_source_id": "receipt",
-            "idempotency_key": "22345678-1234-4123-8123-123456789abc",
-        },
-        identity="r3-journal:" + activation.activation_id,
-        confirm_audit=lambda intent: confirm_prediction_operation(
+    if result_case == "complete":
+        good_view = view
+        for invalid_view in (
+            replace(view, source_refresh_report_sha256="f" * 64),
+            replace(view, races=({**current_race, "runners": [
+                {**current_race["runners"][0], "source_native_runner_id": "999"},
+                *current_race["runners"][1:]]},)),
+        ):
+            view = invalid_view
+            rejected = coordinator.tick()
+            assert rejected["admissions"][inp.race_id] == "RESULT_ACQUISITION_NOT_READY"
+            assert store.recorded_jobs() == ()
+        view = good_view
+        admitted = coordinator.tick()
+        assert admitted["admissions"][inp.race_id] == "ADMITTED"
+        job = store.recorded_jobs()[0]
+    else:
+        job, _ = submit_prediction(
             services,
-            audit,
-            intent,
-            session_identifier=activation.activation_id,
-            client_identity="server-owned-r3-journal",
-        ),
-    )
+            {
+                "race_id": inp.race_id,
+                "model_id": "latest-research",
+                "config_id": "manual-default",
+                "odds_source_id": "receipt",
+                "idempotency_key": "22345678-1234-4123-8123-123456789abc",
+            },
+            identity="r3-journal:" + activation.activation_id,
+            confirm_audit=lambda intent: confirm_prediction_operation(
+                services,
+                audit,
+                intent,
+                session_identifier=activation.activation_id,
+                client_identity="server-owned-r3-journal",
+            ),
+        )
     job_id = job.job_id
     original = {p: p.read_bytes() for p in bundles.rglob("*") if p.is_file()}
     first_recovery = coordinator.tick()
@@ -757,6 +1020,98 @@ def test_verified_fixture_prediction_closes_once_from_collector_rows(tmp_path, r
     if result_case == "duplicate":
         result_rows.append(dict(result_rows[0]))
     def publish_offline_result():
+        if result_case == "complete":
+            from scripts import autonomous_official_result_capture as capture
+            from scripts.r3_official_result_candidates import r3_prediction_candidates
+            class FixtureClock(datetime):
+                @classmethod
+                def now(cls, tz=None):
+                    return clock[0] if tz is None else clock[0].astimezone(tz)
+            result_transport_case = ["complete"]
+            class FixtureTransport:
+                def __init__(self, *args, **kwargs):
+                    pass
+                def fetch(self, candidate):
+                    assert candidate.race_id == inp.race_id
+                    assert candidate.start_datetime == inp.jump_timestamp
+                    assert candidate.canonical_thedogs_url == value["url"]
+                    assert candidate.participants == [
+                        {"box_number": r["box"], "dog_name": r["name"]} for r in runners]
+                    positions = {r["box"]: r["box"] for r in runners}
+                    url = candidate.canonical_thedogs_url + "?trial=false"
+                    if result_transport_case[0] == "partial":
+                        positions = {1: 1}
+                    if result_transport_case[0] == "wrong_url":
+                        url = "https://www.thedogs.com.au/racing/wentworth-park/2026-08-01/99"
+                    return capture.ingest.SourceResult(
+                        source="thedogs_official", status="resulted", source_url=url,
+                        positions_by_box=positions, raw_order=list(positions))
+            root = tmp_path / "capture-evidence"
+            output = root / "autonomous_official_result_capture_fixture"
+            jobs_before = store.path.read_bytes()
+            discovery_args = dict(
+                job_store_path=store.path, prediction_bundles=bundles,
+                result_database=results_db, target_date=value["race_date"],
+                current_time=clock[0], race_ids=[], output_dir=output)
+            from scripts import r3_official_result_candidates as discovery
+            # The genuine indexed bundle and durable job are required together.
+            missing, rejected, _ = r3_prediction_candidates(
+                **{**discovery_args, "prediction_bundles": tmp_path / "missing-bundles"})
+            assert not missing and rejected[0]["reason"] == "R3_PREDICTION_VERIFICATION_FAILED"
+            early, rejected, _ = r3_prediction_candidates(
+                **{**discovery_args, "current_time": NOW})
+            assert not early and rejected[0]["reason"] == "R3_RACE_NOT_OFF"
+            manifest = next(path for path in original if path.name == "bundle_manifest.json")
+            manifest.write_bytes(b"damaged fixture bundle")
+            damaged, rejected, _ = r3_prediction_candidates(**discovery_args)
+            assert not damaged and rejected[0]["reason"] == "R3_PREDICTION_VERIFICATION_FAILED"
+            manifest.write_bytes(original[manifest])
+            # Journal closure obligations do not inherit the unrelated shadow
+            # backlog's two-day lookback cutoff.
+            later = clock[0] + timedelta(days=3)
+            overdue, rejected, _ = r3_prediction_candidates(
+                **{**discovery_args, "current_time": later, "target_date": later.date().isoformat()})
+            assert len(overdue) == 1 and rejected == []
+            current_job = store.get(job_id)
+            for changed_input in (
+                replace(inp, race_id=inp.race_id + "-different"),
+                replace(inp, runner_set_sha256="1" * 64),
+                replace(inp, ordered_runners=(dict(runners[0], name="Other"), *runners[1:])),
+                replace(inp, operational_index_provenance=replace(inp.operational_index_provenance, run_id="different-run")),
+            ):
+                with monkeypatch.context() as identity_mismatch:
+                    identity_mismatch.setattr(discovery.JobStore, "recorded_jobs", lambda self: (replace(current_job, input=changed_input),))
+                    mismatched, rejected, _ = r3_prediction_candidates(**discovery_args)
+                    assert not mismatched and rejected[0]["reason"] == "R3_PREDICTION_VERIFICATION_FAILED"
+            with monkeypatch.context() as transport:
+                transport.setattr(capture, "datetime", FixtureClock)
+                transport.setattr(capture.ingest, "TheDogsResultFetcher", FixtureTransport)
+                transport.setattr(capture.ingest, "optional_browser_driver", lambda **kw: (None, None, None))
+                command = [
+                    "--date", value["race_date"], "--current-time", clock[0].isoformat(),
+                    "--r3-job-store", str(store.path), "--r3-prediction-bundles", str(bundles),
+                    "--db", str(results_db), "--evidence-root", str(root), "--execute-db-ingest"]
+                for invalid in ("partial", "wrong_url"):
+                    result_transport_case[0] = invalid
+                    rejected_output = root / ("autonomous_official_result_capture_" + invalid)
+                    capture.main([*command, "--output-dir", str(rejected_output)])
+                    rejected = json.loads((rejected_output / "official_result_ingest_dry_run_report.json").read_text())
+                    assert rejected["failed_count"] == 1 and rejected["ingested_count"] == 0
+                    with sqlite3.connect(results_db) as db:
+                        assert db.execute("SELECT COUNT(*) FROM autonomous_official_result_evidence_races").fetchone()[0] == 0
+                result_transport_case[0] = "complete"
+                assert capture.main([*command, "--output-dir", str(output)]) == 0
+            report = json.loads((output / "official_result_ingest_dry_run_report.json").read_text())
+            assert report["scope"]["candidate_source"] == "verified_r3_predictions"
+            assert report["candidate_count"] == report["ingested_count"] == 1
+            # A completed collector result is not reacquired on the next cycle.
+            candidates, skipped, _ = r3_prediction_candidates(
+                job_store_path=store.path, prediction_bundles=bundles,
+                result_database=results_db, target_date=value["race_date"],
+                current_time=clock[0], race_ids=[], output_dir=output)
+            assert not candidates and skipped[0]["reason"] == "R3_RESULT_ALREADY_AVAILABLE"
+            assert store.path.read_bytes() == jobs_before
+            return
         with sqlite3.connect(results_db) as db:
             db.execute(
                 "INSERT INTO autonomous_official_result_evidence_races VALUES (?,?)",

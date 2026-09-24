@@ -124,7 +124,7 @@ BLOCKER_STAGE_BY_CODE = {
         "PREDICTION_BUNDLE_OPEN_FAILED", "PREDICTION_BUNDLE_UNSAFE_TYPE",
     }},
     **{code: "SCORING" for code in {
-        "FEATURE_SEAL_FAILED", "FROZEN_MODEL_DRIFT", "MARKET_UNAVAILABLE",
+        "FEATURE_SEAL_FAILED", "FROZEN_MODEL_DRIFT", "MARKET_UNAVAILABLE", "RETAINED_INPUT_INVALID",
         "PREDICTION_INTERNAL_ERROR", "RESIDUAL_SCORER_FAILED",
     }},
 }
@@ -524,6 +524,9 @@ def _validate_request_binding(raw: bytes, result: Mapping[str, Any]) -> dict[str
             "research_only", "runners", "runner_set_sha256",
         }
     if schema=="on_demand_prediction_request_v2":fields.add("operational_index_provenance")
+    if "retained_input_manifest_sha256" in value:
+        fields.add("retained_input_manifest_sha256")
+        _sha(value["retained_input_manifest_sha256"], "request.retained_input_manifest_sha256")
     request = _exact_fields(value,fields,"request")
     if schema not in {"on_demand_prediction_request_v1","on_demand_prediction_request_v2"}:
         raise _blocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH", field="request.schema")
@@ -1400,6 +1403,7 @@ def seal_history_database(
     target_race_id: str,
     cutoff: datetime,
     runner_names: Sequence[str],
+    runner_scope_only: bool = False,
 ) -> dict[str, Any]:
     if not source.is_file() or source.is_symlink() or target.exists():
         raise PredictionBlocked("HISTORY_DATABASE_UNAVAILABLE")
@@ -1543,6 +1547,15 @@ def seal_history_database(
             )
 
         dog_rows = rows_for_safe_ids("dog_race_data")
+        if runner_scope_only:
+            # Match the feature loader's name semantics, not a new identity rule.
+            from scripts.run_feature_recovery_execution_v1 import clean_name
+
+            wanted = {clean_name(name) for name in runner_names}
+            loader_name_column = "dog_name" if "dog_name" in dog_columns else "dog_clean_name"
+            dog_rows = [row for row in dog_rows if clean_name(row.get(loader_name_column)) in wanted]
+            retained_ids = {str(row["race_id"]) for row in dog_rows}
+            safe_metadata = [row for row in safe_metadata if str(row["race_id"]) in retained_ids]
         sqlite_phase = "target"
         insert_rows("race_metadata", race_columns, safe_metadata)
         insert_rows("dog_race_data", dog_columns, dog_rows)
@@ -1980,6 +1993,9 @@ def verify_indexed_prediction_bundle(
         if sha256_bytes(contents["config.json"]) != result["config"]["sha256"]:
             raise _blocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH", field="config")
         request = _validate_request_binding(contents["request.json"], result)
+        if request.get("retained_input_manifest_sha256") is not None and result["status"] == "PREDICTION_READY":
+            from src.predictor.retained_inputs import verify_retained_prediction_bundle
+            verify_retained_prediction_bundle(contents, result, request)
         if result["status"] == "PREDICTION_READY":
             _validate_sealed_protocol(contents, result)
         if sha256_bytes(contents[result["evidence"]["model_schema"]]) != result["model"]["schema_sha256"]:

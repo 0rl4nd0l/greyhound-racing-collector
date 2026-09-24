@@ -100,6 +100,11 @@ def test_current_race_index_is_published_from_completed_refresh(
     }
     report_path = output_dir / "current_race_index_publish.json"
     assert report_path.read_bytes() == canonical_bytes(result)
+    timing = json.loads((output_dir / "current_index_publication_timing.json").read_text())
+    assert timing["source_generated_at"] == result["source_generated_at"]
+    assert timing["status"] == "PUBLISHED"
+    assert timing["elapsed_seconds"] >= 0
+    assert timing["completed_at"] >= timing["started_at"]
     lifecycle_path = state_path.parent / "manual_prediction_current_race_index.state.json"
     lifecycle = json.loads(lifecycle_path.read_text(encoding="utf-8"))
     assert lifecycle["run_id"] == "scheduled-run"
@@ -4758,8 +4763,9 @@ def test_autonomous_live_odds_capture_runs_before_daily_shadow_run(tmp_path, mon
     assert daily_command[daily_command.index("--output-parent") + 1] == str(evidence_root)
 
 
+@pytest.mark.parametrize("r3", [False, True])
 def test_autonomous_official_result_capture_uses_fresh_step_time(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, r3
 ):
     evidence_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
     shadow_model = tmp_path / "shadow_model.joblib"
@@ -4818,7 +4824,7 @@ def test_autonomous_official_result_capture_uses_fresh_step_time(
             assert early_status["attempted"] is True
             assert early_status["in_progress"] is True
             assert early_status["target_date"] == "2026-06-12"
-            assert early_status["candidate_source"] == "shadow_run_predictions"
+            assert early_status["candidate_source"] == ("verified_r3_predictions" if r3 else "shadow_run_predictions")
             capture_dir = command_value(command, "--output-dir")
             autopilot.write_json(
                 capture_dir / "autonomous_official_result_capture_report.json",
@@ -4848,6 +4854,9 @@ def test_autonomous_official_result_capture_uses_fresh_step_time(
 
     args = autopilot.parse_args(
         [
+            *(["--r3-job-store", str(tmp_path / "r3-jobs.db"),
+               "--r3-prediction-bundles", str(tmp_path / "r3-bundles"),
+               "--skip-shadow-run"] if r3 else []),
             "--run-id",
             "fresh_result_time",
             "--evidence-root",
@@ -4870,11 +4879,15 @@ def test_autonomous_official_result_capture_uses_fresh_step_time(
 
     result = autopilot.run_autopilot(args)
 
-    daily_command = commands_by_step["daily_shadow_run"]
     result_command = commands_by_step["autonomous_official_result_capture"]
-    assert daily_command[daily_command.index("--current-time") + 1] == (
-        "2026-06-12T18:47:11+10:00"
-    )
+    if r3:
+        assert "daily_shadow_run" not in commands_by_step
+        assert result_command[result_command.index("--r3-job-store") + 1] == str(tmp_path / "r3-jobs.db")
+        assert result_command[result_command.index("--r3-prediction-bundles") + 1] == str(tmp_path / "r3-bundles")
+        assert all(flag not in result_command for flag in ("--shadow-run-dir", "--snapshot-dir", "--upcoming-dir", "--include-live-odds-backlog"))
+    else:
+        daily_command = commands_by_step["daily_shadow_run"]
+        assert daily_command[daily_command.index("--current-time") + 1] == "2026-06-12T18:47:11+10:00"
     assert result_command[result_command.index("--current-time") + 1] == (
         "2026-06-12T18:53:33+10:00"
     )
@@ -5308,14 +5321,6 @@ def test_skip_primary_refresh_still_runs_odds_capture_refresh(tmp_path, monkeypa
         }
 
     monkeypatch.setattr(autopilot, "step_command", fake_step_command)
-    monkeypatch.setattr(
-        autopilot,
-        "publish_current_race_index",
-        lambda **_kwargs: pytest.fail(
-            "odds-only refresh must not replace the shared candidate index"
-        ),
-    )
-
     args = autopilot.parse_args(
         [
             "--run-id",
@@ -5361,11 +5366,8 @@ def test_skip_primary_refresh_still_runs_odds_capture_refresh(tmp_path, monkeypa
     publication = json.loads(
         (output_dir / "current_race_index_publish.json").read_text(encoding="utf-8")
     )
-    assert publication == {
-        "schema_version": "collector_current_race_index_publish_v2",
-        "status": "SKIPPED",
-        "reason": "primary_candidate_refresh_not_run",
-    }
+    assert publication["status"] == "REJECTED"
+    assert publication["source_refresh_report_path"].endswith("/odds_capture_refresh_report.json")
     assert (output_dir / "rolling_model_comparison_status.json").exists()
     assert (output_dir / "high_accuracy_refinement_status.json").exists()
     rolling_status = json.loads(
@@ -6839,3 +6841,26 @@ def test_odds_capture_command_auto_fails_closed_without_browser_deps_or_uv(monke
         assert "odds_capture_dependencies_missing_and_uv_unavailable" in str(exc)
     else:
         raise AssertionError("expected missing odds capture dependencies to fail closed")
+
+
+
+def test_input_retention_capture_command_is_optional_and_lossless(tmp_path):
+    config = tmp_path / "input retention.json"
+    kwargs = dict(
+        input_dirs=[tmp_path / "upcoming"],
+        evidence_root=tmp_path,
+        capture_dir=tmp_path / "capture",
+        db_path=tmp_path / "synthetic.db",
+        current_time="2026-10-02T10:00:00+10:00",
+        limit=4,
+        execute=True,
+        allow_auto_scrape_odds=True,
+    )
+    default = autopilot.autonomous_live_odds_capture_command(**kwargs)
+    enabled = autopilot.autonomous_live_odds_capture_command(
+        **kwargs, input_retention_config=config
+    )
+    assert enabled == default + ["--input-retention-config", str(config)]
+    assert "--input-retention-config" not in default
+    args = autopilot.parse_args(["--input-retention-config", str(config)])
+    assert args.input_retention_config == config

@@ -19,6 +19,7 @@ import json
 import math
 import re
 import sys
+import time
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -1020,7 +1021,7 @@ def _trusted_sportsbet_url(value: Any, race_id: str) -> bool:
     if tokens & POST_RACE_URL_TOKENS:
         return False
     path_match = re.fullmatch(
-        r"/greyhound-racing/.+/race-(\d+)-\d+/?", parsed.path.lower()
+        r"/(?:betting/)?greyhound-racing/.+/race-(\d+)-\d+/?", parsed.path.lower()
     )
     race_match = re.fullmatch(
         rf"Race (\d+) - {VENUE_CODE_PATTERN} - \d{{4}}-\d{{2}}-\d{{2}}",
@@ -2605,6 +2606,7 @@ def score_from_artifacts(
     model_path: Path,
     manifest_path: Path,
     score_timestamp: datetime | None = None,
+    timing: dict | None = None,
 ) -> dict[str, Any]:
     """Validate immutable sealed inputs and return one outcome-free ranking."""
 
@@ -2741,7 +2743,10 @@ def score_from_artifacts(
                 "odds_capture_timestamp": fetch_time.isoformat(),
             }
         )
+    model_started = time.monotonic()
     frozen = load_frozen_model(model_path, manifest_path)
+    if timing is not None:
+        timing["model_load_seconds"] = time.monotonic() - model_started
     expected_ids = sorted(runner_ids)
     scoring_input = build_scoring_input(
         race_id=race_id,
@@ -2767,7 +2772,10 @@ def score_from_artifacts(
             "normalization": frozen.normalization,
         },
     )
+    inference_started = time.monotonic()
     record = score_race(frozen, scoring_input.scorer_runners, scoring_input.provenance)
+    if timing is not None:
+        timing["inference_seconds"] = time.monotonic() - inference_started
     if record.get("schema_version") != SHADOW_RECORD_SCHEMA:
         raise ManualPredictionError("scorer_record_schema_mismatch")
     core_output = build_core_output(scoring_input, record)

@@ -1,9 +1,12 @@
+import base64
 import hashlib
 import json
 import os
 import stat
 import subprocess
 import sys
+import time
+import tracemalloc
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -816,20 +819,30 @@ def test_enabled_generator_rejects_unit_path_with_wrong_basename(tmp_path, monke
         generate_package(**values, enabled=True)
 
 
+def write_sized_report(report, size):
+    """Pad a fixture with short strings, not a reader-invalid giant scalar."""
+    payload = json.loads(report.read_text())
+    payload["bounded_report_detail"] = [""]
+    overhead = len(json.dumps(payload, sort_keys=True).encode())
+    chunks = (size - overhead) // 1028
+    payload["bounded_report_detail"] = ["x" * 1024] * chunks + [""]
+    remainder = size - len(json.dumps(payload, sort_keys=True).encode())
+    assert 0 <= remainder < 1028
+    payload["bounded_report_detail"][-1] = "x" * remainder
+    report.write_text(json.dumps(payload, sort_keys=True))
+    assert report.stat().st_size == size
+
+
 @pytest.mark.parametrize("source_key", ["odds_report", "odds_refresh"])
-def test_generated_package_bootstraps_with_bounded_large_odds_reports(
+def test_generated_package_accepts_retained_odds_report_size(
     real_startup_tmp_path, monkeypatch, source_key
 ):
     values = deployment_inputs(real_startup_tmp_path)
     git_identity(monkeypatch)
     authority = json.loads(values["live_authority"].read_text())
     report = Path(authority["sources"][source_key])
-    payload = json.loads(report.read_text())
-    payload["bounded_report_detail"] = ""
-    encoded = json.dumps(payload, sort_keys=True).encode()
-    payload["bounded_report_detail"] = "x" * (512 * 1024 - len(encoded))
-    report.write_text(json.dumps(payload, sort_keys=True))
-    assert report.stat().st_size == 512 * 1024
+    # Independent size from the rejected 2026-09-16 refresh; synthetic bytes only.
+    write_sized_report(report, 596627)
 
     generate_package(**values, enabled=True)
     generated = load_generated_environment(monkeypatch, values)
@@ -840,12 +853,126 @@ def test_generated_package_bootstraps_with_bounded_large_odds_reports(
     assert bootstrap_module.configure_r3_startup(app) is True
 
 
+@pytest.mark.parametrize("size", [512 * 1024, 2 * 1024 * 1024])
+@pytest.mark.parametrize("source_key", ["odds_report", "odds_refresh"])
+def test_generated_package_bootstraps_with_bounded_large_odds_reports(
+    real_startup_tmp_path, monkeypatch, source_key, size
+):
+    values = deployment_inputs(real_startup_tmp_path)
+    git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    report = Path(authority["sources"][source_key])
+    write_sized_report(report, size)
+
+    generate_package(**values, enabled=True)
+    generated = load_generated_environment(monkeypatch, values)
+    app = Flask(__name__)
+    app.config[bootstrap_module.R3_PROFILE_KEY] = generated["OPERATOR_UI_R3_PROFILE"]
+    load_connected_environment(app)
+    monkeypatch.setattr(bootstrap_module, "_REPOSITORY_ROOT", values["source_root"])
+    assert bootstrap_module.configure_r3_startup(app) is True
+
+
+@pytest.mark.parametrize("case", [
+    "observed", "string_boundary", "over_string", "depth", "items",
+    "tampered_refresh", "grown_refresh", "startup_growth",
+])
+def test_packaged_collector_reads_retained_http_provenance(
+    real_startup_tmp_path, monkeypatch, record_property, case
+):
+    from tests.operator_ui.test_live_adapters import actual_payloads, NOW
+    from scripts.shadow_autopilot_daemon import (
+        odds_capture_service_file_text, odds_capture_timer_file_text,
+        service_file_text, timer_file_text,
+    )
+
+    values = deployment_inputs(real_startup_tmp_path)
+    git_identity(monkeypatch)
+    authority = json.loads(values["live_authority"].read_text())
+    payloads = actual_payloads()
+    refresh = payloads["odds_refresh"]
+    # Synthetic analogue of the retained 64,140-byte HTTP evidence strings.
+    body = base64.b64encode(b"x" * 48105).decode("ascii")
+    if case in {"string_boundary", "over_string"}:
+        body = "x" * (131072 + (case == "over_string"))
+    refresh["downloads"] = [{"result": {"normalization": {
+        "native_identity_evidence": {"race_page_http": {
+            "body_base64": body
+        }}
+    }}} for _ in range(15 if case == "string_boundary" else 9)]
+    if case == "depth":
+        nested = {}
+        for _ in range(13):
+            nested = {"nested": nested}
+        refresh["detail"] = nested
+    if case == "items":
+        refresh["detail"] = [0] * 100001
+    for key in ("odds_report", "odds_state"):
+        payloads[key]["autopilot_output_dir"] = str(Path(authority["sources"]["odds_refresh"]).parent)
+    for key in ("full_state", "full_report", "odds_state", "odds_report", "odds_refresh"):
+        Path(authority["sources"][key]).write_text(json.dumps(payloads[key], sort_keys=True, indent=2) + "\n")
+    for key, raw in {
+        "full_timer": timer_file_text(),
+        "full_service": service_file_text(repo_path=values["source_root"], timeout_seconds=840),
+        "odds_timer": odds_capture_timer_file_text(),
+        "odds_service": odds_capture_service_file_text(repo_path=values["source_root"], timeout_seconds=600),
+    }.items():
+        Path(authority["units"][key]).write_text(raw)
+    authority["observed_at"] = NOW.isoformat()
+    values["live_authority"].write_text(json.dumps(authority))
+
+    generate_package(**values, enabled=True)
+    generated = load_generated_environment(monkeypatch, values)
+    assert not any("JOURNAL" in name for name in generated)
+    app = Flask(__name__)
+    app.config[bootstrap_module.R3_PROFILE_KEY] = generated["OPERATOR_UI_R3_PROFILE"]
+    load_connected_environment(app)
+    monkeypatch.setattr(bootstrap_module, "_REPOSITORY_ROOT", values["source_root"])
+    refresh_path = Path(authority["sources"]["odds_refresh"])
+    if case == "startup_growth":
+        refresh_path.write_bytes(b" " * (2 * 1024 * 1024 + 1))
+        with pytest.raises(RuntimeError, match="fixed R3 runtime oversized"):
+            bootstrap_module.configure_r3_startup(app)
+        return
+    # Measure the near-cap packaged-startup + public collector read in pytest,
+    # not a standalone timing substituted for the integration gate.
+    measuring = case == "string_boundary"
+    if measuring:
+        assert not tracemalloc.is_tracing()
+        tracemalloc.start()
+    started = time.perf_counter()
+    try:
+        assert bootstrap_module.configure_r3_startup(app) is True
+        if case == "tampered_refresh":
+            refresh_path.write_bytes(refresh_path.read_bytes().replace(b"eHh4", b"eXh4", 1))
+        if case == "grown_refresh":
+            refresh_path.write_bytes(b" " * (2 * 1024 * 1024 + 1))
+        observation = app.config[bootstrap_module.CONFIG_KEY].collector(NOW)
+    finally:
+        if measuring:
+            _, peak = tracemalloc.get_traced_memory()
+            tracemalloc.stop()
+            record_property("startup_and_collector_peak_bytes", peak)
+            record_property("startup_and_collector_seconds", time.perf_counter() - started)
+            record_property("odds_report_bytes", Path(authority["sources"]["odds_report"]).stat().st_size)
+            assert peak < 64 * 1024 * 1024
+    odds = observation.data["lanes"][1]
+    expected = "RECEIPT_READY" if case in {"observed", "string_boundary"} else "INTEGRITY_FAILED"
+    if case == "tampered_refresh":
+        expected = "DIVERGENT"  # Hash/embedded-report disagreement, not malformed JSON.
+    assert odds["status"] == expected
+    if odds["status"] == "RECEIPT_READY":
+        assert odds["reference_hashes"]["odds_refresh"] == hashlib.sha256(refresh_path.read_bytes()).hexdigest()
+    assert "body_base64" not in json.dumps(observation.data)
+    assert not (values["operations_root"] / "jobs.sqlite3").exists()
+
+
 @pytest.mark.parametrize("source_key, maximum", [
     ("full_state", 512 * 1024),
     ("full_report", 512 * 1024),
     ("odds_state", 256 * 1024),
-    ("odds_report", 512 * 1024),
-    ("odds_refresh", 512 * 1024),
+    ("odds_report", 2 * 1024 * 1024),
+    ("odds_refresh", 2 * 1024 * 1024),
     ("corpus_report", 256 * 1024),
     ("corpus_manifest", 256 * 1024),
     ("deployment_manifest", 256 * 1024),
@@ -858,12 +985,7 @@ def test_generator_rejects_live_source_over_runtime_budget_before_writing_packag
     git_identity(monkeypatch)
     authority = json.loads(values["live_authority"].read_text())
     report = Path(authority["sources"][source_key])
-    payload = json.loads(report.read_text())
-    payload["bounded_report_detail"] = ""
-    encoded = json.dumps(payload, sort_keys=True).encode()
-    payload["bounded_report_detail"] = "x" * (maximum + 1 - len(encoded))
-    report.write_text(json.dumps(payload, sort_keys=True))
-    assert report.stat().st_size == maximum + 1
+    write_sized_report(report, maximum + 1)
 
     with pytest.raises(DeploymentRejected, match="oversized"):
         generate_package(**values, enabled=True)
@@ -1286,3 +1408,20 @@ def test_generator_digest_only_inventory_mutation_fails_closed(tmp_path, monkeyp
     replace_during_authority_read(monkeypatch, path, component=False)
     with pytest.raises(DeploymentRejected, match="authority.*changed|identity"):
         generate_package(**values, enabled=True)
+
+
+def test_generated_retained_binding_is_default_off_and_exact(tmp_path, monkeypatch):
+    values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
+    retained = values['evidence_root'] / 'synthetic-retained'
+    retained.mkdir()
+    value = {'Race 1 - WAR - 2030-01-01': {'path': str(retained), 'manifest_sha256':'a'*64}}
+    binding = tmp_path / 'retained-bindings.json'
+    binding.write_text(json.dumps(value))
+    result = generate_package(**values, retained_input_bindings=binding)
+    assert result['enabled'] is False
+    generated = json.loads((values['source_root'] / 'var/operator_ui/generated/repository-v1.binding.json').read_bytes())
+    assert generated['retained_inputs'] == value
+    monkeypatch.setattr(bootstrap_module, '_REPOSITORY_ROOT', values['source_root'])
+    assert bootstrap_module._repository_layout()['retained_inputs'] == value
+    assert 'OPERATOR_UI_R3_PROFILE=disabled' in (values['output_dir']/'operator-ui-r3.env').read_text()

@@ -148,7 +148,12 @@ def fetch_odds_for_target_race_with_timeout(
     *,
     allow_auto_scrape_odds: bool,
     timeout_seconds: float,
+    request_metrics_path: Path | None = None,
+    validate_result=None,
 ) -> dict[str, Any]:
+    metrics = {"request_metrics_path": request_metrics_path} if request_metrics_path is not None else {}
+    if validate_result is not None:
+        metrics["validate_result"] = validate_result
     if timeout_seconds <= 0:
         return fetch_odds_for_target_race(
             db_path,
@@ -156,6 +161,7 @@ def fetch_odds_for_target_race_with_timeout(
             race_number,
             race_date,
             allow_auto_scrape_odds=allow_auto_scrape_odds,
+            **metrics,
         )
     previous_handler = signal.getsignal(signal.SIGALRM)
     previous_timer = signal.setitimer(signal.ITIMER_REAL, float(timeout_seconds))
@@ -167,6 +173,7 @@ def fetch_odds_for_target_race_with_timeout(
             race_number,
             race_date,
             allow_auto_scrape_odds=allow_auto_scrape_odds,
+            **metrics,
         )
     finally:
         signal.setitimer(signal.ITIMER_REAL, 0.0)
@@ -824,6 +831,22 @@ def selected_races_by_key(report: Mapping[str, Any]) -> dict[tuple[str, str], di
 
 
 def refresh_report_for_input_dir(input_dir: Path) -> dict[str, Any]:
+    if input_dir.parent.name == "workers" and input_dir.name.isdecimal():
+        report = refresh_report_for_input_dir(input_dir.parent.parent)
+        directory = input_dir.resolve()
+        coverage = (report.get("sidecar_metadata_coverage") or {}).get("races") or []
+        urls = {row.get("race_url") for row in coverage if row.get("csv_path")
+                and Path(row["csv_path"]).resolve().parent == directory}
+        downloads = []
+        for row in report.get("downloads") or []:
+            result = row.get("result") or {}
+            raw_path = result.get("raw_export_path")
+            if raw_path and directory in Path(raw_path).resolve().parents:
+                urls.add(row.get("race_url"))
+                downloads.append(row)
+        return {**report,
+                "selected_races": [row for row in report.get("selected_races") or [] if row.get("race_url") in urls],
+                "downloads": downloads}
     candidates = [
         input_dir / "odds_capture_refresh_report.json",
         input_dir / "refresh_prejump_report.json",
@@ -2589,8 +2612,17 @@ def execute_capture_plan(
     progress_dir: Path | None = None,
     receipt_publisher: Callable[..., Mapping[str, Any]] | None = None,
     forward_corpus_admitter: Callable[..., Mapping[str, Any]] | None = None,
+    input_retainer: Callable[..., Mapping[str, Any]] | None = None,
+    live_freshness_contract: Path | None = None,
+    live_capture_reservation: Path | None = None,
 ) -> dict[str, Any]:
     time_provider = current_time_provider or (lambda: datetime.now().astimezone())
+    allowance = None
+    if live_freshness_contract is not None:
+        from race_collection.live_freshness_contract import FreshnessContract, AttemptAllowance
+
+        allowance = AttemptAllowance(FreshnessContract.load(live_freshness_contract))
+        plan = allowance.bind_capture_plan(live_capture_reservation, plan)
     attempts: list[dict[str, Any]] = []
     inserted_rows = 0
     validation_pass_count = 0
@@ -2636,6 +2668,10 @@ def execute_capture_plan(
             flush_attempt_progress(progress_dir, attempts=attempts)
             continue
         item = executable_item
+        if allowance is not None:
+            item = allowance.bind_capture_plan(live_capture_reservation, {"races": [item]})[
+                "races"
+            ][0]
         attempt["capture_window_minutes"] = item.get("capture_window_minutes")
         capture_mode = f"autonomous_prejump_t{item.get('capture_window_minutes')}m"
         existing_status = existing_capture_runner_status(
@@ -2672,6 +2708,12 @@ def execute_capture_plan(
             flush_attempt_progress(progress_dir, attempts=attempts)
             continue
 
+        from race_collection.live_freshness_contract import reject_unreserved_capture
+        reject_unreserved_capture(db_path, item, live_capture_reservation)
+        if live_freshness_contract is not None:
+            from race_collection.live_freshness_contract import FreshnessContract, AttemptAllowance
+            allowance = AttemptAllowance(FreshnessContract.load(live_freshness_contract))
+            allowance.start_fetch(live_capture_reservation, item, now=time_provider())
         attempt["status"] = "FETCH_IN_PROGRESS"
         attempt["fetch_timeout_seconds"] = fetch_timeout_seconds
         flush_attempt_progress(progress_dir, attempts=attempts, active_attempt=attempt)
@@ -2683,6 +2725,10 @@ def execute_capture_plan(
                 item.get("race_date"),
                 allow_auto_scrape_odds=True,
                 timeout_seconds=fetch_timeout_seconds,
+                **({"request_metrics_path": (allowance.claim.with_suffix(".requests.json") if allowance.scope.campaign else allowance.scope.session / "capture-requests.json")}
+                   if live_freshness_contract is not None else {}),
+                **({"validate_result": lambda result: validate_fetched_odds(item, result)["status"] == "PASS"}
+                   if live_freshness_contract is not None else {}),
             )
         except FetchTimeoutError as exc:
             attempt["status"] = "BLOCKED_FETCH_TIMEOUT"
@@ -2724,6 +2770,11 @@ def execute_capture_plan(
             flush_attempt_progress(progress_dir, attempts=attempts)
             continue
         item = append_item
+        if allowance is not None:
+            allowance.scope.admit(append_time, seconds=0)
+            item = allowance.bind_capture_plan(live_capture_reservation, {"races": [item]})[
+                "races"
+            ][0]
         attempt["capture_window_minutes"] = item.get("capture_window_minutes")
         capture_mode = f"autonomous_prejump_t{item.get('capture_window_minutes')}m"
         existing_status = existing_capture_runner_status(
@@ -2797,6 +2848,18 @@ def execute_capture_plan(
                     "status": "REJECTED",
                     "reason": type(exc).__name__,
                 }
+            if input_retainer is not None:
+                if attempt["collector_exact_receipt_publish"].get("status") == "PUBLISHED":
+                    try:
+                        attempt["input_retention"] = dict(input_retainer(
+                            plan_item=item, attempt=sealed_attempt,
+                            receipt_publish=attempt["collector_exact_receipt_publish"],
+                        ))
+                    except Exception:
+                        # Never serialize history-bearing exception details.
+                        attempt["input_retention"] = {"status": "REJECTED", "reason": "RETENTION_PROCESSING_FAILED"}
+                else:
+                    attempt["input_retention"] = {"status": "REJECTED", "reason": "EXACT_RECEIPT_UNAVAILABLE"}
             if (
                 attempt["collector_exact_receipt_publish"].get("status")
                 == "PUBLISHED"
@@ -2883,6 +2946,7 @@ def execute_capture_plan(
         final_status,
         blocked_attempt_count=len(blocked_attempts),
     )
+    retention_results = [a["input_retention"] for a in attempts if "input_retention" in a]
     return {
         "schema_version": "autonomous_live_odds_capture_report_v1",
         "generated_at": current_time.isoformat(),
@@ -2910,6 +2974,11 @@ def execute_capture_plan(
         "collector_exact_receipt_publish_failure_count": (
             receipt_publish_failure_count
         ),
+        **({
+            "input_retention_result_count": len(retention_results),
+            "input_retention_retained_count": sum(r.get("status") == "RETAINED" for r in retention_results),
+            "input_retention_rejected_count": sum(r.get("status") != "RETAINED" for r in retention_results),
+        } if input_retainer is not None else {}),
         "forward_corpus_admission_success_count": forward_corpus_success_count,
         "forward_corpus_admission_failure_count": (
             len(forward_corpus_results) - forward_corpus_success_count
@@ -3026,6 +3095,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--forward-corpus-root", type=Path)
     parser.add_argument("--forward-current-race-index-path", type=Path)
     parser.add_argument("--forward-baseline-config", type=Path)
+    parser.add_argument("--input-retention-config", type=Path)
+    parser.add_argument("--verify-live-runtime", action="store_true")
+    parser.add_argument("--live-freshness-contract", type=Path)
+    parser.add_argument("--live-capture-reservation", type=Path)
     return parser.parse_args(argv)
 
 
@@ -3036,6 +3109,28 @@ def main(
     current_index_reader: Callable[..., Any] | None = None,
 ) -> int:
     args = parse_args(argv)
+    if args.live_freshness_contract:
+        from race_collection.live_execution import configure_profile_execution
+
+        runtime = configure_profile_execution(args.live_freshness_contract)
+        if args.verify_live_runtime:
+            print(
+                json.dumps(
+                    {
+                        "executable": sys.executable,
+                        "prefix": sys.prefix,
+                        "browser_binaries": runtime["browser_binaries"],
+                        "dependency_installation": False,
+                    }
+                )
+            )
+            return 0
+    elif args.verify_live_runtime:
+        raise ValueError("profile_runtime_contract_required")
+    if args.live_freshness_contract:
+        from race_collection.live_freshness_contract import FreshnessContract, install_request_guard
+
+        install_request_guard(FreshnessContract.load(args.live_freshness_contract))
     current_time = parse_current_time(args.current_time)
     evidence_root = args.evidence_root
     output_dir = assert_output_dir_safe(
@@ -3051,6 +3146,12 @@ def main(
         current_time=current_time,
         limit=args.limit,
     )
+    if args.live_freshness_contract is not None:
+        from race_collection.live_freshness_contract import FreshnessContract, AttemptAllowance
+
+        plan = AttemptAllowance(
+            FreshnessContract.load(args.live_freshness_contract)
+        ).bind_capture_plan(args.live_capture_reservation, plan)
     manual_request_status = None
     if args.manual_request_id:
         if args.manual_request_root is None or not args.collector_run_id:
@@ -3164,6 +3265,18 @@ def main(
     elif args.forward_baseline_config is not None:
         raise ValueError("forward_baseline_config_requires_forward_corpus")
 
+    input_retainer = None
+    if args.input_retention_config is not None:
+        if receipt_protocol is None or not args.collector_run_id:
+            raise ValueError("input_retention_requires_existing_receipt_publisher")
+        from race_collection.scheduled_input_retention import ScheduledInputRetention
+
+        input_retainer = ScheduledInputRetention(
+            config_path=args.input_retention_config, evidence_root=evidence_root,
+            protocol_root=args.collector_receipt_root,
+            collector_run_id=args.collector_run_id, history_source=args.db,
+        )
+
     report = execute_capture_plan(
         plan,
         db_path=args.db,
@@ -3174,6 +3287,9 @@ def main(
         progress_dir=output_dir,
         receipt_publisher=receipt_publisher,
         forward_corpus_admitter=forward_corpus_admitter,
+        input_retainer=input_retainer,
+        live_freshness_contract=args.live_freshness_contract,
+        live_capture_reservation=args.live_capture_reservation,
     )
     report = {
         **capture_report_identity_fields(output_dir),

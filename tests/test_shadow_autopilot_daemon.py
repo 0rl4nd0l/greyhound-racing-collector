@@ -280,6 +280,7 @@ def test_run_once_exception_writes_terminal_daemon_report(tmp_path, monkeypatch)
             Path("forward-corpus")
         )
         assert "--forward-baseline-config" not in command
+        assert command[command.index("--input-retention-config") + 1] == "retention.json"
         raise RuntimeError("synthetic daemon failure")
 
     monkeypatch.setattr(daemon, "run_command", failing_run_command)
@@ -306,6 +307,8 @@ def test_run_once_exception_writes_terminal_daemon_report(tmp_path, monkeypatch)
             "runtime/odds-capture-state.json",
             "--forward-corpus-root",
             "forward-corpus",
+            "--input-retention-config",
+            "retention.json",
         ]
     )
 
@@ -317,6 +320,7 @@ def test_run_once_exception_writes_terminal_daemon_report(tmp_path, monkeypatch)
     assert report["exception_type"] == "RuntimeError"
     assert report["exception_message"] == "synthetic daemon failure"
     assert written["runtime_action"] == "CHECK_DAEMON_EXCEPTION"
+    assert generated["input_retention_config"] == Path("retention.json")
     assert generated["pause_path"] == (
         launch_dir / "shared-runtime" / "pause-heavy-scheduling"
     )
@@ -997,6 +1001,7 @@ def test_run_once_repeated_odds_priority_cannot_starve_full_primary(
     )
 
     monkeypatch.setattr(daemon, "ROOT", tmp_path)
+    monkeypatch.setattr(daemon, "protected_hashes", lambda: {})
     monkeypatch.setattr(daemon, "copy_if_exists", lambda source, dest: None)
     monkeypatch.setattr(
         daemon,
@@ -1163,16 +1168,11 @@ def test_run_once_non_deferred_validates_run_owned_service_files(
         "release_lock",
         lambda *args, **kwargs: {"status": "RELEASED"},
     )
-    monkeypatch.setattr(
-        daemon,
-        "run_command",
-        lambda **kwargs: {
-            "name": kwargs["name"],
-            "returncode": 0,
-            "timed_out": False,
-            "status": "PASS",
-        },
-    )
+    commands = {}
+    def recorded_command(**kwargs):
+        commands[kwargs["name"]] = kwargs["command"]
+        return {"name": kwargs["name"], "returncode": 0, "timed_out": False, "status": "PASS"}
+    monkeypatch.setattr(daemon, "run_command", recorded_command)
     monkeypatch.setattr(
         daemon,
         "rejoin_pending_shadow_runs",
@@ -1208,6 +1208,12 @@ def test_run_once_non_deferred_validates_run_owned_service_files(
         assert source_timer.read_text(encoding="utf-8") == (
             "reviewed timer template\n"
         )
+        from scripts import shadow_autopilot_v1 as autopilot
+        child = autopilot.parse_args(commands["autopilot_cycle"][2:])
+        assert child.r3_job_store == tmp_path / "r3-jobs.db"
+        assert child.r3_prediction_bundles == tmp_path / "r3-bundles"
+        assert child.skip_shadow_run and child.enable_autonomous_result_capture
+        assert "--skip-shadow-run" in service_path.read_text()
         raise ServiceValidationReached
 
     monkeypatch.setattr(daemon, "systemd_verify", verify_run_owned_service_files)
@@ -1215,6 +1221,12 @@ def test_run_once_non_deferred_validates_run_owned_service_files(
     args = daemon.parse_args(
         [
             "run-once",
+            "--state-path", str(tmp_path / "runtime/daemon_state.json"),
+            "--odds-capture-state-path", str(tmp_path / "runtime/odds_state.json"),
+            "--db", str(tmp_path / "fixture.db"),
+            "--enable-autonomous-result-capture", "--skip-shadow-run",
+            "--r3-job-store", str(tmp_path / "r3-jobs.db"),
+            "--r3-prediction-bundles", str(tmp_path / "r3-bundles"),
             "--run-id",
             "validation",
             "--evidence-root",
@@ -1820,6 +1832,7 @@ def test_run_once_lock_held_surfaces_latest_odds_capture_state(tmp_path, monkeyp
     )
 
     monkeypatch.setattr(daemon, "ROOT", tmp_path)
+    monkeypatch.setattr(daemon, "protected_hashes", lambda: {})
     monkeypatch.setattr(daemon, "copy_if_exists", lambda source, dest: None)
     monkeypatch.setattr(
         daemon,
@@ -3056,7 +3069,10 @@ def test_stale_lock_probe_replaces_dead_pid(tmp_path):
     assert report["stale_lock_cleaned"] is True
 
 
-def test_run_odds_capture_once_uses_lock_and_writes_compact_report(tmp_path, monkeypatch):
+@pytest.mark.parametrize("publication_status", ["PUBLISHED", "REJECTED", "SKIPPED", None])
+def test_run_odds_capture_once_uses_lock_and_writes_compact_report(
+    tmp_path, monkeypatch, publication_status
+):
     evidence_root = tmp_path / "artifacts/full_evidence_orchestration_20260525"
     output_dir = evidence_root / "shadow_autopilot_daemonization_v1_odds_only"
     db_path = tmp_path / "greyhound_racing_data.db"
@@ -3066,6 +3082,11 @@ def test_run_odds_capture_once_uses_lock_and_writes_compact_report(tmp_path, mon
     lock_path = launch_dir / "runtime" / "shadow.lock"
     state_path = evidence_root / "shadow_autopilot_daemon_runtime/odds_capture_state.json"
     autopilot_dir = evidence_root / "shadow_autopilot_v1_odds_only_autopilot"
+    publication = {
+        "schema_version": "collector_current_race_index_publish_v2",
+        "status": publication_status,
+        "source_refresh_report_path": str(autopilot_dir / "odds_capture_refresh_report.json"),
+    }
 
     monkeypatch.setattr(daemon, "ROOT", tmp_path)
     monkeypatch.chdir(launch_dir)
@@ -3101,6 +3122,8 @@ def test_run_odds_capture_once_uses_lock_and_writes_compact_report(tmp_path, mon
             for path in running_manifest["files"]
         )
         autopilot_dir.mkdir(parents=True)
+        if publication_status is not None:
+            daemon.write_json(autopilot_dir / "current_race_index_publish.json", publication)
         daemon.write_json(
             autopilot_dir / "autonomous_live_odds_capture_status.json",
             {
@@ -3201,11 +3224,11 @@ def test_run_odds_capture_once_uses_lock_and_writes_compact_report(tmp_path, mon
         "AUTONOMOUS_LIVE_ODDS_CAPTURE_NO_ELIGIBLE_WINDOWS"
     )
     assert report["allowed_write_scope"] == "append_only_live_odds_rows_when_validation_passes"
-    assert report["current_race_index_publish"] == {
+    assert report["current_race_index_publish"] == (publication if publication_status else {
         "schema_version": "collector_current_race_index_publish_v2",
-        "status": "SKIPPED",
-        "reason": "odds_capture_only_does_not_publish_candidate_index",
-    }
+        "status": "UNAVAILABLE",
+        "reason": "autopilot_publication_report_missing",
+    })
     assert not lock_path.exists()
     assert not (state_path.parent / "manual_prediction_current_race_index.json").exists()
     written = json.loads((output_dir / "odds_capture_only_daemon_report.json").read_text())
@@ -11015,3 +11038,75 @@ def test_full_service_generator_rejects_control_corpus_root(tmp_path, path):
             forward_corpus_root=Path(path),
             forward_baseline_config=Path("/runtime/forward-baseline.json"),
         )
+
+
+@pytest.mark.parametrize(
+    "writer,service_name,command",
+    [
+        (daemon.write_service_files, daemon.SERVICE_NAME, "run-once"),
+        (
+            daemon.write_odds_capture_service_files,
+            daemon.ODDS_CAPTURE_SERVICE_NAME,
+            "run-odds-capture-once",
+        ),
+    ],
+)
+def test_input_retention_service_opt_in_round_trips(
+    tmp_path, writer, service_name, command
+):
+    config = tmp_path / "input retention.json"
+    service_dir = tmp_path / "systemd"
+    result = writer(
+        service_dir=service_dir, repo_path=tmp_path, input_retention_config=config
+    )
+    service = (service_dir / service_name).read_text()
+    exec_start = next(
+        line.removeprefix("ExecStart=")
+        for line in service.splitlines()
+        if line.startswith("ExecStart=")
+    )
+    args = daemon.parse_args(shlex.split(exec_start)[2:])
+    assert args.command == command
+    assert args.input_retention_config == config
+    assert result["input_retention_config"] == str(config)
+    if command == "run-once":
+        fragments = daemon.expected_service_exec_fragments_for_run(args)
+        assert fragments[fragments.index("--input-retention-config") + 1] == str(config)
+
+
+@pytest.mark.parametrize(
+    "renderer", [daemon.service_file_text, daemon.odds_capture_service_file_text]
+)
+def test_input_retention_absent_service_unchanged(tmp_path, renderer):
+    assert renderer(repo_path=tmp_path, timeout_seconds=600) == renderer(
+        repo_path=tmp_path, timeout_seconds=600, input_retention_config=None
+    )
+    assert "--input-retention-config" not in renderer(
+        repo_path=tmp_path, timeout_seconds=600
+    )
+
+
+def test_input_retention_odds_only_command_reaches_autopilot_parser(tmp_path):
+    from scripts import shadow_autopilot_v1 as autopilot
+
+    config = tmp_path / "input retention.json"
+    kwargs = dict(
+        run_id="synthetic",
+        evidence_root=tmp_path,
+        lock_path=tmp_path / "lock",
+        current_time="2026-10-02T10:00:00+10:00",
+        db_path=tmp_path / "synthetic.db",
+        days_ahead=1,
+        refresh_limit=4,
+        odds_capture_min_minutes=0.0,
+        odds_capture_max_minutes=60.0,
+        odds_capture_refresh_limit=4,
+        timeout_seconds=600,
+    )
+    default = daemon.odds_capture_only_autopilot_command(**kwargs)
+    enabled = daemon.odds_capture_only_autopilot_command(
+        **kwargs, input_retention_config=config
+    )
+    assert enabled == default + ["--input-retention-config", str(config)]
+    assert autopilot.parse_args(enabled[2:]).input_retention_config == config
+    assert autopilot.parse_args(default[2:]).input_retention_config is None

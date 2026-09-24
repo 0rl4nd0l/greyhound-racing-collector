@@ -74,6 +74,7 @@ class R3Services:
     rate_limit: int = 5
     rate_window_seconds: int = 60
     observe_current_races: Callable[[], tuple[Mapping[str, Any], ...]] | None = None
+    observe_current_index: Callable[[], Any] | None = None
 
 
 class _ActorRateLimit:
@@ -120,8 +121,10 @@ def _sealed_request_matches_job(job: Job, value: Any) -> bool:
     request=value.request; provenance=job.input.operational_index_provenance
     if provenance is None or request.get("schema_version")!="on_demand_prediction_request_v2" or request.get("operational_index_provenance")!=provenance.fields():
         return False
+    if request.get("retained_input_manifest_sha256") != job.input.retained_input_manifest_sha256:
+        return False
     model=request.get("model",{})
-    if (request.get("job_id"),request.get("race_id"),request.get("jump_timestamp"),request.get("runner_set_sha256"),request.get("odds_source"),request.get("config_sha256")) != (job.job_id,job.input.race_id,job.input.jump_timestamp,job.input.runner_set_sha256,job.input.odds_source,job.input.config_sha256):
+    if (request.get("job_id"),request.get("race_id"),request.get("jump_timestamp"),request.get("runner_set_sha256"),request.get("odds_source"),request.get("config_sha256")) != (job.job_id,job.input.race_id,job.input.jump_timestamp,job.input.expected_prediction_runner_sha256,job.input.odds_source,job.input.config_sha256):
         return False
     if (model.get("requested"),model.get("resolved"),model.get("model_sha256"),model.get("manifest_sha256"),model.get("schema_sha256")) != (job.input.model_selector,job.input.resolved_model_identity,job.input.model_sha256,job.input.model_manifest_sha256,job.input.model_schema_sha256):
         return False
@@ -131,7 +134,7 @@ def _sealed_request_matches_job(job: Job, value: Any) -> bool:
 
 
 def finalize_producer_bundle(root: Path, store: JobStore, job: Job, *, capability: object,
-                             now: datetime, confirm_audit) -> Job:
+                             now: datetime, confirm_audit, completion_clock=None) -> Job:
     """Finalize one producer completion only from its verified indexed bundle."""
     if job.phase is not Phase.PRODUCER_COMPLETED:
         return job
@@ -184,7 +187,7 @@ def finalize_producer_bundle(root: Path, store: JobStore, job: Job, *, capabilit
     facts={
         "prediction_id":result["prediction_id"],"job_id":job.job_id,
         "race_id":result["race"]["race_id"],"jump_timestamp":result["race"]["jump_timestamp"],
-        "runner_set_sha256":result["evidence"]["runner_set_sha256"],
+        "runner_set_sha256":job.input.runner_set_sha256,
         "resolved_model_identity":result["model"]["resolved"],"model_sha256":result["model"]["artifact_sha256"],
         "model_manifest_sha256":result["model"]["artifact_manifest_sha256"],"model_schema_sha256":result["model"]["schema_sha256"],
         "config_id":job.input.config_id,"config_sha256":result["config"]["sha256"],
@@ -194,6 +197,11 @@ def finalize_producer_bundle(root: Path, store: JobStore, job: Job, *, capabilit
         "research_only":result["research_only"],"production_persisted":result["production_persisted"],
         "betting_output":result["betting_output"],"verification_status":verification,"blocker":blocker,
     }
+    if job.operation == "operational_prediction":
+        from datetime import timedelta
+        now = (completion_clock or (lambda: datetime.now(timezone.utc)))()
+        if now >= datetime.fromisoformat(job.input.jump_timestamp) - timedelta(seconds=60):
+            return fail("OPERATIONAL_VERIFICATION_DEADLINE_EXCEEDED")
     return store.verifier_transition(job.job_id,phase,capability=capability,now=now,status=status,reason=reason,facts=facts,confirm_audit=confirm_audit)
 
 
@@ -229,7 +237,7 @@ def _verified_result(job: Job, value: Any, events: list[Mapping[str,Any]] | None
     if (entry.get("prediction_id"),manifest.get("prediction_id")) != (result.get("prediction_id"),result.get("prediction_id")):
         return None
     race=result.get("race",{}); model=result.get("model",{}); config=result.get("config",{}); evidence=result.get("evidence",{})
-    if (race.get("race_id"),race.get("jump_timestamp"),evidence.get("runner_set_sha256")) != (job.input.race_id,job.input.jump_timestamp,job.input.runner_set_sha256):
+    if (race.get("race_id"),race.get("jump_timestamp"),evidence.get("runner_set_sha256")) != (job.input.race_id,job.input.jump_timestamp,job.input.expected_prediction_runner_sha256):
         return None
     if (model.get("requested"),model.get("resolved"),model.get("artifact_sha256"),model.get("artifact_manifest_sha256"),model.get("schema_sha256"),config.get("sha256")) != (job.input.model_selector,job.input.resolved_model_identity,job.input.model_sha256,job.input.model_manifest_sha256,job.input.model_schema_sha256,job.input.config_sha256):
         return None

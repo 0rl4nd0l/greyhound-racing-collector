@@ -632,6 +632,7 @@ def autonomous_live_odds_capture_command(
     forward_corpus_root: Path | None = None,
     forward_current_race_index_path: Path | None = None,
     forward_baseline_config: Path | None = None,
+    input_retention_config: Path | None = None,
     command_prefix: Sequence[str] | None = None,
 ) -> list[str]:
     command = list(command_prefix or odds_capture_command_prefix())
@@ -696,6 +697,8 @@ def autonomous_live_odds_capture_command(
         command.extend(
             ["--forward-baseline-config", str(forward_baseline_config)]
         )
+    if input_retention_config is not None:
+        command.extend(["--input-retention-config", str(input_retention_config)])
     if manual_request_id is not None:
         if manual_request_root is None or collector_run_id is None:
             raise ValueError("manual_request_collector_authority_missing")
@@ -732,7 +735,11 @@ def autonomous_official_result_capture_command(
     backlog_shadow_run_limit: int | None = None,
     backlog_lookback_days: int | None = None,
     execute_db_ingest: bool = False,
+    r3_job_store: Path | None = None,
+    r3_prediction_bundles: Path | None = None,
 ) -> list[str]:
+    if (r3_job_store is None) != (r3_prediction_bundles is None):
+        raise ValueError("R3 result discovery requires both bindings")
     command = [
         sys.executable,
         str(ROOT / "scripts/autonomous_official_result_capture.py"),
@@ -745,17 +752,22 @@ def autonomous_official_result_capture_command(
         "--db",
         str(db_path),
     ]
-    if upcoming_dir is not None:
+    if r3_job_store is not None:
+        command.extend(["--r3-job-store", str(r3_job_store),
+                        "--r3-prediction-bundles", str(r3_prediction_bundles)])
+        if backlog_limit is not None:
+            command.extend(["--backlog-limit", str(backlog_limit)])
+    if r3_job_store is None and upcoming_dir is not None:
         command.extend(["--upcoming-dir", str(upcoming_dir)])
-    if shadow_run_dir is not None:
+    if r3_job_store is None and shadow_run_dir is not None:
         command.extend(["--shadow-run-dir", str(shadow_run_dir)])
     if current_time:
         command.extend(["--current-time", current_time])
-    if snapshot_dir is not None:
+    if r3_job_store is None and snapshot_dir is not None:
         command.extend(["--snapshot-dir", str(snapshot_dir)])
-    if require_ready_snapshot:
+    if r3_job_store is None and require_ready_snapshot:
         command.append("--require-ready-snapshot")
-    if include_live_odds_backlog:
+    if r3_job_store is None and include_live_odds_backlog:
         command.append("--include-live-odds-backlog")
         if backlog_evidence_root is not None:
             command.extend(["--backlog-evidence-root", str(backlog_evidence_root)])
@@ -3821,6 +3833,11 @@ def refresh_command_prefix(mode: str = "auto") -> list[str]:
 
 
 def odds_capture_command_prefix(mode: str = "auto") -> list[str]:
+    if mode == "pinned":
+        from race_collection.live_execution import require_profile_dependencies
+
+        require_profile_dependencies()
+        return [sys.executable]
     if mode not in {"auto", "python", "uv"}:
         raise ValueError(f"unknown_odds_capture_command_mode:{mode}")
     if mode == "python" or (mode == "auto" and odds_capture_dependencies_available()):
@@ -3833,8 +3850,6 @@ def odds_capture_command_prefix(mode: str = "auto") -> list[str]:
         command.append("python")
         return command
     raise RuntimeError("odds_capture_dependencies_missing_and_uv_unavailable")
-
-
 
 
 def metric_from_source(
@@ -6663,9 +6678,26 @@ def publish_current_race_index_after_refresh(
     output_dir: Path,
     run_id: str,
     source_refresh_report_path: Path | None,
+    enforce_monotonic: bool = False,
+) -> dict[str, Any]:
+    from contextlib import nullcontext
+    from race_collection.live_phase_checkpoint import native_publication_lock
+    with native_publication_lock(evidence_root, exclusive=True) if enforce_monotonic else nullcontext():
+        return _publish_current_race_index_after_refresh(
+            state_path=state_path, evidence_root=evidence_root, output_dir=output_dir,
+            run_id=run_id, source_refresh_report_path=source_refresh_report_path,
+            enforce_monotonic=enforce_monotonic)
+
+
+def _publish_current_race_index_after_refresh(
+    *, state_path: Path | None, evidence_root: Path, output_dir: Path,
+    run_id: str, source_refresh_report_path: Path | None,
+    enforce_monotonic: bool = False,
 ) -> dict[str, Any]:
     """Publish the bounded index before the slower odds-capture batch begins."""
 
+    publication_started_at = datetime.now().astimezone()
+    publication_started = time.monotonic()
     if source_refresh_report_path is None:
         publication = {
             "schema_version": "collector_current_race_index_publish_v2",
@@ -6684,6 +6716,7 @@ def publish_current_race_index_after_refresh(
             evidence_root=evidence_root,
             source_refresh_report_path=source_refresh_report_path,
             run_id=run_id,
+            **({"enforce_monotonic": True} if enforce_monotonic else {}),
         )
     report_path = output_dir / CURRENT_RACE_INDEX_PUBLISH_REPORT_FILENAME
     report_path.write_bytes(canonical_bytes(publication))
@@ -6694,10 +6727,41 @@ def publish_current_race_index_after_refresh(
             publication_report_path=report_path,
             publication=publication,
         )
+    if enforce_monotonic and state_path is not None and publication.get("status") == "PUBLISHED":
+        from race_collection.live_freshness_contract import create_once, digest
+        events = state_path.parent / "live-publication-events"
+        previous = sorted(events.glob("*.json")) if events.exists() else []
+        predecessor = load_json(previous[-1]) if previous else None
+        create_once(events / f"{len(previous):06d}.json", {
+            "packet_sha256": publication["packet_sha256"],
+            "source_generated_at": publication["source_generated_at"],
+            "completed_at": datetime.now().astimezone().isoformat(),
+            "publication_report_path": str(report_path),
+            "previous_event_sha256": digest(predecessor) if predecessor else None,
+        })
+    write_json(output_dir / "current_index_publication_timing.json", {
+        "started_at": publication_started_at.isoformat(),
+        "completed_at": datetime.now().astimezone().isoformat(),
+        "elapsed_seconds": time.monotonic() - publication_started,
+        "status": publication.get("status"),
+        "source_generated_at": publication.get("source_generated_at"),
+    })
     return publication
 
 
 def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
+    from race_collection.live_phase_budget import LiveBudget
+
+    collection_phase = getattr(args, "collection_phase", None)
+    profile = getattr(args, "live_freshness_profile", None)
+    if profile:
+        from race_collection.live_freshness_contract import FreshnessContract
+        scope = FreshnessContract.load(args.live_freshness_contract)
+        scope.admit(datetime.now().astimezone(), seconds=80 if collection_phase == "refresh" else 50)
+        if collection_phase is None or args.forward_corpus_root or args.forward_baseline_config:
+            raise ValueError("profile_requires_operational_collection_phase")
+    if collection_phase and (not args.skip_shadow_run or args.input_retention_config):
+        raise ValueError("collection_phase_requires_predictions_and_retention_disabled")
     generated_at = datetime.now().astimezone()
     run_id = args.run_id or now_id(generated_at)
     evidence_root = args.evidence_root
@@ -6709,8 +6773,31 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=False)
 
     current_time = args.current_time or generated_at.isoformat()
-    protected_before = protected_hashes()
+    protected_before = {} if profile else protected_hashes()
     steps: list[dict[str, Any]] = []
+
+    def finish_collection_phase(**details: Any) -> dict[str, Any]:
+        passed = all(step.get("returncode") == 0 for step in steps)
+        if collection_phase == "refresh":
+            passed = passed and current_race_index_publish.get("status") == "PUBLISHED"
+        result = {
+            "schema_version": "shadow_autopilot_daily_status_v1",
+            "generated_at": generated_at.isoformat(),
+            "run_id": run_id,
+            "output_dir": relpath(output_dir),
+            "status": "PASS" if passed else "FAIL",
+            "final_verdict": "PARTIAL_AUTOMATION_READY" if passed else "COLLECTION_PHASE_BLOCKED",
+            "readiness_decision": "COLLECTION_PHASE_COMPLETED" if passed else "BLOCKED",
+            "collection_phase": collection_phase,
+            "steps": steps,
+            "current_race_index_publish": current_race_index_publish,
+            "maintenance_status": "DEFERRED_LIVE_FRESHNESS_PRIORITY",
+            "model_predictions_run": False,
+            **details,
+        }
+        write_json(output_dir / "DAILY_STATUS.json", result)
+        write_json(output_dir / "run_manifest.json", result)
+        return result
     refresh_dir = output_dir / "refreshed_upcoming"
     manual_protocol: ManualPredictionCollectorProtocol | None = None
     manual_request: CollectorRequest | None = None
@@ -6727,11 +6814,14 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         if collector_authority is not None
         else None
     )
+    if collection_phase and collector_authority is None:
+        raise RuntimeError("collection_phase_requires_owned_collector_lock")
     if (
         args.enable_autonomous_odds_capture
         and args.execute_autonomous_odds_capture
         and args.allow_auto_scrape_odds
         and collector_authority is not None
+        and collection_phase is None
     ):
         try:
             manual_protocol, manual_request = prepare_manual_collector_request(
@@ -6796,6 +6886,10 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             refresh_command.append("--dry-run")
         if args.require_safe_refresh_metadata:
             refresh_command.append("--require-safe-metadata")
+        if collection_phase == "refresh":
+            refresh_command.extend(["--workers", "2", "--refresh-budget-seconds", str(LiveBudget.for_profile(getattr(args, "live_freshness_profile", None)).refresh_seconds)])
+            if profile:
+                refresh_command.extend(["--live-freshness-contract", str(args.live_freshness_contract), "--trace-requests"])
         if manual_race_id is not None:
             refresh_command.extend(["--priority-race-id", manual_race_id])
         steps.append(
@@ -6803,7 +6897,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
                 name="refresh_prejump_races",
                 command=refresh_command,
                 output_dir=output_dir,
-                timeout_seconds=args.step_timeout_seconds,
+                timeout_seconds=None if collection_phase == "refresh" else args.step_timeout_seconds,
             )
         )
     else:
@@ -6824,6 +6918,22 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
                 "no_retrain_or_promotion": True,
             },
         )
+
+    current_race_index_publish = publish_current_race_index_after_refresh(
+        enforce_monotonic=bool(profile),
+        state_path=getattr(args, "current_race_index_state_path", None),
+        evidence_root=evidence_root,
+        output_dir=output_dir,
+        run_id=collector_run_id or run_id,
+        source_refresh_report_path=(
+            None
+            if args.skip_refresh or skip_primary_refresh
+            else output_dir / "refresh_prejump_report.json"
+        ),
+    )
+
+    if collection_phase == "refresh" and not skip_primary_refresh:
+        return finish_collection_phase()
 
     input_dirs = list(args.input_dir or [])
     if not input_dirs:
@@ -6868,6 +6978,10 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             odds_capture_refresh_command.append("--dry-run")
         if args.require_safe_refresh_metadata:
             odds_capture_refresh_command.append("--require-safe-metadata")
+        if collection_phase == "refresh":
+            odds_capture_refresh_command.extend(["--workers", "2", "--refresh-budget-seconds", str(LiveBudget.for_profile(getattr(args, "live_freshness_profile", None)).refresh_seconds)])
+            if profile:
+                odds_capture_refresh_command.extend(["--live-freshness-contract", str(args.live_freshness_contract), "--trace-requests"])
         if manual_race_id is not None:
             odds_capture_refresh_command.extend(
                 ["--priority-race-id", manual_race_id]
@@ -6877,27 +6991,28 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
                 name="refresh_odds_capture_candidates",
                 command=odds_capture_refresh_command,
                 output_dir=output_dir,
-                timeout_seconds=args.step_timeout_seconds,
+                timeout_seconds=None if collection_phase == "refresh" else args.step_timeout_seconds,
             )
         )
+        if skip_primary_refresh:
+            current_race_index_publish = publish_current_race_index_after_refresh(
+                enforce_monotonic=bool(profile),
+                state_path=getattr(args, "current_race_index_state_path", None),
+                evidence_root=evidence_root,
+                output_dir=output_dir,
+                run_id=collector_run_id or run_id,
+                source_refresh_report_path=output_dir / "odds_capture_refresh_report.json",
+            )
         odds_capture_input_dirs = [odds_capture_refresh_dir]
+
+    if collection_phase == "refresh":
+        return finish_collection_phase()
 
     autonomous_odds_capture_dir = evidence_root / f"autonomous_live_odds_capture_{run_id}_autopilot"
     autonomous_odds_capture_report: dict[str, Any] | None = None
     odds_capture_refresh_report = (
         load_json(output_dir / "odds_capture_refresh_report.json")
         or load_json(output_dir / "refresh_prejump_report.json")
-    )
-    current_race_index_publish = publish_current_race_index_after_refresh(
-        state_path=getattr(args, "current_race_index_state_path", None),
-        evidence_root=evidence_root,
-        output_dir=output_dir,
-        run_id=collector_run_id or run_id,
-        source_refresh_report_path=(
-            None
-            if args.skip_refresh or skip_primary_refresh
-            else output_dir / "refresh_prejump_report.json"
-        ),
     )
     if args.enable_autonomous_odds_capture:
         capture_current_time = (
@@ -6906,6 +7021,7 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             else current_time
         )
         autonomous_odds_command = autonomous_live_odds_capture_command(
+            command_prefix=odds_capture_command_prefix("pinned") if profile else None,
             input_dirs=odds_capture_input_dirs,
             evidence_root=evidence_root,
             capture_dir=autonomous_odds_capture_dir,
@@ -6914,13 +7030,9 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             limit=autonomous_odds_capture_limit,
             execute=args.execute_autonomous_odds_capture,
             allow_auto_scrape_odds=args.allow_auto_scrape_odds,
-            manual_request_root=(
-                manual_protocol.root if manual_protocol is not None else None
-            ),
+            manual_request_root=(manual_protocol.root if manual_protocol is not None else None),
             manual_request_id=(
-                str(manual_request.request["request_id"])
-                if manual_request is not None
-                else None
+                str(manual_request.request["request_id"]) if manual_request is not None else None
             ),
             collector_run_id=(
                 str(manual_request.claim["collector_run_id"])
@@ -6938,16 +7050,17 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             ),
             forward_corpus_root=args.forward_corpus_root,
             forward_current_race_index_path=(
-                collector_current_race_index_path(
-                    args.current_race_index_state_path
-                )
+                collector_current_race_index_path(args.current_race_index_state_path)
                 if args.forward_corpus_root is not None
                 and args.forward_baseline_config is None
                 and args.current_race_index_state_path is not None
                 else None
             ),
             forward_baseline_config=args.forward_baseline_config,
+            input_retention_config=args.input_retention_config,
         )
+        if profile:
+            autonomous_odds_command.extend(["--live-freshness-contract", str(args.live_freshness_contract), "--live-capture-reservation", str(args.live_capture_reservation)])
         autonomous_odds_step = step_command(
             name="autonomous_live_odds_capture",
             command=autonomous_odds_command,
@@ -7000,6 +7113,8 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         output_dir / "autonomous_live_odds_capture_status.json",
         autonomous_odds_capture_status,
     )
+    if collection_phase == "capture":
+        return finish_collection_phase(autonomous_live_odds_capture_status=autonomous_odds_capture_status)
 
     if manual_request is not None:
         input_dirs = list(odds_capture_input_dirs)
@@ -7118,10 +7233,15 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
         status["upcoming_dir"] = relpath(result_capture_upcoming_dir)
         status["shadow_run_dir"] = relpath(result_capture_shadow_dir)
         status["candidate_source"] = (
-            "shadow_run_predictions"
-            if result_capture_shadow_dir is not None
-            else "upcoming_or_snapshot"
+            "verified_r3_predictions" if args.r3_job_store is not None else
+            "shadow_run_predictions" if result_capture_shadow_dir is not None else
+            "upcoming_or_snapshot"
         )
+        if args.r3_job_store is not None:
+            status["upcoming_dir"] = None
+            status["shadow_run_dir"] = None
+            status["r3_job_store"] = str(args.r3_job_store)
+            status["r3_prediction_bundles"] = str(args.r3_prediction_bundles)
         return status
 
     if args.enable_autonomous_result_capture:
@@ -7144,6 +7264,8 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             backlog_shadow_run_limit=args.result_backlog_shadow_run_limit,
             backlog_lookback_days=args.result_backlog_lookback_days,
             execute_db_ingest=True,
+            r3_job_store=args.r3_job_store,
+            r3_prediction_bundles=args.r3_prediction_bundles,
         )
         autonomous_result_capture_status = add_autonomous_result_capture_context(
             build_autonomous_official_result_capture_status(
@@ -8585,12 +8707,17 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--collection-phase", choices=("refresh", "capture"))
+    parser.add_argument("--live-freshness-profile", choices=("bounded80-v1",))
+    parser.add_argument("--live-freshness-contract", type=Path)
+    parser.add_argument("--live-capture-reservation", type=Path)
     parser.add_argument("--run-id")
     parser.add_argument("--evidence-root", type=Path, default=DEFAULT_EVIDENCE_ROOT)
     parser.add_argument("--collector-lock-path", type=Path)
     parser.add_argument("--current-race-index-state-path", type=Path)
     parser.add_argument("--forward-corpus-root", type=Path)
     parser.add_argument("--forward-baseline-config", type=Path)
+    parser.add_argument("--input-retention-config", type=Path)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--current-time")
     parser.add_argument("--db", type=Path, default=ROOT / "greyhound_racing_data.db")
@@ -8644,6 +8771,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--execute-autonomous-odds-capture", action="store_true")
     parser.add_argument("--allow-auto-scrape-odds", action="store_true")
     parser.add_argument("--enable-autonomous-result-capture", action="store_true")
+    parser.add_argument("--r3-job-store", type=Path)
+    parser.add_argument("--r3-prediction-bundles", type=Path)
     parser.add_argument("--result-backlog-limit", type=int, default=DEFAULT_RESULT_BACKLOG_LIMIT)
     parser.add_argument(
         "--result-backlog-shadow-run-limit",
@@ -8656,6 +8785,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_RESULT_BACKLOG_LOOKBACK_DAYS,
     )
     args = parser.parse_args(argv)
+    if (args.r3_job_store is None) != (args.r3_prediction_bundles is None):
+        parser.error("--r3-job-store and --r3-prediction-bundles must be provided together")
+    if args.r3_job_store is not None and not args.enable_autonomous_result_capture:
+        parser.error("R3 result discovery requires --enable-autonomous-result-capture")
     if args.forward_baseline_config is not None and args.forward_corpus_root is None:
         parser.error(
             "--forward-baseline-config requires --forward-corpus-root"
@@ -8667,6 +8800,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     result = run_autopilot(args)
     print(json.dumps(result, indent=2, sort_keys=True))
+    if args.collection_phase:
+        return 0 if result.get("status") == "PASS" else 2
     return 0 if result.get("final_verdict") != "NEEDS_MORE_TOOLING" else 2
 
 

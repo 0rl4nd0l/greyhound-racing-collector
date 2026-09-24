@@ -17,6 +17,7 @@ import argparse
 import json
 import re
 import sys
+import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime, timedelta
@@ -414,10 +415,15 @@ def default_dependencies(args: argparse.Namespace) -> Dependencies:
             timeout_seconds=float(values["timeout_seconds"]),
         )
 
+    def timed_scorer(**values):
+        timing = {}
+        result = score_from_artifacts(**values, timing=timing)
+        return {**result, "_operational_timing": timing}
+
     return Dependencies(
         schedule=_default_schedule,
         seal_features=seal_live_features,
-        score_residual=score_from_artifacts,
+        score_residual=timed_scorer,
         now=lambda: datetime.now().astimezone(),
         capture_one=capture_one,
     )
@@ -500,12 +506,15 @@ def _sealed_result(
 def _seal_and_publish_v2(state: dict[str, Any], result: Mapping[str, Any]) -> None:
     bundle = Path(state["bundle"])
     _write_canonical(bundle / "result.json", result)
+    if state.get("timing") is not None:
+        _write_canonical(bundle / "stage-timing.json", state["timing"])
     manifest = build_prediction_bundle_manifest_v2(
         bundle, prediction_id=str(state["prediction_id"]), job_id=state["job_id"]
     )
     manifest_raw = canonical_bytes(manifest)
     _write_canonical(bundle / "bundle_manifest.json", manifest)
     state["terminal_sealed"] = True
+    state["sealed_result"] = dict(result)
     entry = prediction_bundle_index_entry(bundle=bundle, result=result, manifest_raw=manifest_raw)
     publish_prediction_bundle_index_entry(bundle.parent, entry)
     state["catalog_published"] = True
@@ -878,6 +887,10 @@ def _run_prediction(
         except (TypeError,json.JSONDecodeError) as exc:
             raise PredictionBlocked("PREDICTION_BUNDLE_IDENTITY_MISMATCH",field="operational_index_provenance") from exc
         operational_index_provenance=validate_operational_index_provenance(operational_index_provenance)
+    retained_root = getattr(args, "retained_input_bundle", None)
+    retained_digest = getattr(args, "retained_input_manifest_sha256", None)
+    if bool(retained_root) != bool(retained_digest) or (retained_root and args.odds_source != "receipt"):
+        raise PredictionBlocked("RETAINED_INPUT_INVALID")
     model = resolve_model(args.model)
     config, config_sha, config_raw = load_config(Path(args.config), model)
     from race_collection.synchronous_manual_capture import (
@@ -978,6 +991,8 @@ def _run_prediction(
         "runners": state["runners"],
         "runner_set_sha256": state["runner_set_sha256"],
     }
+    if retained_root is not None:
+        request["retained_input_manifest_sha256"] = retained_digest
     if operational_index_provenance is not None:
         request["operational_index_provenance"]=operational_index_provenance
     _write_canonical(bundle / "request.json", request)
@@ -1039,7 +1054,17 @@ def _run_prediction(
     runner_names = [str(row["dog_name"]) for row in receipt["markets"]["win"]]
     sealed_db = bundle / "features" / "sealed_history.db"
     history_path = bundle / "features" / "history_seal.json"
-    if not sealed_db.exists():
+    history_started = time.monotonic()
+    retained = None
+    if retained_root is not None:
+        from src.predictor.retained_inputs import consume_retained_inputs
+        retained = consume_retained_inputs(
+            root=retained_root, expected_manifest_sha256=retained_digest, bundle=bundle,
+            race_id=race_id, jump=jump, now=dependencies.now(), model=model,
+            config_sha256=config_sha, ready_receipt=ready_receipt, repository_root=ROOT,
+        )
+        history = retained["history"]
+    elif not sealed_db.exists():
         history = seal_history_database(
             source=Path(args.db),
             target=sealed_db,
@@ -1057,6 +1082,7 @@ def _run_prediction(
         raise PredictionBlocked("TARGET_EXCLUSION_WEAK")
     state["authenticated_cutoff"]={"history_seal_sha256":sha256_file(history_path),"cutoff_timestamp":str(history["cutoff_timestamp"]),"source_sha256":str(history["source_sha256"]),"sealed_sha256":str(history["sealed_sha256"])}
 
+    state["timing"]["history_or_retained_input_seconds"] = time.monotonic() - history_started
     score_time = dependencies.now()
     if score_time >= jump:
         raise PredictionBlocked("POST_JUMP", race_id=race_id)
@@ -1066,6 +1092,7 @@ def _run_prediction(
     else:
         feature_dir = bundle / "features" / "sealed"
         try:
+            feature_started = time.monotonic()
             sealed = dependencies.seal_features(
                 form_csv=form_csv,
                 db_path=sealed_db,
@@ -1078,7 +1105,11 @@ def _run_prediction(
             raise PredictionBlocked(
                 "FEATURE_SEAL_FAILED", error=type(exc).__name__
             ) from exc
+        state["timing"]["feature_generation_seconds"] = time.monotonic() - feature_started
         feature_rows = json.loads(Path(sealed["feature_rows"]).read_bytes())
+        if retained is not None:
+            from src.predictor.retained_inputs import verify_retained_features
+            verify_retained_features(retained, feature_rows, bundle / "model/model.json")
         unsafe_rows = [
             row
             for row in feature_rows
@@ -1090,6 +1121,7 @@ def _run_prediction(
         if unsafe_rows:
             raise PredictionBlocked("TARGET_EXCLUSION_WEAK")
         try:
+            scorer_started = time.monotonic()
             artifact_prediction = dependencies.score_residual(
                 race_id=race_id,
                 form_csv_path=form_csv,
@@ -1108,6 +1140,8 @@ def _run_prediction(
             raise PredictionBlocked(
                 "RESIDUAL_SCORER_FAILED", error=type(exc).__name__
             ) from exc
+        state["timing"]["scorer_validation_load_inference_seconds"] = time.monotonic() - scorer_started
+        state["timing"].update(artifact_prediction.get("_operational_timing", {}))
         if (
             artifact_prediction.get("model_sha256") != model.model_sha256
             or artifact_prediction.get("manifest_sha256") != model.manifest_sha256
@@ -1149,6 +1183,8 @@ def _run_prediction(
     completed_time = dependencies.now()
     if completed_time.tzinfo is None or completed_time.utcoffset() is None:
         raise PredictionBlocked("CURRENT_TIME_TIMEZONE_MISSING")
+    if retained is not None and completed_time >= retained["cutoff"]:
+        raise PredictionBlocked("RETAINED_INPUT_INVALID")
     if completed_time >= jump:
         raise PredictionBlocked(
             "POST_JUMP", race_id=race_id, completed_at=completed_time.isoformat()
@@ -1197,7 +1233,7 @@ def _run_prediction(
 def run_prediction(
     args: argparse.Namespace, dependencies: Dependencies
 ) -> dict[str, Any]:
-    state: dict[str, Any] = {}
+    state: dict[str, Any] = {"timing": {}}
     try:
         return _run_prediction(args, dependencies, state)
     except PredictionBlocked as exc:
@@ -1205,6 +1241,7 @@ def run_prediction(
         if bundle is not None and not state.get("terminal_sealed"):
             try:
                 _persist_blocked_bundle(state, exc, dependencies.now())
+                exc.sealed_result = state.get("sealed_result")
             except (OSError, TypeError, ValueError, PredictionBlocked) as persist_exc:
                 # Never replace the smallest operational blocker with a reporting failure.
                 exc.details["bundle"] = str(bundle.resolve())
@@ -1218,6 +1255,7 @@ def run_prediction(
         if bundle is not None and not state.get("terminal_sealed"):
             try:
                 _persist_blocked_bundle(state, blocked, dependencies.now())
+                blocked.sealed_result = state.get("sealed_result")
             except (OSError, TypeError, ValueError, PredictionBlocked) as persist_exc:
                 blocked.details["bundle"] = str(bundle.resolve())
                 blocked.details["bundle_persistence_error"] = type(persist_exc).__name__
@@ -1371,6 +1409,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--odds-source", choices=("auto", "receipt", "capture"), default="auto"
     )
+    parser.add_argument("--retained-input-bundle", type=Path)
+    parser.add_argument("--retained-input-manifest-sha256")
     parser.add_argument("--db", type=Path, default=DEFAULT_DB)
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--current-time")
@@ -1409,6 +1449,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
         if "bundle" in exc.details:
             output["bundle"] = exc.details["bundle"]
+        if getattr(exc, "sealed_result", None) is not None:
+            output = exc.sealed_result
     print(canonical_bytes(output).decode(), end="")
     return 0 if output.get("status") in {"PREDICTION_READY", "CONFIGS_AVAILABLE"} else 2
 

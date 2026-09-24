@@ -8,6 +8,7 @@ function is called.
 
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
 import time
@@ -430,6 +431,8 @@ def fetch_odds_for_target_race(
     race_number: int | None,
     race_date: Any = None,
     allow_auto_scrape_odds: bool | None = None,
+    request_metrics_path=None,
+    validate_result=None,
 ) -> dict[str, Any]:
     """Fetch current Sportsbet odds for a target race without writing DB rows."""
 
@@ -467,11 +470,39 @@ def fetch_odds_for_target_race(
         allow_auto_scrape_odds=True,
         setup_database=False,
     )
+    inspection = None
+    if os.environ.get("GREYHOUND_SPORTSBET_RESPONSE_INSPECTION") == "1":
+        if request_metrics_path is None:
+            raise ValueError("response_inspection_requires_evidence_path")
+        from datetime import datetime, timedelta, timezone
+        from utils.sportsbet_response_inspection import ResponseInspection
+        inspection = ResponseInspection(expires_at=datetime.now(timezone.utc) + timedelta(seconds=50))
+        integrator.response_inspection = inspection
+    network_accounting = None
     try:
         if not integrator.setup_driver():
             summary["warnings"].append("selenium driver unavailable")
             return summary
         driver = integrator.driver
+        if request_metrics_path is not None and os.environ.get("GREYHOUND_LIVE_EXECUTION"):
+            from race_collection.live_execution import BrowserNetworkAccounting
+
+            network_accounting = BrowserNetworkAccounting(driver, request_metrics_path)
+        elif request_metrics_path is not None:
+            from race_collection.live_phase_checkpoint import atomic_json
+            navigation_count = 0
+            navigate = driver.get
+
+            def counted_navigation(url):
+                nonlocal navigation_count
+                navigation_count += 1
+                atomic_json(request_metrics_path, {
+                    "browser_navigation_attempts": navigation_count,
+                    "subresource_requests": "UNMEASURED",
+                })
+                return navigate(url)
+
+            driver.get = counted_navigation
         driver.get(integrator.greyhound_url)
 
         time.sleep(5)
@@ -490,6 +521,13 @@ def fetch_odds_for_target_race(
             selected = parsed
             break
         if not selected:
+            remaining = getattr(driver, "sportsbet_navigation_remaining", lambda: None)()
+            # A meeting lookup and the subsequent exact race load require two
+            # further navigations. Reject before starting an impossible route.
+            if remaining is not None and remaining < 2:
+                summary["warnings"].append("target_race_not_visible_within_navigation_allowance")
+                summary["discovery_method"] = "sportsbet_landing_exact_race_unavailable"
+                return summary
             selected = _resolve_target_race_from_meeting(
                 integrator,
                 driver,
@@ -521,9 +559,44 @@ def fetch_odds_for_target_race(
         summary["success"] = summary["win_count"] > 0
         if not summary["success"]:
             summary["warnings"].append("race found but no win odds extracted")
+        if validate_result is not None and validate_result(summary):
+            driver.sportsbet_accept_validated_data()
+        if inspection is not None:
+            driver.sportsbet_inspect_response_shapes()
         return summary
     finally:
-        integrator.close_driver()
+        try:
+            if network_accounting is not None:
+                network_accounting.drain()
+        finally:
+            try:
+                if (inspection is not None and integrator.driver is not None
+                        and inspection.clock() < inspection.expires_at
+                        and time.monotonic() - inspection.started < 40):
+                    # Read only the existing DOM, including after stopped loading.
+                    # Counts are diagnostic evidence, never market/receipt proof.
+                    try:
+                        counts = integrator.driver.sportsbet_snapshot_dom_counts()
+                        if isinstance(counts, dict) and all(
+                            type(counts.get(key)) is int and counts[key] >= 0
+                            for key in ('runner_elements', 'price_elements')
+                        ):
+                            inspection.dom_snapshot = {
+                                'state': 'counts_only_not_validated_prices',
+                                **{key: counts[key] for key in ('runner_elements', 'price_elements')},
+                            }
+                    except TimeoutError:
+                        raise
+                    except Exception:
+                        inspection.dom_snapshot = {'state': 'unavailable'}
+            finally:
+                try:
+                    integrator.close_driver()
+                finally:
+                    if inspection is not None:
+                        from pathlib import Path
+                        from race_collection.live_phase_checkpoint import atomic_json
+                        atomic_json(Path(request_metrics_path).with_suffix(".responses.json"), inspection.report())
 
 
 def ensure_odds_for_target_race(
@@ -592,6 +665,13 @@ def ensure_odds_for_target_race(
             selected = parsed
             break
         if not selected:
+            remaining = getattr(driver, "sportsbet_navigation_remaining", lambda: None)()
+            # A meeting lookup and the subsequent exact race load require two
+            # further navigations. Reject before starting an impossible route.
+            if remaining is not None and remaining < 2:
+                summary["warnings"].append("target_race_not_visible_within_navigation_allowance")
+                summary["discovery_method"] = "sportsbet_landing_exact_race_unavailable"
+                return summary
             selected = _resolve_target_race_from_meeting(
                 integrator,
                 driver,

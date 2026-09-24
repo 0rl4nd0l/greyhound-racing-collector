@@ -1,0 +1,9 @@
+Command:
+TRACE_MALLOC=0 PYTHONDONTWRITEBYTECODE=1 /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-python311-20260803-9d58f340/bin/python -m pytest -q tests/operator_ui/test_journal_coordinator.py -k 'readiness_accepts_declared_source_race_aliases'
+
+Result:
+2 passed, 33 deselected in 0.88s
+
+Cases:
+- Race 1 - SHEP - 2026-09-15 vs Race 1 - SHEPPARTON - 2026-09-15
+- Race 2 - QOT - 2026-09-15 vs Race 2 - LADBROKES-Q-STRAIGHT - 2026-09-15
