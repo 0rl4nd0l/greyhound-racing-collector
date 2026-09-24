@@ -612,3 +612,22 @@ midnight after 21:20, while this contract seals one source date. Both opt-in
 service renderers now request days-ahead=0; legacy services keep days-ahead=1.
 The red test reproduced both incorrect generated commands. No additional dates
 or weakened freshness limits are authorized by this change.
+
+Candidate 66115ddc03917287e3b9cbd8567488201450f15a passed the real packaged
+Sandown capture/retention/frozen-prediction test in 29.09 seconds and the generated
+service handoff regression in 38.35 seconds, both with network denied. The latter
+test's expected reverse-deferral exit was corrected to 2 with failed service
+state; deferred work is not relabeled as successful collection. Only the test
+changed after candidate packaging; exported production bytes remained pinned.
+
+The 21:30–22:30 package has plan SHA256
+e0edead06791aa49ed296c6af4cc3f42e018383dda84ba6bbbea4c4bb92a4a1d and
+source archive SHA256 a806f39f353e25a5f1e244fc21735943fb7d9c7305595e4aa55c25ca4c972fc6.
+Independent package verification passed 36 checks, including all 801 exported
+source files, unchanged 41-member generator and frozen model/configuration.
+Audit SHA256 8dc980934a9b5dd3b603a000c32969e1635ff19af34cf6d0a0d830aa94a7b689.
+The prospective source renewal extends expiry to 22:30 while retaining the
+remaining 85 operations under the same cumulative ceiling of 252. All 167 prior
+operations, four denials and elapsed not-before timestamp remain unchanged.
+Observation started under existing preflight and rollback controls; no sustained
+success is claimed at preparation.

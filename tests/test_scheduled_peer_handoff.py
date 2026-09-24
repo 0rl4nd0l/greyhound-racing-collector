@@ -129,7 +129,7 @@ def test_second_full_service_waits_for_actual_odds_child_then_completes(tmp_path
         raw={key:(package/'units'/name).read_bytes() for key,name in unit_map.items()}
         hashes={key:hashlib.sha256(value).hexdigest() for key,value in raw.items()}
         full_invocation, odds_invocation = '4'*32, '3'*32
-        def observe(active, peer_active=None):
+        def observe(active, peer_active=None, *, peer_failed=False):
             peer_active = active if peer_active is None else peer_active
             current=datetime.now(ZoneInfo('Australia/Melbourne'))
             args={**raw,**{key+'_sha256':value for key,value in hashes.items()},
@@ -137,7 +137,8 @@ def test_second_full_service_waits_for_actual_odds_child_then_completes(tmp_path
                   'full_unit_name':'shadow-autopilot.service','odds_unit_name':'shadow-autopilot-odds-capture.service',
                   'full_active_state':'activating' if active else 'inactive','full_sub_state':'start' if active else 'dead',
                   'full_exec_main_pid':full.pid if active else 0,
-                  'odds_active_state':'activating' if peer_active else 'inactive','odds_sub_state':'start' if peer_active else 'dead',
+                  'odds_active_state':'activating' if peer_active else ('failed' if peer_failed else 'inactive'),
+                  'odds_sub_state':'start' if peer_active else ('failed' if peer_failed else 'dead'),
                   'odds_exec_main_pid':peer.pid if peer_active else 0,
                   'full_service_invocation_id':full_invocation,
                   'odds_service_invocation_id':odds_invocation}
@@ -185,19 +186,19 @@ def test_second_full_service_waits_for_actual_odds_child_then_completes(tmp_path
         wait_for(marker.exists)
         peer=start('odds','fixture_deferred_odds_capture',odds_invocation)
         peer_report=report('fixture_deferred_odds_capture','odds')
-        assert peer.wait(timeout=100)==0
+        assert peer.wait(timeout=100)==2
         deferred=json.loads(peer_report.read_bytes())
         assert deferred['runtime_action']=='DEFERRED_LOCK_HELD'
         active_full=json.loads(full_report.read_bytes())
         assert active_full['lock']['pid'] != full.pid
         assert deferred['deferred_lock_owner']['pid']==active_full['timing']['process_pid']
-        reverse=observe(True,peer_active=False)
+        reverse=observe(True,peer_active=False,peer_failed=True)
         assert next(lane for lane in reverse['lanes'] if lane['lane']=='ODDS_ONLY')['status']=='WAITING_FOR_PEER', reverse
         assert reverse['collector_status']=='AVAILABLE/FRESH', reverse
         release.touch()
         assert full.wait(timeout=100)==0
         assert json.loads(full_report.read_bytes())['runtime_action']=='LIVE_COLLECTION_COMPLETE'
-        assert observe(False)['collector_status']=='AVAILABLE/FRESH'
+        assert observe(False,peer_failed=True)['collector_status']=='AVAILABLE/FRESH'
         assert not (scope.session/'STOP.json').exists()
     finally:
         if paused_full_pid is not None:
