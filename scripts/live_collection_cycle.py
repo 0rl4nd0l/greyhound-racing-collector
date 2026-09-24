@@ -753,6 +753,10 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                 try:
                     # Fund the entire bounded capture, including child startup, before
                     # consuming. A stale queued item never becomes a later window.
+                    if scope.value.get("operational_predictions") and (
+                        datetime.fromisoformat(inputs["race_identity"]["jump_datetime"]) - daemon.wall_clock_now()
+                    ).total_seconds() < 300:
+                        raise ValueError("insufficient_capture_retention_prediction_margin")
                     allowance.check_window(inputs, now=daemon.wall_clock_now(), required_seconds=50)
                     inputs["reservation_path"] = str(
                         allowance.reserve(inputs, now=daemon.wall_clock_now())
@@ -760,7 +764,7 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                 except ValueError as error:
                     if str(error) not in {
                         "capture_reservation_expired", "capture_reservation_not_open",
-                        "capture_window_insufficient_time",
+                        "capture_window_insufficient_time", "insufficient_capture_retention_prediction_margin",
                     }:
                         raise
                     checkpoint.value["pending"].pop(0)

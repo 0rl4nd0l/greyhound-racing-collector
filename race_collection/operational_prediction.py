@@ -84,7 +84,10 @@ def classify_unready_capture(claim_path, result, evidence, source_root):
     if fetch_at < datetime.fromisoformat(reserved["reserved_at"]):
         return None
     AttemptAllowance.check_window(item, now=fetch_at)
-    SportsbetAccess().check_admission()
+    gate = SportsbetAccess()
+    gate.check_admission()
+    if gate.read()["phase"] != "OPEN":
+        return None
     return {"status": "UNREADY_NO_CAPTURE", "race_id": item["race_id"],
             "capture_window_minutes": item["capture_window_minutes"], "reason": marker,
             "attempt_report_sha256": hashlib.sha256(raw).hexdigest(),
