@@ -131,6 +131,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--url", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument(
+        "--headed", action="store_true", help="Use standard headed Chrome; requires a display"
+    )
     args = parser.parse_args()
     if not public_host(args.url) or urlsplit(args.url).scheme != "https":
         raise ValueError("odds_public_url_required")
@@ -165,7 +168,7 @@ def main():
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(
             executable_path="/usr/bin/google-chrome",
-            headless=True,
+            headless=not args.headed,
             args=["--disable-background-networking"],
         )
         context = browser.new_context(service_workers="block")
@@ -185,6 +188,12 @@ def main():
 
         context.route_web_socket("**/*", block_socket)
         page = context.new_page()
+        record["browser"] = {
+            "headed": args.headed,
+            "profile": "fresh",
+            "user_agent": page.evaluate("navigator.userAgent"),
+            "webdriver": page.evaluate("navigator.webdriver"),
+        }
         started = time.monotonic()
         ids = {}
 
@@ -197,6 +206,12 @@ def main():
                 "observed_at": now(),
                 **route_metadata(request.url),
             }
+            requested_url = urlsplit(request.url)
+            if (
+                requested_url.hostname == "challenges.cloudflare.com"
+                and requested_url.path.startswith("/turnstile/")
+            ):
+                record["stop"] = "challenge_request"
             allowed = (
                 public_host(request.url)
                 and not record["stop"]
@@ -233,6 +248,15 @@ def main():
                 "observed_at": now(),
                 "elapsed_seconds": time.monotonic() - started,
                 **route_metadata(resp.url),
+            }
+            # Diagnostic response metadata only; never cookies, authentication,
+            # request headers or denial bodies. Unknown/oversized values omitted.
+            row["diagnostic_headers"] = {
+                key: value
+                for key in ("server", "content-type", "cf-mitigated", "x-cache", "retry-after")
+                if (value := resp.headers.get(key)) is not None
+                and len(value) <= 120
+                and re.fullmatch(r"[A-Za-z0-9 .,;:/_+=()\-]+", value)
             }
             record["responses"].append(row)
             if resp.status in {401, 403, 429}:

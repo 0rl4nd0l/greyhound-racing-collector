@@ -1,6 +1,62 @@
 # Odds.com.au alternative acquisition: bounded investigation
 
-## Verdict
+## User-authorized headed follow-up, 14:08 AEST
+
+The user reported ordinary Chrome/Edge access works and explicitly authorized
+trying the different browser method. One additional bounded page load was made
+with **headed Chrome**, the same executable/host, a fresh profile, and unchanged
+host/redirect/request limits. No user-agent spoofing, proxy change, stealth flags,
+saved account profile or challenge solving was used. Chrome's ordinary user-agent
+was verified on `about:blank` with outbound networking denied before the attempt:
+`Chrome/146.0.0.0` replaced the headless run's `HeadlessChrome/146.0.0.0`.
+`navigator.webdriver` remained true; this remains an automated browser, not the
+user's existing session. No desktop display was available, so an official Ubuntu
+Xvfb package was downloaded (866 kB) and extracted locally under the isolated
+evidence directory. No system packages or production services were changed.
+The owned virtual display and browser were closed after the attempt.
+
+At **14:08:22.772210 AEST** the same public page returned **HTTP 202**, with
+`server: CloudFront`, `x-cache: LambdaGeneratedResponse from cloudfront`, and
+HTML content type. Its next attempted resource was
+`https://challenges.cloudflare.com/turnstile/v0/api.js` (query values discarded).
+**Our Odds-only host allowlist blocked that script before transport.** No
+Cloudflare denial was observed and the verification flow was not completed.
+The HTTP 202 body's contents were not read or retained. The evidence is
+consistent with a browser-verification step; it does not establish the cause of
+the earlier 403, successful normal-browser access, or a usable odds response.
+Time also changed between attempts, so headless mode alone is not proven causal.
+
+This follow-up admitted **one Odds.com.au GET**, blocked one script, and made
+**zero Cloudflare, Sportsbet or bookmaker requests**. Cumulative site consumption
+across the two separately authorized observations is **two Odds.com.au GETs**;
+no data endpoint, redirect, odds capture or recovery operation was admitted.
+Sportsbet's canonical source-state SHA-256 was byte-identical before and after:
+`e20281969c94eacc1f46cb0f2d3565cc226396d059a8ad26a693cdd238f7e4d9`.
+The separate Sportsbet recovery owner was notified; this task holds no Sportsbet
+execution authority and has no remaining planned provider traffic.
+
+The immutable original receipt is
+[headed observation](../../tests/fixtures/odds_com_au_headed_observation_20260924.json),
+SHA-256 `4d6f2381f6df7b96fe495da1dfd11ac5250bdc93346a471a71030834531416c2`.
+It records `stop: null`: the guard correctly blocked the cross-host script but
+had not classified a Turnstile request as a terminal challenge. That reporting
+and admission gap was fixed **offline afterward**: such a request now sets
+`challenge_request`, blocks all subsequent admissions, and never fetches the
+challenge. The original observation was not rewritten or rerun.
+
+The final tooling adds opt-in `--headed`, records local browser identity and a
+small allowlist of non-secret diagnostic response headers, and preserves every
+existing request/source boundary. **33 network-denied tests passed in 0.65s**,
+including headed denial and HTTP 202 followed by blocked Turnstile and same-site
+requests. Log: `/home/l4nd0/greyhound-odds-com-au-evidence-20260924/headed-final-tests.log`,
+SHA-256 `605db210d3fe0bcabbe08f50d8bda44bda853c4866c7f0dcd664f3fb171482f8`.
+The earlier counts, hashes and environment below describe the initial observation
+and initial committed candidate. No odds adapter or receipt relaxation is justified
+by either observation. A future access test must explicitly account for normal
+verification dependencies; this attempt's host filter means it was not a full
+unrestricted normal-browser comparison.
+
+## Initial observation and verdict
 
 **Not established as an integrable odds source on the evidence obtained.** The
 first ordinary public page request returned HTTP 403, so inspection stopped

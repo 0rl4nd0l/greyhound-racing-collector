@@ -1,0 +1,63 @@
+{
+  "schema": "odds-public-inspection-v1",
+  "started_at": "2026-09-24T04:08:22.081550+00:00",
+  "url": {
+    "host": "www.odds.com.au",
+    "path": "/greyhounds/gosford-20260924/central-coast-locksmiths-race-4/",
+    "query_present": false
+  },
+  "request_cap": 60,
+  "duration_cap_seconds": 30,
+  "navigation_cap": 1,
+  "requests_allowed": [
+    {
+      "index": 1,
+      "method": "GET",
+      "resource_type": "document",
+      "observed_at": "2026-09-24T04:08:22.684458+00:00",
+      "host": "www.odds.com.au",
+      "path": "/greyhounds/gosford-20260924/central-coast-locksmiths-race-4/",
+      "query_present": false
+    }
+  ],
+  "requests_blocked": [
+    {
+      "index": 2,
+      "method": "GET",
+      "resource_type": "script",
+      "observed_at": "2026-09-24T04:08:22.785138+00:00",
+      "host": "challenges.cloudflare.com",
+      "path": "/turnstile/v0/api.js",
+      "query_present": true
+    }
+  ],
+  "responses": [
+    {
+      "request_index": 1,
+      "status": 202,
+      "observed_at": "2026-09-24T04:08:22.772210+00:00",
+      "elapsed_seconds": 0.09634935899521224,
+      "host": "www.odds.com.au",
+      "path": "/greyhounds/gosford-20260924/central-coast-locksmiths-race-4/",
+      "query_present": false,
+      "diagnostic_headers": {
+        "server": "CloudFront",
+        "content-type": "text/html; charset=utf-8",
+        "x-cache": "LambdaGeneratedResponse from cloudfront"
+      }
+    }
+  ],
+  "stop": null,
+  "provider_operations": {
+    "odds_page_navigation": 1,
+    "sportsbet": 0,
+    "bookmaker_redirects": 0
+  },
+  "browser": {
+    "headed": true,
+    "profile": "fresh",
+    "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+    "webdriver": true
+  },
+  "finished_at": "2026-09-24T04:08:37.869500+00:00"
+}

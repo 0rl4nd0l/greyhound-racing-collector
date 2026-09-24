@@ -70,7 +70,7 @@ class Route:
 
 
 def run_fake_browser(
-    monkeypatch, tmp_path, *, status=403, extra_requests=(), body="", websocket=False
+    monkeypatch, tmp_path, *, status=403, extra_requests=(), body="", websocket=False, headed=False
 ):
     import playwright.sync_api
 
@@ -79,6 +79,13 @@ def run_fake_browser(
     closed = []
 
     class Context:
+        def evaluate(self, expression):
+            return (
+                True
+                if expression == "navigator.webdriver"
+                else "fixture Chrome" if headed else "fixture HeadlessChrome"
+            )
+
         def route(self, pattern, callback):
             self.route_callback = callback
 
@@ -140,7 +147,11 @@ def run_fake_browser(
 
     class Manager:
         def __enter__(self):
-            return SimpleNamespace(chromium=SimpleNamespace(launch=lambda **kwargs: Browser()))
+            def launch(**kwargs):
+                assert kwargs["headless"] is (not headed)
+                return Browser()
+
+            return SimpleNamespace(chromium=SimpleNamespace(launch=launch))
 
         def __exit__(self, *args):
             pass
@@ -149,7 +160,11 @@ def run_fake_browser(
     monkeypatch.setattr(probe.time, "monotonic", lambda: clock[0])
     monkeypatch.setattr(playwright.sync_api, "sync_playwright", Manager)
     path = tmp_path / "observation.json"
-    monkeypatch.setattr(sys, "argv", ["probe", "--url", URL, "--output", str(path)])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["probe", "--url", URL, "--output", str(path), *(["--headed"] if headed else [])],
+    )
     probe.main()
     return json.loads(path.read_text()), requests, body_reads, closed, path
 
@@ -265,3 +280,39 @@ def test_honest_odds_source_fails_actual_capture_and_receipt_contract():
             validation=validated,
             source_kind="odds_com_au",
         )
+
+
+def test_headed_option_preserves_denial_stop(monkeypatch, tmp_path):
+    evidence, requests, reads, closed, _ = run_fake_browser(
+        monkeypatch,
+        tmp_path,
+        headed=True,
+        status=403,
+        extra_requests=[Request("https://www.odds.com.au/api/odds")],
+    )
+    assert evidence["browser"] == {
+        "headed": True,
+        "profile": "fresh",
+        "user_agent": "fixture Chrome",
+        "webdriver": True,
+    }
+    assert evidence["stop"] == "denial"
+    assert evidence["responses"][0]["diagnostic_headers"] == {"content-type": "text/html"}
+    assert len(evidence["requests_allowed"]) == 1
+    assert requests[-1].aborted and not reads
+    assert closed == ["context", "browser"]
+
+
+def test_202_with_turnstile_request_stops_without_challenge_transport(monkeypatch, tmp_path):
+    challenge = Request(
+        "https://challenges.cloudflare.com/turnstile/v0/api.js?render=SECRET", "script"
+    )
+    after = Request("https://www.odds.com.au/api/odds")
+    evidence, requests, reads, _, path = run_fake_browser(
+        monkeypatch, tmp_path, headed=True, status=202, extra_requests=[challenge, after]
+    )
+    assert evidence["stop"] == "challenge_request"
+    assert len(evidence["requests_allowed"]) == 1
+    assert challenge.aborted and after.aborted
+    assert not reads
+    assert "SECRET" not in path.read_text()
