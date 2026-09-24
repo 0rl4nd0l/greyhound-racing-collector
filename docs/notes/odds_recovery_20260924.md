@@ -491,3 +491,18 @@ existing publication mutex; after two recorded failures, the next service stops
 before source work. Freshness, source guidance, denial and integrity rejection
 remain mandatory. Tests execute the generated service, daemon and refresh
 subprocess with fabricated transport and kernel-level network denial.
+
+Candidate 1f332385832a35205d8044ae36f2f258fed5b978 is sealed for 20:20–21:20
+AEST, with plan SHA256 de50328b0ad032e583c1f8587e332daa69bb283745450dd0c9c7a9044ca890e9
+and archive SHA256 7cb8f7e522351f6ae2efe0e9bdf318eb4c4a275670722636f02dcf994f78dda5.
+The exact exported production candidate passed 38 packaged/service/observer
+cases; the missing-index control's expected label was corrected to its earlier
+LIVE_COLLECTION_BLOCKED rejection and passed separately. The original failing
+test log remains retained. All six service scenarios and three complete packaged
+prediction scenarios therefore pass without changing production bytes.
+Independent package audit: 36 checks passed, SHA256
+85dd252c41d81636931d323391f85acb8dd03dc69451dd16935ffe27e9cd9441.
+The existing source authority expiry moves to 21:20 with 127 operations remaining
+and cumulative ceiling 252; 125 prior operations, four denials, 22 consumed
+captures, 20,342 logical requests and 9,895.009819 charged seconds are preserved.
+These are preparation/validation findings, not a live acceptance result.

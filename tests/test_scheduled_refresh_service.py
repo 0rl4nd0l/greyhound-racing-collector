@@ -76,7 +76,8 @@ def test_actual_service_preserves_bounded_scheduled_refresh_recovery(tmp_path, m
                        body="not a csv", headers={"Retry-After": "60"} if scenario == "guidance" else {})
     http.write_text(json.dumps(bad))
     failed = invoke(1)
-    assert failed and failed["runtime_action"] == "LIVE_PHASE_FAILED"
+    expected_action = "LIVE_COLLECTION_BLOCKED" if scenario == "no_index" else "LIVE_PHASE_FAILED"
+    assert failed and failed["runtime_action"] == expected_action
     assert failed["status"] == "FAILED"
     assert not AttemptAllowance(scope).claims()
     if scenario in {"untyped", "guidance", "denial", "no_index"}:
