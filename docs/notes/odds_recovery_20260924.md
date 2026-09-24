@@ -1,5 +1,13 @@
 # Sportsbet collection recovery, 24 September 2026
 
+Observed result: candidate `40c5bc400cb008d638ddd8e01b97c9e1224d78b6`
+produced nine independently verified pre-jump predictions from ten naturally
+eligible attempts across 59m56s, three full and 55 odds cycles. The observation
+failed at planned shutdown; that failure remains preserved. Final code candidate
+`4f4fce111743a2ec8c87a37caf0cd7feef6cd698` repairs that shutdown mismatch and
+passes packaged offline verification, but has no subsequent live acceptance.
+Original services are restored with collector timers held; no permanent rollout.
+
 User authority: own investigation, isolated repairs, supervised source access,
 temporary collector/R3 changes and real operational predictions. This explicitly
 supersedes old internal attempt/recovery/window limits prospectively. Prior STOPs,
@@ -688,3 +696,236 @@ configured-membership checks. Legacy comparisons remain accepted, but mixed
 AP_K/APWE identities, Angle/Albion substitution, unknown spellings, wrong dates
 and wrong race numbers remain rejected. This is separate from the unchanged
 configured-spelling helper and does not relabel stored source identities.
+
+
+## Final unchanged candidate and sustained observation
+
+Candidate 40c5bc400cb008d638ddd8e01b97c9e1224d78b6 (tree
+be5e29b847cf43057408ff74a3e801042641bbc4) passed the real packaged Angle Park
+capture/retention/frozen prediction/verification fixture under network denial in
+28.86 seconds. The five-scenario parent run had four passes and one genuine
+Angle Park failure; it is not relabeled green. Thirty identity controls and 23
+focused request/receipt cases passed. A broader request/bundle run recorded
+436 passes and two manual snapshot PROTOCOL_DIRECTORY_CHANGED failures; both
+passed in an isolated rerun (17.06 seconds), with the transient cause unproven.
+A separate overbroad diagnostic suite was interrupted after 66 passes in
+245.88 seconds; it is incomplete, not successful full-suite validation.
+
+The final live package is live-2155-40c5bc40, planned 21:55–22:55 AEST with
+cleanup reserved through 23:26. Its plan SHA256 is
+90d4cc5a4c5ad974207a4d9bf54e0a7e8b1497e3e23ff4127f872374cc35855b,
+source archive SHA256
+5a47732692ba392864d24f6de0485bc43d75de46f051fc7e49ce50fd857d4079.
+The independent package audit passed 40 checks (not 44): all 801 source files,
+816 archive members, unit settings, and pinned artifacts. Exactly one of 41
+feature-generator archive members changed: utils/race_identity_equivalence.py.
+Feature calculations, frozen model, configuration and feature schema did not
+change. Package-audit SHA256:
+3a2d8131992bed21ed9a349409ea39d4b0c2a461ad42cb062cac3d023581282a.
+
+The same source authorization was extended to 22:55 with 79 remaining operations
+under its existing cumulative ceiling of 252. All 173 earlier operations, four
+denials and the original not-before deadline were preserved. Before-state SHA256
+4c43712a2e2a39dcf0d4ad24accb4938249290125fbf57ae827c011e53ead2f4;
+after-state SHA256
+afc59e6a80902f7b71c66aada8dda182f592d37f35a69a5f05d24ad7e0016648.
+The existing preflight passed in 1.610351 seconds. The 5,460-second lease reserves
+60 minutes of observation plus 31 minutes of natural cleanup; final accounting
+charges actual elapsed time. No provider retry guidance was present or altered.
+
+The critical second full cycle passed independently while prior full-state
+bytes existed. Full run 20260924T222606+1000 waited behind odds run
+20260924T222604+1000_odds_capture. Samples 934–955 authenticated WAITING_FOR_PEER;
+sample 956 became ACTIVE and 977 RECEIPT_READY. All 44 audited transition
+samples retained fresh collector, index and authority status. Odds child
+1568814 released at 22:26:46.985464; full child 1568940 acquired at
+22:26:51.405458, 4.419994 seconds later, after a positive 45-second wait and
+10 attempts at five-second cadence within the 95-second bound. Full refresh
+completed at 22:27:32.906807 in 41.458 seconds (87.740 seconds including waiting).
+The retained raw report copy was made after acquisition, not during waiting;
+waiting proof comes from native samples and terminal wait metadata. Sixteen
+independent checks passed, audit SHA256
+713b0ce577f5e3f4be8909202fee6336f446b1b2cf6616b7fca09709a394334b.
+
+Angle Park R9 was consumed once at 22:16:47.864384 and did not produce a receipt
+or prediction. Two DOM snapshots 5.012109 seconds apart each showed four exact
+runner cards but zero source-paired market cards. All 48 recorded responses were
+HTTP200, without recorder drops or retry guidance. This does not prove which
+market was absent or whether rendering, provider availability or parsing caused
+it. The authenticated terminal was UNREADY_NO_CAPTURE with zero reported writes;
+the failed attempt remains in the denominator and was not retried. Audit SHA256
+69e528e599ac2393a0af12b6a30574fc14afa28fe4ef412c97c665bd98259666.
+
+At 22:35 the unchanged candidate had seven verified predictions from eight
+naturally eligible consumed attempts. In particular Angle Park R10 produced a
+valid seven-WIN/seven-PLACE receipt, then completed the identity path repaired
+after the earlier R7 failure. Its capture-report SHA256 is
+2b96df20312bfd48c889444d18a7a738728352b43186638cad336a9ed820cf25;
+the separate exact-receipt SHA256 is
+aa0f1b439823c292d6a1cf6d9e2445138250211cfb8de6d016e13066ea5709c4.
+This is an interim observation, not final sustained acceptance.
+
+
+The third full cycle 20260924T224236+1000 also completed, at
+22:43:41.018697 AEST. Full child 1618611 belonged to wrapper 1618541/invocation
+c797e746673846a6bb9283c1ea48255a. The reverse odds deferral bound child 1619782
+to wrapper 1619747/invocation c86e8355069f46f4a4f1c078dcd858aa. Twenty-one native
+samples authenticated WAITING_FOR_PEER; all 33 audited transition samples were
+fresh. Full refresh released its lock at 22:43:26.448136 and its capture acquired
+at 22:43:26.457172, then released at 22:43:41.016283. The skipped odds invocation
+is recorded as DEFERRED_LOCK_HELD, not as completed collection. Fifteen independent
+checks passed, audit SHA256
+a0e7469c46afca1e10ba2ac4d57234211bfcde841209b9d9b0f1990de477ffae.
+
+
+### Observed collection success; preserved shutdown failure
+
+The unchanged candidate ran for 59 minutes 56 seconds and completed three full
+and 55 odds cycles. Ten naturally eligible race/windows were consumed exactly
+once: nine complete paired-market captures fed nine independently verified
+pre-jump predictions; AP_K R9 remained the single readiness miss. All nine
+chains passed 252 checks. Audit SHA256
+9eb25f7de9c764e6ea69e30124d2a59ea07faf0aaf378e4aa090421e8d2cf5bf.
+
+| Exact race ID | WIN / PLACE | Job | Exact receipt SHA256 |
+| --- | --- | --- | --- |
+| Race 12 - GUNN - 2026-09-24 | 8 / 8 | job_bc01684409e142a788c9adcf8e026506 | 18da5847199b67010a302420e07467c6f11562a7f122757b397619c51dc79729 |
+| Race 11 - WPK - 2026-09-24 | 8 / 8 | job_788e35f52d424cbebacfc2f024d13b38 | e0783ad81e5e2f6e8ff1c38d45acd95111c1fe8eb77540a5bb7bdf0e2ea52497 |
+| Race 12 - WPK - 2026-09-24 | 8 / 8 | job_f209e37e727a4c078e62c460ee269a9c | 4ddef00a9de01982b052d14490b69ba9bb07cc97187a2693148b5b54d7a5a3bb |
+| Race 12 - SAN - 2026-09-24 | 7 / 7 | job_96bc229059974ab985c81fb3839afaf7 | 74b85951f6c3038185aae54ed5aa5938900ca14e12ba1fb89ce033dec6c53683 |
+| Race 10 - SAN - 2026-09-24 | 8 / 8 | job_87e2ba5c607e420ab2d8af012b555878 | 2b6765d019e17da4ddcb1341b31c1f76177b1a1af8f10a72c67378c19b4ba7cc |
+| Race 11 - SAN - 2026-09-24 | 7 / 7 | job_96a4eba198db47769cd409d8a8b77e46 | f79694bff5a24945e1d6bd4d88ecca7ea0d81edf0e707f495f9a082f55ab2eed |
+| Race 10 - WPK - 2026-09-24 | 8 / 8 | job_f614577373724c3fb6882ada1c181e05 | 77e91ce8793ef53c3416591dcf9ce5eee8196dc34cb9c7c00da4ae84b28f817b |
+| Race 11 - GUNN - 2026-09-24 | 7 / 7 | job_59c5ba943a4348f58b04544ed64d28a1 | 43fb3c489a70cbc4e601d221bc5c183b4687e7fc811696e849add47b43f7ccdd |
+| Race 10 - AP_K - 2026-09-24 | 7 / 7 | job_01ba29c1ba67485095d8525b15a8571e | aa0f1b439823c292d6a1cf6d9e2445138250211cfb8de6d016e13066ea5709c4 |
+
+Prediction preparation/scoring/verification took 4.230085–4.681316 seconds;
+source-price observation to original verification took 19.615292–21.359916
+seconds. Original verification was 526.877898–550.893177 seconds before jump.
+The ten capture phases took 13.823039–18.586129 seconds, including the failed
+readiness attempt; 58 refreshes took 38.290663–61.786374 seconds. Seven refreshes
+overlapped prediction, averaging 46.778357 seconds versus 43.182979 seconds for
+51 without overlap. This observational difference does not establish CPU or
+I/O contention; no capture phase overlapped prediction and no phase overran.
+
+Nineteen exact races were selected, 17 had accepted CSV/safe metadata and 12
+were index eligible at least once. This is separate from the ten eligible
+capture windows. Exclusions include missing-grade quarantine and exact native
+identity conflicts involving scratched runners with active prices; unselected
+races remain unassessed. The first usable index appeared at 21:55:48.167621;
+both lane reports were available at 22:11:04.231687, after the scheduled first
+full cycle. Warmup is not counted as fully available operation.
+
+All 485 recorded Sportsbet browser responses, including the failed readiness
+capture, were HTTP200, with zero recorder drops or denials. Browser observations
+recorded 20 explicit navigations, 529 provider requests and 1,100 other requests;
+these differ from responses and logical Python requests and do not claim full
+wire visibility. Shared source accounting added 58 Python and ten browser
+operations, leaving 241 total operations and the same four historical denials.
+
+At 22:54:56.458921 the supervisor stopped with native_readiness_failed. This is
+a failed observation, not a completed-hour pass. At 22:54:02 the actual packaged
+child correctly returned OPERATING_SCOPE_CLOSED because fewer than 90 seconds
+remained. It left the previous 22:53:40.681563 READY report untouched, whose
+60-second cadence plus 15-second accuracy deadline expired at 22:54:55.681563.
+The final sample marked only the odds lane STALE; the index remained fresh at
+114.039189 seconds and authority/full lane remained valid. There was no provider
+denial. The retained independent diagnosis passed seven exact checks, SHA256
+87028fd8d86b61effc72e8d690b3b9c0ccb95535d3582385129d817b604d5f3b.
+
+Restoration completed at 22:54:57.078854 with original unit hashes, disabled
+collector timers and unchanged R3. Cumulative consumption is 43 captures,
+39,100 logical requests and 16,674.500646 charged seconds. All jobs, STOPs,
+failures and attempts remain preserved. Final observation-summary SHA256:
+7431dcd46cd58f028d1e87a9629c65789247534e0fa9c933cd05ad062510a3d4.
+The corrective follow-up must demonstrate planned closure explicitly, retaining
+native STALE status rather than extending all READY deadlines or weakening
+source freshness. A short follow-up is not independent evidence of long-term
+reliability from one race.
+
+
+The same source authorization is prospectively renewed through 23:20 for at
+most 24 further operations (cumulative ceiling 265). This covers one short
+scheduled follow-up with the existing cadence and cleanup; the earlier 241
+operations, four denials and not-before timestamp remain byte-for-byte unchanged.
+The campaign's existing 64-capture/48,000-request/21,600-second ceilings and all
+consumption remain unchanged. Before-state SHA256:
+ae9d36aba8742d79797445387d45365c3572e460ecd7e86622bbebffcae28a5b;
+after-state SHA256:
+f46ad4d8558c37b81f06e024c950f1a93fd7129dcbe353501064546138e98cd7.
+No cooldown revision or new campaign is involved.
+
+
+## Final code state and remaining validation
+
+Shutdown repair 0b4d249678b39d2c20f3655d5056fafed4b7f177 retains the actual
+service child's planned admission closure, bound to contract, rehearsal,
+invocation, process and timestamps. The supervisor classifies only the final
+90-second idle period with a completed/reaped matching wrapper-child lifecycle,
+unchanged prior READY report hash, healthy peer lane, fresh index/authority,
+source age below 270 seconds, open access state and no lock or STOP. It retains
+native STALE status and accepts no new data or successful cycle on that basis.
+It does not extend native deadlines or change R3's 300-second rejection.
+
+Final code candidate 4f4fce111743a2ec8c87a37caf0cd7feef6cd698 (tree
+3abfcd02b7c0e2cb1464ae21e9c74b0c1e17ac12) additionally permits prospectively
+bounded 5–90 whole-minute operational diagnostics. Short scopes start the full
+timer after one second (not zero, which disables the timer directive), retain
+its 15-minute recurring cadence, enforce readiness after 180 seconds, and declare
+one required full cycle/capture. Scopes below ten minutes explicitly require
+three odds cycles; otherwise six remain required. Ordinary 60/90-minute runs
+retain three full cycles and three captures. The 31-minute cleanup and same-date
+boundary remain. These are diagnostic settings, not a relaxation of data validity
+or proof of reliability from one race.
+
+Validation on the final candidate: 20 duration/preparation controls and 35
+shutdown/observer controls passed under the pinned interpreter with network
+denied. The actual exported wrapper regression passed in 12.59 seconds. It
+proves real marker/lifecycle compatibility with the classifier, reaped children,
+no lock, no claims, no source requests and no STOP. The observer test uses a
+clearly fabricated native sample; neither test is live shutdown acceptance.
+Independent code review found no blocking issue and confirmed that limitation.
+Earlier test-only duration fixtures incorrectly expected timer spelling 15m
+rather than 15min and placed a 90-minute fixture across midnight cleanup; those
+failed logs remain preserved alongside corrected green tests.
+
+No follow-up source requests occurred. The 23:13 package was prepared but its
+admission preflight ran after its proposed start. The 23:16 package was also not
+launched; a prospective unexecuted reschedule to 23:17 preserved its original
+plan, but preflight rejected the new plan's noncanonical serialization with
+plan_encoding_changed. Neither package has started.json or contract.json, and
+neither consumed a campaign launch or race. These are missed preparations,
+not live successes. The later package audit overlapped that unexecuted plan
+revision, so its initial reported times must not be treated as a coherent
+current-plan acceptance; the independent correction record explains the mismatch.
+
+The final retained index's remaining eligible Angle Park R12 T10 window closed
+at 23:19 (jump 23:21). At 23:18:32 there was insufficient time for the observed
+fresh-refresh-plus-capture sequence to complete safely in that window. No stale
+inputs, consumed-job retry or substitution were used to manufacture another
+prediction. The shutdown repair therefore remains unverified live; the original
+59m56s run remains failed at shutdown despite nine verified prediction chains.
+This is an unresolved validation limit, not an exhausted provider allowance or a
+provider-imposed access prohibition.
+
+The five-minute follow-up preparations used the same 24 unconsumed source
+operations and cumulative ceiling 265. Expiry adjustments to 23:21 and then
+23:23 preserved all operation/denial bytes and previous authorization snapshots;
+no consumption was reset. Final prospective source-state SHA256:
+f635dca4280c723f9b51f71886e35093d7eb13c3a5a8f7aabd6a1282d29904cd.
+
+Read-only final source-age recomputation covers all 1,799 samples: the index was
+fresh in 1,775 after startup, observed age 38.020506–163.938883 seconds and maximum
+conservative adjacent-interval age 165.979657 seconds. The final collector STALE
+sample remains present. Age-summary SHA256:
+a2b30ca10eab771ca41ea9eb14c00e15c7182f0f079b21afff41f77c39b23aef.
+
+
+Final independent restoration audit passed 15 checks at 23:20:44.202107 AEST: all
+five original unit hashes, both collector timers inactive/disabled, zero collector
+PIDs, empty cgroups, no collector lock or packaged orphan, and unchanged R3 PID
+149626 and binding. All campaign leases are closed. Audit SHA256:
+be78ae2301f730a66e9cefd34b51fb88001ce7ed1c3b3f46dd16765706f540f2.
+The mixed-snapshot prepared-package audit PASS is explicitly withdrawn by
+final-package-2316-audit-correction-unexecuted.json, SHA256
+4995cdd8ce7cfff399fc8d5132c683bb0e1ecb8f82c2f0a1c6648aae677ba5c0.
