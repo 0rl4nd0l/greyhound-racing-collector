@@ -47,6 +47,7 @@ def status(root, db, now, code):
              'status': code, 'counts': counts,
              'request_attempts': db.execute('SELECT count(*) FROM requests').fetchone()[0],
              'oldest_due': db.execute("SELECT min(due) FROM jobs WHERE state='PENDING'").fetchone()[0],
+             'oldest_outstanding_jump': db.execute("SELECT min(jump) FROM jobs WHERE state NOT IN ('CLOSED')").fetchone()[0],
              'outcomes_released': False}
     atomic_json(root / 'health.json', value)
     return value

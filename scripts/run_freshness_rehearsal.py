@@ -818,6 +818,12 @@ def observe(output, plan, control, scope, predictions=None):
         atomic_json(
             output / "progress.json",
             {
+                "sample_count": samples,
+                "unavailable_samples_including_warmup": unavailable,
+                "maximum_conservative_source_age": maximum,
+                "last_sample_at": current.get("read_end"),
+                "source_age_seconds": current.get("source_age_seconds"),
+                "index_status": current.get("index_status"),
                 "completed_cycles": {key: len(value) for key, value in completed.items()},
                 "failed_refresh_cycles": sorted(refresh_failures),
                 "lock_wait_seconds": waits,

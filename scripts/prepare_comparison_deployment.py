@@ -35,6 +35,7 @@ def units(*, source, python, schedule_config, result_binding, mount):
         arguments = f'{flag} {paths[name]}'
         if name == 'health':
             arguments += f' --result-binding {unit_path(result_binding)} --output {unit_path(schedule_config.parent / "monitor/health.json")}'
+            arguments += f' --notification-config {unit_path(schedule_config.parent / "notification.APPROVED.json")}'
         conditions = '' if name == 'health' else f'ConditionPathIsMountPoint={mount}\nConditionPathExists={paths[name]}\n'
         output[stem + '.service'] = f'''[Unit]
 Description=Greyhound persistent comparison {name}

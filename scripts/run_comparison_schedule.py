@@ -54,7 +54,8 @@ def renew_source(cfg, slot, *, now):
     from race_collection.freshness_campaign import Campaign
     from utils.sportsbet_access import SportsbetAccess
     campaign = Campaign(cfg['campaign_root'])
-    checked(campaign.root/'persistent-programme-authority.json', cfg['programme_authority_sha256'])
+    if digest(campaign.programme) != cfg['programme_authority_sha256']:
+        raise ValueError('programme_authority_changed')
     with (campaign.root/'owner.lock').open('a') as owner:
         fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
         with campaign.ledger() as ledger:

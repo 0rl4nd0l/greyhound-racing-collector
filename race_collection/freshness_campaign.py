@@ -78,6 +78,27 @@ class Campaign:
                 raise ValueError('invalid_programme_initial_counters')
             self.programme = extra
             self.value = {**self.value, **{k: extra[k] for k in limits}, 'persistent_programme': extra}
+            # Date-only prospective amendments preserve original authority and all
+            # consumption. No budget, identity, model or routing change is allowed.
+            for number, amendment in enumerate(sorted((self.root / 'programme-schedule-amendments').glob('*.json')), 1):
+                row = json.loads(amendment.read_bytes())
+                revised = row.get('programme', {})
+                allowed = {'starts_at', 'expires_at'}
+                issued = datetime.fromisoformat(row['issued_at'])
+                start = datetime.fromisoformat(revised['starts_at'])
+                end = datetime.fromisoformat(revised['expires_at'])
+                if (amendment.name != f'{number:04d}.json'
+                        or row.get('schema_version') != 'programme_schedule_amendment_v1'
+                        or not row.get('authority_reference') or not row.get('empty_state_sha256')
+                        or row.get('prior_programme_sha256') != digest(self.programme)
+                        or set(revised) != set(self.programme)
+                        or any(revised[k] != self.programme[k] for k in revised.keys() - allowed)
+                        or issued.tzinfo is None or start.tzinfo is None or end.tzinfo is None
+                        or not issued < start < end or not 125*86400 <= (end-start).total_seconds() <= 127*86400):
+                    raise ValueError('invalid_programme_schedule_amendment')
+                self.programme = revised
+                self.value = {**self.value, 'persistent_programme': revised,
+                              'programme_schedule_amendments': [*self.value.get('programme_schedule_amendments', []), row]}
         else:
             self.programme = None
 
