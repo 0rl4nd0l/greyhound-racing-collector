@@ -1,0 +1,1 @@
+{"deployment_source_archive_sha256": "ad8f06e02acc4f0b72ada7aec64ddb0a4a7e7f85c925ec82a49955ba4ddf9266", "elapsed_seconds": 1.2620325629832223, "focused_tests": 46, "max_rss_kib": 286308, "network": "kernel-denied", "provider_requests": 0, "scientific_observations": 0, "source_commit": "551ae3c03ba8c731baeb5e41c712ecd672f02a4b", "status": "PASS"}
