@@ -164,6 +164,7 @@ def run_live_collection_cycle(args, *, odds_only: bool):
     completed_report = None
     outcome = "LIVE_COLLECTION_COMPLETE"
     previous_state = daemon.load_json(state_path) or {}
+    initial_state_missing = not state_path.exists()
     timing = {
         "service_invocation_id": os.environ.get("GREYHOUND_SERVICE_INVOCATION"),
         "process_pid": os.getpid(),
@@ -271,6 +272,26 @@ def run_live_collection_cycle(args, *, odds_only: bool):
         name = 'odds_capture_only_daemon_report.json' if odds_only else 'daemon_run_report.json'
         with native_publication_lock(evidence, exclusive=True):
             atomic_json(output / name, report)
+            # A cold lane has no completed state to retain. Publish its actual
+            # initial lifecycle alongside the report, including active, deferred
+            # and failed states. The reader still validates the service, peer,
+            # lock, deadlines and terminal verdict; this is not a ready receipt.
+            # Existing state (including unreadable state) is never replaced here.
+            if initial_state_missing and completed_report is None:
+                atomic_json(state_path, {
+                    **previous_state,
+                    **report,
+                    "schema_version": (
+                        "shadow_autopilot_odds_capture_only_state_v1" if odds_only
+                        else "shadow_autopilot_daemon_state_v1"
+                    ),
+                    "last_run_id": run_id,
+                    "last_output_dir": str(output),
+                    "last_verdict": report["final_verdict"],
+                    "updated_at": report["generated_at"],
+                    "odds_capture_refresh_status": report.get(
+                        "odds_capture_refresh_report", {}).get("status"),
+                })
 
     @native_publication_lock(evidence, exclusive=True)
     def finish_checkpoint():

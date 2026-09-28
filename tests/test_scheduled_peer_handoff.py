@@ -19,8 +19,8 @@ from tests.test_refresh_shared_sportsbet_snapshot import fixture, access
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.mark.parametrize('yield_capture', [False, True])
-def test_second_full_service_waits_for_actual_odds_child_then_completes(tmp_path, monkeypatch, yield_capture):
+@pytest.mark.parametrize('yield_capture,cold_start', [(False,False),(True,False),(False,True)])
+def test_second_full_service_waits_for_actual_odds_child_then_completes(tmp_path, monkeypatch, yield_capture, cold_start):
     from scripts import prepare_freshness_rehearsal as packaging
     from scripts.check_freshness_service import service_command
     from race_collection.live_freshness_contract import AttemptAllowance, FreshnessContract, digest
@@ -106,12 +106,13 @@ def test_second_full_service_waits_for_actual_odds_child_then_completes(tmp_path
         raise AssertionError('synthetic service boundary was not reached')
 
     try:
-        first=start('full','fixture_first_full','1'*32)
-        assert first.wait(timeout=100)==0
-        assert json.loads(report('fixture_first_full','full').read_bytes())['runtime_action']=='LIVE_COLLECTION_COMPLETE'
-        seed=start('odds','fixture_seed_odds_capture','2'*32)
-        assert seed.wait(timeout=100)==0
-        assert json.loads(report('fixture_seed_odds_capture','odds').read_bytes())['runtime_action']=='LIVE_COLLECTION_COMPLETE'
+        if not cold_start:
+            first=start('full','fixture_first_full','1'*32)
+            assert first.wait(timeout=100)==0
+            assert json.loads(report('fixture_first_full','full').read_bytes())['runtime_action']=='LIVE_COLLECTION_COMPLETE'
+            seed=start('odds','fixture_seed_odds_capture','2'*32)
+            assert seed.wait(timeout=100)==0
+            assert json.loads(report('fixture_seed_odds_capture','odds').read_bytes())['runtime_action']=='LIVE_COLLECTION_COMPLETE'
         original_http = http.read_bytes()
         if yield_capture:
             # Only invented provider inputs change: expose a T-10 opportunity
@@ -143,7 +144,8 @@ def test_second_full_service_waits_for_actual_odds_child_then_completes(tmp_path
         owner=json.loads(peer_report.read_bytes())['lock']
         assert owner['pid'] != peer.pid  # Service MainPID is its real wrapper.
         assert owner['run_id']=='fixture_peer_odds_capture'
-        assert json.loads((runtime/'state.json').read_bytes())['last_run_id']=='fixture_first_full'
+        if not cold_start:
+            assert json.loads((runtime/'state.json').read_bytes())['last_run_id']=='fixture_first_full'
         unit_map=dict(zip(('full_service','full_timer','odds_service','odds_timer'),packaging.UNITS))
         raw={key:(package/'units'/name).read_bytes() for key,name in unit_map.items()}
         hashes={key:hashlib.sha256(value).hexdigest() for key,value in raw.items()}
@@ -161,10 +163,10 @@ def test_second_full_service_waits_for_actual_odds_child_then_completes(tmp_path
                   'odds_exec_main_pid':peer.pid if peer_active else 0,
                   'full_service_invocation_id':full_invocation,
                   'odds_service_invocation_id':odds_invocation}
-            state=json.loads((runtime/'odds_capture_state.json').read_bytes())
+            state=json.loads((runtime/'odds_capture_state.json').read_bytes()) if (runtime/'odds_capture_state.json').exists() else {}
             paths={'full_state':runtime/'state.json','odds_state':runtime/'odds_capture_state.json',
                    'full_report':full_report,'odds_report':peer_report,
-                   'odds_refresh':Path(state['autopilot_output_dir'])/'odds_capture_refresh_report.json'}
+                   'odds_refresh':Path(state.get('autopilot_output_dir') or runtime/'pending')/'odds_capture_refresh_report.json'}
             with native_publication_lock(evidence, exclusive=False):
                 current=datetime.now(ZoneInfo('Australia/Melbourne'))
                 args['observed_at']=current
