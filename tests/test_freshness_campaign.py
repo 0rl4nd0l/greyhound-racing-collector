@@ -37,6 +37,26 @@ def test_append_only_extension_preserves_ledger_and_prior_authority(tmp_path):
         Campaign(tmp_path)
 
 
+def test_source_hold_survives_new_process_and_blocks_all_campaign_traffic(tmp_path):
+    campaign = make_campaign(tmp_path)
+    stamp = datetime.now(timezone.utc)
+    campaign.begin('old', now=stamp, deadline=stamp+timedelta(minutes=5))
+    campaign.request()
+    campaign.hold_source({'host':'api.open-meteo.com', 'status':503,
+                          'retry_headers':{'retry-after':'120'}, 'observed_at':stamp.isoformat()})
+    restarted = Campaign(tmp_path)
+    with pytest.raises(ValueError, match='campaign_source_hold'):
+        restarted.request()
+    with pytest.raises(ValueError, match='campaign_source_hold'):
+        restarted.admit('old', stamp)
+    restarted.close('old', now=stamp+timedelta(seconds=1))
+    with pytest.raises(ValueError, match='campaign_source_hold'):
+        restarted.begin('new', now=stamp+timedelta(minutes=10), deadline=stamp+timedelta(minutes=15))
+    retained=json.loads((tmp_path/'ledger.json').read_bytes())
+    assert retained['logical_requests']==1
+    assert retained['source_holds'][0]['retry_headers']=={'retry-after':'120'}
+
+
 def test_attempts_shared_across_instances_and_aliases(tmp_path):
     campaign = make_campaign(tmp_path)
     item = dict(race_id='canonical', race_id_aliases=['canonical', 'alias'], capture_window_minutes=10)

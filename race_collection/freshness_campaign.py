@@ -68,12 +68,16 @@ class Campaign:
 
     def admit(self, launch, now):
         with self.ledger() as value:
+            if value.get('source_holds'):
+                raise ValueError('campaign_source_hold')
             row = value['launches'].get(launch)
             if row is None or row.get('closed_at') or now.timestamp() >= row['deadline_epoch']:
                 raise ValueError('campaign_live_lease_closed')
 
     def begin(self, launch, *, now, deadline):
         with self.ledger() as value:
+            if value.get('source_holds'):
+                raise ValueError('campaign_source_hold')
             if launch in value['launches'] or any(not r.get('closed_at') for r in value['launches'].values()):
                 raise ValueError('campaign_owner_or_launch_already_exists')
             used = sum(r['charged_seconds'] for r in value['launches'].values())
@@ -109,6 +113,17 @@ class Campaign:
 
     def request(self):
         with self.ledger() as value:
+            if value.get('source_holds'):
+                raise ValueError('campaign_source_hold')
             if value['logical_requests'] >= self.value['max_logical_requests']:
                 raise ValueError('campaign_request_cap_exhausted')
             value['logical_requests'] += 1
+
+    def hold_source(self, observation):
+        """A denial or retry instruction survives package/process replacement.
+
+        Elapsed time alone never authorizes an unchanged retry. A subsequent
+        recovery needs a separately reviewed prospective disposition.
+        """
+        with self.ledger() as value:
+            value.setdefault('source_holds', []).append(observation)

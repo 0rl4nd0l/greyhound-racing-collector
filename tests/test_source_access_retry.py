@@ -76,7 +76,8 @@ def test_browser_denial_retains_only_retry_guidance(tmp_path, monkeypatch):
     assert "secret" not in path.read_text()
 
 
-def test_python_guard_records_guidance_and_stops_next_logical_request(tmp_path, monkeypatch):
+@pytest.mark.parametrize('status,host', [(429, 'www.sportsbet.com.au'), (503, 'api.open-meteo.com'), (503, 'www.thedogs.com.au')])
+def test_python_guard_records_guidance_and_stops_next_logical_request(tmp_path, monkeypatch, status, host):
     import requests
     from datetime import datetime
     from tests.test_live_capture_binding import reserved_alias_plan
@@ -94,7 +95,7 @@ def test_python_guard_records_guidance_and_stops_next_logical_request(tmp_path, 
     def response(session, method, url, **kwargs):
         calls.append(url)
         result = requests.Response()
-        result.status_code = 429
+        result.status_code = status
         result.headers = {"Retry-After": "120", "Set-Cookie": "secret"}
         return result
 
@@ -103,9 +104,9 @@ def test_python_guard_records_guidance_and_stops_next_logical_request(tmp_path, 
     restore = contracts.install_request_guard(allowance.scope)
     try:
         with pytest.raises(ValueError, match="source_access_denied"):
-            requests.get("https://www.sportsbet.com.au/fixture")
+            requests.get(f"https://{host}/fixture")
         with pytest.raises(ValueError):
-            requests.get("https://www.sportsbet.com.au/fixture")
+            requests.get(f"https://{host}/fixture")
     finally:
         restore()
     assert len(calls) == 1

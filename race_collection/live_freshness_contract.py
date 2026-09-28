@@ -471,16 +471,26 @@ def install_request_guard(scope):
             atomic_json(network_path, network)
             atomic_json(path, {"started": count + 1})
         response = original(session, method, url, **kwargs)
-        if getattr(response, "status_code", None) in {401, 403, 429}:
-            scope.stop("SOURCE_ACCESS_DENIED")
-            from utils.http_client import source_retry_headers
-
-            atomic_json(scope.session / ("source-access-denied-" + str(os.getpid()) + ".json"), {
+        from utils.http_client import source_retry_headers
+        status = getattr(response, 'status_code', None)
+        guidance = source_retry_headers(getattr(response, 'headers', {}))
+        instructed = any(key in guidance for key in ('retry-after', 'ratelimit-reset', 'x-ratelimit-reset'))
+        if type(status) is int and status >= 400:
+            observation = {
                 "host": host,
-                "status": response.status_code,
+                "status": status,
                 "observed_at": datetime.now(timezone.utc).isoformat(),
-                "retry_headers": source_retry_headers(getattr(response, "headers", {})),
-            })
+                "retry_headers": guidance,
+            }
+            # Retain error guidance for auxiliary sources too. A bare 5xx is
+            # still an unavailable input, never fabricated weather or a denial.
+            import uuid
+            create_once(scope.session / ('source-response-error-' + uuid.uuid4().hex + '.json'), observation)
+        if status in {401, 403, 429} or (type(status) is int and status >= 400 and instructed):
+            if scope.campaign:
+                scope.campaign.hold_source(observation)
+            scope.stop("SOURCE_ACCESS_DENIED" if status in {401,403,429} else "SOURCE_RETRY_GUIDANCE")
+            atomic_json(scope.session / ("source-access-denied-" + str(os.getpid()) + ".json"), observation)
             raise ValueError("source_access_denied")
         return response
 
