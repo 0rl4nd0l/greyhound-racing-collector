@@ -102,6 +102,13 @@ def prepare(*, source, commit, python, baseline, schedule_config, result_binding
                             result_binding=result_binding, mount=mount).items():
         (generated / name).write_text(text)
     (output / 'baseline.json').write_bytes(baseline.read_bytes())
+    baseline_units = output / 'baseline-units'
+    baseline_units.mkdir()
+    for name, row in identity['units'].items():
+        original = Path(row['path'])
+        if digest(original) != row['sha256']:
+            raise ValueError('baseline_unit_changed:' + name)
+        (baseline_units / name).write_bytes(original.read_bytes())
     with (output / 'source.tar').open('xb') as stream:
         subprocess.run(['git', 'archive', '--format=tar', commit], cwd=source, stdout=stream, check=True)
     manifest = {
@@ -114,6 +121,7 @@ def prepare(*, source, commit, python, baseline, schedule_config, result_binding
         'monitor_output': str(schedule_config.parent / 'monitor/health.json'),
         'filesystem': filesystem,
         'baseline_sha256': digest(output / 'baseline.json'),
+        'baseline_unit_sha256': {p.name: digest(p) for p in sorted(baseline_units.iterdir())},
         'source_archive_sha256': digest(output / 'source.tar'),
         'unit_sha256': {p.name: digest(p) for p in sorted(generated.iterdir())},
         'live_actions': False, 'target_results_accessed': False,

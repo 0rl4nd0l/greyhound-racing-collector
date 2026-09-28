@@ -37,6 +37,8 @@ def inspect(package, expected, *, preflight=False, installed=False):
     checks = {'source_archive': sha(package / 'source.tar') == manifest['source_archive_sha256'],
               'baseline': sha(package / 'baseline.json') == manifest['baseline_sha256'],
               'python': sha(Path(manifest['python']).resolve()) == manifest['python_sha256']}
+    for name, expected_hash in manifest.get('baseline_unit_sha256', {}).items():
+        checks['retained_baseline:' + name] = sha(package / 'baseline-units' / name) == expected_hash
     source = Path(manifest['source_root'])
     checks['source_commit'] = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=source, text=True).strip() == manifest['source_commit']
     checks['source_clean'] = not subprocess.check_output(['git', 'status', '--porcelain', '--untracked-files=no'], cwd=source, text=True).strip()
