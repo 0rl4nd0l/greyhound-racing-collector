@@ -456,3 +456,44 @@ The 48-file release manifest SHA256 is
 `1575f738e0ed84c61a1ae7f68fec0da7343adec51e9d86711612ed5fd56ff30e`.
 
 Permanent deployment and merge remain unperformed and require the user's approval.
+
+## Approved activation and local cumulative-budget stop
+
+The user subsequently approved the bounded deployment proposal. Its receipt is
+in /home/l4nd0/greyhound-collector-campaign-20260923/deployment-20260928-7bd839f0.
+The exact tested source and all 41 generator members were unchanged. New session-1
+was sealed for 14:28:17.896505–15:58:17.896505 AEST, with plan SHA256
+09cf740ad5174c68f86b35fd5999c6c39606efd0ac24a8db8b61b92abbb38a45 and archive SHA256
+a43ea98eb53d1155cb3f00f9034c13779fa447333096490e5e470ec31cfad191.
+The paired units were installed and their exact hashes verified. R3 was unchanged.
+
+At 15:56:36.293698 the supervisor stopped on candidate_scope_stopped. It exited 1,
+restoring both pairs and held timers at 15:56:38.000694. This is an 88m18s failed
+session, not a second 90-minute pass. Independent restoration verification passed.
+Ten predictions were verified from ten ready/attempted races and 13 discovered
+overlapping T-10 windows. Five full and 83 odds cycles completed; an additional
+refresh failed before publication. The three non-ready races were BAL R9 and WAR
+R5 (native identity rejected because a scratched runner had an active price), and
+NOR R1 (missing target grade, rejected accepted CSV). Those exclusions are retained;
+index freshness does not imply those races were prediction-ready. WAR's canonical
+URL is Warrnambool; an earlier progress message incorrectly called it Warragul.
+
+The source guard locally stopped before operation 513 at 15:56:28.008284. Its
+hard-coded 512-operation lifetime ceiling conflicted with the explicit finite
+allocation starting at 414 and permitting 192 further operations (through 606).
+There were zero operations in the preceding 60 seconds, zero future timestamps,
+94 unused allocated operations and over 5,199 seconds before expiry. No new
+provider denial occurred; all four historical denials remain. This is an engineering
+budget mismatch, not provider rejection. The STOP and failed session remain retained.
+Final cumulative accounting was 65 capture attempts, 76,415 logical requests,
+31,616.445707 charged seconds and 512 source operations. Collection is paused.
+
+An offline regression reproduces successful admission followed by transport refusal
+at this boundary. The repair retains the default 512 ceiling without explicit
+authority, but lets the existing validated finite allocation govern its authorized
+continuation. Its current row must match the retained authorization, with a finite
+three-hour maximum and at most 192 operations. Rate limits, denial/cooldown controls,
+consumed operations and model/configuration identity remain unchanged. Malformed or
+detached allocation rows fail closed. A new package and prospectively recorded local
+STOP disposition are required before any further live operation; no active gate or
+sealed package has been patched in place.

@@ -4,6 +4,103 @@ import pytest
 from utils.sportsbet_access import SportsbetAccess,SportsbetAccessBlocked
 
 
+def allocated_gate_at_legacy_ceiling(tmp_path):
+    gate = SportsbetAccess(tmp_path / 'access.json', clock=lambda: 10000)
+    gate.initialize(access_basis={'status': 'permitted', 'reference': 'synthetic'})
+    value = gate.read()
+    value['operations'] = [{'kind': 'python', 'at': i} for i in range(414)]
+    gate.write(value)
+    gate.authorize_diagnostic(reference='explicit finite continuation',
+        expected_sha256=hashlib.sha256(gate.path.read_bytes()).hexdigest(),
+        expires_at=10500, max_operations=192,
+        rationale='Preserve prior operations and allocate up to cumulative 606')
+    value = gate.read()
+    value['operations'].extend({'kind': 'python', 'at': i} for i in range(414, 512))
+    gate.write(value)
+    return gate
+
+
+def test_finite_allocation_admission_and_operation_agree_above_512(tmp_path):
+    gate = allocated_gate_at_legacy_ceiling(tmp_path)
+    previous = gate.read()['operations']
+    gate.check_admission()
+    with gate.operation('python') as operation:
+        operation.response(200, {})
+    restarted = SportsbetAccess(gate.path, clock=lambda: 10061)
+    with restarted.operation('browser') as operation:
+        operation.response(200, {})
+    value = restarted.read()
+    assert value['phase'] == 'OPEN'
+    assert value['operations'][:512] == previous
+    assert len(value['operations']) == 514
+    # The same allocation is still finite; no counter or allowance is reset.
+    value['operations'].extend({'kind': 'python', 'at': i} for i in range(514, 606))
+    restarted.write(value)
+    with pytest.raises(SportsbetAccessBlocked, match='diagnostic_bound'):
+        restarted.check_admission()
+    with pytest.raises(SportsbetAccessBlocked, match='diagnostic_bound'):
+        with restarted.operation('python'):
+            pytest.fail('allocation exhausted')
+
+
+def test_legacy_ceiling_still_applies_without_explicit_allocation(tmp_path):
+    gate = allocated_gate_at_legacy_ceiling(tmp_path)
+    value = gate.read()
+    del value['diagnostic_authority']
+    gate.write(value)
+    with pytest.raises(SportsbetAccessBlocked, match='operating_policy'):
+        with gate.operation('python'):
+            pytest.fail('implicit lifetime extension')
+    assert len(gate.read()['operations']) == 512
+
+
+@pytest.mark.parametrize('field,bad', [
+    ('max_operations', True), ('max_operations', 193), ('max_operations', 0),
+    ('operation_start', -1), ('operation_start', 513),
+    ('expires_at', float('inf')), ('expires_at', True),
+])
+def test_malformed_allocation_cannot_extend_legacy_ceiling(tmp_path, field, bad):
+    gate = allocated_gate_at_legacy_ceiling(tmp_path)
+    value = gate.read()
+    value['diagnostic_authority'][field] = bad
+    value['diagnostic_authorizations'][-1][field] = bad
+    gate.path.write_text(json.dumps(value))
+    with pytest.raises(SportsbetAccessBlocked):
+        gate.check_admission()
+
+
+def test_current_allocation_must_match_retained_authorization(tmp_path):
+    gate = allocated_gate_at_legacy_ceiling(tmp_path)
+    value = gate.read()
+    value['diagnostic_authority']['max_operations'] = 191
+    gate.write(value)
+    with pytest.raises(SportsbetAccessBlocked, match='authority_invalid'):
+        gate.check_admission()
+
+
+def test_extended_allocation_still_stops_on_denial_and_preserves_guidance(tmp_path):
+    gate = allocated_gate_at_legacy_ceiling(tmp_path)
+    with gate.operation('browser') as operation:
+        operation.response(429, {'Retry-After': '9000'})
+    state = gate.read()
+    assert state['phase'] == 'STOP' and state['not_before'] == 19000
+    assert len(state['operations']) == 513
+    with pytest.raises(SportsbetAccessBlocked):
+        with SportsbetAccess(gate.path, clock=lambda: 10001).operation('python'):
+            pytest.fail('denial was automatically reopened')
+
+
+def test_extended_allocation_still_enforces_per_minute_rate(tmp_path):
+    gate = allocated_gate_at_legacy_ceiling(tmp_path)
+    for _ in range(10):
+        with gate.operation('python'):
+            pass
+    with pytest.raises(SportsbetAccessBlocked, match='operating_policy'):
+        with gate.operation('python'):
+            pytest.fail('rate ceiling was relaxed')
+    assert len(gate.read()['operations']) == 522
+
+
 def test_prospective_authority_keeps_prior_stop_and_honors_cooldown(tmp_path):
     now=[10000.0]
     gate=SportsbetAccess(tmp_path/'access.json',clock=lambda:now[0])
