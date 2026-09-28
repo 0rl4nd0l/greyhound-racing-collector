@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.mark.parametrize("landing_missing,venue_case", [
     (False, "murray"), (True, "murray"), ("paired_missing", "murray"),
-    (False, "sandown_park"), (False, "angle_park"),
+    (False, "sandown_park"), (False, "angle_park"), ("weather_guidance", "murray"),
 ])
 def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, landing_missing, venue_case):
     from scripts.prepare_freshness_rehearsal import prepare, UNITS
@@ -75,6 +75,8 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
         if key.count('/') == 2 and '/racing/' in key:
             body = body.replace('</a>', '<formatted-time data-format="time_24">'+jump_dt.strftime('%H:%M')+'</formatted-time></a>')
         responses[key] = {**value, 'body': body}
+        if 'open-meteo' in key and landing_missing == "weather_guidance":
+            responses[key].update(status=503, headers={"Retry-After": "120"})
     payload['responses'] = responses
     http.write_text(json.dumps(payload))
     for name in ('Alpha', 'Bravo', 'Charlie', 'Delta'):
@@ -136,6 +138,23 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     launcher = 'from scripts.check_freshness_service import deny_network; import os,sys; deny_network(); os.execv(sys.argv[1],sys.argv[1:])'
     service = subprocess.run([sys.executable,'-c',launcher,*command],cwd=cwd,env=env,capture_output=True,text=True,timeout=100)
     (tmp_path/'collector.log').write_text(service.stdout+service.stderr)
+    if landing_missing == "weather_guidance":
+        assert service.returncode != 0, (tmp_path/'collector.log').read_text()
+        assert allowance.claims() == []
+        with campaign.ledger() as ledger:
+            holds = ledger["source_holds"]
+        assert len(holds) == 1
+        assert holds[0]["host"] == "api.open-meteo.com"
+        assert holds[0]["status"] == 503
+        assert holds[0]["retry_headers"]["retry-after"] == "120"
+        assert (scope.session/"STOP.json").exists()
+        assert not list((campaign.root/"operational-predictions/races").glob("*/terminal.json"))
+        from race_collection.freshness_campaign import Campaign
+        with pytest.raises(ValueError, match="source_hold"):
+            Campaign(campaign.root).request()
+        requests = [json.loads(line) for line in Path(payload["log"]).read_text().splitlines()]
+        assert sum(row["host"] == "api.open-meteo.com" for row in requests) == 1
+        return
     inspection_path = allowance.claims()[0].with_suffix('.requests.responses.json')
     inspection = json.loads(inspection_path.read_bytes())
     assert inspection['operation_id'].startswith('browser:')

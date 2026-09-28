@@ -90,7 +90,7 @@ def fixture_data(root, scenario):
 
 
 @pytest.mark.parametrize("campaign_mode", [False, True])
-@pytest.mark.parametrize("scenario", ["canonical_alias", "mismatch", "interrupted", "delayed_start", "expired_append", "source_denial_full", "source_denial_odds", "source_recovery", "source_recovery_mismatch", "source_denial_python_full", "source_denial_python_odds"])
+@pytest.mark.parametrize("scenario", ["canonical_alias", "mismatch", "interrupted", "delayed_start", "expired_append", "source_denial_full", "source_denial_odds", "source_recovery", "source_recovery_mismatch", "source_denial_python_full", "source_denial_python_odds", "busy_source"])
 def test_actual_packaged_service_capture(tmp_path, scenario, campaign_mode, monkeypatch):
     from scripts.prepare_freshness_rehearsal import prepare, UNITS
     from scripts.check_freshness_service import service_command
@@ -192,7 +192,7 @@ def test_actual_packaged_service_capture(tmp_path, scenario, campaign_mode, monk
     monitor = Path(__file__).parent / "fixtures/freshness_capture_monitor.py"
     before = subprocess.run([sys.executable, str(monitor), str(package), "startup"], text=True, capture_output=True, timeout=20)
     assert before.returncode == 0, before.stdout + before.stderr
-    if scenario.startswith("source_denial"):
+    if scenario == "busy_source":
         # Both generated entrypoints contend with a real durable owner in another
         # process. Neither may construct a browser or consume a race/window.
         with SportsbetAccess(access).operation("python"):
@@ -202,8 +202,13 @@ def test_actual_packaged_service_capture(tmp_path, scenario, campaign_mode, monk
                 peers.append(subprocess.Popen([sys.executable, "-c", launcher, *peer_command], cwd=peer_cwd, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE))
             for peer in peers:
                 stdout, stderr = peer.communicate(timeout=20)
-                assert peer.returncode != 0 and "sportsbet_source_hold" in stderr, stdout + stderr
+                assert peer.returncode != 0, stdout + stderr
+                assert not Path(data["transport_marker"] + ".http").exists(), "busy owner reached HTTP"
+                assert not Path(data["transport_marker"] + ".browser").exists(), "busy owner constructed browser"
         assert allowance.claims() == []
+        restored = subprocess.run([sys.executable, str(monitor), str(package), "restore"], text=True, capture_output=True, timeout=20)
+        assert restored.returncode == 0, restored.stdout + restored.stderr
+        return
     with (tmp_path / "service.log").open("w") as log:
         process = subprocess.Popen(
             [sys.executable, "-c", launcher, *command],
@@ -229,6 +234,7 @@ def test_actual_packaged_service_capture(tmp_path, scenario, campaign_mode, monk
     claims = allowance.claims()
     if scenario.startswith("source_denial_python"):
         assert claims == [], log
+        assert Path(data["transport_marker"] + ".http").exists(), log
         assert Path(data["transport_marker"]).exists(), log
         assert SportsbetAccess(access).read()["phase"] == "COOLDOWN"
         for name in ("shadow-autopilot.service", "shadow-autopilot-odds-capture.service"):
