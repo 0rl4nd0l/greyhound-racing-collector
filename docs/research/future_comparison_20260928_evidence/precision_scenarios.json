@@ -1,0 +1,117 @@
+{
+  "status": "PLANNING_ASSUMPTIONS_NOT_POWER_GUARANTEE",
+  "fixed_weeks": 16,
+  "races_per_completed_session_assumption": 8,
+  "source": "prior15developmentdates; live8seals in one90minute session only",
+  "production_relative_variance": "unknown",
+  "scenarios": [
+    {
+      "sessions_per_week": 3,
+      "availability": 0.6,
+      "common_prediction_fraction": 0.85,
+      "result_closure_fraction": 0.9,
+      "expected_contributing_dates": 28.799999999999997,
+      "expected_closed_races": 176.25599999999997,
+      "variance_multiplier": 1,
+      "assumed_density_penalty": 1.9281045751633987,
+      "box_vs_market_family_halfwidth_nats": 0.019953592478098515,
+      "approx_marginal_80pct_effect_nats": 0.026677108371805185
+    },
+    {
+      "sessions_per_week": 3,
+      "availability": 0.6,
+      "common_prediction_fraction": 0.85,
+      "result_closure_fraction": 0.9,
+      "expected_contributing_dates": 28.799999999999997,
+      "expected_closed_races": 176.25599999999997,
+      "variance_multiplier": 2,
+      "assumed_density_penalty": 1.9281045751633987,
+      "box_vs_market_family_halfwidth_nats": 0.028218641100592697,
+      "approx_marginal_80pct_effect_nats": 0.037727128464303726
+    },
+    {
+      "sessions_per_week": 3,
+      "availability": 0.6,
+      "common_prediction_fraction": 0.85,
+      "result_closure_fraction": 0.9,
+      "expected_contributing_dates": 28.799999999999997,
+      "expected_closed_races": 176.25599999999997,
+      "variance_multiplier": 4,
+      "assumed_density_penalty": 1.9281045751633987,
+      "box_vs_market_family_halfwidth_nats": 0.03990718495619703,
+      "approx_marginal_80pct_effect_nats": 0.05335421674361037
+    },
+    {
+      "sessions_per_week": 5,
+      "availability": 0.8,
+      "common_prediction_fraction": 0.9,
+      "result_closure_fraction": 0.95,
+      "expected_contributing_dates": 64.0,
+      "expected_closed_races": 437.76,
+      "variance_multiplier": 1,
+      "assumed_density_penalty": 1.7251461988304095,
+      "box_vs_market_family_halfwidth_nats": 0.012661204261719147,
+      "approx_marginal_80pct_effect_nats": 0.016927494062945338
+    },
+    {
+      "sessions_per_week": 5,
+      "availability": 0.8,
+      "common_prediction_fraction": 0.9,
+      "result_closure_fraction": 0.95,
+      "expected_contributing_dates": 64.0,
+      "expected_closed_races": 437.76,
+      "variance_multiplier": 2,
+      "assumed_density_penalty": 1.7251461988304095,
+      "box_vs_market_family_halfwidth_nats": 0.017905646782899246,
+      "approx_marginal_80pct_effect_nats": 0.02393909168080734
+    },
+    {
+      "sessions_per_week": 5,
+      "availability": 0.8,
+      "common_prediction_fraction": 0.9,
+      "result_closure_fraction": 0.95,
+      "expected_contributing_dates": 64.0,
+      "expected_closed_races": 437.76,
+      "variance_multiplier": 4,
+      "assumed_density_penalty": 1.7251461988304095,
+      "box_vs_market_family_halfwidth_nats": 0.025322408523438294,
+      "approx_marginal_80pct_effect_nats": 0.033854988125890675
+    },
+    {
+      "sessions_per_week": 5,
+      "availability": 0.95,
+      "common_prediction_fraction": 0.95,
+      "result_closure_fraction": 0.99,
+      "expected_contributing_dates": 76.0,
+      "expected_closed_races": 571.8240000000001,
+      "variance_multiplier": 1,
+      "assumed_density_penalty": 1.5683147262094632,
+      "box_vs_market_family_halfwidth_nats": 0.011078012823614725,
+      "approx_marginal_80pct_effect_nats": 0.014810834137471578
+    },
+    {
+      "sessions_per_week": 5,
+      "availability": 0.95,
+      "common_prediction_fraction": 0.95,
+      "result_closure_fraction": 0.99,
+      "expected_contributing_dates": 76.0,
+      "expected_closed_races": 571.8240000000001,
+      "variance_multiplier": 2,
+      "assumed_density_penalty": 1.5683147262094632,
+      "box_vs_market_family_halfwidth_nats": 0.01566667597929901,
+      "approx_marginal_80pct_effect_nats": 0.020945682507270726
+    },
+    {
+      "sessions_per_week": 5,
+      "availability": 0.95,
+      "common_prediction_fraction": 0.95,
+      "result_closure_fraction": 0.99,
+      "expected_contributing_dates": 76.0,
+      "expected_closed_races": 571.8240000000001,
+      "variance_multiplier": 4,
+      "assumed_density_penalty": 1.5683147262094632,
+      "box_vs_market_family_halfwidth_nats": 0.02215602564722945,
+      "approx_marginal_80pct_effect_nats": 0.029621668274943155
+    }
+  ]
+}

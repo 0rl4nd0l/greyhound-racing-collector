@@ -1,3 +1,5 @@
+> September 28 update: see the [current inactive integration and study package](future_comparison_20260928_spec.md). The original preparation below is preserved for provenance.
+
 # Four-way future prediction comparison — prepared execution specification
 
 **PREPARED_NOT_AUTHORIZED. No population has been allocated, no scientific study

@@ -1366,13 +1366,18 @@ def run_shadow_run_official_dry_run(
                     attempts.append(official)
                     selected = official
                     validation_error = ingest.result_validation_error(candidate, selected)
+                    comparison_tie = (comparison_result_binding is not None
+                        and validation_error in {None,"duplicate_first_place_results"}
+                        and set(selected.positions_by_box)=={r["box_number"] for r in candidate.participants}
+                        and ingest.finish_positions_follow_competition_ranking(list(selected.positions_by_box.values())))
+                    if comparison_tie: validation_error=None
                     if candidate.participant_source == "verified_r3_prediction" and validation_error is None:
                         expected_boxes = {row["box_number"] for row in candidate.participants}
                         if (selected.source != OFFICIAL_SOURCE or selected.status != RESULTED_STATUS
                             or selected.source_url not in {candidate.canonical_thedogs_url,
                                                           candidate.canonical_thedogs_url + "?trial=false"}
                             or set(selected.positions_by_box) != expected_boxes
-                            or set(selected.positions_by_box.values()) != set(range(1, len(expected_boxes) + 1))):
+                            or (not comparison_tie and set(selected.positions_by_box.values()) != set(range(1, len(expected_boxes) + 1)))):
                             validation_error = "r3_official_result_identity_or_completeness_mismatch"
                     if validation_error and sportsbet is not None and candidate.participant_source != "verified_r3_prediction":
                         fallback = sportsbet.fetch(candidate)
@@ -2823,6 +2828,7 @@ def evidence_db_ingest_not_executed() -> dict[str, Any]:
 def result_evidence_identity_blockers(
     race_row: Mapping[str, Any],
     runners: Sequence[Mapping[str, Any]],
+    *, allow_dead_heats: bool = False,
 ) -> list[str]:
     blockers: list[str] = []
     race_id = str(race_row.get("race_id") or "").strip()
@@ -2879,9 +2885,11 @@ def result_evidence_identity_blockers(
             blockers.append("runner_dog_name_missing")
     if runner_boxes and runner_boxes != expected_boxes:
         blockers.append("runner_box_order_mismatch")
-    if finish_positions and len(finish_positions) != len(runners):
+    valid_ties=(allow_dead_heats and len(runner_boxes)==len(runners)
+        and ingest.finish_positions_follow_competition_ranking([r.get("finish_position") for r in runners]))
+    if not valid_ties and finish_positions and len(finish_positions) != len(runners):
         blockers.append("duplicate_finish_positions")
-    if finish_positions and finish_positions != set(range(1, len(runners) + 1)):
+    if not valid_ties and finish_positions and finish_positions != set(range(1, len(runners) + 1)):
         blockers.append("finish_positions_not_contiguous")
     return list(dict.fromkeys(blockers))
 
@@ -2899,6 +2907,7 @@ def is_thedogs_official_url(value: Any) -> bool:
 
 def validate_official_result_evidence_rows(
     artifact_rows: Mapping[str, Sequence[Mapping[str, Any]]],
+    *, allow_dead_heats: bool = False,
 ) -> dict[str, Any]:
     race_rows = [dict(row) for row in artifact_rows.get("race_rows") or []]
     runner_rows = [dict(row) for row in artifact_rows.get("runner_rows") or []]
@@ -2914,7 +2923,7 @@ def validate_official_result_evidence_rows(
     for race_row in race_rows:
         race_id = str(race_row.get("race_id") or "").strip()
         runners = runners_by_race_id.get(race_id) or []
-        blockers = result_evidence_identity_blockers(race_row, runners)
+        blockers = result_evidence_identity_blockers(race_row, runners, allow_dead_heats=allow_dead_heats)
         if blockers:
             blocked.append(
                 {
@@ -3086,8 +3095,9 @@ def append_official_result_evidence_to_db(
     artifact_rows: Mapping[str, Sequence[Mapping[str, Any]]],
     output_dir: Path,
     execute: bool,
+    allow_dead_heats: bool = False,
 ) -> dict[str, Any]:
-    validation = validate_official_result_evidence_rows(artifact_rows)
+    validation = validate_official_result_evidence_rows(artifact_rows, allow_dead_heats=allow_dead_heats)
     status = {
         **evidence_db_ingest_not_executed(),
         "execute": execute,
@@ -3244,6 +3254,10 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     generated_at = datetime.now().astimezone()
+    if args.comparison_result_binding is not None:
+        os.umask(0o077)
+        from src.predictor.comparison_result_scope import result_scope
+        result_scope(json.loads(args.comparison_result_binding.read_bytes()),now=generated_at,prediction_bundles=args.r3_prediction_bundles,result_database=args.db)
     output_dir = assert_output_dir_safe(
         args.output_dir
         or args.evidence_root / f"autonomous_official_result_capture_{now_id(generated_at)}",
@@ -3422,6 +3436,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             artifact_rows=artifact_rows,
             output_dir=output_dir,
             execute=args.execute_db_ingest,
+            allow_dead_heats=args.comparison_result_binding is not None,
         )
     report = build_capture_report(
         generated_at=generated_at,
@@ -3529,7 +3544,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         join_eligibility_packet,
     )
     write_text(output_dir / "final_status.txt", str(report["final_status"]) + "\n")
-    print(json.dumps(report, indent=2, sort_keys=True))
+    if args.comparison_result_binding is not None:
+        # Full restricted records stay in the owner's private output directory.
+        print(json.dumps({"status":report.get("status"),"machine_result_retention":True,
+            "official_result_race_rows":report.get("official_result_race_rows"),
+            "official_result_runner_rows":report.get("official_result_runner_rows"),
+            "quarantine_rows":report.get("quarantine_rows")}))
+    else:
+        print(json.dumps(report, indent=2, sort_keys=True))
     return 0 if returncode == 0 else 2
 
 

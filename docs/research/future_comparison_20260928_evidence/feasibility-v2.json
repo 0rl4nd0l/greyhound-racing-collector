@@ -1,0 +1,144 @@
+{
+  "denominator": 12,
+  "network": "kernel denied",
+  "peak_rss_kib": 314188,
+  "predictions_computed": false,
+  "protected_history_processing": "user-authorized, strictly earlier feature inputs only",
+  "raw_values_released": false,
+  "records": [
+    {
+      "cpu_seconds": 0.016600018999999966,
+      "date": "2026-09-28",
+      "failure_phase": "RESULT_FREE_METADATA",
+      "field_size": 6,
+      "reason": "EXPECTED_METADATA_SCALAR",
+      "sample_id": "c2b6db038cf84237245cbaf45fccef670fad03eea7b5fc925a35102f7656e760",
+      "status": "NOT_QUALIFIED",
+      "venue": "HEA",
+      "wall_seconds": 0.016600583912804723
+    },
+    {
+      "cpu_seconds": 0.01739477899999997,
+      "date": "2026-09-28",
+      "failure_phase": "RESULT_FREE_METADATA",
+      "field_size": 6,
+      "reason": "EXPECTED_METADATA_SCALAR",
+      "sample_id": "8968a2f53697cc3d873f5c68286c298b143e272ad5a990b1a4825ba545e009cc",
+      "status": "NOT_QUALIFIED",
+      "venue": "HEA",
+      "wall_seconds": 0.01739356596954167
+    },
+    {
+      "cpu_seconds": 0.01661425900000002,
+      "date": "2026-09-28",
+      "failure_phase": "RESULT_FREE_METADATA",
+      "field_size": 6,
+      "reason": "EXPECTED_METADATA_SCALAR",
+      "sample_id": "59d13a7714bfeee0acd08837625add1708b993e4d805287c8e52474024970509",
+      "status": "NOT_QUALIFIED",
+      "venue": "HEA",
+      "wall_seconds": 0.016614002990536392
+    },
+    {
+      "cpu_seconds": 0.016135256000000098,
+      "date": "2026-09-28",
+      "failure_phase": "RESULT_FREE_METADATA",
+      "field_size": 6,
+      "reason": "EXPECTED_METADATA_SCALAR",
+      "sample_id": "12f42314df3130887d0cb3b6f98604407faef0a204368f4eb8d7853a6b486c45",
+      "status": "NOT_QUALIFIED",
+      "venue": "HEA",
+      "wall_seconds": 0.016135036945343018
+    },
+    {
+      "cpu_seconds": 0.015954977999999898,
+      "date": "2026-09-28",
+      "failure_phase": "RESULT_FREE_METADATA",
+      "field_size": 6,
+      "reason": "EXPECTED_METADATA_SCALAR",
+      "sample_id": "4e00f057ca55f58ebf6668f551d7eadaea2deb0d7a3871fa96dfaf2a468ec87c",
+      "status": "NOT_QUALIFIED",
+      "venue": "BAL",
+      "wall_seconds": 0.01595477806404233
+    },
+    {
+      "cpu_seconds": 0.0154478950000001,
+      "date": "2026-09-28",
+      "failure_phase": "RESULT_FREE_METADATA",
+      "field_size": 5,
+      "reason": "EXPECTED_METADATA_SCALAR",
+      "sample_id": "8ce92dc7919fd62ca9287a3c8bf0c6b1beaebfed31accd8424115b91655fca16",
+      "status": "NOT_QUALIFIED",
+      "venue": "HEA",
+      "wall_seconds": 0.015447643934749067
+    },
+    {
+      "cpu_seconds": 0.018411124,
+      "date": "2026-09-28",
+      "failure_phase": "RESULT_FREE_METADATA",
+      "field_size": 8,
+      "reason": "EXPECTED_METADATA_SCALAR",
+      "sample_id": "d78bcd8286a552b0223e3dc0c4854bd5e23de948f4a4d0cb6b5a4b1ecec3ae87",
+      "status": "NOT_QUALIFIED",
+      "venue": "BAL",
+      "wall_seconds": 0.01841092703398317
+    },
+    {
+      "cpu_seconds": 0.015542343999999986,
+      "date": "2026-09-28",
+      "failure_phase": "RESULT_FREE_METADATA",
+      "field_size": 5,
+      "reason": "EXPECTED_METADATA_SCALAR",
+      "sample_id": "f455e14440688d70e4766dc4b511d18e808470eed7e0c017f80de07ba1cf2d8b",
+      "status": "NOT_QUALIFIED",
+      "venue": "HEA",
+      "wall_seconds": 0.015542133012786508
+    },
+    {
+      "cpu_seconds": 0.015681772000000205,
+      "date": "2026-09-28",
+      "failure_phase": "RESULT_FREE_METADATA",
+      "field_size": 6,
+      "reason": "EXPECTED_METADATA_SCALAR",
+      "sample_id": "43257d0ba5375435afe905a7b16c2f9c327ee2eb4dca8f22b35e868d171c9e2c",
+      "status": "NOT_QUALIFIED",
+      "venue": "HEA",
+      "wall_seconds": 0.015681501012295485
+    },
+    {
+      "cpu_seconds": 0.015680161999999997,
+      "date": "2026-09-28",
+      "failure_phase": "RESULT_FREE_METADATA",
+      "field_size": 6,
+      "reason": "EXPECTED_METADATA_SCALAR",
+      "sample_id": "53759cab46bac589945abb9a3cdd8b2681333804a5ccb7f63493c57e075692da",
+      "status": "NOT_QUALIFIED",
+      "venue": "HEA",
+      "wall_seconds": 0.015679901000112295
+    },
+    {
+      "cpu_seconds": 0.017866361999999913,
+      "date": "2026-09-28",
+      "failure_phase": "RESULT_FREE_METADATA",
+      "field_size": 7,
+      "reason": "EXPECTED_METADATA_SCALAR",
+      "sample_id": "ec2c5d5ec2d6319cfbe7f7606521832daed53ae8d4c7652f89cb46a459580146",
+      "status": "NOT_QUALIFIED",
+      "venue": "BAL",
+      "wall_seconds": 0.017866162001155317
+    },
+    {
+      "cpu_seconds": 0.016014576999999974,
+      "date": "2026-09-28",
+      "failure_phase": "RESULT_FREE_METADATA",
+      "field_size": 7,
+      "reason": "EXPECTED_METADATA_SCALAR",
+      "sample_id": "49fdc61150005e9785762b60404c60107ff91deda1d12247e0020dd6c00ed524",
+      "status": "NOT_QUALIFIED",
+      "venue": "BAL",
+      "wall_seconds": 0.016014258028008044
+    }
+  ],
+  "sample_sha256": "cdb5dccdaee260398acd659d357e053897e5143dbdcf421046b6a474616e5b7d",
+  "target_outcomes_accessed": false
+}

@@ -1,3 +1,5 @@
+> September 28 update: see the [current inactive integration and study package](future_comparison_20260928_results.md). The original preparation below is preserved for provenance.
+
 # Frozen future comparison — executed preparation
 
 **Runnable, default off, not activated. No new predictive advantage is claimed.**

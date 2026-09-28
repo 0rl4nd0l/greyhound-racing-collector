@@ -1,0 +1,157 @@
+{
+  "forbidden": "No target results, inference probabilities, performance metrics, feature values, raw histories or winner identities in released output.",
+  "frozen_at": "2026-09-28T05:59:49.448373+00:00",
+  "records": [
+    {
+      "date": "2026-09-28",
+      "field_size": 6,
+      "prediction_bundle_path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/bundles/prediction_20260928T110209539392+1000_c246c6f47ed4",
+      "prediction_manifest_sha256": "75a01655e43e8b8c93cf58992db07ac9e2365fed3a407588999b9f8136bb6834",
+      "race_id": "Race 3 - HEA - 2026-09-28",
+      "retained_manifest_path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/races/c2b6db038cf84237245cbaf45fccef670fad03eea7b5fc925a35102f7656e760/retention/6ae3ee0293c029d99492b51cd561b2a1ab0bd3d616ea170bf0fbbcfb508d1a9f/bundle/manifest.json",
+      "retained_manifest_sha256": "ac2713310586776632f7d8eb5b9ce30dade9f1de3e7b3a0751acf9aed4802e67",
+      "sample_id": "c2b6db038cf84237245cbaf45fccef670fad03eea7b5fc925a35102f7656e760",
+      "source_audit": "interrupted-1be9bfcb-chain-audit.json",
+      "venue": "HEA"
+    },
+    {
+      "date": "2026-09-28",
+      "field_size": 6,
+      "prediction_bundle_path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/bundles/prediction_20260928T112959301411+1000_b336c6e02ec0",
+      "prediction_manifest_sha256": "defef4b5ed5b16578ec27c9b3fb7476e455b228a936b7d03d5c324855e54a159",
+      "race_id": "Race 5 - HEA - 2026-09-28",
+      "retained_manifest_path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/races/8968a2f53697cc3d873f5c68286c298b143e272ad5a990b1a4825ba545e009cc/retention/b638b5936bdc837015bba2928d2a94de59ed388cc818c0dc593171308fbb74e2/bundle/manifest.json",
+      "retained_manifest_sha256": "9f18f49b1ec546d7d6abfb54138f86df89637241e866c136fa00a95f3abbf412",
+      "sample_id": "8968a2f53697cc3d873f5c68286c298b143e272ad5a990b1a4825ba545e009cc",
+      "source_audit": "failed-35b375ba-chain-audit.json",
+      "venue": "HEA"
+    },
+    {
+      "date": "2026-09-28",
+      "field_size": 6,
+      "prediction_bundle_path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/bundles/prediction_20260928T114601434006+1000_bca517d04eb8",
+      "prediction_manifest_sha256": "79456e947da971c470f7ad8e1daff625ad37d5ecb262c344f27904094fffb55e",
+      "race_id": "Race 6 - HEA - 2026-09-28",
+      "retained_manifest_path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/races/59d13a7714bfeee0acd08837625add1708b993e4d805287c8e52474024970509/retention/e2967abc5409b52efa8d09846b3cd8fc1ed172535c5e9698adb5cff1f997d28c/bundle/manifest.json",
+      "retained_manifest_sha256": "8b4d302b971af9ce4a6f30248f653724a117b0fc3f388673dfaf36cbe40926f5",
+      "sample_id": "59d13a7714bfeee0acd08837625add1708b993e4d805287c8e52474024970509",
+      "source_audit": "failed-35b375ba-chain-audit.json",
+      "venue": "HEA"
+    },
+    {
+      "date": "2026-09-28",
+      "field_size": 6,
+      "prediction_bundle_path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/bundles/prediction_20260928T120303654964+1000_958a8dfa7fbe",
+      "prediction_manifest_sha256": "6d957ab8fa4c361f6069767c9dcd57de1c03c65da7eff6119147d14cd4812588",
+      "race_id": "Race 7 - HEA - 2026-09-28",
+      "retained_manifest_path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/races/12f42314df3130887d0cb3b6f98604407faef0a204368f4eb8d7853a6b486c45/retention/2278ddac803a54d5c9d9a19050a9feafbadfb954d8b00bdbee0f8ac3bbc71a4e/bundle/manifest.json",
+      "retained_manifest_sha256": "a7e485ad909966fa6cbeeb478f35c05080d0028b37f9aa331e95d9f1c94a89c8",
+      "sample_id": "12f42314df3130887d0cb3b6f98604407faef0a204368f4eb8d7853a6b486c45",
+      "source_audit": "failed-35b375ba-chain-audit.json",
+      "venue": "HEA"
+    },
+    {
+      "date": "2026-09-28",
+      "field_size": 6,
+      "prediction_bundle_path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/bundles/prediction_20260928T124357087200+1000_868e518c71aa",
+      "prediction_manifest_sha256": "aae5a3ea849c4a0831747b63ff6d31653be6fc8f8bcf4bb1e3a8143f8fa1e3dd",
+      "race_id": "Race 1 - BAL - 2026-09-28",
+      "retained_manifest_path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/races/4e00f057ca55f58ebf6668f551d7eadaea2deb0d7a3871fa96dfaf2a468ec87c/retention/d257d7f5d3218d0f5a1eddc36345daab37de3a13a71b4294423dab3fc21980f0/bundle/manifest.json",
+      "retained_manifest_sha256": "bcaabeec81cc8013a3e74d26904a852cbde4d47cea832ddd3e850f23a15c03e0",
+      "sample_id": "4e00f057ca55f58ebf6668f551d7eadaea2deb0d7a3871fa96dfaf2a468ec87c",
+      "source_audit": "final-7bd839f0-audit.json",
+      "venue": "BAL"
+    },
+    {
+      "date": "2026-09-28",
+      "field_size": 5,
+      "prediction_bundle_path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/bundles/prediction_20260928T125459141260+1000_d08f1d0e57f7",
+      "prediction_manifest_sha256": "b90e5cf7c6e94bb67425243dbe564a304d34d501773db83e0734d224a179addf",
+      "race_id": "Race 10 - HEA - 2026-09-28",
+      "retained_manifest_path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/races/8ce92dc7919fd62ca9287a3c8bf0c6b1beaebfed31accd8424115b91655fca16/retention/003fbff142e64fe41428c9d1fc5145e569cbbf387399cf8185df9dbfe9edd145/bundle/manifest.json",
+      "retained_manifest_sha256": "d7d2105a5147a5d9434cd1d3d04b9b0614e2e3393eb852f5125c0152d2a1d962",
+      "sample_id": "8ce92dc7919fd62ca9287a3c8bf0c6b1beaebfed31accd8424115b91655fca16",
+      "source_audit": "final-7bd839f0-audit.json",
+      "venue": "HEA"
+    },
+    {
+      "date": "2026-09-28",
+      "field_size": 8,
+      "prediction_bundle_path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/bundles/prediction_20260928T132959300936+1000_86e6494d297c",
+      "prediction_manifest_sha256": "4247da2e0f2eceb6ea4a01f9c859d7f34683a878d86796b5625e83d094a6588e",
+      "race_id": "Race 3 - BAL - 2026-09-28",
+      "retained_manifest_path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/races/d78bcd8286a552b0223e3dc0c4854bd5e23de948f4a4d0cb6b5a4b1ecec3ae87/retention/cbd0efc19d879dad0dd674fbc9f13f200401e148b3c15e0feb4ac098638f7497/bundle/manifest.json",
+      "retained_manifest_sha256": "aedddcb9742c802d5462e8f92f193404b35067503d44a06405a268d3fd220c83",
+      "sample_id": "d78bcd8286a552b0223e3dc0c4854bd5e23de948f4a4d0cb6b5a4b1ecec3ae87",
+      "source_audit": "final-7bd839f0-audit.json",
+      "venue": "BAL"
+    },
+    {
+      "date": "2026-09-28",
+      "field_size": 5,
+      "prediction_bundle_path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/bundles/prediction_20260928T131757257163+1000_1b9c0467a7a7",
+      "prediction_manifest_sha256": "fce8cdcc3b696e1883f0075fb09933f12805c320adcfaea970f12cbed68a3313",
+      "race_id": "Race 11 - HEA - 2026-09-28",
+      "retained_manifest_path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/races/f455e14440688d70e4766dc4b511d18e808470eed7e0c017f80de07ba1cf2d8b/retention/44af406027a16fc3dfe594f7b782350c3b19ca043500b0039395bcb46f427b70/bundle/manifest.json",
+      "retained_manifest_sha256": "09daf75c8aa6f7ae7beadc54dac2b2d511656df1472ead68669a582389f172bd",
+      "sample_id": "f455e14440688d70e4766dc4b511d18e808470eed7e0c017f80de07ba1cf2d8b",
+      "source_audit": "final-7bd839f0-audit.json",
+      "venue": "HEA"
+    },
+    {
+      "date": "2026-09-28",
+      "field_size": 6,
+      "prediction_bundle_path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/bundles/prediction_20260928T133801321710+1000_e56d8559d321",
+      "prediction_manifest_sha256": "b00c8b34a19dab9f97ad95bf9df20df5357dc9cde7526f58d374463ccca54f0a",
+      "race_id": "Race 12 - HEA - 2026-09-28",
+      "retained_manifest_path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/races/43257d0ba5375435afe905a7b16c2f9c327ee2eb4dca8f22b35e868d171c9e2c/retention/46cebfdf54484a195d29bb2520ee82e386b8bed1a690e2ee0a0a30b252b81a1d/bundle/manifest.json",
+      "retained_manifest_sha256": "0b4130c73023948f4894c10028ca936affb5d9b067f492117ac596e8ce381033",
+      "sample_id": "43257d0ba5375435afe905a7b16c2f9c327ee2eb4dca8f22b35e868d171c9e2c",
+      "source_audit": "final-7bd839f0-audit.json",
+      "venue": "HEA"
+    },
+    {
+      "date": "2026-09-28",
+      "field_size": 6,
+      "prediction_bundle_path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/bundles/prediction_20260928T124043331923+1000_9c42510bdc00",
+      "prediction_manifest_sha256": "b9d3e362ab8da24e19e34d9c0dd95f4a7b15c6a2c5041a6c228d2ed2c8e80d86",
+      "race_id": "Race 9 - HEA - 2026-09-28",
+      "retained_manifest_path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/races/53759cab46bac589945abb9a3cdd8b2681333804a5ccb7f63493c57e075692da/retention/c9a2911bbddb3a0782ab352a4f557fc41526921f5ffef2ac77eb8c9e49e3153d/bundle/manifest.json",
+      "retained_manifest_sha256": "d4874f09fde8a09db32d0f41d133bb5fc3562e9d6a77631efb8875a9299825b6",
+      "sample_id": "53759cab46bac589945abb9a3cdd8b2681333804a5ccb7f63493c57e075692da",
+      "source_audit": "final-7bd839f0-audit.json",
+      "venue": "HEA"
+    },
+    {
+      "date": "2026-09-28",
+      "field_size": 7,
+      "prediction_bundle_path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/bundles/prediction_20260928T135757427665+1000_acaeacfe250a",
+      "prediction_manifest_sha256": "482affe35cd93de092d65157a0a7476d4a567d5fb33c5e36c4fa839c0d2f2e18",
+      "race_id": "Race 4 - BAL - 2026-09-28",
+      "retained_manifest_path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/races/ec2c5d5ec2d6319cfbe7f7606521832daed53ae8d4c7652f89cb46a459580146/retention/0c4b555bf506a7db884d4f7917b72c929af9aa9cf15df0dabbaf1470e5ca9642/bundle/manifest.json",
+      "retained_manifest_sha256": "1d898f28c5b7e9a551205646a6277ab2217f572116d874181420a65324728630",
+      "sample_id": "ec2c5d5ec2d6319cfbe7f7606521832daed53ae8d4c7652f89cb46a459580146",
+      "source_audit": "final-7bd839f0-audit.json",
+      "venue": "BAL"
+    },
+    {
+      "date": "2026-09-28",
+      "field_size": 7,
+      "prediction_bundle_path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/bundles/prediction_20260928T130259180289+1000_d1fff4a675fb",
+      "prediction_manifest_sha256": "35887c425dcd6a928fcd6dcbc224c7238473a9c91f73f6e91f02c729dfdc1ff6",
+      "race_id": "Race 2 - BAL - 2026-09-28",
+      "retained_manifest_path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/races/49fdc61150005e9785762b60404c60107ff91deda1d12247e0020dd6c00ed524/retention/51b38d95af50d1b35fd24db28d78727d727c4dd7faab51a7b0f3d9e6f858e497/bundle/manifest.json",
+      "retained_manifest_sha256": "dd9a4d636154d63a99e6497909e7ea2a93be4b2a58735e8bb84f2f54cb1aa2c8",
+      "sample_id": "49fdc61150005e9785762b60404c60107ff91deda1d12247e0020dd6c00ed524",
+      "source_audit": "final-7bd839f0-audit.json",
+      "venue": "BAL"
+    }
+  ],
+  "selection": "All retained chains across interrupted 1be9bfcb, failed 35b375ba and completed 7bd839f0 September 28 packages; no replacements. First 30a57dfe package had zero capture/retention; retained-only scope excludes no-input opportunities, separately accounted in coverage.",
+  "sources": {
+    "/home/l4nd0/greyhound-collector-campaign-20260923/recovery-20260928/failed-35b375ba-chain-audit.json": "48ba73607e23ab5f91a443caf982df9f2dbcdc82ad2d3ab954981cb85cd89a3f",
+    "/home/l4nd0/greyhound-collector-campaign-20260923/recovery-20260928/final-7bd839f0-audit.json": "914393c46cc93cf04ab96331e00d37a29da9a9e6eb6809f0cdb642f1261dbf38",
+    "/home/l4nd0/greyhound-collector-campaign-20260923/recovery-20260928/interrupted-1be9bfcb-chain-audit.json": "fb3c8a6e6b1e3c99065f34d089f4e95944d2233e1a5f1df242823f5f362465f0"
+  },
+  "status": "SAMPLE_FROZEN_BEFORE_FEATURE_ELIGIBILITY"
+}

@@ -9,12 +9,13 @@ from pathlib import Path
 from src.predictor.future_comparison import checked,load_plan,stamp,verify_comparison
 
 
-def result_scope(binding, *, now, prediction_bundles):
+def result_scope(binding, *, now, prediction_bundles, result_database):
     plan,raw=load_plan(Path(binding['plan']),binding['plan_sha256'])
     authority=json.loads(checked(Path(binding['authority']),binding['authority_sha256']))
     if (plan['status']!='AUTHORIZED' or authority.get('status')!='AUTHORIZED_MACHINE_RESULT_RETENTION'
             or authority.get('plan_sha256')!=binding['plan_sha256'] or not authority.get('owner')
-            or not authority.get('authority_reference') or authority.get('human_outcome_access') is not False
+            or Path(authority.get('result_database','/UNBOUND')).absolute()!=result_database.absolute()
+            or not authority.get('authority_reference') or not authority.get('source_budget_reference') or authority.get('human_outcome_access') is not False
             or not stamp(authority['issued_at'])<=stamp(plan['activated_at'])<=now
             or now>stamp(plan['ends_at'])+timedelta(days=14)
             or str(prediction_bundles.resolve()) not in [str(Path(p).resolve()) for p in plan['prediction_output_roots']]):

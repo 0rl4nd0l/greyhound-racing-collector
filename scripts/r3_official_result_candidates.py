@@ -31,7 +31,7 @@ def r3_prediction_candidates(*, job_store_path: Path, prediction_bundles: Path,
     comparison_plan=None
     if comparison_result_binding is not None:
         from src.predictor.comparison_result_scope import result_scope
-        comparison_plan=result_scope(comparison_result_binding,now=current_time,prediction_bundles=prediction_bundles)
+        comparison_plan=result_scope(comparison_result_binding,now=current_time,prediction_bundles=prediction_bundles,result_database=result_database)
     try:
         store = JobStore(job_store_path, separate_from=(result_database,), readonly=True)
         jobs = store.recorded_jobs()

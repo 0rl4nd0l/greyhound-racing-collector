@@ -23,15 +23,17 @@ def summarize(races, *, replicates=20000):
     for model in MODELS:
         ll=[]; bs=[]; ranks=[]; bins=[[] for _ in range(10)]
         for race in races:
-            p=np.asarray(race['probabilities'][model],dtype=float); y=np.zeros(len(p)); y[race['winner']]=1
+            p=np.asarray(race['probabilities'][model],dtype=float); y=np.zeros(len(p))
+            if race.get('outcome') is not None:y=np.asarray(race['outcome'],float)
+            else:y[race['winner']]=1
             if not np.isfinite(p).all() or (p<=0).any() or not np.isclose(p.sum(),1,rtol=0,atol=1e-12):
                 raise ValueError('invalid_probability')
-            ll.append(float(-np.log(p[race['winner']])));bs.append(float(np.sum((p-y)**2)))
-            order=sorted(range(len(p)),key=lambda i:(-p[i],race['boxes'][i]));ranks.append(order.index(race['winner'])+1)
+            ll.append(float(-np.sum(y*np.log(p))));bs.append(float(np.sum((p-y)**2)))
+            order=sorted(range(len(p)),key=lambda i:(-p[i],race['boxes'][i]));ranks.append((float(y[order[0]]),sum(y[i]*(order.index(i)+1) for i in range(len(p))),sum(y[i]/(order.index(i)+1) for i in range(len(p)))))
             for probability,label in zip(p,y): bins[min(int(probability*10),9)].append((float(probability),float(label)))
         losses[model]=np.asarray([ll,bs]).T
-        metrics[model]={'log_loss':float(np.mean(ll)),'brier':float(np.mean(bs)),'top_choice_accuracy':float(np.mean(np.asarray(ranks)==1)),
-            'winner_mean_rank':float(np.mean(ranks)),'mean_reciprocal_rank':float(np.mean(1/np.asarray(ranks)))}
+        metrics[model]={'log_loss':float(np.mean(ll)),'brier':float(np.mean(bs)),'top_choice_accuracy':float(np.mean([r[0] for r in ranks])),
+            'winner_mean_rank':float(np.mean([r[1] for r in ranks])),'mean_reciprocal_rank':float(np.mean([r[2] for r in ranks]))}
         calibration[model]=[{'lo':i/10,'hi':(i+1)/10,'runners':len(b),'predicted':float(np.mean([p for p,y in b])) if b else None,
             'observed':float(np.mean([y for p,y in b])) if b else None} for i,b in enumerate(bins)]
     counts=np.zeros(len(dates))
@@ -51,7 +53,7 @@ def summarize(races, *, replicates=20000):
             bounds=np.quantile(samples,[.00625,.99375],axis=0)
             paired[candidate+'-minus-'+reference]={'log_loss':float(diff[:,0].mean()),'brier':float(diff[:,1].mean()),
                 'simultaneous_family_intervals':bounds.T.tolist(),
-                'both_upper_bounds_below_zero':bool((bounds[1]<0).all()),
+                'inferentially_usable':len(dates)>=40,'both_upper_bounds_below_zero':bool(len(dates)>=40 and (bounds[1]<0).all()),
                 'leave_one_date_out_log_loss':[float((aggregate[:,0].sum()-a)/(len(races)-n)) for a,n in zip(aggregate[:,0],counts)] if len(dates)>1 else []}
     periods={}
     # Predeclared calendar-month/venue summaries, no selection or retuning.
@@ -72,6 +74,10 @@ def evaluate(plan_path, plan_sha, authority_path, authority_sha, result_database
     authority=json.loads(checked(authority_path,authority_sha))
     if authority.get('status')!='AUTHORIZED_ONE_SHOT_OUTCOMES' or authority.get('plan_sha256')!=plan_sha or not authority.get('authority_reference'):
         raise ValueError('outcome_authority_missing')
+    closure_deadline=stamp(plan['ends_at'])+timedelta(days=14)
+    if plan['schema_version']=='frozen_four_way_comparison_plan_v2':
+        if stamp(authority['closure_cutoff'])!=closure_deadline:raise ValueError('closure_cutoff_changed')
+        checked(result_database,authority['result_database_sha256'])
     programme=Path(plan['programme_root'])/plan_sha
     # Irrevocable global evaluation claim; failures stay consumed, no hidden retries.
     put(programme/'evaluation_claim.json',{'claimed_at':now.isoformat(),'authority_sha256':authority_sha,'output':str(out)})
@@ -92,7 +98,8 @@ def evaluate(plan_path, plan_sha, authority_path, authority_sha, result_database
     # Membership, missingness and exclusions frozen BEFORE any result lookup.
     put(out/'membership.json',{'plan_sha256':plan_sha,'opportunities':opportunities,'attempts':attempts,'common_races':len(common),'locked_at':now.isoformat()})
     from src.operator_ui.journal_results import OfficialResultSource
-    source=OfficialResultSource(result_database); races=[]; closure=[]; bounded_races=[]
+    from src.predictor.comparison_results import ComparisonResultSource
+    source=(ComparisonResultSource if plan['schema_version']=='frozen_four_way_comparison_plan_v2' else OfficialResultSource)(result_database); races=[]; closure=[]; bounded_races=[]
     for root,value in common:
         record=value['records']['production']; race=record['race']
         if not stamp(plan['starts_at'])<=stamp(race['jump_timestamp'])<stamp(plan['ends_at']): raise ValueError('outside_allocated_population')
@@ -104,14 +111,14 @@ def evaluate(plan_path, plan_sha, authority_path, authority_sha, result_database
         bounded={'race_id':race['race_id'],'date':race['race_date'],'venue':race['venue'],'boxes':boxes,'winner':None,
             'probabilities':{m:[r['probability'] for r in value['records'][m]['predictions']] for m in MODELS}}
         bounded_races.append(bounded)
-        result=source.read(job,verified,now=now)
+        result=source.read(job,verified,now=closure_deadline if plan['schema_version']=='frozen_four_way_comparison_plan_v2' else now)
         closure.append({'race_id':race['race_id'],**result})
         if result['state']!='RESULT_AVAILABLE': continue
-        winner=next(r['box_number'] for r in result['evidence']['runner_rows'] if r['is_winner'])
-        boxes=[r['box_number'] for r in record['predictions']]
-        bounded['winner']=boxes.index(winner)
-        races.append({'race_id':race['race_id'],'date':race['race_date'],'venue':race['venue'],'boxes':boxes,'winner':boxes.index(winner),
-            'probabilities':{m:[r['probability'] for r in value['records'][m]['predictions']] for m in MODELS}})
+        winning_boxes={r['box_number'] for r in result['evidence']['runner_rows'] if r['is_winner']}
+        outcome=[1/len(winning_boxes) if box in winning_boxes else 0 for box in boxes]
+        bounded['outcome']=outcome
+        races.append({**bounded,'outcome':outcome})
+    if plan['schema_version']=='frozen_four_way_comparison_plan_v2':checked(result_database,authority['result_database_sha256'])
     put(out/'result_closure.json',closure)
     if plan['schema_version']=='frozen_four_way_comparison_plan_v2':
         from src.predictor.comparison_missingness import paired_bounds

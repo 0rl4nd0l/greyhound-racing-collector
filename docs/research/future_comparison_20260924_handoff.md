@@ -1,3 +1,5 @@
+> September 28 update: see the [current inactive integration and study package](future_comparison_20260928_handoff.md). The original preparation below is preserved for provenance.
+
 # Frozen comparison integration handoff
 
 Status: implemented offline; default off; no scientific activation. Historical

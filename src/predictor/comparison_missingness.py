@@ -21,7 +21,11 @@ def paired_bounds(races, *, replicates=20000):
                         or (p<=0).any() or (q<=0).any() or not np.isclose(p.sum(),1) or not np.isclose(q.sum(),1)):
                     raise ValueError('invalid_common_probability')
                 possible=np.column_stack((np.log(q/p),np.sum(p*p-q*q)-2*(p-q)))
-                if race.get('winner') is not None:
+                if race.get('outcome') is not None:
+                    y=np.asarray(race['outcome'],float)
+                    if len(y)!=len(p) or not np.isfinite(y).all() or (y<0).any() or not np.isclose(y.sum(),1):raise ValueError('invalid_fractional_outcome')
+                    lo=hi=y@possible
+                elif race.get('winner') is not None:
                     lo=hi=possible[race['winner']]
                 elif race.get('official_void') is True:
                     lo=hi=np.zeros(2)
@@ -38,8 +42,9 @@ def paired_bounds(races, *, replicates=20000):
                 means=np.einsum('bi,ijk->bjk',draws,sums)/(draws@counts)[:,None,None]
                 interval=np.stack((np.quantile(means[:,0,:],.00625,axis=0),np.quantile(means[:,1,:],.99375,axis=0)),axis=1)
                 groups[unit]={'blocks':len(labels),'simultaneous_outer_intervals':interval.tolist(),
-                    'both_upper_bounds_below_zero':bool((interval[:,1]<0).all())}
+                    'inferentially_usable':len(labels)>=(40 if unit=='date' else 12),
+                    'both_upper_bounds_below_zero':bool(len(labels)>=(40 if unit=='date' else 12) and (interval[:,1]<0).all())}
             output[candidate+'-minus-'+reference]={'identified_mean_bounds':bounds.mean(axis=0).T.tolist(),'resampling':groups}
-    return {'common_seals':len(races),'resolved':sum(r.get('winner') is not None for r in races),
-        'unresolved':sum(r.get('winner') is None and not r.get('official_void') for r in races),
+    return {'common_seals':len(races),'resolved':sum(r.get('winner') is not None or r.get('outcome') is not None for r in races),
+        'unresolved':sum(r.get('winner') is None and r.get('outcome') is None and not r.get('official_void') for r in races),
         'paired':output,'interpretation':'Bounds assume a sealed-field outcome or void; technical exclusion and outside-field results are not missing at random.'}
