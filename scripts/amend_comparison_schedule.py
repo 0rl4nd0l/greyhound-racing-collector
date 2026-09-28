@@ -103,7 +103,7 @@ def prepare(*, previous_control, output, start, source_commit, approval_referenc
     values = deepcopy(old)
     values['plan'].update(starts_at=starts, ends_at=ends,
         activated_at=now.isoformat(), schedule_amendment_reference=approval_reference,
-        reservation_review_sha256=hashlib.sha256(reservation_review.read_bytes()).hexdigest())
+        reservation_review_sha256=digest(review))
     # Original approval and scientific rules stay bound; the new reference covers
     # only dates/allocation extension, not new training or evaluation authority.
     values['allocation'].update(starts_at=starts, ends_at=ends, schedule_amendment_reference=approval_reference,
