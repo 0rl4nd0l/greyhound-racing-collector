@@ -72,3 +72,9 @@ and its exact-member result acquisition. Existing offline tests remain the
 interruption/idempotency evidence until actual due work can be observed under the
 approved scope. The [operational commands](../operations/persistent_execution_commands_20260928.md)
 remain the installation, monitoring, pause and recovery reference.
+
+The operational owner sealed the final `activation-manifest.json` in the same
+evidence directory, SHA-256
+`e836aca32deeb1b0ccf0e1205db0513c9badff55ac46e9a58cc519e0648ffb4d`.
+Its final installed preflight passed. Runtime and the first-session gate remain
+unchanged; this documentation update performed no service or provider actions.

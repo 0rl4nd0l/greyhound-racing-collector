@@ -1,6 +1,7 @@
 {
   "documentation_only": true,
   "receipt_sha256": {
+    "activation-manifest.json": "e836aca32deeb1b0ccf0e1205db0513c9badff55ac46e9a58cc519e0648ffb4d",
     "activation.json": "e176a806c458be05b2ab514cda9a6b053bf143b23ffa2ea00be8b06e11eacd0a",
     "approval.json": "dafdea7bd7fadb8d008cace8e82ad36ff2815b9813662a57cf67d4f22dbe1ef2",
     "operation-verification.json": "f6ff252a1b7fd03b6b537bf3c64d7b7420051a5e26aa328dbe60cb07027d8c6d",
