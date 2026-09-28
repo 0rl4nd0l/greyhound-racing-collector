@@ -539,7 +539,7 @@ def planned_scope_close(plan, scope, current):
         end = datetime.fromisoformat(plan["ends_at"])
         age = current["source_age_seconds"]
         if (not plan.get("operational_predictions") or not 0 <= (end-observed).total_seconds() < 90
-                or current["collector_status"] != "STALE"
+                or current["collector_status"] not in {"STALE", "AVAILABLE/FRESH"}
                 or any(current[key] != "AVAILABLE/FRESH" for key in ("index_status", "authority_status"))
                 or type(age) not in {int, float} or not math.isfinite(age) or not 0 <= age < 270
                 or current.get("lock") is not None or Path(plan["lock_path"]).exists()
@@ -549,7 +549,7 @@ def planned_scope_close(plan, scope, current):
         odds = lanes["ODDS_ONLY"]
         if (set(lanes) != {"FULL_DAEMON", "ODDS_ONLY"}
                 or lanes["FULL_DAEMON"]["status"] != "RECEIPT_READY"
-                or odds["status"] != "STALE" or odds["phase"] != "ODDS_CAPTURE_ONLY_READY"
+                or odds["status"] not in {"STALE", "RECEIPT_READY"} or odds["phase"] != "ODDS_CAPTURE_ONLY_READY"
                 or not re.fullmatch(r"[A-Za-z0-9_+.-]+", odds["run_id"])):
             return None
         unit = current["unit_status"]["odds"]
@@ -592,7 +592,7 @@ def planned_scope_close(plan, scope, current):
                 or report["final_status"] != "ODDS_CAPTURE_ONLY_READY" or report["status"] != "READY"
                 or datetime.fromisoformat(report["generated_at"]) > marked):
             return None
-        return {"status": "PLANNED_ADMISSION_CLOSED", "native_collector_status": "STALE",
+        return {"status": "PLANNED_ADMISSION_CLOSED", "native_collector_status": current["collector_status"],
                 "service_invocation_id": invocation, "new_data_accepted": False,
                 "marker_sha256": hashlib.sha256(marker_raw).hexdigest(),
                 "lifecycle_sha256": hashlib.sha256(lifecycle_raw).hexdigest(),
@@ -633,6 +633,7 @@ def observe(output, plan, control, scope, predictions=None):
     exclusions = []
     seen = set()
     refresh_failures = set()
+    closed_odds_invocation = None
     external_overheads = {"full": [], "odds": []}
     while now() < end:
         tick = time.monotonic()
@@ -740,8 +741,16 @@ def observe(output, plan, control, scope, predictions=None):
                 current["campaign_logical_requests"] = ledger["logical_requests"]
             current["capture_requests"] = [json.loads(path.read_bytes()) for path in
                 scope.session.glob("captures/*/capture-reservation.requests.json")]
-        closure = planned_scope_close(plan, scope, current) if current["collector_status"] == "STALE" else None
+        closure = planned_scope_close(plan, scope, current)
         if closure:
+            # Admission is already closed and this invocation's child is reaped.
+            # Stop further timer starts before an ExecCondition replaces that
+            # proved invocation while the previous native receipt ages to stale.
+            if closed_odds_invocation is None:
+                control.command("stop", "shadow-autopilot-odds-capture.timer")
+                closed_odds_invocation = closure["service_invocation_id"]
+            elif closed_odds_invocation != closure["service_invocation_id"]:
+                raise ValueError("closed_odds_invocation_changed")
             current["planned_shutdown"] = closure
         # Preserve native staleness even when final admission is proven closed.
         atomic_json(output / "samples" / f"{samples:06d}.json", current)

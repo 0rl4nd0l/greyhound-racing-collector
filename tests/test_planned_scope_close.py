@@ -59,9 +59,14 @@ def test_planned_close_preserves_native_stale_and_has_no_new_data(tmp_path):
 
 @pytest.mark.parametrize('change', ['early', 'expired', 'future_marker', 'old_marker', 'wrong_contract',
     'wrong_invocation', 'wrong_child', 'child_running', 'interrupted', 'wrong_exit', 'wrapper_mismatch',
-    'lock', 'stale_index', 'authority', 'full_failed', 'odds_failed', 'report_mutation', 'scope_stop', 'source_stop'])
-def test_unproven_or_unhealthy_close_rejects(tmp_path, change):
+    'lock', 'stale_index', 'authority', 'full_failed', 'odds_failed', 'report_mutation', 'scope_stop', 'source_stop',
+    'new_condition', 'new_running'])
+@pytest.mark.parametrize('still_fresh', [False, True])
+def test_unproven_or_unhealthy_close_rejects(tmp_path, change, still_fresh):
     plan, scope, current, marker, lifecycle, report = closure_fixture(tmp_path)
+    if still_fresh:
+        current['collector_status']='AVAILABLE/FRESH'
+        current['lanes'][1]['status']='RECEIPT_READY'
     m=json.loads(marker.read_bytes()); l=json.loads(lifecycle.read_bytes())
     if change=='early': current['observed_at']=(scope.end-timedelta(seconds=91)).isoformat()
     elif change=='expired': current['observed_at']=(scope.end+timedelta(seconds=1)).isoformat()
@@ -83,6 +88,8 @@ def test_unproven_or_unhealthy_close_rejects(tmp_path, change):
     elif change=='scope_stop':run.atomic_json(scope.session/'STOP.json', {'reason':'denial'})
     elif change=='source_stop':
         gate=SportsbetAccess(plan['sportsbet_access_state']);value=gate.read();value['phase']='STOP';run.atomic_json(gate.path,value)
+    elif change=='new_condition':current['unit_status']['odds'].update(ActiveState='activating',SubState='condition',InvocationID='b'*32)
+    elif change=='new_running':current['unit_status']['odds'].update(ActiveState='activating',SubState='start',MainPID='999')
     run.atomic_json(marker,m);run.atomic_json(lifecycle,l)
     assert run.planned_scope_close(plan, scope, current) is None
 
@@ -160,6 +167,52 @@ def test_actual_exported_wrapper_retains_closed_admission_without_traffic(tmp_pa
         'reference_hashes':{'report':hashlib.sha256(previous.read_bytes()).hexdigest()}}]}
     assert run.planned_scope_close(plan,scope,current)['status']=='PLANNED_ADMISSION_CLOSED'
     assert current['collector_status']=='STALE'
+    # Exercise the exported supervisor itself with the real exported wrapper's
+    # closure evidence. Only native samples/clock/systemd transport are invented.
+    observer_input=tmp_path/'observer-input.json'
+    observer_input.write_text(json.dumps(current))
+    driver=r'''
+import copy,json,sys
+from pathlib import Path
+from datetime import datetime,timedelta
+from types import SimpleNamespace
+from scripts import run_freshness_rehearsal as run
+from race_collection.live_freshness_contract import FreshnessContract
+import race_collection.freshness_rehearsal as policy
+package=Path(sys.argv[1]); plan=json.loads((package/'plan.json').read_bytes())
+scope=FreshnessContract(json.loads((package/'contract.json').read_bytes()))
+base=json.loads(Path(sys.argv[2]).read_bytes()); observed=datetime.fromisoformat(base['observed_at'])
+base.update(packet_sha256='packet',source_at=(observed-timedelta(seconds=114)).isoformat(),external_service_overhead_seconds={})
+run.atomic_json(Path(plan['evidence_root'])/'shadow_autopilot_daemon_runtime/live-publication-events/000000.json',{'previous_event_sha256':None,'packet_sha256':'packet'})
+run.now=lambda:observed
+commands=[];ticks=[]
+class Done(Exception):pass
+def tick():
+ ticks.append(1)
+ if len(ticks)==3:raise Done
+def sample(*args):
+ value=copy.deepcopy(base)
+ if len(ticks)==1:
+  value['collector_status']='AVAILABLE/FRESH';value['lanes'][1]['status']='RECEIPT_READY'
+ return value
+run.sample=sample;run.time.sleep=lambda seconds:None
+run.AttemptAllowance=lambda scope:SimpleNamespace(claims=lambda:[])
+run.window_accounting=lambda *args:{}
+policy.TimerAccounting=lambda start:SimpleNamespace(observe=lambda current:None,summary=lambda now:{})
+policy.assess_interval=lambda *args:0
+output=package/'controlled-observer'
+try:run.observe(output,plan,SimpleNamespace(command=lambda *args:commands.append(args)),scope,predictions=SimpleNamespace(tick=tick))
+except Done:pass
+assert commands==[('stop','shadow-autopilot-odds-capture.timer')],commands
+samples=[json.loads(p.read_bytes()) for p in sorted((output/'samples').glob('*.json'))]
+assert [s['collector_status'] for s in samples]==['AVAILABLE/FRESH','STALE']
+assert all(s['planned_shutdown']['new_data_accepted'] is False for s in samples)
+print('EXPORTED_SUPERVISOR_CLOSED_TIMER_ONCE_AND_RETAINED_NATIVE_STALENESS')
+'''
+    supervised=subprocess.run([sys.executable,'-c',launcher,sys.executable,'-B','-c',driver,
+        str(package),str(observer_input)],cwd=cwd,env=env,capture_output=True,text=True,timeout=30)
+    assert supervised.returncode==0,supervised.stdout+supervised.stderr
+    assert 'EXPORTED_SUPERVISOR_CLOSED_TIMER_ONCE' in supervised.stdout
 
 
 @pytest.mark.parametrize('duration,operational,minimum,accepted', [
@@ -176,8 +229,12 @@ def test_short_observation_minimums_are_explicit_and_bounded(duration,operationa
         with pytest.raises(ValueError,match='invalid_observation_minimums'):run.observation_minimums(plan)
 
 
-def test_actual_observer_retains_stale_sample_and_explicit_shutdown_classification(tmp_path,monkeypatch):
+@pytest.mark.parametrize('still_fresh', [False, True])
+def test_actual_observer_retains_stale_sample_and_explicit_shutdown_classification(tmp_path,monkeypatch,still_fresh):
     plan,scope,current,*_=closure_fixture(tmp_path)
+    if still_fresh:
+        current['collector_status']='AVAILABLE/FRESH'
+        current['lanes'][1]['status']='RECEIPT_READY'
     observed=datetime.fromisoformat(current['observed_at'])
     plan.update(starts_at=(scope.end-timedelta(hours=1)).isoformat(),
         first_index_deadline_seconds=180,readiness_warmup_seconds=1200,sample_period_seconds=0)
@@ -195,18 +252,22 @@ def test_actual_observer_retains_stale_sample_and_explicit_shutdown_classificati
     monkeypatch.setattr(policy,'TimerAccounting',lambda start:SimpleNamespace(observe=lambda current:None,summary=lambda now:{}))
     class SampleComplete(Exception):pass
     ticks=[]
+    commands=[]
     def tick():
         ticks.append(1)
         if len(ticks)==2:raise SampleComplete
     with pytest.raises(SampleComplete):
-        run.observe(output,plan,None,scope,predictions=SimpleNamespace(tick=tick))
+        run.observe(output,plan,SimpleNamespace(command=lambda *args: commands.append(args)),scope,predictions=SimpleNamespace(tick=tick))
     sample=json.loads((output/'samples/000000.json').read_bytes())
-    assert sample['collector_status']=='STALE'
-    assert sample['lanes'][1]['status']=='STALE'
+    assert sample['collector_status']==current['collector_status']
+    assert sample['lanes'][1]['status']==current['lanes'][1]['status']
     assert sample['planned_shutdown']['status']=='PLANNED_ADMISSION_CLOSED'
     assert sample['planned_shutdown']['new_data_accepted'] is False
     progress=json.loads((output/'progress.json').read_bytes())
     assert progress['completed_cycles']=={'full':0,'odds':0}
+    # A proved closed admission must disable further timer invocations before
+    # their ExecCondition can replace the authenticated completed invocation.
+    assert commands==[('stop','shadow-autopilot-odds-capture.timer')]
 
 
 @pytest.mark.parametrize("duration,odds,accepted", [(300,3,True),(540,3,True),(600,3,False),(300,2,False),(300,True,False),(300,6,True)])
