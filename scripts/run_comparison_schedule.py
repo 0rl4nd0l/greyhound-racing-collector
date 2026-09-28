@@ -98,6 +98,37 @@ def child(command, log):
             raise
 
 
+def verify_canary(cfg, result_cfg, root, now):
+    import sqlite3
+    first=root/'slots/001'
+    terminal=first/'terminal.json'
+    if not terminal.exists() or json.loads(terminal.read_bytes()).get('status')!='COMPLETED':
+        return False
+    first_plan=first/(cfg['programme_id']+'-001')/'plan.json'
+    prediction_root=Path(cfg['prediction_root'])
+    verified=[]
+    for path in (prediction_root/'dispatches').glob('*.json'):
+        dispatch=json.loads(path.read_bytes())
+        if dispatch.get('plan')!=str(first_plan):continue
+        key=hashlib.sha256(dispatch['race_id'].encode()).hexdigest()
+        terminal_path=prediction_root/'races'/key/'terminal.json'
+        if terminal_path.exists():
+            value=json.loads(terminal_path.read_bytes())
+            if value.get('status')=='PREDICTION_READY':verified.append(value['job_id'])
+    if not verified:return False
+    queue=Path(result_cfg['state_root'])/'queue.sqlite3'
+    if not queue.exists():return False
+    with sqlite3.connect(queue.as_uri()+'?mode=ro',uri=True) as db:
+        closed=sum(bool(db.execute("SELECT 1 FROM jobs WHERE job=? AND state='CLOSED'",(job,)).fetchone()) for job in verified)
+    if not closed:return False
+    receipt=root/'canary.json'
+    if not receipt.exists():
+        create_once(receipt,{'status':'CANARY_STRUCTURALLY_VERIFIED','at':now.isoformat(),
+            'first_slot':cfg['slots'][0],'verified_predictions':len(verified),'closed_results':closed,
+            'plan_sha256':cfg['comparison_plan_sha256'],'outcomes_released':False})
+    return True
+
+
 def tick(config_path):
     os.umask(0o077)
     cfg, plan = load_config(config_path)
@@ -144,9 +175,7 @@ def tick(config_path):
             if index > 0:
                 if not result_health_path.exists(): return {'status':'RESULT_HEALTH_MISSING'}
                 result_health=json.loads(result_health_path.read_bytes())
-                first=root/'slots/001/terminal.json'
-                if (not first.exists() or json.loads(first.read_bytes()).get('status')!='COMPLETED'
-                        or result_health.get('counts',{}).get('CLOSED',0)<1):
+                if not verify_canary(cfg,result_cfg,root,now):
                     return {'status':'CANARY_NOT_VERIFIED'}
                 if (now-stamp(result_health['at']) > timedelta(minutes=45) or result_health['status'] not in {'CYCLE_COMPLETE','COLLECTOR_LOCK_BUSY','CAMPAIGN_OWNER_BUSY'}
                         or result_health.get('oldest_due') and now-stamp(result_health['oldest_due']) > timedelta(days=1)):
