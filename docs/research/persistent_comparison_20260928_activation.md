@@ -1,5 +1,9 @@
 # Persistent comparison activation: service startup observed
 
+**Current operating amendment:** October 1 is now installed and armed. See the
+[amendment and status commands](../operations/comparison_october1_amendment_20260928.md). The original October 5
+activation/commands below are preserved historical evidence, not the current packet.
+
 The operational owner executed the explicitly approved deployment on September
 28, 2026. This note changes documentation only. Runtime remains pinned to
 `869fca1c66a6ee7c557facdb55e6f7592f2992cb`; candidates, production routing and the

@@ -1,5 +1,9 @@
 # Exact persistent deployment and acceptance handoff
 
+**Current operating amendment:** October 1 is now installed and armed. See the
+[amendment and status commands](comparison_october1_amendment_20260928.md). The original October 5
+activation/commands below are preserved historical evidence, not the current packet.
+
 **PREPARED ONLY. Do not execute installation or activation without the consolidated
 approval requested for this packet.** No future owner assignment is required:
 user-systemd runs the scheduler, existing supervisor, private result queue and

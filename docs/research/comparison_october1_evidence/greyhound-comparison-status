@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+cd /home/l4nd0/greyhound-persistent-release-october1
+/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-python311-20260803-9d58f340/bin/python -B -m scripts.check_comparison_health --schedule-config /mnt/tenn-nvme2/tenn/greyhound-persistent-comparison-20261005/control-october1-v2-20260928/schedule.APPROVED.json --result-binding /mnt/tenn-nvme2/tenn/greyhound-persistent-comparison-20261005/control-october1-v2-20260928/result-binding.APPROVED.json --human
+systemctl --user show shadow-autopilot.service shadow-autopilot-odds-capture.service -p Id -p ActiveState -p MainPID -p ExecMainStatus
