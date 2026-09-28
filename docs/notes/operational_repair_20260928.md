@@ -4,6 +4,12 @@ This continues PR #192 and the existing campaign. The September 24 observation
 remains failed at shutdown despite nine verified predictions; no prior attempt,
 STOP, missed preparation, or charge is relabelled. See odds_recovery_20260924.md.
 
+Final outcome: candidate `7bd839f0` completed the 90-minute observation with eight
+verified predictions and successful planned shutdown/restoration. Collection is
+PAUSED. The release decision is GO for approval of finite, foreground-supervised
+daytime collector/predictor sessions; unattended operation and an R3 upgrade are
+not included. The final evidence and limitations are recorded below.
+
 ## Verified baseline
 
 PR head c60ffb65ec1e156ee03df1122cef013aa49f500c and applicable CI passed.
@@ -12,7 +18,7 @@ retention release; both timers are disabled/inactive, workers and cgroups empty,
 shared collector lock absent. R3 PID 149626 and binding SHA256
 c39dd4bed98d6003a2e459cdb864b42cd0e6ae2eacbdf8b8c2b3af9e00e921c0 are unchanged.
 Source state is OPEN with no owner, 241 operations and four retained denials.
-Campaign consumption is 43 captures, 39,100 logical requests and
+Campaign consumption is 43 capture attempts, 39,100 logical requests and
 16,674.500646 charged seconds; all leases closed.
 
 Evidence root: /home/l4nd0/greyhound-collector-campaign-20260923/recovery-20260928.
@@ -30,7 +36,7 @@ checks and retention preparation. Canonical create-once serialization is used;
 sealed plans are never rescheduled. Cleanup must stay on the source date.
 New cumulative authority is appended through hash-linked immutable extensions,
 not edits to the original authority or prior amendment. This session selects
-128 captures, 96,000 logical requests and 43,200 charged seconds cumulatively.
+128 capture attempts, 96,000 logical requests and 43,200 charged seconds cumulatively.
 These finite engineering ceilings accommodate the requested 90-minute run and
 31-minute cleanup while retaining all historical charges. Source rates and denial
 controls are unchanged; one 192-operation diagnostic allocation lasts at most
@@ -267,3 +273,186 @@ is retained separately. The focused handoff scenario now ends after full-lane
 progress; the existing no-pending scenario still covers reverse cooperation.
 A changed package and a new observation are required. The staged 35b375ba release
 proposal remains unapproved and is superseded by this failure.
+
+### Fourth attempt: 90-minute observation completed and restored
+
+The exported-observer handoff regression first reproduced DIVERGENT with the old
+reader. The corrected actual-package cases and focused controls passed 36 checks
+in 76.13 seconds; affected reader/lifecycle checks passed 317 checks in 7.09 seconds.
+These ran with kernel network denial. Both review axes found no unresolved issue.
+Applicable CI passed before launch. No runtime dependency installation was needed.
+
+The unchanged live package was:
+
+- Commit: `7bd839f0aa22d5a44dd0be8648e0f7fc1ee47d8a`.
+- Tree: `f60bcdca424cf34c0f5b397bcd14ef1c1dbce1ee`.
+- Package: `recovery-20260928/live-7bd839f0` under the existing campaign.
+- Plan SHA256: `1ae6a6f120d9ba6021ec174ed14347c855893e35a6fd20a2d954ea68e8061836`.
+- Source archive SHA256: `3ce661aaa0248de879aa9dddf420569e0dea40368fc29f836ba44e1cc69e1e17`.
+- Sealed observation: 12:39:42.529578–14:09:42.529578 AEST, 28 September 2026.
+
+Preparation generated the future canonical plan after export and runtime checks.
+Preflight passed in 1.598 seconds. The prospectively recorded OPEN source allocation
+covered three hours from 12:34:14, with 192 operations and unchanged source rates.
+It did not clear a denial, reset a recovery counter or extend the cumulative campaign
+ceiling again. The supervisor exited 0; restoration completed at 14:09:43.654073,
+1.124495 seconds after the planned end. Campaign ownership closed at 14:09:43.670195.
+No final drain request occurred after the last observation sample. Final workers
+were reaped and ownership released. There is no failure.json for this candidate.
+
+The supervisor retained 2,700 samples across the 90-minute contract; the final
+sample ended at 14:09:41.065558. Its original status remains
+REHEARSAL_MEASURED_NOT_RELEASED. Six full and 83 odds cycles completed, with 89
+refresh phases and eight captures. No refresh failed or exceeded its phase budget.
+Planned shutdown completed naturally. This particular run needed zero special
+planned_shutdown sample overrides; the prior false-failure branch and its genuine
+stale/source/process negative controls remain supported by the exported offline
+rehearsal, not claimed as newly exercised live. The same distinction applies to
+the specific released-lock polling gap: actual exported controls prove that repair,
+while this observation proves repeated live lane cooperation and completion.
+
+### Coverage, readiness and latency
+
+The operational profile admits one T-10 attempt per race. Retained schedules
+contained 115 distinct races, of which eight had T-10 windows overlapping this
+observation. Seven windows were fully contained; Healesville Race 9 overlapped
+startup. All eight were published before window closure, observed ready, attempted,
+captured and independently verified through frozen prediction: 8/8 at each of those
+stages. No T-10 opportunity remained pending or missed in the observed accounting.
+All eight original jump times remained unchanged. Undiscovered races and capacity
+beyond the selected races remain unassessed, so this is not national race coverage.
+
+T-60 and T-30 readiness also appeared in planner evidence (nine and eight unique
+windows respectively), but the existing single-T-10 profile intentionally excludes
+those capture windows. Its 289 repeated non-T-10 exclusion observations are not
+289 missed races. A further 22 observations skipped already-complete captures.
+Twelve unique races were selected and index-eligible during the run; the four
+additional races had no T-10 overlap. Ballarat Race 5's T-10 window opened at 14:12,
+after observation ended. No required metadata was unavailable in the retained
+selected-input observations. Index eligibility alone was not counted as a prediction.
+
+Initial index unavailability lasted 40.002197 seconds, with first available sample
+at 12:40:22.680917. The aggregate paired collector became available at 12:41:38.688553,
+after 116.009833 seconds. There were no later unavailable intervals in either stream.
+Authority remained available throughout. These are sampled consumer states, distinct
+from source age and per-race paired-market readiness.
+
+| Measurement | Observed range / maximum |
+| --- | --- |
+| Original source age | 31.917–126.923 seconds |
+| Conservative adjacent-sample age bound | 128.998 seconds; unchanged 270-second supervisor / 300-second R3 limits |
+| Refresh phase | 31.359–55.258 seconds |
+| Source timestamp to index publication | 30.309–54.338 seconds |
+| Publication operation itself | 0.0143–0.0297 seconds |
+| Capture phase | 12.264–14.447 seconds |
+| Retention/data preparation | 2.720–2.920 seconds |
+| Machine-only history snapshot | 1.496–1.713 seconds |
+| Retained feature-generation subprocess | 0.594–0.607 seconds |
+| Frozen prediction subprocess | 1.050–1.167 seconds |
+| Pure model inference | 0.00254–0.00301 seconds |
+| Prediction operation, including retention and verification | 4.315–4.634 seconds |
+| Observed price to original verification | 19.497–21.719 seconds |
+| Original verified prediction lead before jump | 436.161–542.387 seconds |
+| Shared-lock wait | maximum 25 seconds |
+| Native sample read | maximum 0.155 seconds |
+
+Prediction-stage terminal lead times are slightly later than the original verification
+events; the lead range above uses the original events, without timestamp rewriting.
+The scorer's separately named feature_generation_seconds (0.0166–0.0198 seconds)
+does not replace the retained feature-generation subprocess measurement. Timer
+dispatch was at most 0.0881 seconds; complete process overhead was at most 4.0946
+seconds. Raw startup calendar delay remains recorded as 42.559851 seconds; only
+0.030273 seconds was unblocked delay. No timer threshold was relaxed for this run.
+
+### Source accounting and retained failures
+
+This owner performed 89 Python Sportsbet operations and eight browser operations.
+Session Python accounting recorded 13,348 started calls: 12,916 TheDogs, 89 Sportsbet,
+343 Open-Meteo. Sixteen browser navigation attempts bring the campaign charge for
+this session to 13,364 logical requests. Browser instrumentation recorded 421
+provider requests, 853 other requests and 382 responses, all HTTP 200, with zero
+recorder drops. These categories have different scopes; recorded browser responses
+are not a complete wire-traffic census. Wire retries remain unmeasured; the configured
+HTTP transport has zero implicit retries. No new denial, response-error record or
+campaign source hold occurred. The four historical denials remain preserved.
+
+Independent review corrected two reporting risks without changing the live package.
+summarize_v3.py attributes global source operations to actual campaign ownership,
+not the planned end of an earlier failed run; it reads final session counters after
+drain and retains the last-sample counters separately. Generated-at is the original
+refresh start, not individual discovery completion. Coverage v3 reports both actual
+and planned intervals for early failures. Earlier reports are retained.
+
+In particular, failed 35b375ba had three predictions from five overlapping schedule
+races before termination, and seven over its originally planned interval. Two windows
+opened after that failure. This later candidate's predictions do not backfill them.
+Its actual ownership interval accounts for 64 Python and three browser operations,
+9,454 Python calls, and no new denial. The earlier timer failure, interrupted weather
+diagnostic, consumed market failure from September 24 and all other attempts remain
+failed/interrupted/consumed as originally recorded; candidates are not pooled into
+a single successful observation.
+
+### Verified runtime and release decision
+
+restoration-7bd839f0-final.json independently verifies original unit hashes, disabled
+inactive collector timers, nonrunning services, empty cgroups, no orphan workers,
+released collector/source/campaign ownership, no open lease, unchanged R3 PID 149626
+and unchanged R3 binding. Collection is PAUSED; source is OPEN. Original legacy
+collector triggers remain held because their source coordination is not established.
+No legacy service was restarted. The verified preflight ledger prefix preserved all
+47 earlier capture attempts and 25 earlier launches; its reconstruction exactly matches the
+independently retained preflight receipt hash. It is labelled as a later reconstruction,
+not an original snapshot. All 317 earlier source operations and four denials remain.
+
+The odds unit retains systemd ActiveState=failed, MainPID=0 and exit status 2 from
+14:09:03. The retained journal shows OPERATING_SCOPE_CLOSED/SKIPPED at 14:09:02.
+This expected final admission refusal made no new request. Its failed flag has not
+been cleared; verified paused cleanup does not mean every service is labelled healthy.
+See final-scope-closure-7bd839f0.log. No special native-status override was needed.
+
+Final cumulative accounting: 55 capture attempts, 62,956 logical requests, 26,316.325333
+charged seconds, 414 source operations, four historical denials. Remaining campaign
+allowance is 73 capture attempts, 33,044 requests and 16,883.674667 seconds. Future sessions
+still need a current finite source allocation and sufficient allowance; these numbers
+are not provider permission or a sustainable throughput guarantee.
+
+Release decision: GO for user approval of this exact collector/automatic frozen
+predictor release in finite, foreground-supervised 90-minute daytime sessions.
+NO GO for unattended, all-day or cross-midnight operation, peak national coverage,
+automatic denial recovery, or a continuously refreshed R3 monitoring claim.
+The prepared transition is in transition-7bd839f0/OPERATING_PLAN.md and
+APPROVED_ACTIVATION_COMMAND.md. Its four collector unit files exactly match the
+tested bytes; each future session generates a new path-bound finite contract using
+the same pinned code. Expired test units must never be enabled indefinitely.
+
+The separate compatible R3 operational binding and startup are prepared and tested,
+but uninstalled. Its snapshot panels age, and its separate operations store does not
+import campaign prediction jobs. The immediate proposal therefore excludes the R3
+upgrade. Existing installed R3 remains unchanged; verified campaign bundles and the
+supervisor provide this mode's operational evidence. Model/configuration and all 41
+feature-generator members remain unchanged from the September 24 candidate.
+
+The demonstrated operating period is 12:39–14:09 AEST at this race density. The
+profile selects at most four races per refresh. Same-date cleanup is enforced;
+midnight rollover is unsupported. Startup time varies with timer state. Genuine
+denials and explicit Retry-After produce durable holds requiring operator disposition.
+Controlled interruption/restart proves nonduplication and non-reclamation; it does
+not prove automatic completion of a job that crashed after dispatch. A foreground
+operator and retained-evidence disk monitoring remain required (29 GB free at the
+last live check). No target results, accuracy evaluation, betting or scientific
+protocol changes were needed for this release decision.
+
+Final evidence under the stated evidence root:
+
+- final-7bd839f0-summary.json and final-7bd839f0-coverage.json: full metrics/denominators.
+- final-7bd839f0-audit.json: eight complete chains, 28 independent checks each.
+- restoration-7bd839f0-final.json: runtime and cumulative-history verification.
+- verified-predictions-7bd839f0.md: links to each sealed prediction and original times.
+- observation-7bd839f0-final.png / .svg: original source age, readiness and lead times.
+- release-equivalence-7bd839f0.json: frozen model/configuration/generator equivalence.
+- release-manifest-7bd839f0.json: reviewed package, proposed units, binding and rollback hashes.
+
+The 48-file release manifest SHA256 is
+`1575f738e0ed84c61a1ae7f68fec0da7343adec51e9d86711612ed5fd56ff30e`.
+
+Permanent deployment and merge remain unperformed and require the user's approval.
