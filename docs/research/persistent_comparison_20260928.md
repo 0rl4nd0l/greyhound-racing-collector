@@ -1,5 +1,7 @@
 # Persistent four-way comparison: prepared, not activated
 
+> Deployment update: the [September 28 activation note](persistent_comparison_20260928_activation.md) records actual service startup and restart after explicit approval. The preparation evidence below is preserved; scientific admission remains future and gated.
+
 This implementation continues PR #194 without changing models, training data,
 feature definitions or the scientific endpoint. It integrates the operational
 collector through `8b5552c78222f9a0b5dfa1fa7bb30003bb375922`, including its final

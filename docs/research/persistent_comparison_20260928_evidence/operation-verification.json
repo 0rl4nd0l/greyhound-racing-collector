@@ -1,0 +1,114 @@
+{
+  "status": "PASS",
+  "recorded_at": "2026-09-28T08:20:57.360697+00:00",
+  "runtime_commit": "869fca1c66a6ee7c557facdb55e6f7592f2992cb",
+  "checks": {
+    "source_unchanged": true,
+    "ledger_unchanged": true,
+    "no_early_slots": true,
+    "no_result_requests": true,
+    "healthy_after_initial_startup": true,
+    "timers_enabled_and_active": true,
+    "last_service_exits_success": true,
+    "calendar_result_cycle_observed": true,
+    "scheduler_lock_released": true,
+    "results_lock_released": true,
+    "campaign_lock_released": true
+  },
+  "observation_samples": 20,
+  "observation_start": "2026-09-28T08:11:18.756654+00:00",
+  "observation_end": "2026-09-28T08:20:45.034339+00:00",
+  "events": [
+    {
+      "unit": "greyhound-comparison-health.service",
+      "journal_realtime_usec": "1790582948499655",
+      "status": "ALERT",
+      "request_attempts": null,
+      "outcomes_released": false
+    },
+    {
+      "unit": "greyhound-comparison-schedule.service",
+      "journal_realtime_usec": "1790582948721857",
+      "status": "NO_SLOT_DUE",
+      "request_attempts": null,
+      "outcomes_released": false
+    },
+    {
+      "unit": "greyhound-comparison-results.service",
+      "journal_realtime_usec": "1790582948886775",
+      "status": "CYCLE_COMPLETE",
+      "request_attempts": 0,
+      "outcomes_released": false
+    },
+    {
+      "unit": "greyhound-comparison-health.service",
+      "journal_realtime_usec": "1790583013412779",
+      "status": "HEALTHY",
+      "request_attempts": null,
+      "outcomes_released": false
+    },
+    {
+      "unit": "greyhound-comparison-schedule.service",
+      "journal_realtime_usec": "1790583013631291",
+      "status": "NO_SLOT_DUE",
+      "request_attempts": null,
+      "outcomes_released": false
+    },
+    {
+      "unit": "greyhound-comparison-results.service",
+      "journal_realtime_usec": "1790583024964366",
+      "status": "CYCLE_COMPLETE",
+      "request_attempts": 0,
+      "outcomes_released": false
+    },
+    {
+      "unit": "greyhound-comparison-health.service",
+      "journal_realtime_usec": "1790583313408127",
+      "status": "HEALTHY",
+      "request_attempts": null,
+      "outcomes_released": false
+    },
+    {
+      "unit": "greyhound-comparison-schedule.service",
+      "journal_realtime_usec": "1790583313616862",
+      "status": "NO_SLOT_DUE",
+      "request_attempts": null,
+      "outcomes_released": false
+    },
+    {
+      "unit": "greyhound-comparison-health.service",
+      "journal_realtime_usec": "1790583613458691",
+      "status": "HEALTHY",
+      "request_attempts": null,
+      "outcomes_released": false
+    },
+    {
+      "unit": "greyhound-comparison-schedule.service",
+      "journal_realtime_usec": "1790583613669928",
+      "status": "NO_SLOT_DUE",
+      "request_attempts": null,
+      "outcomes_released": false
+    },
+    {
+      "unit": "greyhound-comparison-results.service",
+      "journal_realtime_usec": "1790583613791957",
+      "status": "CYCLE_COMPLETE",
+      "request_attempts": 0,
+      "outcomes_released": false
+    }
+  ],
+  "service_execution_counts": {
+    "greyhound-comparison-schedule.service": 4,
+    "greyhound-comparison-results.service": 3,
+    "greyhound-comparison-health.service": 4
+  },
+  "initial_monitor_alerts": 1,
+  "request_attempts": 0,
+  "slot_claims": 0,
+  "future_predictions": 0,
+  "official_results_fetched": 0,
+  "first_live_session": "2026-10-05T13:00:00+11:00",
+  "first_session_gate_accepted": false,
+  "scope": "Actual installed service bootstrap, recurring timers, empty-result-worker restart and health recovery. Scientific live race acceptance remains pending the approved first slot.",
+  "result_restart_receipt_sha256": "77f086239515b89fbfb45a3c04bb8e4814ca9e6b11da639dc8bb9ae018956ccd"
+}
