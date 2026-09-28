@@ -818,6 +818,12 @@ def observe(output, plan, control, scope, predictions=None):
         atomic_json(
             output / "progress.json",
             {
+                "sample_count": samples,
+                "unavailable_samples_including_warmup": unavailable,
+                "maximum_conservative_source_age": maximum,
+                "last_sample_at": current.get("read_end"),
+                "source_age_seconds": current.get("source_age_seconds"),
+                "index_status": current.get("index_status"),
                 "completed_cycles": {key: len(value) for key, value in completed.items()},
                 "failed_refresh_cycles": sorted(refresh_failures),
                 "lock_wait_seconds": waits,
@@ -868,6 +874,38 @@ def observe(output, plan, control, scope, predictions=None):
             "throughput_validated": False,
         },
     )
+
+
+def execution_contract(plan, accounting):
+    contract = {
+        key: plan[key]
+        for key in (
+            "profile",
+            "rehearsal_id",
+            "starts_at",
+            "ends_at",
+            "cleanup_seconds",
+            "lock_path",
+            "db_path",
+            "evidence_root",
+            "max_capture_attempts",
+            "max_logical_requests",
+            "source_identity_sha256",
+            "runtime_sha256",
+        )
+    }
+    if plan.get("campaign_root"):
+        contract.update({key: plan[key] for key in ("campaign_root", "campaign_authorization_sha256")})
+    contract.update(
+        schema_version="freshness_rehearsal_contract_v1",
+        source_date=accounting["source_date"],
+        reconciliation_sha256=digest(accounting),
+    )
+    if plan.get("operational_predictions"):
+        contract["operational_predictions"] = plan["operational_predictions"]
+    if plan.get("prediction_root"):
+        contract["prediction_root"] = plan["prediction_root"]
+    return contract
 
 
 def execute(plan_path, expected_digest, approval_id):
@@ -953,32 +991,7 @@ def execute(plan_path, expected_digest, approval_id):
             lock_path=Path(plan["lock_path"]),
             owner_run_id=plan["rehearsal_id"],
         )
-        contract = {
-            key: plan[key]
-            for key in (
-                "profile",
-                "rehearsal_id",
-                "starts_at",
-                "ends_at",
-                "cleanup_seconds",
-                "lock_path",
-                "db_path",
-                "evidence_root",
-                "max_capture_attempts",
-                "max_logical_requests",
-                "source_identity_sha256",
-                "runtime_sha256",
-            )
-        }
-        if plan.get("campaign_root"):
-            contract.update({key: plan[key] for key in ("campaign_root", "campaign_authorization_sha256")})
-        contract.update(
-            schema_version="freshness_rehearsal_contract_v1",
-            source_date=accounting["source_date"],
-            reconciliation_sha256=digest(accounting),
-        )
-        if plan.get("operational_predictions"):
-            contract["operational_predictions"] = plan["operational_predictions"]
+        contract = execution_contract(plan, accounting)
         scope = FreshnessContract(contract)
         AttemptAllowance(scope).initialize(accounting)
         create_once(output / "contract.json", contract)

@@ -19,7 +19,7 @@ from utils.runner_completeness import RunnerRow, analyze_runner_rows
 def r3_prediction_candidates(*, job_store_path: Path, prediction_bundles: Path,
                              result_database: Path, target_date: str,
                              current_time: datetime, race_ids, output_dir: Path,
-                             limit: int = 128):
+                             limit: int = 128, comparison_result_binding: dict | None = None):
     """Return bounded candidates authenticated against job and sealed bundle truth."""
     utc_text(current_time)
     if not 1 <= limit <= 128:
@@ -28,6 +28,10 @@ def r3_prediction_candidates(*, job_store_path: Path, prediction_bundles: Path,
               "candidate_source": "verified_r3_predictions", "candidate_count": 0,
               "candidate_race_ids": [], "limit": limit,
               "result_horizon": "all_persisted_ready_jobs", "requested_target_date": target_date}
+    comparison_plan=None
+    if comparison_result_binding is not None:
+        from src.predictor.comparison_result_scope import result_scope
+        comparison_plan=result_scope(comparison_result_binding,now=current_time,prediction_bundles=prediction_bundles,result_database=result_database)
     try:
         store = JobStore(job_store_path, separate_from=(result_database,), readonly=True)
         jobs = store.recorded_jobs()
@@ -37,13 +41,16 @@ def r3_prediction_candidates(*, job_store_path: Path, prediction_bundles: Path,
     candidates, skipped = [], []
     selected_ids = set(race_ids)
     for job in jobs:
-        if job.operation == "operational_prediction":
+        if job.operation == "operational_prediction" and comparison_result_binding is None:
             skipped.append({"race_id": job.input.race_id, "reason": "OPERATIONAL_RESULT_ACCESS_FORBIDDEN"})
             continue
         if job.phase is not Phase.PREDICTION_READY or selected_ids and job.input.race_id not in selected_ids:
             continue
         reason = None
         try:
+            if comparison_result_binding is not None:
+                from src.predictor.comparison_result_scope import authorize_job
+                authorize_job(job,comparison_result_binding,comparison_plan,now=current_time,prediction_bundles=prediction_bundles)
             jump = datetime.fromisoformat(job.input.jump_timestamp.replace("Z", "+00:00"))
             if jump >= current_time:
                 reason = "R3_RACE_NOT_OFF"
@@ -64,7 +71,9 @@ def r3_prediction_candidates(*, job_store_path: Path, prediction_bundles: Path,
                 utc_text(generated)
                 if not generated < jump < current_time:
                     raise ValueError("R3_PREDICTION_TIMESTAMP_INVALID")
-                existing = OfficialResultSource(result_database).read(job, bundle, now=current_time)
+                from src.predictor.comparison_results import ComparisonResultSource
+                source_class = ComparisonResultSource if comparison_result_binding is not None else OfficialResultSource
+                existing = source_class(result_database).read(job, bundle, now=current_time)
                 if existing["state"] == "RESULT_AVAILABLE":
                     reason = "R3_RESULT_ALREADY_AVAILABLE"
                 elif existing["state"] == "RESULT_REJECTED" or existing.get("reason") in {"RESULT_SOURCE_BUSY", "RESULT_SOURCE_CHANGED", "RESULT_SOURCE_UNSAFE"}:

@@ -1,0 +1,52 @@
+[
+  {
+    "revision": 1,
+    "file": "feasibility-v1.json",
+    "sha256": "9aef125d141d2fefcd332584fc995e93c7dc461a49a6a3b45f38ce4f46aa01f4",
+    "races": 12,
+    "qualified": 0,
+    "reason": "Initial reviewedprojection rejected supported structured weather provenance before historydecode",
+    "selection_unchanged": true,
+    "new_hypotheses_or_fits": 0
+  },
+  {
+    "revision": 2,
+    "file": "feasibility-v2.json",
+    "sha256": "a5bae41cbc6f67fcdc159fafc24262515a2961d85b9c03cf93eadbdc93538c25",
+    "races": 12,
+    "qualified": 0,
+    "reason": "Removed unneeded structured runneridentity projection; same remaining metadata rejection",
+    "selection_unchanged": true,
+    "new_hypotheses_or_fits": 0
+  },
+  {
+    "revision": 3,
+    "file": "feasibility-v3.json",
+    "sha256": "726c0896f05f0df588db2648e0878dc0b86d0828572bbd41202c6d5842794782",
+    "races": 12,
+    "qualified": 0,
+    "reason": "Added structural failurepath diagnostic; no value egress",
+    "selection_unchanged": true,
+    "new_hypotheses_or_fits": 0
+  },
+  {
+    "revision": 4,
+    "file": "feasibility-v4.json",
+    "sha256": "c4764362341123767d40a4a3ab58c18a8e0c0ce02c600fde96a34df9531a79ac",
+    "races": 12,
+    "qualified": 0,
+    "reason": "Allowed exact weather source union from writer schema; production feature mismatch preserved",
+    "selection_unchanged": true,
+    "new_hypotheses_or_fits": 0
+  },
+  {
+    "revision": 5,
+    "file": "feasibility-v5.json",
+    "sha256": "a3fc8cbba120d27d091203cc8654538b7083670663ec53b47501589262bd13e6",
+    "races": 12,
+    "qualified": 12,
+    "reason": "Retained pre-jump safety status in projection as required by unchanged targetmetadata verifier; all16feature output hashes match",
+    "selection_unchanged": true,
+    "new_hypotheses_or_fits": 0
+  }
+]

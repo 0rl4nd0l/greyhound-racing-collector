@@ -1,0 +1,1064 @@
+{
+  "market": {
+    "AP K": {
+      "delta_log_loss": 0.0,
+      "races": 8
+    },
+    "BAL": {
+      "delta_log_loss": 0.0,
+      "races": 3
+    },
+    "BEN": {
+      "delta_log_loss": 0.0,
+      "races": 4
+    },
+    "BH": {
+      "delta_log_loss": 0.0,
+      "races": 5
+    },
+    "BULLI": {
+      "delta_log_loss": 0.0,
+      "races": 1
+    },
+    "CAPA": {
+      "delta_log_loss": 0.0,
+      "races": 22
+    },
+    "CASO": {
+      "delta_log_loss": 0.0,
+      "races": 4
+    },
+    "DUBBO": {
+      "delta_log_loss": 0.0,
+      "races": 9
+    },
+    "GAWL": {
+      "delta_log_loss": 0.0,
+      "races": 4
+    },
+    "GEE": {
+      "delta_log_loss": 0.0,
+      "races": 6
+    },
+    "GOUL": {
+      "delta_log_loss": 0.0,
+      "races": 4
+    },
+    "GRDN": {
+      "delta_log_loss": 0.0,
+      "races": 3
+    },
+    "HEA": {
+      "delta_log_loss": 0.0,
+      "races": 7
+    },
+    "HOBT": {
+      "delta_log_loss": 0.0,
+      "races": 8
+    },
+    "HOR": {
+      "delta_log_loss": 0.0,
+      "races": 6
+    },
+    "MEA": {
+      "delta_log_loss": 0.0,
+      "races": 2
+    },
+    "MT_G": {
+      "delta_log_loss": 0.0,
+      "races": 7
+    },
+    "MURR": {
+      "delta_log_loss": 0.0,
+      "races": 10
+    },
+    "NOR": {
+      "delta_log_loss": 0.0,
+      "races": 4
+    },
+    "QOT": {
+      "delta_log_loss": 0.0,
+      "races": 12
+    },
+    "RICH": {
+      "delta_log_loss": 0.0,
+      "races": 7
+    },
+    "ROCK": {
+      "delta_log_loss": 0.0,
+      "races": 1
+    },
+    "SAL": {
+      "delta_log_loss": 0.0,
+      "races": 8
+    },
+    "TAREE": {
+      "delta_log_loss": 0.0,
+      "races": 5
+    },
+    "TEM": {
+      "delta_log_loss": 0.0,
+      "races": 1
+    },
+    "TRA": {
+      "delta_log_loss": 0.0,
+      "races": 8
+    },
+    "WAR": {
+      "delta_log_loss": 0.0,
+      "races": 14
+    },
+    "WPK": {
+      "delta_log_loss": 0.0,
+      "races": 1
+    },
+    "WRGL": {
+      "delta_log_loss": 0.0,
+      "races": 3
+    }
+  },
+  "refit_base16": {
+    "AP K": {
+      "delta_log_loss": 0.003043972364156433,
+      "races": 8
+    },
+    "BAL": {
+      "delta_log_loss": 0.04270182011031872,
+      "races": 3
+    },
+    "BEN": {
+      "delta_log_loss": -0.0015456549534976771,
+      "races": 4
+    },
+    "BH": {
+      "delta_log_loss": 0.005478139629610057,
+      "races": 5
+    },
+    "BULLI": {
+      "delta_log_loss": 0.0020682389771491394,
+      "races": 1
+    },
+    "CAPA": {
+      "delta_log_loss": -0.05337450251715903,
+      "races": 22
+    },
+    "CASO": {
+      "delta_log_loss": -0.033155040512946016,
+      "races": 4
+    },
+    "DUBBO": {
+      "delta_log_loss": 0.024749778130306425,
+      "races": 9
+    },
+    "GAWL": {
+      "delta_log_loss": -0.03223167490175183,
+      "races": 4
+    },
+    "GEE": {
+      "delta_log_loss": 0.07764902622091092,
+      "races": 6
+    },
+    "GOUL": {
+      "delta_log_loss": -0.10079118490087532,
+      "races": 4
+    },
+    "GRDN": {
+      "delta_log_loss": 0.07731061144574906,
+      "races": 3
+    },
+    "HEA": {
+      "delta_log_loss": -0.054716510959367866,
+      "races": 7
+    },
+    "HOBT": {
+      "delta_log_loss": 0.02513592522421758,
+      "races": 8
+    },
+    "HOR": {
+      "delta_log_loss": 0.03243500068728274,
+      "races": 6
+    },
+    "MEA": {
+      "delta_log_loss": 0.00367679923552533,
+      "races": 2
+    },
+    "MT_G": {
+      "delta_log_loss": -0.06592690675235424,
+      "races": 7
+    },
+    "MURR": {
+      "delta_log_loss": 0.0017022625220031006,
+      "races": 10
+    },
+    "NOR": {
+      "delta_log_loss": -0.009526143578730883,
+      "races": 4
+    },
+    "QOT": {
+      "delta_log_loss": -0.0361779117984303,
+      "races": 12
+    },
+    "RICH": {
+      "delta_log_loss": -0.03465324446744643,
+      "races": 7
+    },
+    "ROCK": {
+      "delta_log_loss": -0.005485442383644901,
+      "races": 1
+    },
+    "SAL": {
+      "delta_log_loss": -0.04593268279207989,
+      "races": 8
+    },
+    "TAREE": {
+      "delta_log_loss": 0.08256208671822844,
+      "races": 5
+    },
+    "TEM": {
+      "delta_log_loss": 0.11794040289094454,
+      "races": 1
+    },
+    "TRA": {
+      "delta_log_loss": -0.09646423378836665,
+      "races": 8
+    },
+    "WAR": {
+      "delta_log_loss": 0.000509849530767397,
+      "races": 14
+    },
+    "WPK": {
+      "delta_log_loss": -0.11231645833603987,
+      "races": 1
+    },
+    "WRGL": {
+      "delta_log_loss": -0.034954033649814566,
+      "races": 3
+    }
+  },
+  "refit_box": {
+    "AP K": {
+      "delta_log_loss": -0.0028793552198741745,
+      "races": 8
+    },
+    "BAL": {
+      "delta_log_loss": 0.04416157403392218,
+      "races": 3
+    },
+    "BEN": {
+      "delta_log_loss": -0.010588365923040244,
+      "races": 4
+    },
+    "BH": {
+      "delta_log_loss": 0.001362506723346435,
+      "races": 5
+    },
+    "BULLI": {
+      "delta_log_loss": -0.011586141638515013,
+      "races": 1
+    },
+    "CAPA": {
+      "delta_log_loss": -0.04925046059750635,
+      "races": 22
+    },
+    "CASO": {
+      "delta_log_loss": -0.025223512673607673,
+      "races": 4
+    },
+    "DUBBO": {
+      "delta_log_loss": 0.02050260383166598,
+      "races": 9
+    },
+    "GAWL": {
+      "delta_log_loss": -0.03116980247112991,
+      "races": 4
+    },
+    "GEE": {
+      "delta_log_loss": 0.07579529117722354,
+      "races": 6
+    },
+    "GOUL": {
+      "delta_log_loss": -0.10024185258666912,
+      "races": 4
+    },
+    "GRDN": {
+      "delta_log_loss": 0.07988814298182789,
+      "races": 3
+    },
+    "HEA": {
+      "delta_log_loss": -0.05749014687093122,
+      "races": 7
+    },
+    "HOBT": {
+      "delta_log_loss": 0.01870293278436619,
+      "races": 8
+    },
+    "HOR": {
+      "delta_log_loss": 0.028083315892869276,
+      "races": 6
+    },
+    "MEA": {
+      "delta_log_loss": 0.00768078166785946,
+      "races": 2
+    },
+    "MT_G": {
+      "delta_log_loss": -0.05838191770919605,
+      "races": 7
+    },
+    "MURR": {
+      "delta_log_loss": -0.0005070997399156174,
+      "races": 10
+    },
+    "NOR": {
+      "delta_log_loss": -0.003973285986350578,
+      "races": 4
+    },
+    "QOT": {
+      "delta_log_loss": -0.03469009232174666,
+      "races": 12
+    },
+    "RICH": {
+      "delta_log_loss": -0.033243652032765865,
+      "races": 7
+    },
+    "ROCK": {
+      "delta_log_loss": -0.011047183058924381,
+      "races": 1
+    },
+    "SAL": {
+      "delta_log_loss": -0.048406858621829515,
+      "races": 8
+    },
+    "TAREE": {
+      "delta_log_loss": 0.07081492379876639,
+      "races": 5
+    },
+    "TEM": {
+      "delta_log_loss": 0.12453126103130963,
+      "races": 1
+    },
+    "TRA": {
+      "delta_log_loss": -0.09808611410402066,
+      "races": 8
+    },
+    "WAR": {
+      "delta_log_loss": -0.0031556860441658363,
+      "races": 14
+    },
+    "WPK": {
+      "delta_log_loss": -0.1272507632873905,
+      "races": 1
+    },
+    "WRGL": {
+      "delta_log_loss": -0.04951439980723297,
+      "races": 3
+    }
+  },
+  "refit_half": {
+    "AP K": {
+      "delta_log_loss": -0.0003123407505136039,
+      "races": 8
+    },
+    "BAL": {
+      "delta_log_loss": 0.01959745476197054,
+      "races": 3
+    },
+    "BEN": {
+      "delta_log_loss": -0.001478926164889649,
+      "races": 4
+    },
+    "BH": {
+      "delta_log_loss": 0.0005828848587673185,
+      "races": 5
+    },
+    "BULLI": {
+      "delta_log_loss": 0.0008326685846693493,
+      "races": 1
+    },
+    "CAPA": {
+      "delta_log_loss": -0.028931314608170545,
+      "races": 22
+    },
+    "CASO": {
+      "delta_log_loss": -0.018151041006933266,
+      "races": 4
+    },
+    "DUBBO": {
+      "delta_log_loss": 0.011332631458436049,
+      "races": 9
+    },
+    "GAWL": {
+      "delta_log_loss": -0.0171575657808595,
+      "races": 4
+    },
+    "GEE": {
+      "delta_log_loss": 0.03677133467731514,
+      "races": 6
+    },
+    "GOUL": {
+      "delta_log_loss": -0.05334135299708932,
+      "races": 4
+    },
+    "GRDN": {
+      "delta_log_loss": 0.03585456890963997,
+      "races": 3
+    },
+    "HEA": {
+      "delta_log_loss": -0.02902412571118207,
+      "races": 7
+    },
+    "HOBT": {
+      "delta_log_loss": 0.010654819685520636,
+      "races": 8
+    },
+    "HOR": {
+      "delta_log_loss": 0.013426495984886969,
+      "races": 6
+    },
+    "MEA": {
+      "delta_log_loss": -0.00029052141272734033,
+      "races": 2
+    },
+    "MT_G": {
+      "delta_log_loss": -0.03392180087813536,
+      "races": 7
+    },
+    "MURR": {
+      "delta_log_loss": 0.00015179402523067266,
+      "races": 10
+    },
+    "NOR": {
+      "delta_log_loss": -0.006676069901019599,
+      "races": 4
+    },
+    "QOT": {
+      "delta_log_loss": -0.019465606255341838,
+      "races": 12
+    },
+    "RICH": {
+      "delta_log_loss": -0.01871859031453108,
+      "races": 7
+    },
+    "ROCK": {
+      "delta_log_loss": -0.003014471804564711,
+      "races": 1
+    },
+    "SAL": {
+      "delta_log_loss": -0.02512276063730097,
+      "races": 8
+    },
+    "TAREE": {
+      "delta_log_loss": 0.04020057908090471,
+      "races": 5
+    },
+    "TEM": {
+      "delta_log_loss": 0.05611066854216684,
+      "races": 1
+    },
+    "TRA": {
+      "delta_log_loss": -0.050088449567122675,
+      "races": 8
+    },
+    "WAR": {
+      "delta_log_loss": -0.001468380181069956,
+      "races": 14
+    },
+    "WPK": {
+      "delta_log_loss": -0.05744917062866817,
+      "races": 1
+    },
+    "WRGL": {
+      "delta_log_loss": -0.018196445112088178,
+      "races": 3
+    }
+  },
+  "selected_ensemble": {
+    "AP K": {
+      "delta_log_loss": 0.019188328832470042,
+      "races": 8
+    },
+    "BAL": {
+      "delta_log_loss": 0.036713679631024974,
+      "races": 3
+    },
+    "BEN": {
+      "delta_log_loss": 0.3029196758179706,
+      "races": 4
+    },
+    "BH": {
+      "delta_log_loss": -0.0018147201835799543,
+      "races": 5
+    },
+    "BULLI": {
+      "delta_log_loss": 0.1086617031643824,
+      "races": 1
+    },
+    "CAPA": {
+      "delta_log_loss": -0.011304346545122896,
+      "races": 22
+    },
+    "CASO": {
+      "delta_log_loss": -0.04436499173318566,
+      "races": 4
+    },
+    "DUBBO": {
+      "delta_log_loss": 0.04376568467789761,
+      "races": 9
+    },
+    "GAWL": {
+      "delta_log_loss": -0.02075980978167749,
+      "races": 4
+    },
+    "GEE": {
+      "delta_log_loss": -0.035125979991012135,
+      "races": 6
+    },
+    "GOUL": {
+      "delta_log_loss": -0.0016277775276165724,
+      "races": 4
+    },
+    "GRDN": {
+      "delta_log_loss": 0.032540060754873666,
+      "races": 3
+    },
+    "HEA": {
+      "delta_log_loss": 0.003966619925217566,
+      "races": 7
+    },
+    "HOBT": {
+      "delta_log_loss": -0.054264214163303515,
+      "races": 8
+    },
+    "HOR": {
+      "delta_log_loss": 0.09702683610726692,
+      "races": 6
+    },
+    "MEA": {
+      "delta_log_loss": -0.009996436858657365,
+      "races": 2
+    },
+    "MT_G": {
+      "delta_log_loss": 0.03855686445421199,
+      "races": 7
+    },
+    "MURR": {
+      "delta_log_loss": -0.014006411857040735,
+      "races": 10
+    },
+    "NOR": {
+      "delta_log_loss": -0.01511416107415156,
+      "races": 4
+    },
+    "QOT": {
+      "delta_log_loss": -0.11012591190351391,
+      "races": 12
+    },
+    "RICH": {
+      "delta_log_loss": 0.03965517878058429,
+      "races": 7
+    },
+    "ROCK": {
+      "delta_log_loss": 0.013299367222902925,
+      "races": 1
+    },
+    "SAL": {
+      "delta_log_loss": 0.006258196323587359,
+      "races": 8
+    },
+    "TAREE": {
+      "delta_log_loss": 0.11108939449532702,
+      "races": 5
+    },
+    "TEM": {
+      "delta_log_loss": 0.021353640087279135,
+      "races": 1
+    },
+    "TRA": {
+      "delta_log_loss": -0.05970031853891121,
+      "races": 8
+    },
+    "WAR": {
+      "delta_log_loss": -0.046895844364390524,
+      "races": 14
+    },
+    "WPK": {
+      "delta_log_loss": -0.18086012741434976,
+      "races": 1
+    },
+    "WRGL": {
+      "delta_log_loss": 0.017169679612601074,
+      "races": 3
+    }
+  },
+  "selected_linear": {
+    "AP K": {
+      "delta_log_loss": 0.027770397191340737,
+      "races": 8
+    },
+    "BAL": {
+      "delta_log_loss": 0.036713679631024974,
+      "races": 3
+    },
+    "BEN": {
+      "delta_log_loss": 0.4028446816239406,
+      "races": 4
+    },
+    "BH": {
+      "delta_log_loss": -0.0018147201835799543,
+      "races": 5
+    },
+    "BULLI": {
+      "delta_log_loss": 0.14585099447450034,
+      "races": 1
+    },
+    "CAPA": {
+      "delta_log_loss": -0.0008576337951545423,
+      "races": 22
+    },
+    "CASO": {
+      "delta_log_loss": -0.04436499173318566,
+      "races": 4
+    },
+    "DUBBO": {
+      "delta_log_loss": 0.0639982736324209,
+      "races": 9
+    },
+    "GAWL": {
+      "delta_log_loss": -0.02075980978167749,
+      "races": 4
+    },
+    "GEE": {
+      "delta_log_loss": -0.05683485063407536,
+      "races": 6
+    },
+    "GOUL": {
+      "delta_log_loss": 0.0015867801173502297,
+      "races": 4
+    },
+    "GRDN": {
+      "delta_log_loss": 0.032540060754873666,
+      "races": 3
+    },
+    "HEA": {
+      "delta_log_loss": 0.02563103467888117,
+      "races": 7
+    },
+    "HOBT": {
+      "delta_log_loss": -0.07153758858356715,
+      "races": 8
+    },
+    "HOR": {
+      "delta_log_loss": 0.11716916424464234,
+      "races": 6
+    },
+    "MEA": {
+      "delta_log_loss": 0.02097257915715267,
+      "races": 2
+    },
+    "MT_G": {
+      "delta_log_loss": 0.04845357389454384,
+      "races": 7
+    },
+    "MURR": {
+      "delta_log_loss": -0.016587991769748324,
+      "races": 10
+    },
+    "NOR": {
+      "delta_log_loss": -0.01511416107415156,
+      "races": 4
+    },
+    "QOT": {
+      "delta_log_loss": -0.12723524377152473,
+      "races": 12
+    },
+    "RICH": {
+      "delta_log_loss": 0.03965517878058429,
+      "races": 7
+    },
+    "ROCK": {
+      "delta_log_loss": 0.013299367222902925,
+      "races": 1
+    },
+    "SAL": {
+      "delta_log_loss": -0.004164940050648061,
+      "races": 8
+    },
+    "TAREE": {
+      "delta_log_loss": 0.1573837886849697,
+      "races": 5
+    },
+    "TEM": {
+      "delta_log_loss": 0.021353640087279135,
+      "races": 1
+    },
+    "TRA": {
+      "delta_log_loss": -0.07598709010463313,
+      "races": 8
+    },
+    "WAR": {
+      "delta_log_loss": -0.06366709487208598,
+      "races": 14
+    },
+    "WPK": {
+      "delta_log_loss": -0.22317431944053834,
+      "races": 1
+    },
+    "WRGL": {
+      "delta_log_loss": 0.017169679612601074,
+      "races": 3
+    }
+  },
+  "selected_market_calibration": {
+    "AP K": {
+      "delta_log_loss": 0.027770397191340737,
+      "races": 8
+    },
+    "BAL": {
+      "delta_log_loss": -1.1102230246251565e-16,
+      "races": 3
+    },
+    "BEN": {
+      "delta_log_loss": 0.3037418279140419,
+      "races": 4
+    },
+    "BH": {
+      "delta_log_loss": 0.0,
+      "races": 5
+    },
+    "BULLI": {
+      "delta_log_loss": 0.14585099447450034,
+      "races": 1
+    },
+    "CAPA": {
+      "delta_log_loss": 0.0018294467428999685,
+      "races": 22
+    },
+    "CASO": {
+      "delta_log_loss": -0.04012240537209508,
+      "races": 4
+    },
+    "DUBBO": {
+      "delta_log_loss": 0.06209467763631751,
+      "races": 9
+    },
+    "GAWL": {
+      "delta_log_loss": -1.1102230246251565e-16,
+      "races": 4
+    },
+    "GEE": {
+      "delta_log_loss": -0.08872893192708063,
+      "races": 6
+    },
+    "GOUL": {
+      "delta_log_loss": 0.0015867801173502297,
+      "races": 4
+    },
+    "GRDN": {
+      "delta_log_loss": 7.401486830834377e-17,
+      "races": 3
+    },
+    "HEA": {
+      "delta_log_loss": 0.06568812060784746,
+      "races": 7
+    },
+    "HOBT": {
+      "delta_log_loss": -0.0858096397593491,
+      "races": 8
+    },
+    "HOR": {
+      "delta_log_loss": 0.0543749163501269,
+      "races": 6
+    },
+    "MEA": {
+      "delta_log_loss": 0.10146308684843075,
+      "races": 2
+    },
+    "MT_G": {
+      "delta_log_loss": 0.029451573400782558,
+      "races": 7
+    },
+    "MURR": {
+      "delta_log_loss": -0.043266479119135545,
+      "races": 10
+    },
+    "NOR": {
+      "delta_log_loss": 8.326672684688674e-17,
+      "races": 4
+    },
+    "QOT": {
+      "delta_log_loss": -0.0958221240251786,
+      "races": 12
+    },
+    "RICH": {
+      "delta_log_loss": -0.018010556140041416,
+      "races": 7
+    },
+    "ROCK": {
+      "delta_log_loss": 2.220446049250313e-16,
+      "races": 1
+    },
+    "SAL": {
+      "delta_log_loss": -0.056726886881672614,
+      "races": 8
+    },
+    "TAREE": {
+      "delta_log_loss": 0.18608271441101118,
+      "races": 5
+    },
+    "TEM": {
+      "delta_log_loss": 0.0,
+      "races": 1
+    },
+    "TRA": {
+      "delta_log_loss": -0.08130395180438887,
+      "races": 8
+    },
+    "WAR": {
+      "delta_log_loss": -0.08856038588143333,
+      "races": 14
+    },
+    "WPK": {
+      "delta_log_loss": -0.22317431944053834,
+      "races": 1
+    },
+    "WRGL": {
+      "delta_log_loss": -0.040156805159786736,
+      "races": 3
+    }
+  },
+  "selected_nonlinear": {
+    "AP K": {
+      "delta_log_loss": 0.00798550974748162,
+      "races": 8
+    },
+    "BAL": {
+      "delta_log_loss": -0.013419680213394644,
+      "races": 3
+    },
+    "BEN": {
+      "delta_log_loss": 0.027433915048626523,
+      "races": 4
+    },
+    "BH": {
+      "delta_log_loss": 0.029329193143093946,
+      "races": 5
+    },
+    "BULLI": {
+      "delta_log_loss": 0.004735305517825861,
+      "races": 1
+    },
+    "CAPA": {
+      "delta_log_loss": 0.0047115831510494924,
+      "races": 22
+    },
+    "CASO": {
+      "delta_log_loss": -0.011342354122749088,
+      "races": 4
+    },
+    "DUBBO": {
+      "delta_log_loss": 0.00448574241588655,
+      "races": 9
+    },
+    "GAWL": {
+      "delta_log_loss": -0.003147551603558202,
+      "races": 4
+    },
+    "GEE": {
+      "delta_log_loss": 0.011390627980655857,
+      "races": 6
+    },
+    "GOUL": {
+      "delta_log_loss": -0.0010649341569847898,
+      "races": 4
+    },
+    "GRDN": {
+      "delta_log_loss": -0.01906025471937863,
+      "races": 3
+    },
+    "HEA": {
+      "delta_log_loss": -0.01187718949687295,
+      "races": 7
+    },
+    "HOBT": {
+      "delta_log_loss": -0.02151789885313403,
+      "races": 8
+    },
+    "HOR": {
+      "delta_log_loss": -0.013586622096778614,
+      "races": 6
+    },
+    "MEA": {
+      "delta_log_loss": -0.02460339910060283,
+      "races": 2
+    },
+    "MT_G": {
+      "delta_log_loss": -0.0041571695329021595,
+      "races": 7
+    },
+    "MURR": {
+      "delta_log_loss": 0.0014099556996780616,
+      "races": 10
+    },
+    "NOR": {
+      "delta_log_loss": -0.008138725754729154,
+      "races": 4
+    },
+    "QOT": {
+      "delta_log_loss": -0.023215256286011687,
+      "races": 12
+    },
+    "RICH": {
+      "delta_log_loss": -0.0015185729237148307,
+      "races": 7
+    },
+    "ROCK": {
+      "delta_log_loss": -0.08067356943873505,
+      "races": 1
+    },
+    "SAL": {
+      "delta_log_loss": -0.015505046626440595,
+      "races": 8
+    },
+    "TAREE": {
+      "delta_log_loss": 0.03334720112650822,
+      "races": 5
+    },
+    "TEM": {
+      "delta_log_loss": 0.019909031314569337,
+      "races": 1
+    },
+    "TRA": {
+      "delta_log_loss": -0.011636712833201751,
+      "races": 8
+    },
+    "WAR": {
+      "delta_log_loss": -0.009166600849398429,
+      "races": 14
+    },
+    "WPK": {
+      "delta_log_loss": -0.041981207264671694,
+      "races": 1
+    },
+    "WRGL": {
+      "delta_log_loss": -0.0302592941665291,
+      "races": 3
+    }
+  },
+  "uniform": {
+    "AP K": {
+      "delta_log_loss": 0.25506608740640796,
+      "races": 8
+    },
+    "BAL": {
+      "delta_log_loss": 0.8120660009334507,
+      "races": 3
+    },
+    "BEN": {
+      "delta_log_loss": -0.12639906361662417,
+      "races": 4
+    },
+    "BH": {
+      "delta_log_loss": 0.34333264472805697,
+      "races": 5
+    },
+    "BULLI": {
+      "delta_log_loss": -0.0007638692618763265,
+      "races": 1
+    },
+    "CAPA": {
+      "delta_log_loss": 0.6986589756157459,
+      "races": 22
+    },
+    "CASO": {
+      "delta_log_loss": 0.7934094304919582,
+      "races": 4
+    },
+    "DUBBO": {
+      "delta_log_loss": 0.20817377746262603,
+      "races": 9
+    },
+    "GAWL": {
+      "delta_log_loss": 0.27774210255429305,
+      "races": 4
+    },
+    "GEE": {
+      "delta_log_loss": 0.7254135462499275,
+      "races": 6
+    },
+    "GOUL": {
+      "delta_log_loss": 0.5640874283719142,
+      "races": 4
+    },
+    "GRDN": {
+      "delta_log_loss": 0.730707199090029,
+      "races": 3
+    },
+    "HEA": {
+      "delta_log_loss": 0.5835654451252351,
+      "races": 7
+    },
+    "HOBT": {
+      "delta_log_loss": 0.54668451313697,
+      "races": 8
+    },
+    "HOR": {
+      "delta_log_loss": 0.6671724562359108,
+      "races": 6
+    },
+    "MEA": {
+      "delta_log_loss": 0.2952872588121638,
+      "races": 2
+    },
+    "MT_G": {
+      "delta_log_loss": 0.2842902673675395,
+      "races": 7
+    },
+    "MURR": {
+      "delta_log_loss": 0.4712892977832769,
+      "races": 10
+    },
+    "NOR": {
+      "delta_log_loss": 0.6724964946751724,
+      "races": 4
+    },
+    "QOT": {
+      "delta_log_loss": 0.7207394333693915,
+      "races": 12
+    },
+    "RICH": {
+      "delta_log_loss": 0.6233537878310302,
+      "races": 7
+    },
+    "ROCK": {
+      "delta_log_loss": 1.5039451939769877,
+      "races": 1
+    },
+    "SAL": {
+      "delta_log_loss": 0.5430615144952606,
+      "races": 8
+    },
+    "TAREE": {
+      "delta_log_loss": 0.0075215346989856435,
+      "races": 5
+    },
+    "TEM": {
+      "delta_log_loss": -0.8864053908225618,
+      "races": 1
+    },
+    "TRA": {
+      "delta_log_loss": 0.7012717204916428,
+      "races": 8
+    },
+    "WAR": {
+      "delta_log_loss": 0.6378010535218387,
+      "races": 14
+    },
+    "WPK": {
+      "delta_log_loss": 0.8338820707106571,
+      "races": 1
+    },
+    "WRGL": {
+      "delta_log_loss": 0.758251567784872,
+      "races": 3
+    }
+  }
+}

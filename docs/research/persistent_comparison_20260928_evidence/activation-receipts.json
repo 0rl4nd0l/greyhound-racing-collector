@@ -1,0 +1,14 @@
+{
+  "documentation_only": true,
+  "receipt_sha256": {
+    "activation-manifest.json": "e836aca32deeb1b0ccf0e1205db0513c9badff55ac46e9a58cc519e0648ffb4d",
+    "activation.json": "e176a806c458be05b2ab514cda9a6b053bf143b23ffa2ea00be8b06e11eacd0a",
+    "approval.json": "dafdea7bd7fadb8d008cace8e82ad36ff2815b9813662a57cf67d4f22dbe1ef2",
+    "operation-verification.json": "f6ff252a1b7fd03b6b537bf3c64d7b7420051a5e26aa328dbe60cb07027d8c6d",
+    "result-service-restart.json": "77f086239515b89fbfb45a3c04bb8e4814ca9e6b11da639dc8bb9ae018956ccd",
+    "startup-monitor-recovery.json": "05fcd2e7fb3cbe63a6641d48f8a7b4d4579772f03dacc80b0858747a23634025"
+  },
+  "runtime_commit": "869fca1c66a6ee7c557facdb55e6f7592f2992cb",
+  "source_root": "/home/l4nd0/greyhound-collector-campaign-20260923/persistent-activation-20260928",
+  "status": "INSTALLED_STARTUP_VERIFIED_FIRST_SESSION_PENDING"
+}

@@ -1,0 +1,14 @@
+{
+  "base_commit": "e09c16e78bd5824b4494602204b9af44b4cc4e94",
+  "experiment_sources_sha256": {
+    "scripts/offline_prediction_research.py": "c8245cfd6a6d2bed2d1e3260c0bbd4f7d6b569480630f536fee3e78674e1e551",
+    "scripts/offline_systematic_selection_diagnostics.py": "eff1f8ad0e51a4889f2429faef51120bb2a08a5b9d268066830acc3fc3f9b6fd",
+    "scripts/offline_systematic_summary.py": "50b1034a683b582e05d2527beadf8e1649cdb3e5211f7a860f554a7b4076fd97",
+    "scripts/offline_form_packet.py": "865f18598429a231ca515ec8cbf108312d6c2faa23e392608b398b98bbe28379",
+    "scripts/offline_systematic_features.py": "b8cf9c8455c1f1ef1c61169520d8839176d906091cd3937c633c41f1c1fcd4b8",
+    "scripts/build_form_only_v1_packet.py": "11b56970de0e53975a444d0ad066f7ea566ffc717757b074d5eb0d5f8865f086",
+    "scripts/offline_systematic_search.py": "d95828aec1bbc1c22bac4d4b7be5429bc92560f0c59a854ce328b2cc1040cec1"
+  },
+  "source_snapshot_matches_committed_candidates": true,
+  "verification": "packaged CSV independently reproduces all nine log loss and Brier scores; 1000 ledger entries verified"
+}

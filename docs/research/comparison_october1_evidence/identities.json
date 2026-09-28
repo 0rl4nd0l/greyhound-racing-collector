@@ -1,0 +1,31 @@
+{
+  "control": "/mnt/tenn-nvme2/tenn/greyhound-persistent-comparison-20261005/control-october1-v2-20260928",
+  "deployment_archive_sha256": "ad8f06e02acc4f0b72ada7aec64ddb0a4a7e7f85c925ec82a49955ba4ddf9266",
+  "deployment_manifest_sha256": "baf9785575540ab5caa96264561bec9d24a47847368db9ec2d9397c56fadea83",
+  "files": {
+    "allocation.APPROVED.json": "b708fa973aa972b8cd248b4b4d3269fa7aa16402755ee0fb84da5212db6822d1",
+    "amendment-receipt.json": "71b86ebf16216ead6d29a5a1296ce038bc4a68d00e72860c6ab7eb5838f240af",
+    "campaign-amendment.json": "4ee081c6bfb7a80a8398ac831059c72c78d0481ccc3198107fe9a5b33fca8341",
+    "empty-state.json": "cf36bef3d3f5bc08d17b0a53be54076e4e2e8898d83ce832c0dbc24f2bfb2e90",
+    "plan.APPROVED.json": "e0c71cba1618a05416a0087e85141803c32bd806b8faad36259a8a0d70808adb",
+    "programme-authority.APPROVED.json": "84a39e3ceafb12db72a96b00db8e9f0c0506560bca28a208526d5ba184724224",
+    "reservation-review.json": "4c1f859c8292fa76bb1a70809133f56fa534fc16c98d0371d9d36a5875b7030e",
+    "result-authority.APPROVED.json": "7c8dfcd6005f1d0ca277abdf67e9c02b783dd6b9d3b142f79745ae3cb3186f81",
+    "result-binding.APPROVED.json": "66bfb156ca90abcf9f2a891b0080639c351b8a6b96efb0ced56f31672f60141b",
+    "schedule.APPROVED.json": "8635a3729207b0b804b09ec5bfa4e93a4e366bd006a3458796b11a8c019e4b95"
+  },
+  "preserved_superseded_preparation": {
+    "control": "/mnt/tenn-nvme2/tenn/greyhound-persistent-comparison-20261005/control-october1-20260928",
+    "reason": "Corrected reservation-review canonical serialization hash before installation; original packet preserved.",
+    "status": "NOT_INSTALLED"
+  },
+  "process_checks": {
+    "elapsed_seconds": 39.16,
+    "scope": "Real synthetic prediction/result subprocess, shared denial controls, closure restart. Kernel network denied.",
+    "status": "PASS",
+    "tests": 3
+  },
+  "release": "551ae3c03ba8c731baeb5e41c712ecd672f02a4b",
+  "reused_evidence": "869fca1c package comparison-off equivalence and first-session gate controls; September28 actual collector live acceptance",
+  "status_command_sha256": "a37a5acc9d2f578a4d0e400ae7d4c714e8f242886ab59d4ce1ee6e2fdcc70943"
+}

@@ -104,6 +104,10 @@ class _PersistentPublicHttpClient:
 
     def get(self, url: str, **kwargs):
         kwargs.pop("cookies", None)
+        from src.predictor.comparison_result_runtime import ACTIVE
+        guard = ACTIVE.get()
+        if guard is not None:
+            return guard.get(self.session, url, **kwargs)
         return self.session.get(url, cookies={}, **kwargs)
 
     def close(self):
@@ -966,6 +970,11 @@ class TheDogsResultFetcher:
                 close()
 
     def _result_urls(self, candidate: RaceCandidate) -> List[str]:
+        from src.predictor.comparison_result_runtime import ACTIVE
+        guard = ACTIVE.get()
+        if guard is not None:
+            guard.select(candidate)
+            return [candidate.canonical_thedogs_url + "?trial=false"]
         slug = candidate.thedogs_slug
         if not slug:
             return []
@@ -1199,6 +1208,11 @@ class TheDogsResultFetcher:
         if http_result and terminal_public_http_error(http_result.error):
             return http_result
 
+        from src.predictor.comparison_result_runtime import ACTIVE
+        if ACTIVE.get() is not None:
+            # Never bypass the exact-URL/accounted HTTP route through Selenium.
+            return http_result or SourceResult(source="thedogs_official", status="error",
+                source_url=urls[0], positions_by_box={}, raw_order=[], error="no_thedogs_positions_found")
         last_error = None
         attempted_urls: List[dict] = list(http_result.attempted_urls or []) if http_result else []
         if http_result and http_result.error:

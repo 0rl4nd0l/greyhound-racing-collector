@@ -1,0 +1,441 @@
+{
+  "nearby_odds": [
+    {
+      "abstention_races": 56,
+      "diagnostic_only_no_reselection": true,
+      "eligible_races": 86,
+      "eligible_runners": 626,
+      "losses": 35,
+      "mean_market": 0.05854981184173259,
+      "mean_model": 0.07180805241220102,
+      "odds_quantiles": [
+        8.0,
+        10.0,
+        13.0,
+        20.0,
+        35.0
+      ],
+      "outer": "period1",
+      "rule": {
+        "condition": "improving_margin",
+        "kind": "outsider",
+        "minimum_odds": 8.0,
+        "threshold": 0.005
+      },
+      "selected_races": 30,
+      "selection_race_fraction": 0.3488372093023256,
+      "selections": 38,
+      "win_rate": 0.07894736842105263,
+      "wins": 3
+    },
+    {
+      "abstention_races": 59,
+      "diagnostic_only_no_reselection": true,
+      "eligible_races": 86,
+      "eligible_runners": 626,
+      "losses": 26,
+      "mean_market": 0.049053946814419866,
+      "mean_model": 0.06148795936768876,
+      "odds_quantiles": [
+        10.0,
+        13.0,
+        16.0,
+        21.0,
+        35.0
+      ],
+      "outer": "period1",
+      "rule": {
+        "condition": "improving_margin",
+        "kind": "outsider",
+        "minimum_odds": 10,
+        "threshold": 0.005
+      },
+      "selected_races": 27,
+      "selection_race_fraction": 0.313953488372093,
+      "selections": 29,
+      "win_rate": 0.10344827586206896,
+      "wins": 3
+    },
+    {
+      "abstention_races": 64,
+      "diagnostic_only_no_reselection": true,
+      "eligible_races": 86,
+      "eligible_runners": 626,
+      "losses": 21,
+      "mean_market": 0.04271970694031572,
+      "mean_model": 0.05315232305473051,
+      "odds_quantiles": [
+        12.0,
+        13.5,
+        20.0,
+        23.0,
+        35.0
+      ],
+      "outer": "period1",
+      "rule": {
+        "condition": "improving_margin",
+        "kind": "outsider",
+        "minimum_odds": 12.0,
+        "threshold": 0.005
+      },
+      "selected_races": 22,
+      "selection_race_fraction": 0.2558139534883721,
+      "selections": 23,
+      "win_rate": 0.08695652173913043,
+      "wins": 2
+    },
+    {
+      "abstention_races": 10,
+      "diagnostic_only_no_reselection": true,
+      "eligible_races": 16,
+      "eligible_runners": 109,
+      "losses": 7,
+      "mean_market": 0.036349195702116636,
+      "mean_model": 0.047104980377812314,
+      "odds_quantiles": [
+        12.0,
+        21.0,
+        21.0,
+        26.5,
+        31.0
+      ],
+      "outer": "period2",
+      "rule": {
+        "condition": "improving_margin",
+        "kind": "outsider",
+        "minimum_odds": 12.0,
+        "threshold": 0.005
+      },
+      "selected_races": 6,
+      "selection_race_fraction": 0.375,
+      "selections": 7,
+      "win_rate": 0.0,
+      "wins": 0
+    },
+    {
+      "abstention_races": 11,
+      "diagnostic_only_no_reselection": true,
+      "eligible_races": 16,
+      "eligible_runners": 109,
+      "losses": 6,
+      "mean_market": 0.031922427965754736,
+      "mean_model": 0.04261666201623898,
+      "odds_quantiles": [
+        21.0,
+        21.0,
+        23.5,
+        26.75,
+        31.0
+      ],
+      "outer": "period2",
+      "rule": {
+        "condition": "improving_margin",
+        "kind": "outsider",
+        "minimum_odds": 15,
+        "threshold": 0.005
+      },
+      "selected_races": 5,
+      "selection_race_fraction": 0.3125,
+      "selections": 6,
+      "win_rate": 0.0,
+      "wins": 0
+    },
+    {
+      "abstention_races": 11,
+      "diagnostic_only_no_reselection": true,
+      "eligible_races": 16,
+      "eligible_runners": 109,
+      "losses": 6,
+      "mean_market": 0.031922427965754736,
+      "mean_model": 0.04261666201623898,
+      "odds_quantiles": [
+        21.0,
+        21.0,
+        23.5,
+        26.75,
+        31.0
+      ],
+      "outer": "period2",
+      "rule": {
+        "condition": "improving_margin",
+        "kind": "outsider",
+        "minimum_odds": 18.0,
+        "threshold": 0.005
+      },
+      "selected_races": 5,
+      "selection_race_fraction": 0.3125,
+      "selections": 6,
+      "win_rate": 0.0,
+      "wins": 0
+    }
+  ],
+  "prediction_sha256": "91b6f72898c766863f1cc4f3703f1d5ba77306a2da3ddbbe363ea6df6dd5c3a9",
+  "returns": "not estimated; no qualified executable quote history",
+  "selections": {
+    "favorite": {
+      "all_eligible_dates": 15,
+      "date_bootstrap_ci95": [
+        -0.30207854018930336,
+        0.3178255050216012
+      ],
+      "interpretation": "winner removal is predictive sensitivity, not a simulated payout or return",
+      "leave_one_date_out": {
+        "2026-06-24": {
+          "mean_actual_minus_market": 0.10366751174351543,
+          "remaining_selections": 14,
+          "remaining_wins": 7
+        },
+        "2026-06-25": {
+          "mean_actual_minus_market": -0.003208212954174964,
+          "remaining_selections": 15,
+          "remaining_wins": 6
+        },
+        "2026-06-26": {
+          "mean_actual_minus_market": 0.06094104483904033,
+          "remaining_selections": 15,
+          "remaining_wins": 7
+        },
+        "2026-06-27": {
+          "mean_actual_minus_market": -0.0347642533588758,
+          "remaining_selections": 14,
+          "remaining_wins": 5
+        },
+        "2026-06-28": {
+          "mean_actual_minus_market": 0.1337677930182262,
+          "remaining_selections": 13,
+          "remaining_wins": 7
+        },
+        "2026-06-29": {
+          "mean_actual_minus_market": -0.046538173091016884,
+          "remaining_selections": 11,
+          "remaining_wins": 4
+        },
+        "2026-06-30": {
+          "mean_actual_minus_market": 0.03468643657020689,
+          "remaining_selections": 16,
+          "remaining_wins": 7
+        },
+        "2026-07-01": {
+          "mean_actual_minus_market": 0.019442743560440817,
+          "remaining_selections": 14,
+          "remaining_wins": 6
+        },
+        "2026-07-02": {
+          "mean_actual_minus_market": 0.03468643657020689,
+          "remaining_selections": 16,
+          "remaining_wins": 7
+        },
+        "2026-07-03": {
+          "mean_actual_minus_market": 0.03468643657020689,
+          "remaining_selections": 16,
+          "remaining_wins": 7
+        },
+        "2026-07-04": {
+          "mean_actual_minus_market": 0.03468643657020689,
+          "remaining_selections": 16,
+          "remaining_wins": 7
+        },
+        "2026-07-05": {
+          "mean_actual_minus_market": 0.03468643657020689,
+          "remaining_selections": 16,
+          "remaining_wins": 7
+        },
+        "2026-07-06": {
+          "mean_actual_minus_market": 0.03468643657020689,
+          "remaining_selections": 16,
+          "remaining_wins": 7
+        },
+        "2026-07-07": {
+          "mean_actual_minus_market": 0.03468643657020689,
+          "remaining_selections": 16,
+          "remaining_wins": 7
+        },
+        "2026-07-08": {
+          "mean_actual_minus_market": 0.03468643657020689,
+          "remaining_selections": 16,
+          "remaining_wins": 7
+        }
+      },
+      "leave_one_selected_win_out": [
+        {
+          "mean_actual_minus_market": -0.003208212954174964,
+          "quoted_odds": 1.95,
+          "remaining_selections": 15,
+          "remaining_wins": 6,
+          "removed_box": 1,
+          "removed_race": "Race 9 - RICHMOND-STRAIGHT - 2026-06-25"
+        },
+        {
+          "mean_actual_minus_market": 0.0017230170562081574,
+          "quoted_odds": 1.6,
+          "remaining_selections": 15,
+          "remaining_wins": 6,
+          "removed_box": 1,
+          "removed_race": "Race 3 - BAL - 2026-06-27"
+        },
+        {
+          "mean_actual_minus_market": 0.002829212150395118,
+          "quoted_odds": 1.65,
+          "remaining_selections": 15,
+          "remaining_wins": 6,
+          "removed_box": 1,
+          "removed_race": "Race 4 - LADBROKES-Q1-LAKESIDE - 2026-06-27"
+        },
+        {
+          "mean_actual_minus_market": -0.0006668752488156053,
+          "quoted_odds": 1.8,
+          "remaining_selections": 15,
+          "remaining_wins": 6,
+          "removed_box": 1,
+          "removed_race": "Race 10 - TRA - 2026-06-29"
+        },
+        {
+          "mean_actual_minus_market": 0.0013241361936911242,
+          "quoted_odds": 1.65,
+          "remaining_selections": 15,
+          "remaining_wins": 6,
+          "removed_box": 4,
+          "removed_race": "Race 2 - NOR - 2026-06-29"
+        },
+        {
+          "mean_actual_minus_market": -0.0028178855323482003,
+          "quoted_odds": 1.95,
+          "remaining_selections": 15,
+          "remaining_wins": 6,
+          "removed_box": 1,
+          "removed_race": "Race 9 - WAR - 2026-06-29"
+        },
+        {
+          "mean_actual_minus_market": -0.010078654084381264,
+          "quoted_odds": 2.7,
+          "remaining_selections": 15,
+          "remaining_wins": 6,
+          "removed_box": 4,
+          "removed_race": "Race 8 - MURRAY-BRIDGE-STRAIGHT - 2026-07-01"
+        }
+      ],
+      "mean_actual_minus_market": 0.03468643657020689,
+      "selected_binary_brier_delta_model_minus_market": 0.004982640371908129,
+      "selected_dates": 7,
+      "winning_dates": 4,
+      "zero_selection_bootstraps": 0
+    },
+    "outsider": {
+      "all_eligible_dates": 15,
+      "date_bootstrap_ci95": [
+        -0.04865802773292379,
+        0.21884743692993383
+      ],
+      "interpretation": "winner removal is predictive sensitivity, not a simulated payout or return",
+      "leave_one_date_out": {
+        "2026-06-24": {
+          "mean_actual_minus_market": 0.016247188911046585,
+          "remaining_selections": 32,
+          "remaining_wins": 2
+        },
+        "2026-06-25": {
+          "mean_actual_minus_market": 0.04546515494032639,
+          "remaining_selections": 33,
+          "remaining_wins": 3
+        },
+        "2026-06-26": {
+          "mean_actual_minus_market": -0.013701029862996556,
+          "remaining_selections": 32,
+          "remaining_wins": 1
+        },
+        "2026-06-27": {
+          "mean_actual_minus_market": 0.044502210715113316,
+          "remaining_selections": 33,
+          "remaining_wins": 3
+        },
+        "2026-06-28": {
+          "mean_actual_minus_market": 0.05633898727057288,
+          "remaining_selections": 29,
+          "remaining_wins": 3
+        },
+        "2026-06-29": {
+          "mean_actual_minus_market": 0.07287755050096358,
+          "remaining_selections": 26,
+          "remaining_wins": 3
+        },
+        "2026-06-30": {
+          "mean_actual_minus_market": 0.04983303805453119,
+          "remaining_selections": 31,
+          "remaining_wins": 3
+        },
+        "2026-07-01": {
+          "mean_actual_minus_market": 0.05439432904764909,
+          "remaining_selections": 29,
+          "remaining_wins": 3
+        },
+        "2026-07-02": {
+          "mean_actual_minus_market": 0.03959717070249415,
+          "remaining_selections": 35,
+          "remaining_wins": 3
+        },
+        "2026-07-03": {
+          "mean_actual_minus_market": 0.03959717070249415,
+          "remaining_selections": 35,
+          "remaining_wins": 3
+        },
+        "2026-07-04": {
+          "mean_actual_minus_market": 0.03959717070249415,
+          "remaining_selections": 35,
+          "remaining_wins": 3
+        },
+        "2026-07-05": {
+          "mean_actual_minus_market": 0.03959717070249415,
+          "remaining_selections": 35,
+          "remaining_wins": 3
+        },
+        "2026-07-06": {
+          "mean_actual_minus_market": 0.03959717070249415,
+          "remaining_selections": 35,
+          "remaining_wins": 3
+        },
+        "2026-07-07": {
+          "mean_actual_minus_market": 0.03959717070249415,
+          "remaining_selections": 35,
+          "remaining_wins": 3
+        },
+        "2026-07-08": {
+          "mean_actual_minus_market": 0.03959717070249415,
+          "remaining_selections": 35,
+          "remaining_wins": 3
+        }
+      },
+      "leave_one_selected_win_out": [
+        {
+          "mean_actual_minus_market": 0.012453144000517016,
+          "quoted_odds": 20.0,
+          "remaining_selections": 34,
+          "remaining_wins": 2,
+          "removed_box": 5,
+          "removed_race": "Race 8 - CAPALABA - 2026-06-24"
+        },
+        {
+          "mean_actual_minus_market": 0.012398025875895913,
+          "quoted_odds": 21.0,
+          "remaining_selections": 34,
+          "remaining_wins": 2,
+          "removed_box": 7,
+          "removed_race": "Race 11 - LADBROKES-Q1-LAKESIDE - 2026-06-26"
+        },
+        {
+          "mean_actual_minus_market": 0.013452160126817039,
+          "quoted_odds": 11.0,
+          "remaining_selections": 34,
+          "remaining_wins": 2,
+          "removed_box": 1,
+          "removed_race": "Race 7 - MURR - 2026-06-26"
+        }
+      ],
+      "mean_actual_minus_market": 0.03959717070249415,
+      "selected_binary_brier_delta_model_minus_market": -0.0007490651488671936,
+      "selected_dates": 8,
+      "winning_dates": 2,
+      "zero_selection_bootstraps": 1
+    }
+  },
+  "status": "DIAGNOSTIC_ONLY_NO_REFIT_OR_RESELECTION"
+}

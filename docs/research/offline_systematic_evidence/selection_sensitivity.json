@@ -1,0 +1,294 @@
+[
+  {
+    "abstention_races": 69,
+    "eligible_races": 86,
+    "eligible_runners": 626,
+    "losses": 10,
+    "mean_market": 0.38033697727308724,
+    "mean_model": 0.31175229091800344,
+    "odds_quantiles": [
+      1.5,
+      1.65,
+      1.95,
+      2.6,
+      3.2
+    ],
+    "outer": "period1",
+    "rule": {
+      "condition": "any",
+      "kind": "favorite",
+      "threshold": 0.045000000000000005
+    },
+    "selected_races": 17,
+    "selection_race_fraction": 0.19767441860465115,
+    "selections": 17,
+    "win_rate": 0.4117647058823529,
+    "wins": 7
+  },
+  {
+    "abstention_races": 72,
+    "eligible_races": 86,
+    "eligible_runners": 626,
+    "losses": 8,
+    "mean_market": 0.40912868501098776,
+    "mean_model": 0.3357491906687957,
+    "odds_quantiles": [
+      1.5,
+      1.65,
+      1.95,
+      2.0875,
+      2.9
+    ],
+    "outer": "period1",
+    "rule": {
+      "condition": "any",
+      "kind": "favorite",
+      "threshold": 0.05
+    },
+    "selected_races": 14,
+    "selection_race_fraction": 0.16279069767441862,
+    "selections": 14,
+    "win_rate": 0.42857142857142855,
+    "wins": 6
+  },
+  {
+    "abstention_races": 73,
+    "eligible_races": 86,
+    "eligible_runners": 626,
+    "losses": 7,
+    "mean_market": 0.4201088449239411,
+    "mean_model": 0.3449443825569982,
+    "odds_quantiles": [
+      1.5,
+      1.65,
+      1.95,
+      2.05,
+      2.6
+    ],
+    "outer": "period1",
+    "rule": {
+      "condition": "any",
+      "kind": "favorite",
+      "threshold": 0.055
+    },
+    "selected_races": 13,
+    "selection_race_fraction": 0.1511627906976744,
+    "selections": 13,
+    "win_rate": 0.46153846153846156,
+    "wins": 6
+  },
+  {
+    "abstention_races": 43,
+    "eligible_races": 86,
+    "eligible_runners": 626,
+    "losses": 50,
+    "mean_market": 0.04146768595024512,
+    "mean_model": 0.04939677299799208,
+    "odds_quantiles": [
+      10.0,
+      13.0,
+      20.0,
+      34.0,
+      101.0
+    ],
+    "outer": "period1",
+    "rule": {
+      "condition": "improving_margin",
+      "kind": "outsider",
+      "minimum_odds": 10,
+      "threshold": 0
+    },
+    "selected_races": 43,
+    "selection_race_fraction": 0.5,
+    "selections": 53,
+    "win_rate": 0.05660377358490566,
+    "wins": 3
+  },
+  {
+    "abstention_races": 59,
+    "eligible_races": 86,
+    "eligible_runners": 626,
+    "losses": 26,
+    "mean_market": 0.049053946814419866,
+    "mean_model": 0.06148795936768876,
+    "odds_quantiles": [
+      10.0,
+      13.0,
+      16.0,
+      21.0,
+      35.0
+    ],
+    "outer": "period1",
+    "rule": {
+      "condition": "improving_margin",
+      "kind": "outsider",
+      "minimum_odds": 10,
+      "threshold": 0.005
+    },
+    "selected_races": 27,
+    "selection_race_fraction": 0.313953488372093,
+    "selections": 29,
+    "win_rate": 0.10344827586206896,
+    "wins": 3
+  },
+  {
+    "abstention_races": 75,
+    "eligible_races": 86,
+    "eligible_runners": 626,
+    "losses": 10,
+    "mean_market": 0.054602680487145665,
+    "mean_model": 0.07417052013751259,
+    "odds_quantiles": [
+      10.0,
+      11.0,
+      13.5,
+      20.0,
+      23.0
+    ],
+    "outer": "period1",
+    "rule": {
+      "condition": "improving_margin",
+      "kind": "outsider",
+      "minimum_odds": 10,
+      "threshold": 0.01
+    },
+    "selected_races": 11,
+    "selection_race_fraction": 0.12790697674418605,
+    "selections": 12,
+    "win_rate": 0.16666666666666666,
+    "wins": 2
+  },
+  {
+    "abstention_races": 14,
+    "eligible_races": 16,
+    "eligible_runners": 109,
+    "losses": 1,
+    "mean_market": 0.3586077123614305,
+    "mean_model": 0.34482179768877685,
+    "odds_quantiles": [
+      1.9,
+      2.1,
+      2.3,
+      2.5,
+      2.7
+    ],
+    "outer": "period2",
+    "rule": {
+      "condition": "improving_margin",
+      "kind": "favorite",
+      "threshold": 0
+    },
+    "selected_races": 2,
+    "selection_race_fraction": 0.125,
+    "selections": 2,
+    "win_rate": 0.5,
+    "wins": 1
+  },
+  {
+    "abstention_races": 14,
+    "eligible_races": 16,
+    "eligible_runners": 109,
+    "losses": 1,
+    "mean_market": 0.3586077123614305,
+    "mean_model": 0.34482179768877685,
+    "odds_quantiles": [
+      1.9,
+      2.1,
+      2.3,
+      2.5,
+      2.7
+    ],
+    "outer": "period2",
+    "rule": {
+      "condition": "improving_margin",
+      "kind": "favorite",
+      "threshold": 0.005
+    },
+    "selected_races": 2,
+    "selection_race_fraction": 0.125,
+    "selections": 2,
+    "win_rate": 0.5,
+    "wins": 1
+  },
+  {
+    "abstention_races": 5,
+    "eligible_races": 16,
+    "eligible_runners": 109,
+    "losses": 15,
+    "mean_market": 0.029543999082195998,
+    "mean_model": 0.035344938082963566,
+    "odds_quantiles": [
+      15.0,
+      21.0,
+      23.0,
+      36.0,
+      101.0
+    ],
+    "outer": "period2",
+    "rule": {
+      "condition": "improving_margin",
+      "kind": "outsider",
+      "minimum_odds": 15,
+      "threshold": 0
+    },
+    "selected_races": 11,
+    "selection_race_fraction": 0.6875,
+    "selections": 15,
+    "win_rate": 0.0,
+    "wins": 0
+  },
+  {
+    "abstention_races": 11,
+    "eligible_races": 16,
+    "eligible_runners": 109,
+    "losses": 6,
+    "mean_market": 0.031922427965754736,
+    "mean_model": 0.04261666201623898,
+    "odds_quantiles": [
+      21.0,
+      21.0,
+      23.5,
+      26.75,
+      31.0
+    ],
+    "outer": "period2",
+    "rule": {
+      "condition": "improving_margin",
+      "kind": "outsider",
+      "minimum_odds": 15,
+      "threshold": 0.005
+    },
+    "selected_races": 5,
+    "selection_race_fraction": 0.3125,
+    "selections": 6,
+    "win_rate": 0.0,
+    "wins": 0
+  },
+  {
+    "abstention_races": 12,
+    "eligible_races": 16,
+    "eligible_runners": 109,
+    "losses": 5,
+    "mean_market": 0.0333081496872352,
+    "mean_model": 0.04504155315193673,
+    "odds_quantiles": [
+      21.0,
+      21.0,
+      21.0,
+      26.0,
+      27.0
+    ],
+    "outer": "period2",
+    "rule": {
+      "condition": "improving_margin",
+      "kind": "outsider",
+      "minimum_odds": 15,
+      "threshold": 0.01
+    },
+    "selected_races": 4,
+    "selection_race_fraction": 0.25,
+    "selections": 5,
+    "win_rate": 0.0,
+    "wins": 0
+  }
+]

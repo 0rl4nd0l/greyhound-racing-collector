@@ -26,7 +26,16 @@ def utc_now():
     return datetime.now(timezone.utc)
 
 
-def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False, observation_minutes=90, start_after_minutes=None):
+def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False, observation_minutes=90, start_after_minutes=None, comparison_plan=None, prediction_root=None):
+    comparison_binding = None
+    if comparison_plan is not None:
+        if not operational_predictions:
+            raise ValueError("comparison_requires_existing_prediction_path")
+        from src.predictor.future_comparison import load_plan
+        comparison_plan = comparison_plan.resolve(strict=True)
+        comparison_sha = hashlib.sha256(comparison_plan.read_bytes()).hexdigest()
+        load_plan(comparison_plan, comparison_sha)
+        comparison_binding = {"path": str(comparison_plan), "sha256": comparison_sha}
     operational = bool(campaign_root and operational_predictions)
     if (type(observation_minutes) is not int
             or not (5 <= observation_minutes <= 90 if operational else observation_minutes == 90)):
@@ -45,7 +54,13 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
     if operational_predictions:
         if campaign_root is None:
             raise ValueError("operational_predictions_require_existing_campaign")
-        db = campaign_root.resolve() / "operational-predictions/capture.sqlite3"
+        if prediction_root is not None:
+            from race_collection.freshness_campaign import Campaign
+            campaign = Campaign(campaign_root)
+            if (not campaign.programme or str(prediction_root) != campaign.programme.get('prediction_root')
+                    or not prediction_root.is_absolute() or prediction_root.resolve() != prediction_root):
+                raise ValueError('prediction_root_not_in_approved_programme')
+        db = (prediction_root or campaign_root.resolve() / "operational-predictions") / "capture.sqlite3"
         db.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         if db.resolve() == history_db:
             raise ValueError("operational_history_write_collision")
@@ -60,7 +75,7 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
     identities = {}
     for name in files:
         path = Path(name)
-        frozen = operational_predictions and (name in {"artifacts/frozen_models/market_form_residual_v1/model.json", "artifacts/frozen_models/market_form_residual_v1/manifest.json", "accuracy_program/repaired_non_tgr_schema.json", "tests/test_run_shadow_non_tgr_rf_evaluation.py"})
+        frozen = operational_predictions and (name in {"artifacts/frozen_models/market_form_residual_v1/model.json", "artifacts/frozen_models/market_form_residual_v1/manifest.json", "accuracy_program/repaired_non_tgr_schema.json", "tests/test_run_shadow_non_tgr_rf_evaluation.py"} or name.startswith("artifacts/research_comparison/frozen_20260924/"))
         if path.parts[0] in {"tests", "artifacts", ".git", "docs"} and not frozen:
             continue
         if not frozen and path.suffix != ".py" and not (
@@ -155,6 +170,7 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
     from utils.sportsbet_access import state_path
 
     plan = {
+        **({"prediction_root": str(prediction_root)} if prediction_root is not None else {}),
         "sportsbet_access_state": str(state_path()),
         "baseline_source_coordination_verified": False,
         **({"campaign_root": str(campaign.root),
@@ -180,7 +196,7 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         "first_index_deadline_seconds": 180,
         "profile": "bounded80-v1",
         "max_capture_attempts": campaign.value['max_capture_attempts'] if campaign else 1,
-        "max_logical_requests": campaign.value['max_logical_requests'] if campaign else 24000,
+        "max_logical_requests": (16000 if getattr(campaign,"programme",None) else campaign.value['max_logical_requests']) if campaign else 24000,
         "capture_allowance": "PENDING_QUIESCENT_RECONCILIATION",
         "evidence_root": str(evidence),
         "lock_path": str(lock),
@@ -219,6 +235,8 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
             "max_jobs": campaign.value['max_capture_attempts'] - len(json.loads((campaign.root / "ledger.json").read_bytes())["attempts"]),
             "result_access": False, "research_activation": False,
         }
+        if comparison_binding is not None:
+            plan["frozen_comparison"] = comparison_binding
     # Select relative windows only after expensive export/runtime/retention work.
     # Seal once using the same canonical encoding the launch preflight verifies.
     if start_after_minutes is not None:
@@ -246,6 +264,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--campaign-root", type=Path)
     parser.add_argument("--operational-predictions", action="store_true")
+    parser.add_argument("--comparison-plan", type=Path, help="Explicit approved comparison binding; omitted by default")
     parser.add_argument("--observation-minutes", type=int, default=90)
     parser.add_argument("--output", type=Path, required=True)
     window = parser.add_mutually_exclusive_group(required=True)
@@ -262,6 +281,7 @@ def main():
             prepare(
                 campaign_root=args.campaign_root,
                 operational_predictions=args.operational_predictions,
+                comparison_plan=args.comparison_plan,
                 observation_minutes=args.observation_minutes,
                 output=args.output,
                 start=datetime.fromisoformat(args.start) if args.start else None,

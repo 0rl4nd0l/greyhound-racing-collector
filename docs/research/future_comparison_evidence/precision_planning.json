@@ -1,0 +1,37 @@
+{
+  "candidates": {
+    "p_refit_box": {
+      "date_cluster_standard_error": 0.007971961528949441,
+      "estimated_required_scoreable_dates": 119,
+      "family_contrasts": 4,
+      "normal_quantile": 2.4977054744123737,
+      "paired_mean_nats": -0.016614109500813674,
+      "prior_dates": 15,
+      "prior_races": 177,
+      "target_halfwidth_nats": 0.01,
+      "variance_inflation": 2
+    },
+    "p_refit_half": {
+      "date_cluster_standard_error": 0.004185489412570137,
+      "estimated_required_scoreable_dates": 33,
+      "family_contrasts": 4,
+      "normal_quantile": 2.4977054744123737,
+      "paired_mean_nats": -0.009334313538235885,
+      "prior_dates": 15,
+      "prior_races": 177,
+      "target_halfwidth_nats": 0.01,
+      "variance_inflation": 2
+    }
+  },
+  "fixed_calendar_days": 168,
+  "illustrative_races_at_prior_density": 1405,
+  "limitations": [
+    "Only 15 historical dates; volatile variance and cross-date dependence.",
+    "Planning observed candidate-minus-market differences; candidate-minus-production precision unmeasured.",
+    "No promised power; future coverage and effect size may differ.",
+    "No interim resizing."
+  ],
+  "prior_evaluation_is_development": true,
+  "source_sha256": "aa8a2737b01e35468682aebf6a2025e72b4b0123bc93cf5255cc7dfdc301e759",
+  "target_scoreable_dates": 119
+}

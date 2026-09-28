@@ -140,7 +140,8 @@ class FreshnessContract:
         if operational:
             if self.campaign is None:
                 raise ValueError("operational_campaign_required")
-            expected = self.campaign.root / "operational-predictions/capture.sqlite3"
+            from race_collection.operational_prediction import operational_root
+            expected = operational_root(value, self.campaign) / 'capture.sqlite3'
             capture = Path(value["db_path"]).resolve()
             if (capture != expected.resolve() or capture != Path(operational["capture_db_path"]).resolve()
                     or capture == Path(operational["history_db_path"]).resolve()):

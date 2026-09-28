@@ -1145,12 +1145,15 @@ def run_shadow_run_official_dry_run(
     race_ids: Sequence[str],
     r3_job_store: Path | None = None,
     r3_prediction_bundles: Path | None = None,
+    comparison_result_binding: dict | None = None,
     include_live_odds_backlog: bool = False,
     backlog_evidence_root: Path | None = None,
     backlog_limit: int = 0,
     backlog_shadow_run_limit: int = 0,
     backlog_lookback_days: int = 0,
 ) -> tuple[dict[str, Any], int]:
+    if comparison_result_binding is not None and r3_job_store is None:
+        raise ValueError("Comparison results require the existing R3 binding")
     if (r3_job_store is None) != (r3_prediction_bundles is None):
         raise ValueError("R3 result discovery requires both bindings")
     if r3_job_store is not None:
@@ -1160,6 +1163,7 @@ def run_shadow_run_official_dry_run(
             result_database=db_path, target_date=target_date, current_time=current_time,
             race_ids=race_ids, output_dir=output_dir,
             limit=backlog_limit or DEFAULT_BACKLOG_LIMIT,
+            comparison_result_binding=comparison_result_binding,
         )
         # The explicitly configured source owns this cycle; never reconstruct an
         # R3 candidate from unrelated shadow predictions or mutable form inputs.
@@ -1328,7 +1332,13 @@ def run_shadow_run_official_dry_run(
     if candidates:
         if not db_path.exists():
             raise FileNotFoundError(f"db_path_not_found:{db_path}")
-        driver, By, browser_error = ingest.optional_browser_driver(headless=True)
+        if comparison_result_binding is not None:
+            from src.predictor.comparison_result_runtime import ACTIVE
+            if ACTIVE.get() is None:
+                raise ValueError("comparison_result_guard_required")
+            driver, By, browser_error = None, None, None
+        else:
+            driver, By, browser_error = ingest.optional_browser_driver(headless=True)
         public_http = ingest._PersistentPublicHttpClient()
         thedogs = ingest.TheDogsResultFetcher(
             driver,
@@ -1362,13 +1372,25 @@ def run_shadow_run_official_dry_run(
                     attempts.append(official)
                     selected = official
                     validation_error = ingest.result_validation_error(candidate, selected)
+                    if comparison_result_binding is not None and selected.positions_by_box:
+                        expected_names = {int(r['box_number']): ingest._result_identity_name(r['dog_name'])
+                                          for r in candidate.participants}
+                        actual_names = {int(box): ingest._result_identity_name(name)
+                                        for box, name in (selected.dog_names_by_box or {}).items()}
+                        if actual_names != expected_names or selected.reserve_box_remappings:
+                            validation_error = 'comparison_official_runner_identity_mismatch'
+                    comparison_tie = (comparison_result_binding is not None
+                        and validation_error in {None,"duplicate_first_place_results"}
+                        and set(selected.positions_by_box)=={r["box_number"] for r in candidate.participants}
+                        and ingest.finish_positions_follow_competition_ranking(list(selected.positions_by_box.values())))
+                    if comparison_tie: validation_error=None
                     if candidate.participant_source == "verified_r3_prediction" and validation_error is None:
                         expected_boxes = {row["box_number"] for row in candidate.participants}
                         if (selected.source != OFFICIAL_SOURCE or selected.status != RESULTED_STATUS
                             or selected.source_url not in {candidate.canonical_thedogs_url,
                                                           candidate.canonical_thedogs_url + "?trial=false"}
                             or set(selected.positions_by_box) != expected_boxes
-                            or set(selected.positions_by_box.values()) != set(range(1, len(expected_boxes) + 1))):
+                            or (not comparison_tie and set(selected.positions_by_box.values()) != set(range(1, len(expected_boxes) + 1)))):
                             validation_error = "r3_official_result_identity_or_completeness_mismatch"
                     if validation_error and sportsbet is not None and candidate.participant_source != "verified_r3_prediction":
                         fallback = sportsbet.fetch(candidate)
@@ -2819,6 +2841,7 @@ def evidence_db_ingest_not_executed() -> dict[str, Any]:
 def result_evidence_identity_blockers(
     race_row: Mapping[str, Any],
     runners: Sequence[Mapping[str, Any]],
+    *, allow_dead_heats: bool = False,
 ) -> list[str]:
     blockers: list[str] = []
     race_id = str(race_row.get("race_id") or "").strip()
@@ -2875,9 +2898,11 @@ def result_evidence_identity_blockers(
             blockers.append("runner_dog_name_missing")
     if runner_boxes and runner_boxes != expected_boxes:
         blockers.append("runner_box_order_mismatch")
-    if finish_positions and len(finish_positions) != len(runners):
+    valid_ties=(allow_dead_heats and len(runner_boxes)==len(runners)
+        and ingest.finish_positions_follow_competition_ranking([r.get("finish_position") for r in runners]))
+    if not valid_ties and finish_positions and len(finish_positions) != len(runners):
         blockers.append("duplicate_finish_positions")
-    if finish_positions and finish_positions != set(range(1, len(runners) + 1)):
+    if not valid_ties and finish_positions and finish_positions != set(range(1, len(runners) + 1)):
         blockers.append("finish_positions_not_contiguous")
     return list(dict.fromkeys(blockers))
 
@@ -2895,6 +2920,7 @@ def is_thedogs_official_url(value: Any) -> bool:
 
 def validate_official_result_evidence_rows(
     artifact_rows: Mapping[str, Sequence[Mapping[str, Any]]],
+    *, allow_dead_heats: bool = False,
 ) -> dict[str, Any]:
     race_rows = [dict(row) for row in artifact_rows.get("race_rows") or []]
     runner_rows = [dict(row) for row in artifact_rows.get("runner_rows") or []]
@@ -2910,7 +2936,7 @@ def validate_official_result_evidence_rows(
     for race_row in race_rows:
         race_id = str(race_row.get("race_id") or "").strip()
         runners = runners_by_race_id.get(race_id) or []
-        blockers = result_evidence_identity_blockers(race_row, runners)
+        blockers = result_evidence_identity_blockers(race_row, runners, allow_dead_heats=allow_dead_heats)
         if blockers:
             blocked.append(
                 {
@@ -3082,8 +3108,9 @@ def append_official_result_evidence_to_db(
     artifact_rows: Mapping[str, Sequence[Mapping[str, Any]]],
     output_dir: Path,
     execute: bool,
+    allow_dead_heats: bool = False,
 ) -> dict[str, Any]:
-    validation = validate_official_result_evidence_rows(artifact_rows)
+    validation = validate_official_result_evidence_rows(artifact_rows, allow_dead_heats=allow_dead_heats)
     status = {
         **evidence_db_ingest_not_executed(),
         "execute": execute,
@@ -3177,6 +3204,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--date", default=date.today().isoformat())
     parser.add_argument("--upcoming-dir", type=Path)
     parser.add_argument("--shadow-run-dir", type=Path)
+    parser.add_argument("--comparison-result-binding", type=Path, help="Explicit plan and restricted result authority bindings; absent by default")
     parser.add_argument("--r3-job-store", type=Path)
     parser.add_argument("--r3-prediction-bundles", type=Path)
     parser.add_argument("--snapshot-dir", type=Path, default=ROOT / "artifacts/prediction_snapshots")
@@ -3216,6 +3244,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     args = parser.parse_args(argv)
+    if args.comparison_result_binding is not None and args.r3_job_store is None:
+        parser.error("--comparison-result-binding requires --r3-job-store")
     if (args.r3_job_store is None) != (args.r3_prediction_bundles is None):
         parser.error("--r3-job-store and --r3-prediction-bundles must be provided together")
     has_existing_artifacts = bool(args.existing_race_rows_jsonl or args.existing_runner_rows_jsonl)
@@ -3234,9 +3264,13 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return args
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def _main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     generated_at = datetime.now().astimezone()
+    if args.comparison_result_binding is not None:
+        os.umask(0o077)
+        from src.predictor.comparison_result_scope import result_scope
+        result_scope(json.loads(args.comparison_result_binding.read_bytes()),now=generated_at,prediction_bundles=args.r3_prediction_bundles,result_database=args.db)
     output_dir = assert_output_dir_safe(
         args.output_dir
         or args.evidence_root / f"autonomous_official_result_capture_{now_id(generated_at)}",
@@ -3354,6 +3388,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             shadow_run_dir=args.shadow_run_dir,
             r3_job_store=args.r3_job_store,
             r3_prediction_bundles=args.r3_prediction_bundles,
+            comparison_result_binding=json.loads(args.comparison_result_binding.read_bytes()) if args.comparison_result_binding else None,
             target_date=args.date,
             current_time=parse_current_time(args.current_time),
             output_dir=output_dir,
@@ -3393,6 +3428,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     write_jsonl(output_dir / "official_result_races.jsonl", artifact_rows["race_rows"])
     write_jsonl(output_dir / "official_result_runners.jsonl", artifact_rows["runner_rows"])
     write_jsonl(output_dir / "official_result_quarantine.jsonl", artifact_rows["quarantine_rows"])
+    if args.comparison_result_binding is not None:
+        from src.predictor.comparison_result_runtime import load_runtime
+        load_runtime(json.loads(args.comparison_result_binding.read_bytes()), now=datetime.now().astimezone())
     current_lock_status = (
         shared_lock_status(args.lock_path)
         if args.require_lock_free and args.execute_db_ingest
@@ -3414,6 +3452,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             artifact_rows=artifact_rows,
             output_dir=output_dir,
             execute=args.execute_db_ingest,
+            allow_dead_heats=args.comparison_result_binding is not None,
         )
     report = build_capture_report(
         generated_at=generated_at,
@@ -3521,8 +3560,41 @@ def main(argv: Sequence[str] | None = None) -> int:
         join_eligibility_packet,
     )
     write_text(output_dir / "final_status.txt", str(report["final_status"]) + "\n")
-    print(json.dumps(report, indent=2, sort_keys=True))
+    if args.comparison_result_binding is not None:
+        # Full restricted records stay in the owner's private output directory.
+        print(json.dumps({"status":report.get("status"),"machine_result_retention":True,
+            "official_result_race_rows":report.get("official_result_race_rows"),
+            "official_result_runner_rows":report.get("official_result_runner_rows"),
+            "quarantine_rows":report.get("quarantine_rows")}))
+    else:
+        print(json.dumps(report, indent=2, sort_keys=True))
     return 0 if returncode == 0 else 2
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parse_args(argv)
+    if args.comparison_result_binding is None:
+        return _main(argv)
+    # Applies to direct CLI use too: no unaccounted alternate study entrypoint.
+    from src.predictor.comparison_result_runtime import collector_guard
+    if args.current_time or args.output_dir is None:
+        raise ValueError("comparison_result_requires_wall_clock_and_private_output")
+    binding = json.loads(args.comparison_result_binding.read_bytes())
+    import signal
+    def interrupted(signum, frame):
+        raise InterruptedError('result_collector_terminated')
+    previous = signal.signal(signal.SIGTERM, interrupted)
+    try:
+        return _guarded_comparison_main(argv, args, binding)
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+
+
+def _guarded_comparison_main(argv, args, binding):
+    from src.predictor.comparison_result_runtime import collector_guard
+    with collector_guard(binding, output=args.output_dir, job_store=args.r3_job_store,
+                         bundles=args.r3_prediction_bundles, result_database=args.db):
+        return _main(argv)
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -1,0 +1,775 @@
+{
+  "inference": {
+    "bootstrap_repetitions": 3000,
+    "critical_max_standardized_bootstrap_deviation": 2.4256876658650297,
+    "date_blocks": 15,
+    "no_untouched_holdout": true,
+    "simultaneous_family": [
+      "selected_linear",
+      "selected_market_calibration",
+      "selected_nonlinear",
+      "selected_ensemble",
+      "refit_base16",
+      "refit_half",
+      "refit_box"
+    ],
+    "warning": "simultaneous intervals cover reported comparator family only; nested chronological selection reduces new search optimism but prior inspection and small date count preclude confirmation"
+  },
+  "overall": {
+    "market": {
+      "brier": 0.6829284496985553,
+      "brier_date_ci95": [
+        0.0,
+        0.0
+      ],
+      "calibration_bins": [
+        {
+          "actual": 0.025559105431309903,
+          "lower": 0.0,
+          "n": 626,
+          "predicted": 0.04661913727318565,
+          "upper": 0.1
+        },
+        {
+          "actual": 0.153125,
+          "lower": 0.1,
+          "n": 320,
+          "predicted": 0.14395213740154195,
+          "upper": 0.2
+        },
+        {
+          "actual": 0.2483221476510067,
+          "lower": 0.2,
+          "n": 149,
+          "predicted": 0.24092007854792366,
+          "upper": 0.3
+        },
+        {
+          "actual": 0.3924050632911392,
+          "lower": 0.3,
+          "n": 79,
+          "predicted": 0.34408827322596114,
+          "upper": 0.4
+        },
+        {
+          "actual": 0.5333333333333333,
+          "lower": 0.4,
+          "n": 45,
+          "predicted": 0.44889786102348184,
+          "upper": 0.5
+        },
+        {
+          "actual": 0.5909090909090909,
+          "lower": 0.5,
+          "n": 22,
+          "predicted": 0.5468202806883208,
+          "upper": 0.6
+        },
+        {
+          "actual": 0.6666666666666666,
+          "lower": 0.6,
+          "n": 9,
+          "predicted": 0.6359365873291565,
+          "upper": 0.7
+        },
+        {
+          "actual": 1.0,
+          "lower": 0.7,
+          "n": 1,
+          "predicted": 0.7177916028386532,
+          "upper": 0.8
+        }
+      ],
+      "date_blocks": 15,
+      "delta_brier": 0.0,
+      "delta_log_loss": 0.0,
+      "leave_one_date_out_delta_range": [
+        0.0,
+        0.0
+      ],
+      "ll_date_ci95": [
+        0.0,
+        0.0
+      ],
+      "log_loss": 1.4128936696474488,
+      "negative_dates": 0,
+      "races": 177,
+      "runner_ece": 0.021076866399702993,
+      "runners": 1251,
+      "top1": 0.4519774011299435,
+      "winner_rank": 2.121468926553672
+    },
+    "refit_base16": {
+      "brier": 0.677387514738816,
+      "brier_date_ci95": [
+        -0.013626328185566508,
+        0.002872096711345698
+      ],
+      "calibration_bins": [
+        {
+          "actual": 0.023255813953488372,
+          "lower": 0.0,
+          "n": 645,
+          "predicted": 0.04638457068422631,
+          "upper": 0.1
+        },
+        {
+          "actual": 0.1461038961038961,
+          "lower": 0.1,
+          "n": 308,
+          "predicted": 0.14502404917413098,
+          "upper": 0.2
+        },
+        {
+          "actual": 0.2727272727272727,
+          "lower": 0.2,
+          "n": 143,
+          "predicted": 0.24260819971030853,
+          "upper": 0.3
+        },
+        {
+          "actual": 0.47297297297297297,
+          "lower": 0.3,
+          "n": 74,
+          "predicted": 0.3515311831255616,
+          "upper": 0.4
+        },
+        {
+          "actual": 0.4318181818181818,
+          "lower": 0.4,
+          "n": 44,
+          "predicted": 0.4458629971418322,
+          "upper": 0.5
+        },
+        {
+          "actual": 0.6818181818181818,
+          "lower": 0.5,
+          "n": 22,
+          "predicted": 0.5504015880608253,
+          "upper": 0.6
+        },
+        {
+          "actual": 0.6,
+          "lower": 0.6,
+          "n": 10,
+          "predicted": 0.6333823583625253,
+          "upper": 0.7
+        },
+        {
+          "actual": 0.6,
+          "lower": 0.7,
+          "n": 5,
+          "predicted": 0.7295268515943978,
+          "upper": 0.8
+        }
+      ],
+      "date_blocks": 15,
+      "delta_brier": -0.005540934959739323,
+      "delta_log_loss": -0.015287210345709167,
+      "leave_one_date_out_delta_range": [
+        -0.01942507281515887,
+        -0.010919515216650449
+      ],
+      "ll_date_ci95": [
+        -0.03127545640736021,
+        0.00033066386680973166
+      ],
+      "log_loss": 1.3976064593017397,
+      "negative_dates": 11,
+      "races": 177,
+      "runner_ece": 0.026406839020245917,
+      "runners": 1251,
+      "simultaneous_reported_family_ci95": [
+        -0.035102852687764065,
+        0.004528431996345729
+      ],
+      "top1": 0.4406779661016949,
+      "winner_rank": 2.1186440677966103
+    },
+    "refit_box": {
+      "brier": 0.6765560977918273,
+      "brier_date_ci95": [
+        -0.013947979111574969,
+        0.0014979782412479733
+      ],
+      "calibration_bins": [
+        {
+          "actual": 0.02332814930015552,
+          "lower": 0.0,
+          "n": 643,
+          "predicted": 0.04621253624685575,
+          "upper": 0.1
+        },
+        {
+          "actual": 0.14285714285714285,
+          "lower": 0.1,
+          "n": 308,
+          "predicted": 0.14447106070156573,
+          "upper": 0.2
+        },
+        {
+          "actual": 0.2727272727272727,
+          "lower": 0.2,
+          "n": 143,
+          "predicted": 0.24101906009689966,
+          "upper": 0.3
+        },
+        {
+          "actual": 0.47297297297297297,
+          "lower": 0.3,
+          "n": 74,
+          "predicted": 0.3491853028848266,
+          "upper": 0.4
+        },
+        {
+          "actual": 0.4375,
+          "lower": 0.4,
+          "n": 48,
+          "predicted": 0.44625294889508577,
+          "upper": 0.5
+        },
+        {
+          "actual": 0.6842105263157895,
+          "lower": 0.5,
+          "n": 19,
+          "predicted": 0.5521139776937484,
+          "upper": 0.6
+        },
+        {
+          "actual": 0.6363636363636364,
+          "lower": 0.6,
+          "n": 11,
+          "predicted": 0.6307804039888677,
+          "upper": 0.7
+        },
+        {
+          "actual": 0.6,
+          "lower": 0.7,
+          "n": 5,
+          "predicted": 0.726784584566561,
+          "upper": 0.8
+        }
+      ],
+      "date_blocks": 15,
+      "delta_brier": -0.006372351906727946,
+      "delta_log_loss": -0.016614109500813674,
+      "leave_one_date_out_delta_range": [
+        -0.020771658365674073,
+        -0.012386654490168564
+      ],
+      "ll_date_ci95": [
+        -0.03222906213321504,
+        -0.0012950019572949751
+      ],
+      "log_loss": 1.3962795601466351,
+      "negative_dates": 11,
+      "races": 177,
+      "runner_ece": 0.026004495559724086,
+      "runners": 1251,
+      "simultaneous_reported_family_ci95": [
+        -0.03552995810074668,
+        0.002301739099119335
+      ],
+      "top1": 0.4406779661016949,
+      "winner_rank": 2.1129943502824857
+    },
+    "refit_half": {
+      "brier": 0.6793698131558471,
+      "brier_date_ci95": [
+        -0.0075773933855802465,
+        0.0006494300537341981
+      ],
+      "calibration_bins": [
+        {
+          "actual": 0.02358490566037736,
+          "lower": 0.0,
+          "n": 636,
+          "predicted": 0.04668339493794485,
+          "upper": 0.1
+        },
+        {
+          "actual": 0.14603174603174604,
+          "lower": 0.1,
+          "n": 315,
+          "predicted": 0.14478358561916418,
+          "upper": 0.2
+        },
+        {
+          "actual": 0.273972602739726,
+          "lower": 0.2,
+          "n": 146,
+          "predicted": 0.2427478397147726,
+          "upper": 0.3
+        },
+        {
+          "actual": 0.44594594594594594,
+          "lower": 0.3,
+          "n": 74,
+          "predicted": 0.3477001172787594,
+          "upper": 0.4
+        },
+        {
+          "actual": 0.4444444444444444,
+          "lower": 0.4,
+          "n": 45,
+          "predicted": 0.4452731112739173,
+          "upper": 0.5
+        },
+        {
+          "actual": 0.6818181818181818,
+          "lower": 0.5,
+          "n": 22,
+          "predicted": 0.5463846957346056,
+          "upper": 0.6
+        },
+        {
+          "actual": 0.5833333333333334,
+          "lower": 0.6,
+          "n": 12,
+          "predicted": 0.6433226564016205,
+          "upper": 0.7
+        },
+        {
+          "actual": 1.0,
+          "lower": 0.7,
+          "n": 1,
+          "predicted": 0.7539128821383351,
+          "upper": 0.8
+        }
+      ],
+      "date_blocks": 15,
+      "delta_brier": -0.0035586365427081597,
+      "delta_log_loss": -0.009334313538235883,
+      "leave_one_date_out_delta_range": [
+        -0.011404931108143454,
+        -0.007140504387418023
+      ],
+      "ll_date_ci95": [
+        -0.01741741133172552,
+        -0.0015154680207098048
+      ],
+      "log_loss": 1.4035593561092128,
+      "negative_dates": 11,
+      "races": 177,
+      "runner_ece": 0.0246967243240266,
+      "runners": 1251,
+      "simultaneous_reported_family_ci95": [
+        -0.01925010745044689,
+        0.0005814803739751257
+      ],
+      "top1": 0.4576271186440678,
+      "winner_rank": 2.096045197740113
+    },
+    "selected_ensemble": {
+      "brier": 0.6886194558112243,
+      "brier_date_ci95": [
+        -0.00452940881672564,
+        0.015480927149493794
+      ],
+      "calibration_bins": [
+        {
+          "actual": 0.03070175438596491,
+          "lower": 0.0,
+          "n": 684,
+          "predicted": 0.042817193968772774,
+          "upper": 0.1
+        },
+        {
+          "actual": 0.16666666666666666,
+          "lower": 0.1,
+          "n": 270,
+          "predicted": 0.14606764840077444,
+          "upper": 0.2
+        },
+        {
+          "actual": 0.22388059701492538,
+          "lower": 0.2,
+          "n": 134,
+          "predicted": 0.2448572578079499,
+          "upper": 0.3
+        },
+        {
+          "actual": 0.49295774647887325,
+          "lower": 0.3,
+          "n": 71,
+          "predicted": 0.35123854153405026,
+          "upper": 0.4
+        },
+        {
+          "actual": 0.358974358974359,
+          "lower": 0.4,
+          "n": 39,
+          "predicted": 0.44429737898753263,
+          "upper": 0.5
+        },
+        {
+          "actual": 0.6538461538461539,
+          "lower": 0.5,
+          "n": 26,
+          "predicted": 0.5566582579049164,
+          "upper": 0.6
+        },
+        {
+          "actual": 0.5294117647058824,
+          "lower": 0.6,
+          "n": 17,
+          "predicted": 0.6477288035734436,
+          "upper": 0.7
+        },
+        {
+          "actual": 0.5714285714285714,
+          "lower": 0.7,
+          "n": 7,
+          "predicted": 0.7492772786608565,
+          "upper": 0.8
+        },
+        {
+          "actual": 0.6666666666666666,
+          "lower": 0.8,
+          "n": 3,
+          "predicted": 0.8229740548504408,
+          "upper": 0.9
+        }
+      ],
+      "date_blocks": 15,
+      "delta_brier": 0.005691006112669065,
+      "delta_log_loss": -0.000576794024038465,
+      "leave_one_date_out_delta_range": [
+        -0.005216576537390487,
+        0.007333911403669628
+      ],
+      "ll_date_ci95": [
+        -0.021180609842704624,
+        0.017477641413020946
+      ],
+      "log_loss": 1.4123168756234104,
+      "negative_dates": 4,
+      "races": 177,
+      "runner_ece": 0.029017879739960836,
+      "runners": 1251,
+      "simultaneous_reported_family_ci95": [
+        -0.02525640057394638,
+        0.02410281252586945
+      ],
+      "top1": 0.4519774011299435,
+      "winner_rank": 2.135593220338983
+    },
+    "selected_linear": {
+      "brier": 0.6915282636803718,
+      "brier_date_ci95": [
+        -0.0041339483244062026,
+        0.021514864923558422
+      ],
+      "calibration_bins": [
+        {
+          "actual": 0.030390738060781478,
+          "lower": 0.0,
+          "n": 691,
+          "predicted": 0.04095199912003693,
+          "upper": 0.1
+        },
+        {
+          "actual": 0.1717557251908397,
+          "lower": 0.1,
+          "n": 262,
+          "predicted": 0.1454848063317646,
+          "upper": 0.2
+        },
+        {
+          "actual": 0.2196969696969697,
+          "lower": 0.2,
+          "n": 132,
+          "predicted": 0.245099390728237,
+          "upper": 0.3
+        },
+        {
+          "actual": 0.47058823529411764,
+          "lower": 0.3,
+          "n": 68,
+          "predicted": 0.35005780745095777,
+          "upper": 0.4
+        },
+        {
+          "actual": 0.375,
+          "lower": 0.4,
+          "n": 40,
+          "predicted": 0.4382141842282442,
+          "upper": 0.5
+        },
+        {
+          "actual": 0.6666666666666666,
+          "lower": 0.5,
+          "n": 27,
+          "predicted": 0.5550316804848815,
+          "upper": 0.6
+        },
+        {
+          "actual": 0.5294117647058824,
+          "lower": 0.6,
+          "n": 17,
+          "predicted": 0.6457446423961489,
+          "upper": 0.7
+        },
+        {
+          "actual": 0.375,
+          "lower": 0.7,
+          "n": 8,
+          "predicted": 0.739207723152912,
+          "upper": 0.8
+        },
+        {
+          "actual": 0.8333333333333334,
+          "lower": 0.8,
+          "n": 6,
+          "predicted": 0.8370592363600592,
+          "upper": 0.9
+        }
+      ],
+      "date_blocks": 15,
+      "delta_brier": 0.00859981398181662,
+      "delta_log_loss": 0.0026726859240949865,
+      "leave_one_date_out_delta_range": [
+        -0.004429015579306387,
+        0.012652489336159388
+      ],
+      "ll_date_ci95": [
+        -0.024202644756200258,
+        0.02704836591461713
+      ],
+      "log_loss": 1.4155663555715436,
+      "negative_dates": 4,
+      "races": 177,
+      "runner_ece": 0.02892597036182374,
+      "runners": 1251,
+      "simultaneous_reported_family_ci95": [
+        -0.02920944349986093,
+        0.0345548153480509
+      ],
+      "top1": 0.4491525423728814,
+      "winner_rank": 2.135593220338983
+    },
+    "selected_market_calibration": {
+      "brier": 0.6857371571809777,
+      "brier_date_ci95": [
+        -0.011162514623000644,
+        0.017239156320394657
+      ],
+      "calibration_bins": [
+        {
+          "actual": 0.029282576866764276,
+          "lower": 0.0,
+          "n": 683,
+          "predicted": 0.04002700751174992,
+          "upper": 0.1
+        },
+        {
+          "actual": 0.16728624535315986,
+          "lower": 0.1,
+          "n": 269,
+          "predicted": 0.14407570771030132,
+          "upper": 0.2
+        },
+        {
+          "actual": 0.234375,
+          "lower": 0.2,
+          "n": 128,
+          "predicted": 0.24404371276583114,
+          "upper": 0.3
+        },
+        {
+          "actual": 0.40540540540540543,
+          "lower": 0.3,
+          "n": 74,
+          "predicted": 0.34937253891806974,
+          "upper": 0.4
+        },
+        {
+          "actual": 0.475,
+          "lower": 0.4,
+          "n": 40,
+          "predicted": 0.4411125369895674,
+          "upper": 0.5
+        },
+        {
+          "actual": 0.6,
+          "lower": 0.5,
+          "n": 25,
+          "predicted": 0.5466247058004525,
+          "upper": 0.6
+        },
+        {
+          "actual": 0.5555555555555556,
+          "lower": 0.6,
+          "n": 18,
+          "predicted": 0.6426605029701418,
+          "upper": 0.7
+        },
+        {
+          "actual": 0.375,
+          "lower": 0.7,
+          "n": 8,
+          "predicted": 0.739207723152912,
+          "upper": 0.8
+        },
+        {
+          "actual": 0.8333333333333334,
+          "lower": 0.8,
+          "n": 6,
+          "predicted": 0.8370592363600592,
+          "upper": 0.9
+        }
+      ],
+      "date_blocks": 15,
+      "delta_brier": 0.0028087074824224255,
+      "delta_log_loss": -0.008258111396798655,
+      "leave_one_date_out_delta_range": [
+        -0.016521210115544978,
+        0.000855226373975395
+      ],
+      "ll_date_ci95": [
+        -0.03753674584762047,
+        0.019272988233871018
+      ],
+      "log_loss": 1.40463555825065,
+      "negative_dates": 8,
+      "races": 177,
+      "runner_ece": 0.0209111872444409,
+      "runners": 1251,
+      "simultaneous_reported_family_ci95": [
+        -0.04319719467851303,
+        0.026680971884915722
+      ],
+      "top1": 0.4519774011299435,
+      "winner_rank": 2.121468926553672
+    },
+    "selected_nonlinear": {
+      "brier": 0.6819270547502116,
+      "brier_date_ci95": [
+        -0.00383511093254035,
+        0.0018935423637332213
+      ],
+      "calibration_bins": [
+        {
+          "actual": 0.026729559748427674,
+          "lower": 0.0,
+          "n": 636,
+          "predicted": 0.04620909494926347,
+          "upper": 0.1
+        },
+        {
+          "actual": 0.14331210191082802,
+          "lower": 0.1,
+          "n": 314,
+          "predicted": 0.14307045018151296,
+          "upper": 0.2
+        },
+        {
+          "actual": 0.26573426573426573,
+          "lower": 0.2,
+          "n": 143,
+          "predicted": 0.23915048190942215,
+          "upper": 0.3
+        },
+        {
+          "actual": 0.41975308641975306,
+          "lower": 0.3,
+          "n": 81,
+          "predicted": 0.3467766970411509,
+          "upper": 0.4
+        },
+        {
+          "actual": 0.5,
+          "lower": 0.4,
+          "n": 34,
+          "predicted": 0.4481357813873039,
+          "upper": 0.5
+        },
+        {
+          "actual": 0.5769230769230769,
+          "lower": 0.5,
+          "n": 26,
+          "predicted": 0.5400221811217046,
+          "upper": 0.6
+        },
+        {
+          "actual": 0.6428571428571429,
+          "lower": 0.6,
+          "n": 14,
+          "predicted": 0.6403709859274134,
+          "upper": 0.7
+        },
+        {
+          "actual": 0.6666666666666666,
+          "lower": 0.7,
+          "n": 3,
+          "predicted": 0.7190252675254479,
+          "upper": 0.8
+        }
+      ],
+      "date_blocks": 15,
+      "delta_brier": -0.001001394948343644,
+      "delta_log_loss": -0.0040526590538648944,
+      "leave_one_date_out_delta_range": [
+        -0.005068711154258426,
+        -0.00306857951317632
+      ],
+      "ll_date_ci95": [
+        -0.008184520977157755,
+        5.886975926241772e-05
+      ],
+      "log_loss": 1.4088410105935838,
+      "negative_dates": 11,
+      "races": 177,
+      "runner_ece": 0.02005765018434517,
+      "runners": 1251,
+      "simultaneous_reported_family_ci95": [
+        -0.009194665257920866,
+        0.0010893471501910784
+      ],
+      "top1": 0.4632768361581921,
+      "winner_rank": 2.1242937853107344
+    },
+    "uniform": {
+      "brier": 0.8552596179714825,
+      "brier_date_ci95": [
+        0.13872911009016167,
+        0.21194597860005346
+      ],
+      "calibration_bins": [
+        {
+          "actual": 0.1377551020408163,
+          "lower": 0.1,
+          "n": 1176,
+          "predicted": 0.1377551020408163,
+          "upper": 0.2
+        },
+        {
+          "actual": 0.2,
+          "lower": 0.2,
+          "n": 75,
+          "predicted": 0.19999999999999996,
+          "upper": 0.3
+        }
+      ],
+      "date_blocks": 15,
+      "delta_brier": 0.17233116827292722,
+      "delta_log_loss": 0.5317605586576262,
+      "leave_one_date_out_delta_range": [
+        0.5053457610176354,
+        0.5544738483477705
+      ],
+      "ll_date_ci95": [
+        0.4490938212206764,
+        0.6191863899745076
+      ],
+      "log_loss": 1.9446542283050747,
+      "negative_dates": 0,
+      "races": 177,
+      "runner_ece": 3.3280066685406372e-18,
+      "runners": 1251,
+      "top1": 0.14474038202851763,
+      "winner_rank": 4.033898305084746
+    }
+  },
+  "returns": "NOT_COMPUTED: retrospective latest-prejump retention selection, quote persistence/acceptance, deductions and final scratch timing unverified; largest-payout sensitivity not applicable"
+}

@@ -55,6 +55,59 @@ class Campaign:
             self.value = {**self.value, **{key: extra[key] for key in limits},
                           'extensions': [*self.value.get('extensions', []), extra]}
 
+        programme = self.root / 'persistent-programme-authority.json'
+        if programme.exists():
+            extra = json.loads(programme.read_bytes())
+            limits = {'max_capture_attempts': 1128, 'max_logical_requests': 1400000,
+                      'max_live_seconds': 624000}
+            if (extra.get('schema_version') != 'collector_persistent_programme_v1'
+                    or extra.get('status') != 'AUTHORIZED_PERSISTENT_PROGRAMME'
+                    or extra.get('campaign_id') != self.value['campaign_id']
+                    or extra.get('prior_effective_authorization_sha256') != digest(self.value)
+                    or not extra.get('authority_reference')
+                    or not extra.get('programme_id')
+                    or any(type(extra.get(k)) is not int or not self.value[k] <= extra[k] <= cap
+                           for k, cap in limits.items())):
+                raise ValueError('invalid_persistent_programme_authority')
+            start = datetime.fromisoformat(extra['starts_at'])
+            end = datetime.fromisoformat(extra['expires_at'])
+            if start.tzinfo is None or end.tzinfo is None or not 0 < (end-start).total_seconds() <= 127*86400:
+                raise ValueError('invalid_persistent_programme_window')
+            initial=extra['initial_counters']
+            if any(type(initial.get(k)) is not int or initial[k]<0 for k in ('capture_attempts','logical_requests','live_seconds')):
+                raise ValueError('invalid_programme_initial_counters')
+            self.programme = extra
+            self.value = {**self.value, **{k: extra[k] for k in limits}, 'persistent_programme': extra}
+            # Date-only prospective amendments preserve original authority and all
+            # consumption. No budget, identity, model or routing change is allowed.
+            for number, amendment in enumerate(sorted((self.root / 'programme-schedule-amendments').glob('*.json')), 1):
+                row = json.loads(amendment.read_bytes())
+                revised = row.get('programme', {})
+                allowed = {'starts_at', 'expires_at'}
+                issued = datetime.fromisoformat(row['issued_at'])
+                start = datetime.fromisoformat(revised['starts_at'])
+                end = datetime.fromisoformat(revised['expires_at'])
+                if (amendment.name != f'{number:04d}.json'
+                        or row.get('schema_version') != 'programme_schedule_amendment_v1'
+                        or not row.get('authority_reference') or not row.get('empty_state_sha256')
+                        or row.get('prior_programme_sha256') != digest(self.programme)
+                        or set(revised) != set(self.programme)
+                        or any(revised[k] != self.programme[k] for k in revised.keys() - allowed)
+                        or issued.tzinfo is None or start.tzinfo is None or end.tzinfo is None
+                        or not issued < start < end or not 125*86400 <= (end-start).total_seconds() <= 127*86400):
+                    raise ValueError('invalid_programme_schedule_amendment')
+                self.programme = revised
+                self.value = {**self.value, 'persistent_programme': revised,
+                              'programme_schedule_amendments': [*self.value.get('programme_schedule_amendments', []), row]}
+        else:
+            self.programme = None
+
+    def check_programme_time(self):
+        if self.programme:
+            now = datetime.now(timezone.utc)
+            if not datetime.fromisoformat(self.programme['starts_at']) <= now < datetime.fromisoformat(self.programme['expires_at']):
+                raise ValueError('persistent_programme_expired_or_not_started')
+
     @contextmanager
     def ledger(self):
         with (self.root / 'ledger.lock').open('a') as mutex:
@@ -75,6 +128,7 @@ class Campaign:
                 raise ValueError('campaign_live_lease_closed')
 
     def begin(self, launch, *, now, deadline):
+        self.check_programme_time()
         with self.ledger() as value:
             if value.get('source_holds'):
                 raise ValueError('campaign_source_hold')
@@ -82,7 +136,8 @@ class Campaign:
                 raise ValueError('campaign_owner_or_launch_already_exists')
             used = sum(r['charged_seconds'] for r in value['launches'].values())
             charge = (deadline - now).total_seconds()
-            if charge <= 0 or used + charge > self.value['max_live_seconds']:
+            if (charge <= 0 or used + charge > self.value['max_live_seconds']
+                    or self.programme and used+charge-self.programme['initial_counters']['live_seconds']>580800):
                 raise ValueError('campaign_live_time_exhausted')
             value['launches'][launch] = dict(started_at=now.isoformat(),
                 deadline_epoch=deadline.timestamp(), charged_seconds=charge)
@@ -97,11 +152,14 @@ class Campaign:
 
     def available(self):
         with self.ledger() as value:
-            return len(value['attempts']) < self.value['max_capture_attempts']
+            return (len(value['attempts']) < self.value['max_capture_attempts'] and
+                    (not self.programme or len(value['attempts'])-self.programme['initial_counters']['capture_attempts']<1000))
 
     def consume(self, claim, item):
+        self.check_programme_time()
         with self.ledger() as value:
-            if len(value['attempts']) >= self.value['max_capture_attempts']:
+            if (len(value['attempts']) >= self.value['max_capture_attempts']
+                    or self.programme and len(value['attempts'])-self.programme['initial_counters']['capture_attempts']>=1000):
                 raise ValueError('campaign_capture_allowance_consumed')
             aliases = set(item.get('race_id_aliases', [item['race_id']])) | {item['race_id']}
             if any(r['window'] == item['capture_window_minutes'] and aliases.intersection(r['aliases'])
@@ -111,12 +169,20 @@ class Campaign:
                 aliases=sorted(aliases), window=item['capture_window_minutes'], item=item,
                 consumed_at=datetime.now(timezone.utc).isoformat()))
 
-    def request(self):
+    def request(self, *, kind='prediction'):
+        self.check_programme_time()
         with self.ledger() as value:
             if value.get('source_holds'):
                 raise ValueError('campaign_source_hold')
-            if value['logical_requests'] >= self.value['max_logical_requests']:
+            if (value['logical_requests'] >= self.value['max_logical_requests']
+                    or self.programme and value['logical_requests']-self.programme['initial_counters']['logical_requests']>=1304000):
                 raise ValueError('campaign_request_cap_exhausted')
+            if self.programme:
+                ceilings={'prediction':1280000,'results':24000}
+                if kind not in ceilings:raise ValueError('unknown_programme_request_kind')
+                usage=value.setdefault('persistent_request_usage',{'prediction':0,'results':0})
+                if usage[kind]>=ceilings[kind]:raise ValueError('programme_kind_request_cap_exhausted')
+                usage[kind]+=1
             value['logical_requests'] += 1
 
     def hold_source(self, observation):

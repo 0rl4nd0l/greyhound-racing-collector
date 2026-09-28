@@ -104,9 +104,12 @@ class Supervisor:
         self.output, self.plan, self.scope = output, plan, scope
         self.child = None
         self.log = None
+        self.comparison_index_seen = None
 
     def tick(self):
         import subprocess
+        if self.plan.get("frozen_comparison"):
+            self.observe_comparison_schedule()
         if self.child is not None:
             if self.child.poll() is None:
                 return
@@ -117,13 +120,14 @@ class Supervisor:
                 raise ValueError("operational_prediction_failed_preserved_consumption")
         if not self.plan.get("operational_predictions") or (self.scope.end-now()).total_seconds() < 200:
             return
+
         from race_collection.live_freshness_contract import AttemptAllowance
         for claim in AttemptAllowance(self.scope).claims():
             verification = self.output / "capture-verifications" / (claim.parent.name + ".json")
             if not verification.exists():
                 continue
             item = json.loads(claim.read_bytes())["item"]
-            root = self.scope.campaign.root / "operational-predictions"
+            root = operational_root(self.plan, self.scope.campaign)
             identity = hashlib.sha256(item["race_id"].encode()).hexdigest()
             if (root / "races" / identity).exists() or (root / "dispatches" / (identity + ".json")).exists():
                 continue
@@ -138,6 +142,26 @@ class Supervisor:
                 stdout=self.log, stderr=self.log)
             return
 
+    def observe_comparison_schedule(self):
+        """Outcome-blind denominator from the existing collector-owned index."""
+        from race_collection.synchronous_manual_capture import bounded_current_race_index
+        from src.predictor.future_comparison import observe_verified_index, put
+        binding=self.plan["frozen_comparison"]
+        evidence=Path(self.plan["evidence_root"])
+        index=evidence/"shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json"
+        if not index.is_file(): return
+        digest=hashlib.sha256(index.read_bytes()).hexdigest()
+        if digest==self.comparison_index_seen: return
+        self.comparison_index_seen=digest
+        try:
+            view=bounded_current_race_index(current_time=now(),timeout_seconds=5,index_path=index,
+                evidence_root=evidence,max_age_seconds=300,return_verified_view=True)
+            observe_verified_index(binding,view,now())
+        except Exception as exc:
+            # A coverage error cannot turn into a silently complete census.
+            path=self.output/"comparison-coverage-failures"/(digest+".json")
+            if not path.exists(): put(path,{"index_sha256":digest,"observed_at":now().isoformat(),"reason":str(exc)})
+
     def drain(self):
         if self.child is not None:
             result = self.child.wait(timeout=240)
@@ -148,9 +172,22 @@ class Supervisor:
 
 
 
+def operational_root(plan, campaign):
+    root = plan.get('prediction_root')
+    if root is None:
+        return campaign.root / 'operational-predictions'
+    if not campaign.programme or root != campaign.programme.get('prediction_root'):
+        raise ValueError('prediction_root_not_in_approved_programme')
+    path = Path(root)
+    if not path.is_absolute() or path.resolve() != path:
+        raise ValueError('prediction_root_unsafe')
+    return path
+
+
 def require_completed_lifetimes(output, campaign):
     paths = set((output / "operational-workers").glob("*.json"))
-    for path in (campaign.root / "operational-predictions/dispatches").glob("*.json"):
+    plan = json.loads((output / 'plan.json').read_bytes())
+    for path in (operational_root(plan, campaign) / 'dispatches').glob("*.json"):
         row = json.loads(path.read_bytes())
         if row.get("plan") == str(output / "plan.json"):
             paths.add(Path(row["lifecycle"]))
@@ -267,7 +304,7 @@ def run(plan_path: Path, claim_path: Path):
         matches = [row for row in ledger["attempts"] if row["claim"] == str(claim_path)]
         if len(matches) != 1 or matches[0]["item"] != item:
             raise ValueError("prediction_capture_not_in_campaign_ledger")
-    root = scope.campaign.root / "operational-predictions"
+    root = operational_root(plan, scope.campaign)
     record = root / "races" / hashlib.sha256(race_id.encode()).hexdigest()
     record.mkdir(parents=True, exist_ok=False, mode=0o700)
     create_once(record / "identity.json", {"race_id": race_id, "capture_claim": str(claim_path),
@@ -349,9 +386,12 @@ def run(plan_path: Path, claim_path: Path):
             if not path.exists():
                 create_once(path, intent)
             return resolve_audit_confirmation(intent, digest)
+        comparison = plan.get("frozen_comparison")
         worker = WorkerConfig(Path(plan["python"]), source_root, {"latest-research": choice}, Path(plan["db_path"]),
             root / "bundles", (evidence,), protocol_root, index_path, evidence, 5, 45, 90, 2,
-            retained_input_bindings={race_id: {"path": str(bundles[0]), "manifest_sha256": retained["manifest_sha256"]}})
+            retained_input_bindings={race_id: {"path": str(bundles[0]), "manifest_sha256": retained["manifest_sha256"]}},
+            comparison_plan=Path(comparison["path"]) if comparison else None,
+            comparison_plan_sha256=comparison["sha256"] if comparison else None)
         job = store.create(actor_identity="operational-campaign", actor_level=2, operation=OPERATION,
             idempotency_key=hashlib.sha256(race_id.encode()).hexdigest(), job_input=inp, now=now(), confirm_audit=confirm)
         create_once(record / "job.json", {"job_id": job.job_id, "input_sha256": inp.identity_sha256})
