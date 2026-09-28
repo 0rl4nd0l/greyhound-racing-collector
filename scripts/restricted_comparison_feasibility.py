@@ -8,7 +8,7 @@ from pathlib import Path
 from datetime import datetime,date,timedelta,timezone
 import argparse,contextlib,hashlib,io,json,os,resource,shutil,sys,tempfile,time
 
-from src.predictor.research_input_firewall import InputBoundary,metadata_without_results,card_dates_before_decode,database_dates_before_decode
+from src.predictor.research_input_firewall import InputBoundary,project_metadata,FORM_PATHS,REQUEST_PATHS,RECEIPT_PATHS,card_dates_before_decode,database_dates_before_decode
 from src.predictor.on_demand import canonical_bytes
 
 
@@ -18,6 +18,24 @@ def load_pinned(path,expected):
     raw=path.read_bytes()
     if digest(raw)!=expected:raise InputBoundary('INPUT_HASH_CHANGED')
     return raw
+
+
+def verify_replay_source(blobs):
+    import zipfile
+    from scripts.predict_market_form_residual import FEATURE_GENERATOR_FILES
+    repository=Path(__file__).resolve().parents[1]
+    if blobs['feature_replay_worker']!=(repository/'scripts/retained_feature_worker.py').read_bytes():
+        raise InputBoundary('UNAPPROVED_REPLAY_WORKER')
+    if blobs['feature_schema']!=(repository/'accuracy_program/repaired_non_tgr_schema.json').read_bytes():
+        raise InputBoundary('UNAPPROVED_FEATURE_SCHEMA')
+    required={n for n in FEATURE_GENERATOR_FILES if not n.startswith('tests/')}
+    required.update({'scripts/__init__.py','scripts/utils.py','utils/__init__.py','config/__init__.py'})
+    with zipfile.ZipFile(io.BytesIO(blobs['generator_source_archive'])) as archive:
+        names=archive.namelist()
+        if len(names)!=len(set(names)) or not required.issubset(names):raise InputBoundary('REPLAY_SOURCE_CLOSURE')
+        for name in names:
+            if not name.endswith('.py') or Path(name).is_absolute() or '..' in Path(name).parts:raise InputBoundary('REPLAY_SOURCE_PATH')
+            if archive.read(name)!=(repository/name).read_bytes():raise InputBoundary('UNAPPROVED_REPLAY_SOURCE')
 
 
 def assess(row):
@@ -35,8 +53,8 @@ def assess(row):
             blobs[role]=load_pinned(member(entry['path']),entry['sha256'])
         for key in ('request.json','odds_receipt.json'):
             blobs[key]=load_pinned(bundle/key,bm['files'][key]['sha256'])
-        phase='RESULT_FREE_METADATA';request=metadata_without_results(blobs['request.json']);receipt=metadata_without_results(blobs['odds_receipt.json'])
-        metadata=metadata_without_results(blobs['form_metadata'])
+        phase='RESULT_FREE_METADATA';request=project_metadata(blobs['request.json'],REQUEST_PATHS);receipt=project_metadata(blobs['odds_receipt.json'],RECEIPT_PATHS)
+        metadata=project_metadata(blobs['form_metadata'],FORM_PATHS)
         phase='TIMING_ALIGNMENT';jump=datetime.fromisoformat(manifest['jump_at']);target=date.fromisoformat(row['date'])
         complete=json.loads((root/'completion.json').read_bytes());sealed=datetime.fromisoformat(complete['inputs_sealed_at'])
         if complete['manifest_sha256']!=row['retained_manifest_sha256']:raise InputBoundary('RETENTION_COMPLETION_BINDING')
@@ -59,6 +77,7 @@ def assess(row):
         from src.predictor.comparison_candidates import card_features
         features=card_features(blobs['normalized_form'],metadata,row['race_id'],runners,captured_at=captured,denied_history_intervals=())
         result.update(candidate_feature_route='PASS',candidate_feature_sha256=digest(canonical_bytes(features)),candidate_feature_seconds=time.monotonic()-start)
+        phase='APPROVED_REPLAY_SOURCE';verify_replay_source(blobs)
         phase='PRODUCTION_FEATURE_ROUTE';start=time.monotonic()
         from race_collection.retained_feature_replay import generate_retained_features
         # Same immutable worker/source ZIP/environment. No original-file writes;
@@ -66,10 +85,10 @@ def assess(row):
         with tempfile.TemporaryDirectory(prefix='restricted-features-') as temporary:
             private=Path(temporary)
             for role,entry in {**files,'history':manifest['history']}.items():
-                dest=private/entry['path'];dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(blobs[role])
+                dest=private/entry['path'];dest.parent.mkdir(parents=True,exist_ok=True);dest.write_bytes(canonical_bytes(metadata) if role=='form_metadata' else blobs[role])
             replay=generate_retained_features(private,files)
         if digest(replay)!=manifest['feature_values_sha256']:raise InputBoundary('PRODUCTION_FEATURE_REPLAY_MISMATCH')
-        result.update(production_feature_route='IDENTICAL_REPLAY',production_feature_sha256=digest(replay),production_feature_seconds=time.monotonic()-start,status='QUALIFIED_INPUT_EXECUTION')
+        result.update(production_feature_route='IDENTICAL_FEATURES_WITH_RESTRICTED_METADATA_PROJECTION',projected_metadata_sha256=digest(canonical_bytes(metadata)),production_feature_sha256=digest(replay),production_feature_seconds=time.monotonic()-start,status='QUALIFIED_INPUT_EXECUTION')
     except Exception as exc:
         result.update(status='NOT_QUALIFIED',failure_phase=phase,reason=str(exc) if isinstance(exc,InputBoundary) else 'EXECUTION_FAILED_'+type(exc).__name__)
     result.update(wall_seconds=time.monotonic()-wall,cpu_seconds=time.process_time()-cpu)

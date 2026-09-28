@@ -61,11 +61,77 @@ def json_keys(raw):
     return keys
 
 
-def metadata_without_results(raw):
-    forbidden={'result','results','winner','winner_name','winner_box','is_winner','finish_position','finishing_position','placings','target_result','plc'}
-    if any(key.lower() in forbidden for key in json_keys(raw)):
-        raise InputBoundary('RESULT_FIELD_IN_METADATA')
-    return json.loads(raw)
+def project_metadata(raw, paths):
+    """Decode only explicitly named scalar paths; unknown payloads stay bytes.
+
+    Paths use * for array positions. No scalar string is recursively decoded.
+    Duplicate keys reject, including in opaque subtrees. This is a projection,
+    not a claim that the original document contains no results.
+    """
+    allowed={tuple(path.split(".")) for path in paths}; i=0; absent=object()
+    def space():
+        nonlocal i
+        while i<len(raw) and raw[i] in b" \t\r\n":i+=1
+    def token_string():
+        nonlocal i
+        start=i;i+=1
+        while i<len(raw):
+            if raw[i]==92:i+=2
+            elif raw[i]==34:i+=1;return raw[start:i]
+            else:i+=1
+        raise InputBoundary('JSON_FRAMING')
+    def parse(path,depth=0):
+        nonlocal i
+        if depth>50:raise InputBoundary('JSON_DEPTH')
+        space();kind=raw[i:i+1]
+        if kind in (b'{',b'['):
+            if path in allowed:raise InputBoundary('EXPECTED_METADATA_SCALAR')
+            is_object=kind==b'{';closing=b'}' if is_object else b']';i+=1
+            output={} if is_object else [];seen=set();space()
+            if raw[i:i+1]==closing:i+=1;return output
+            while True:
+                space()
+                if is_object:
+                    if raw[i:i+1]!=b'"':raise InputBoundary('JSON_FRAMING')
+                    key=json.loads(token_string())
+                    if key in seen:raise InputBoundary('DUPLICATE_METADATA_KEY')
+                    seen.add(key);space()
+                    if raw[i:i+1]!=b':':raise InputBoundary('JSON_FRAMING')
+                    i+=1
+                else:key='*'
+                child=parse(path+(key,),depth+1)
+                if child is not absent and (not isinstance(child,(dict,list)) or child):
+                    if is_object:output[key]=child
+                    else:output.append(child)
+                space();separator=raw[i:i+1];i+=1
+                if separator==closing:return output
+                if separator!=b',':raise InputBoundary('JSON_FRAMING')
+        start=i
+        if kind==b'"':token_string()
+        else:
+            while i<len(raw) and raw[i] not in b',]} \t\r\n':i+=1
+            if start==i:raise InputBoundary('JSON_FRAMING')
+        return json.loads(raw[start:i]) if path in allowed else absent
+    result=parse(());space()
+    if i!=len(raw) or not isinstance(result,dict):raise InputBoundary('JSON_FRAMING')
+    return result
+
+
+# Explicit pre-race inputs used by the unchanged feature generators. Unknown
+# annotations and embedded payloads are never decoded or passed to replay.
+PRE_RACE_SCALARS = """schema_version metadata_captured_at created_at capture_timestamp captured_at
+race_url metadata_source_url metadata_is_leakage_safe target_distance target_grade
+ target_distance_source target_grade_source target_metadata_source content_sha256 content_length
+ track_condition weather weather_condition weather_track_metadata_source weather_track_metadata_source_url
+ weather_track_metadata_is_leakage_safe target_grade_context_schema target_grade_equivalence_key
+ target_grade_exact_value target_grade_race_date target_grade_race_number target_grade_race_url
+ target_grade_source_url target_grade_source_sha256 target_grade_venue""".split()
+FORM_PATHS = (PRE_RACE_SCALARS + ['race_info.'+key for key in
+    'date venue race_number race_time url race_time_mapping_status race_time_source distance grade'.split()]
+    + ['runner_completeness.runner_count']
+    + ['prejump_shadow_metadata.'+key for key in PRE_RACE_SCALARS+['race_date','jump_time']])
+REQUEST_PATHS = ['race_id','retained_input_manifest_sha256'] + ['runners.*.'+k for k in ['box_number','display_name','identity']]
+RECEIPT_PATHS = ['captured_at'] + ['markets.win.*.'+k for k in ['box_number','dog_name','odds_decimal']]
 
 
 def card_dates_before_decode(raw,target,captured):
@@ -80,7 +146,8 @@ def card_dates_before_decode(raw,target,captured):
     def check(fields):
         stamp=fields[date_column].strip() if len(fields)>date_column else b''
         has_result=any(j<len(fields) and fields[j].strip() for j in result_columns)
-        if has_result and not stamp:raise InputBoundary('UNDATED_RESULT_ROW')
+        if not stamp and any(value.strip() for j,value in enumerate(fields) if j>=len(names) or names[j].strip() not in {'Dog Name','BOX','box_number'}):
+            raise InputBoundary('UNDATED_NON_ROSTER_VALUE')
         if stamp:
             try:day=date.fromisoformat(stamp.decode('ascii'))
             except (ValueError,UnicodeError):raise InputBoundary('HISTORY_DATE_FORMAT') from None
