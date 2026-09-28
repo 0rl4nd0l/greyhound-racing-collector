@@ -127,7 +127,7 @@ class Supervisor:
             if not verification.exists():
                 continue
             item = json.loads(claim.read_bytes())["item"]
-            root = self.scope.campaign.root / "operational-predictions"
+            root = operational_root(self.plan, self.scope.campaign)
             identity = hashlib.sha256(item["race_id"].encode()).hexdigest()
             if (root / "races" / identity).exists() or (root / "dispatches" / (identity + ".json")).exists():
                 continue
@@ -172,9 +172,22 @@ class Supervisor:
 
 
 
+def operational_root(plan, campaign):
+    root = plan.get('prediction_root')
+    if root is None:
+        return campaign.root / 'operational-predictions'
+    if not campaign.programme or root != campaign.programme.get('prediction_root'):
+        raise ValueError('prediction_root_not_in_approved_programme')
+    path = Path(root)
+    if not path.is_absolute() or path.resolve() != path:
+        raise ValueError('prediction_root_unsafe')
+    return path
+
+
 def require_completed_lifetimes(output, campaign):
     paths = set((output / "operational-workers").glob("*.json"))
-    for path in (campaign.root / "operational-predictions/dispatches").glob("*.json"):
+    plan = json.loads((output / 'plan.json').read_bytes())
+    for path in (operational_root(plan, campaign) / 'dispatches').glob("*.json"):
         row = json.loads(path.read_bytes())
         if row.get("plan") == str(output / "plan.json"):
             paths.add(Path(row["lifecycle"]))
@@ -291,7 +304,7 @@ def run(plan_path: Path, claim_path: Path):
         matches = [row for row in ledger["attempts"] if row["claim"] == str(claim_path)]
         if len(matches) != 1 or matches[0]["item"] != item:
             raise ValueError("prediction_capture_not_in_campaign_ledger")
-    root = scope.campaign.root / "operational-predictions"
+    root = operational_root(plan, scope.campaign)
     record = root / "races" / hashlib.sha256(race_id.encode()).hexdigest()
     record.mkdir(parents=True, exist_ok=False, mode=0o700)
     create_once(record / "identity.json", {"race_id": race_id, "capture_claim": str(claim_path),

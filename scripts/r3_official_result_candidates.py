@@ -71,7 +71,9 @@ def r3_prediction_candidates(*, job_store_path: Path, prediction_bundles: Path,
                 utc_text(generated)
                 if not generated < jump < current_time:
                     raise ValueError("R3_PREDICTION_TIMESTAMP_INVALID")
-                existing = OfficialResultSource(result_database).read(job, bundle, now=current_time)
+                from src.predictor.comparison_results import ComparisonResultSource
+                source_class = ComparisonResultSource if comparison_result_binding is not None else OfficialResultSource
+                existing = source_class(result_database).read(job, bundle, now=current_time)
                 if existing["state"] == "RESULT_AVAILABLE":
                     reason = "R3_RESULT_ALREADY_AVAILABLE"
                 elif existing["state"] == "RESULT_REJECTED" or existing.get("reason") in {"RESULT_SOURCE_BUSY", "RESULT_SOURCE_CHANGED", "RESULT_SOURCE_UNSAFE"}:

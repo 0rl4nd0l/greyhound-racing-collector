@@ -1332,7 +1332,13 @@ def run_shadow_run_official_dry_run(
     if candidates:
         if not db_path.exists():
             raise FileNotFoundError(f"db_path_not_found:{db_path}")
-        driver, By, browser_error = ingest.optional_browser_driver(headless=True)
+        if comparison_result_binding is not None:
+            from src.predictor.comparison_result_runtime import ACTIVE
+            if ACTIVE.get() is None:
+                raise ValueError("comparison_result_guard_required")
+            driver, By, browser_error = None, None, None
+        else:
+            driver, By, browser_error = ingest.optional_browser_driver(headless=True)
         public_http = ingest._PersistentPublicHttpClient()
         thedogs = ingest.TheDogsResultFetcher(
             driver,
@@ -1366,6 +1372,13 @@ def run_shadow_run_official_dry_run(
                     attempts.append(official)
                     selected = official
                     validation_error = ingest.result_validation_error(candidate, selected)
+                    if comparison_result_binding is not None and selected.positions_by_box:
+                        expected_names = {int(r['box_number']): ingest._result_identity_name(r['dog_name'])
+                                          for r in candidate.participants}
+                        actual_names = {int(box): ingest._result_identity_name(name)
+                                        for box, name in (selected.dog_names_by_box or {}).items()}
+                        if actual_names != expected_names or selected.reserve_box_remappings:
+                            validation_error = 'comparison_official_runner_identity_mismatch'
                     comparison_tie = (comparison_result_binding is not None
                         and validation_error in {None,"duplicate_first_place_results"}
                         and set(selected.positions_by_box)=={r["box_number"] for r in candidate.participants}
@@ -3251,7 +3264,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return args
 
 
-def main(argv: Sequence[str] | None = None) -> int:
+def _main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     generated_at = datetime.now().astimezone()
     if args.comparison_result_binding is not None:
@@ -3415,6 +3428,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     write_jsonl(output_dir / "official_result_races.jsonl", artifact_rows["race_rows"])
     write_jsonl(output_dir / "official_result_runners.jsonl", artifact_rows["runner_rows"])
     write_jsonl(output_dir / "official_result_quarantine.jsonl", artifact_rows["quarantine_rows"])
+    if args.comparison_result_binding is not None:
+        from src.predictor.comparison_result_runtime import load_runtime
+        load_runtime(json.loads(args.comparison_result_binding.read_bytes()), now=datetime.now().astimezone())
     current_lock_status = (
         shared_lock_status(args.lock_path)
         if args.require_lock_free and args.execute_db_ingest
@@ -3553,6 +3569,32 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         print(json.dumps(report, indent=2, sort_keys=True))
     return 0 if returncode == 0 else 2
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = parse_args(argv)
+    if args.comparison_result_binding is None:
+        return _main(argv)
+    # Applies to direct CLI use too: no unaccounted alternate study entrypoint.
+    from src.predictor.comparison_result_runtime import collector_guard
+    if args.current_time or args.output_dir is None:
+        raise ValueError("comparison_result_requires_wall_clock_and_private_output")
+    binding = json.loads(args.comparison_result_binding.read_bytes())
+    import signal
+    def interrupted(signum, frame):
+        raise InterruptedError('result_collector_terminated')
+    previous = signal.signal(signal.SIGTERM, interrupted)
+    try:
+        return _guarded_comparison_main(argv, args, binding)
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+
+
+def _guarded_comparison_main(argv, args, binding):
+    from src.predictor.comparison_result_runtime import collector_guard
+    with collector_guard(binding, output=args.output_dir, job_store=args.r3_job_store,
+                         bundles=args.r3_prediction_bundles, result_database=args.db):
+        return _main(argv)
 
 
 if __name__ == "__main__":  # pragma: no cover

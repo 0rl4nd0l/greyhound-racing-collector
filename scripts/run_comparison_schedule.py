@@ -1,0 +1,201 @@
+"""Persistent admission wrapper around the existing finite collector supervisor.
+
+No second collector or timer implementation. Fixed slots are consumed once;
+missed slots are recorded, not made up. An interrupted predecessor must restore
+before any new slot. Source STOP is never automatically reopened.
+"""
+from datetime import datetime, timedelta, timezone
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import signal
+import subprocess
+import sys
+
+from race_collection.live_freshness_contract import create_once, digest
+from race_collection.live_phase_checkpoint import atomic_json
+from src.predictor.future_comparison import checked, load_plan, stamp
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def load_config(path):
+    cfg = json.loads(path.read_bytes())
+    if cfg.get('status') != 'AUTHORIZED_PERSISTENT_SCHEDULE' or not cfg.get('authority_reference'):
+        raise ValueError('schedule_not_authorized')
+    plan, _ = load_plan(Path(cfg['comparison_plan']), cfg['comparison_plan_sha256'])
+    if plan['status'] != 'AUTHORIZED': raise ValueError('study_not_authorized')
+    slots = [stamp(s) for s in cfg['slots']]
+    if (not 1 <= len(slots) <= 80 or slots != sorted(set(slots))
+            or any(not stamp(plan['starts_at']) <= s < stamp(plan['ends_at']) for s in slots)
+            or any((b-a).total_seconds() < 23*3600 for a,b in zip(slots,slots[1:]))
+            or cfg['session_minutes'] != 90 or cfg['grace_seconds'] != 300
+            or cfg['source_operations_per_session'] != 192
+            or cfg['max_source_operations'] != len(slots)*192):
+        raise ValueError('invalid_fixed_schedule')
+    current = subprocess.check_output(['git','rev-parse','HEAD'], cwd=ROOT, text=True).strip()
+    dirty = subprocess.check_output(['git','status','--porcelain','--untracked-files=no'], cwd=ROOT, text=True)
+    if current != cfg['source_commit'] or dirty:
+        raise ValueError('schedule_source_changed')
+    from race_collection.persistent_storage import check_mount
+    check_mount(cfg['storage_mount'], Path(cfg['state_root']))
+    check_mount(cfg['storage_mount'], Path(cfg['prediction_root']))
+    if any(not Path(cfg[k]).is_absolute() for k in ('python','history_database','lock_path','reconciliation_roots','installed_dir','campaign_root','source_state','comparison_plan','result_binding')):
+        raise ValueError('schedule_paths_must_be_absolute')
+    return cfg, plan
+
+
+def renew_source(cfg, slot, *, now):
+    """Only an approved finite programme may renew an expired OPEN lease."""
+    from race_collection.freshness_campaign import Campaign
+    from utils.sportsbet_access import SportsbetAccess
+    campaign = Campaign(cfg['campaign_root'])
+    checked(campaign.root/'persistent-programme-authority.json', cfg['programme_authority_sha256'])
+    with (campaign.root/'owner.lock').open('a') as owner:
+        fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with campaign.ledger() as ledger:
+            if ledger.get('source_holds') or any(not r.get('closed_at') for r in ledger['launches'].values()):
+                raise ValueError('campaign_hold_or_unfinished_owner')
+        if Path(cfg['lock_path']).exists(): raise ValueError('collector_lock_busy')
+        access = SportsbetAccess(cfg['source_state'])
+        value = access.read()
+        baseline = cfg['source_baseline']
+        if (value['phase'] != 'OPEN' or value['active'] is not None or now.timestamp() < value['not_before']
+                or digest(value['denials']) != baseline['denials_sha256']
+                or value['recovery_attempts'] != baseline['recovery_attempts']
+                or digest(value['access_basis']) != baseline['access_basis_sha256']
+                or digest(value.get('operating_policy')) != baseline['operating_policy_sha256']):
+            raise ValueError('source_requires_explicit_disposition')
+        used = len(value.get('operations', [])) - baseline['operation_count']
+        if not 0 <= used <= cfg['max_source_operations'] - 192:
+            raise ValueError('programme_source_budget_exhausted')
+        previous = [a for a in value.get('diagnostic_authorizations', [])
+                    if a['reference'].startswith(cfg['authority_reference'] + ':slot:')]
+        if len(previous) >= len(cfg['slots']) or any(a['reference'].endswith(':slot:'+slot) for a in previous):
+            raise ValueError('source_slot_already_consumed')
+        prior = hashlib.sha256(access.path.read_bytes()).hexdigest()
+        access.authorize_diagnostic(reference=cfg['authority_reference']+':slot:'+slot,
+            expected_sha256=prior, expires_at=(now+timedelta(hours=3)).timestamp(),
+            max_operations=192, rationale='Approved finite persistent programme; OPEN-only slot lease')
+        return {'before_sha256': prior, 'after_sha256': hashlib.sha256(access.path.read_bytes()).hexdigest(),
+                'slot': slot, 'operation_start': len(value.get('operations', []))}
+
+
+def child(command, log):
+    with log.open('ab') as stream:
+        proc = subprocess.Popen(command, cwd=ROOT, stdout=stream, stderr=stream)
+        try: return proc.wait()
+        except BaseException:
+            proc.terminate()
+            # Supervisor handles SIGTERM with the same bounded restoration as
+            # foreground mode. Never launch another owner while it is draining.
+            try: proc.wait(timeout=2400)
+            except subprocess.TimeoutExpired: pass
+            raise
+
+
+def tick(config_path):
+    os.umask(0o077)
+    cfg, plan = load_config(config_path)
+    root = Path(cfg['state_root']); root.mkdir(parents=True,exist_ok=True,mode=0o700)
+    with (root/'scheduler.lock').open('a') as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
+        identity = root/'config-identity.json'
+        if identity.exists():
+            if json.loads(identity.read_bytes())['sha256'] != digest(cfg): raise ValueError('schedule_changed')
+        else: create_once(identity, {'sha256':digest(cfg)})
+        now = datetime.now(timezone.utc)
+        # Recovery precedes expiry/pause checks: already owed cleanup is not
+        # cancelled by stopping future admissions. Unknown boot/PID stays held.
+        for claim in sorted((root/'slots').glob('*')):
+            package = claim/(cfg['programme_id']+'-'+claim.name); pp = package/'plan.json'
+            if (claim/'terminal.json').exists(): continue
+            if pp.exists() and (package/'restoration.json').exists():
+                previous = json.loads(pp.read_bytes())
+                code = child([cfg['python'],'-B',str(Path(previous['source_root'])/'scripts/run_freshness_rehearsal.py'),
+                    '--plan',str(pp),'--plan-sha256',digest(previous),'--approval-id',cfg['authority_reference'],
+                    '--restore-only'],claim/'restore.log')
+                if code or not (package/'restored.json').exists():
+                    return {'status':'RESTORATION_HELD','outcomes_released':False}
+            create_once(claim/'terminal.json',{'status':'INTERRUPTED_CONSUMED','at':now.isoformat()})
+        if (root/'PAUSE_ADMISSIONS').exists(): return {'status':'ADMISSIONS_PAUSED'}
+        if now >= stamp(plan['ends_at']): return {'status':'ADMISSION_ENDPOINT_REACHED'}
+        for index, text in enumerate(cfg['slots']):
+            slot = stamp(text)
+            if now < slot-timedelta(minutes=10): continue
+            claim = root/'slots'/f'{index+1:03d}'
+            if claim.exists(): continue
+            claim.mkdir(parents=True,mode=0o700)
+            create_once(claim/'admission.json', {'slot':text,'claimed_at':now.isoformat(),
+                'config_sha256':digest(cfg),'boot_id':Path('/proc/sys/kernel/random/boot_id').read_text().strip()})
+            if now > slot-timedelta(minutes=5):
+                create_once(claim/'terminal.json',{'status':'MISSED_SLOT','at':now.isoformat()}); continue
+            if shutil.disk_usage(root).free < 10*2**30 or sum(p.stat().st_size for p in root.rglob('*') if p.is_file()) > 40*2**30:
+                create_once(claim/'terminal.json',{'status':'DISK_HOLD','at':now.isoformat()})
+                return {'status':'DISK_HOLD'}
+            from src.predictor.comparison_result_runtime import load_runtime
+            result_binding=json.loads(Path(cfg['result_binding']).read_bytes())
+            _,_,result_cfg=load_runtime(result_binding,now=now)
+            result_health_path=Path(result_cfg['state_root'])/'health.json'
+            if index > 0:
+                if not result_health_path.exists(): return {'status':'RESULT_HEALTH_MISSING'}
+                result_health=json.loads(result_health_path.read_bytes())
+                first=root/'slots/001/terminal.json'
+                if (not first.exists() or json.loads(first.read_bytes()).get('status')!='COMPLETED'
+                        or result_health.get('counts',{}).get('CLOSED',0)<1):
+                    return {'status':'CANARY_NOT_VERIFIED'}
+                if (now-stamp(result_health['at']) > timedelta(minutes=45) or result_health['status'] not in {'CYCLE_COMPLETE','COLLECTOR_LOCK_BUSY','CAMPAIGN_OWNER_BUSY'}
+                        or result_health.get('oldest_due') and now-stamp(result_health['oldest_due']) > timedelta(days=1)):
+                    return {'status':'RESULT_RETENTION_HOLD'}
+            atomic_json(root/'health.json',{'status':'SESSION_RUNNING','at':now.isoformat(),'slot':text,'outcomes_released':False})
+            create_once(claim/'source-lease.json',renew_source(cfg,str(index+1),now=now))
+            from scripts.prepare_freshness_rehearsal import prepare
+            package = claim/(cfg['programme_id']+'-'+claim.name)
+            prepare(output=package,start=slot,python=Path(cfg['python']),
+                db=Path(cfg['history_database']),lock=Path(cfg['lock_path']),
+                reconciliation_roots=Path(cfg['reconciliation_roots']),installed_dir=Path(cfg['installed_dir']),
+                campaign_root=Path(cfg['campaign_root']),operational_predictions=True,observation_minutes=90,
+                comparison_plan=Path(cfg['comparison_plan']), prediction_root=Path(cfg['prediction_root']))
+            pp=package/'plan.json'; prepared=json.loads(pp.read_bytes())
+            code=child([cfg['python'],'-B',str(Path(prepared['source_root'])/'scripts/run_freshness_rehearsal.py'),
+                '--plan',str(pp),'--plan-sha256',digest(prepared),'--approval-id',cfg['authority_reference']],claim/'session.log')
+            if not (package/'restored.json').exists():
+                return {'status':'RESTORATION_HELD'}
+            create_once(claim/'terminal.json',{'status':'COMPLETED' if code==0 else 'FAILED_RESTORED',
+                                             'at':datetime.now(timezone.utc).isoformat()})
+            return {'status':'SESSION_COMPLETED' if code==0 else 'SESSION_FAILED_RESTORED'}
+        return {'status':'NO_SLOT_DUE'}
+
+
+def health(config_path, value):
+    # A malformed/unapproved config is never permission to create arbitrary paths.
+    try:
+        cfg, _ = load_config(config_path)
+        root=Path(cfg['state_root'])
+        if root.is_dir():
+            atomic_json(root/'health.json',{**value,'at':datetime.now(timezone.utc).isoformat()})
+    except Exception:
+        pass  # systemd retains failure exit/journal when no valid store is bound
+
+
+def main():
+    p=argparse.ArgumentParser();p.add_argument('--config',type=Path,required=True);args=p.parse_args()
+    def stop(signum,frame):raise InterruptedError('termination')
+    signal.signal(signal.SIGTERM,stop)
+    try:
+        result=tick(args.config);result['outcomes_released']=False
+        health(args.config,result)
+        print(json.dumps(result))
+        return 0 if result['status'] in {'NO_SLOT_DUE','ADMISSIONS_PAUSED','ADMISSION_ENDPOINT_REACHED','SESSION_COMPLETED'} else 2
+    except Exception as exc:
+        result={'status':'SCHEDULE_FAILED','failure_class':type(exc).__name__,'outcomes_released':False}
+        health(args.config,result)
+        print(json.dumps(result))
+        return 2
+
+
+if __name__=='__main__':raise SystemExit(main())

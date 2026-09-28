@@ -26,7 +26,7 @@ def utc_now():
     return datetime.now(timezone.utc)
 
 
-def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False, observation_minutes=90, start_after_minutes=None, comparison_plan=None):
+def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False, observation_minutes=90, start_after_minutes=None, comparison_plan=None, prediction_root=None):
     comparison_binding = None
     if comparison_plan is not None:
         if not operational_predictions:
@@ -54,7 +54,13 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
     if operational_predictions:
         if campaign_root is None:
             raise ValueError("operational_predictions_require_existing_campaign")
-        db = campaign_root.resolve() / "operational-predictions/capture.sqlite3"
+        if prediction_root is not None:
+            from race_collection.freshness_campaign import Campaign
+            campaign = Campaign(campaign_root)
+            if (not campaign.programme or str(prediction_root) != campaign.programme.get('prediction_root')
+                    or not prediction_root.is_absolute() or prediction_root.resolve() != prediction_root):
+                raise ValueError('prediction_root_not_in_approved_programme')
+        db = (prediction_root or campaign_root.resolve() / "operational-predictions") / "capture.sqlite3"
         db.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         if db.resolve() == history_db:
             raise ValueError("operational_history_write_collision")
@@ -164,6 +170,7 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
     from utils.sportsbet_access import state_path
 
     plan = {
+        **({"prediction_root": str(prediction_root)} if prediction_root is not None else {}),
         "sportsbet_access_state": str(state_path()),
         "baseline_source_coordination_verified": False,
         **({"campaign_root": str(campaign.root),
