@@ -65,6 +65,11 @@ THEDOGS_VENUE_CODE_OVERRIDES = {
     "APK": "APK",
     "GOSF": "GOSF",
     "GOSFORD": "GOSF",
+    # Exact Launceston aliases. normalize_venue otherwise maps the full name
+    # to LCTN but maps LCTN back to LAU, breaking grade provenance equality.
+    "LAUNCESTON": "LCTN",
+    "LAU": "LCTN",
+    "LCTN": "LCTN",
     "MOUNT": "MOUNT",
     "MOUNTGAMBIER": "MOUNT",
     "MTG": "MOUNT",

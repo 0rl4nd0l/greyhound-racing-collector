@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
     (False, "murray"), (True, "murray"), ("paired_missing", "murray"),
     (False, "sandown_park"), (False, "angle_park"), ("weather_guidance", "murray"),
     (False, "allocated_murray"),
+    (False, "maitland"), (False, "grafton"), (False, "launceston"),
 ])
 def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, landing_missing, venue_case):
     from scripts.prepare_freshness_rehearsal import prepare, UNITS
@@ -53,6 +54,16 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
             .replace('"MURR"', '"AP_K"').replace('"race_number": 9', '"race_number": 7')
             .replace("Race 9", "Race 7").replace("R9", "R7")
             .replace("race-9-", "race-7-").replace("/9/fabricated", "/7/fabricated"))
+    repaired_venues = {'maitland': ('Maitland', 'MAITLAND', 3),
+                       'grafton': ('Grafton', 'GRAF', 4),
+                       'launceston': ('Launceston', 'LCTN', 2)}
+    if venue_case in repaired_venues:
+        name, code, number = repaired_venues[venue_case]
+        browser = json.loads(json.dumps(browser).replace('murray-bridge-straight', venue_case)
+            .replace('MURRAY-BRIDGE-STRAIGHT', code).replace('Murray Bridge Straight', name)
+            .replace('"MURR"', '"'+code+'"').replace('"race_number": 9', '"race_number": '+str(number))
+            .replace('Race 9', f'Race {number}').replace('R9', f'R{number}')
+            .replace('race-9-', f'race-{number}-').replace('/9/fabricated', f'/{number}/fabricated'))
     from datetime import datetime
     operational_jump = (stamp + timedelta(minutes=9)).replace(second=0, microsecond=0)
     browser["sidecar"]["prejump_shadow_metadata"]["jump_time"] = operational_jump.isoformat()
@@ -69,6 +80,9 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     venue_slug = {'sandown_park': 'sandown', 'angle_park': 'angle-park'}.get(venue_case, 'murray-bridge-straight')
     venue_name = {'sandown_park': 'Sandown Park', 'angle_park': 'Angle Park'}.get(venue_case, 'Murray Bridge Straight')
     race_number = 7 if venue_case == 'angle_park' else 9
+    if venue_case in repaired_venues:
+        venue_slug = venue_case
+        venue_name, _, race_number = repaired_venues[venue_case]
     for key, value in payload['responses'].items():
         key = key.replace('/sale/', '/' + venue_slug + '/').replace('/1/invented', f'/{race_number}/fabricated')
         body = value['body'].replace('/sale/', '/' + venue_slug + '/').replace('/1/invented', f'/{race_number}/fabricated')
