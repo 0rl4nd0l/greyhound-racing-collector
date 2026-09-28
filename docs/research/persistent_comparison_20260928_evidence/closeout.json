@@ -1,0 +1,52 @@
+{
+  "deployment_manifest_sha256": "79640db81b72dbdbeb5024d3f08882ca70d5e34f44add5c432929653f0ffefd5",
+  "deployment_package": "/home/l4nd0/greyhound-collector-campaign-20260923/persistent-preparation-20260928/deployment-869fca1c",
+  "exported_source_archive_sha256": "54205f738737ae2b71f8c40fa794bbd58960840997db6caf74e324e7b74fbbdd",
+  "frozen_artifacts": {
+    "artifacts/research_comparison/frozen_20260924/registry.json": "938f433133057591e4ebd17a1ceef4fb25da252b5e3d6aba903194eb54b96ca9",
+    "artifacts/research_comparison/frozen_20260924/residual_box.json": "51639ddada362b1a14110461ef258dbff852eb7b2797ea074cd85f22381a4d32",
+    "artifacts/research_comparison/frozen_20260924/residual_half.json": "e827e8f29c756c8995de08e15f8a6c25ca92f0709693cb55ad6bbeb9e16716e0"
+  },
+  "future_official_result_reads": 0,
+  "historical_refits": 0,
+  "integration_commit": "869fca1c66a6ee7c557facdb55e6f7592f2992cb",
+  "packaged_test_count": 31,
+  "packaged_verification": {
+    "actual_future_predictions": 0,
+    "actual_official_results": 0,
+    "cpu_seconds": 98.61355800000001,
+    "elapsed_seconds": 101.45950473297853,
+    "log_sha256": "a7ee1077c440efef8642d16b1828532bcb960a3eb991e9a31f0e87fb7137886a",
+    "max_child_rss_kib": 290256,
+    "network": "kernel-denied in parent and inherited children",
+    "service_installation": false,
+    "source_commit": "869fca1c66a6ee7c557facdb55e6f7592f2992cb",
+    "status": "PASS",
+    "substitution": "synthetic HTTP bytes and clocks only for collector processes; systemd control mocked in scheduler boundary tests",
+    "tests": [
+      "tests/test_persistent_comparison.py",
+      "tests/test_persistent_schedule.py",
+      "tests/test_persistent_approval.py",
+      "tests/test_prepare_comparison_deployment.py",
+      "tests/test_check_comparison_deployment.py",
+      "tests/test_check_comparison_health.py"
+    ]
+  },
+  "prepared_manifest_sha256": "d5abb20433db531a655909d9b671a8b73209b8e28aee1c5d2b4dd5b5aa776327",
+  "prepared_packet": "/home/l4nd0/greyhound-persistent-comparison-output-20260928/activation-final",
+  "provider_requests": 0,
+  "python_sha256": "8ade35c2e4123b4fb44dd3c7b00ff8f7cf980145b3035dee96761838209417f0",
+  "runtime_programme_exists": false,
+  "runtime_source": "/home/l4nd0/greyhound-persistent-release-869fca1c",
+  "scheduled_prepare_boundary_test_sha256": "7832993527436557945b35c3d05e32124d51365db7bd75de90ff46560f6ec0e6",
+  "scheduler_prepare_boundary": {
+    "elapsed_seconds": 0.55,
+    "initial_fixture_import_failure": "preserved in external proof.initial; corrected fixture import, runtime unchanged",
+    "runtime_commit": "869fca1c66a6ee7c557facdb55e6f7592f2992cb",
+    "status": "PASS",
+    "substitutions": "environment/service preflight and scientific-plan validation stubs; actual prepare_session, prepare, execution_contract, FreshnessContract executed",
+    "tests": 1
+  },
+  "service_changes": 0,
+  "status": "PREPARED_NOT_ACTIVATED"
+}
