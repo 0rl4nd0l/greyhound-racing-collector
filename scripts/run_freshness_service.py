@@ -21,7 +21,8 @@ def main():
     if "--verify-live-runtime" in arguments:
         os.execv(sys.executable, command)
     from utils.sportsbet_access import SportsbetAccess
-    SportsbetAccess().check_admission()
+    # The daemon acquires the collector lock before requesting source ownership.
+    SportsbetAccess().check_admission(allow_active=True)
     contract = Path(arguments[arguments.index("--live-freshness-contract") + 1])
     from race_collection.live_execution import configure_profile_execution
 

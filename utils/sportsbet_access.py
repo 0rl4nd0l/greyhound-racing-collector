@@ -197,11 +197,12 @@ class SportsbetAccess:
                 or len(value.get('operations', [])) - diagnostic['operation_start'] >= diagnostic['max_operations']):
             raise SportsbetAccessBlocked('sportsbet_diagnostic_bound_reached')
 
-    def check_admission(self):
-        """Read-only timer preflight; actual transport still claims under lock."""
+    def check_admission(self, *, allow_active=False):
+        """Read-only preflight; service queuing never grants transport ownership."""
         value = self.read()
         self._check_diagnostic(value)
-        if (value["access_basis"]["status"] != "permitted" or value["active"] is not None
+        if (value["access_basis"]["status"] != "permitted"
+                or (value["active"] is not None and not (allow_active is True and value["phase"] == "OPEN"))
                 or value["phase"] in {"STOP", "RECOVERY"}
                 or (value["phase"] == "COOLDOWN" and
                     (self.clock() < value["not_before"] or value["recovery_attempts"]))):

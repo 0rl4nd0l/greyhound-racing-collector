@@ -5,7 +5,7 @@ import hashlib
 import json
 import subprocess
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,7 +22,11 @@ UNITS = (
 )
 
 
-def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False, observation_minutes=90, comparison_plan=None):
+def utc_now():
+    return datetime.now(timezone.utc)
+
+
+def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False, observation_minutes=90, start_after_minutes=None, comparison_plan=None):
     comparison_binding = None
     if comparison_plan is not None:
         if not operational_predictions:
@@ -32,9 +36,16 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         comparison_sha = hashlib.sha256(comparison_plan.read_bytes()).hexdigest()
         load_plan(comparison_plan, comparison_sha)
         comparison_binding = {"path": str(comparison_plan), "sha256": comparison_sha}
-    if (type(observation_minutes) is not int or observation_minutes not in (60, 90)
-            or (observation_minutes == 60 and not (campaign_root and operational_predictions))):
+    operational = bool(campaign_root and operational_predictions)
+    if (type(observation_minutes) is not int
+            or not (5 <= observation_minutes <= 90 if operational else observation_minutes == 90)):
         raise ValueError("invalid_operational_observation_duration")
+    short_observation = observation_minutes < 60
+    if start_after_minutes is not None and (start is not None
+            or type(start_after_minutes) is not int or not 5 <= start_after_minutes <= 30):
+        raise ValueError('invalid_relative_execution_window')
+    if start is None and start_after_minutes is None:
+        raise ValueError('execution_window_required')
     output = output.absolute()
     output.mkdir(parents=True, exist_ok=False, mode=0o700)
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
@@ -107,6 +118,13 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         state_path=runtime / "odds_capture_state.json",
         refresh_limit=16,
     )
+    if short_observation:
+        timer_path = output / "units" / UNITS[1]
+        timer = timer_path.read_text()
+        expected = f"OnActiveSec={daemon.DEFAULT_TIMER_FREQUENCY}"
+        if timer.count(expected) != 1:
+            raise ValueError("unexpected_full_timer_start")
+        timer_path.write_text(timer.replace(expected, "OnActiveSec=1s"))
     service_checks = {}
     for name in (UNITS[0], UNITS[2]):
         completed = subprocess.run(
@@ -161,17 +179,17 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         "python": str(python),
         "python_sha256": hashlib.sha256(python.resolve().read_bytes()).hexdigest(),
         "runtime_sha256": digest(runtime_identity),
-        "starts_at": start.isoformat(),
-        "ends_at": (start + timedelta(minutes=observation_minutes)).isoformat(),
-        "admission_starts_at": (start - timedelta(minutes=30)).isoformat(),
         "cleanup_seconds": 1860 if campaign else 1200,
         "sample_period_seconds": 2,
         "max_sample_gap_seconds": 5,
-        "readiness_warmup_seconds": 1200,
+        "readiness_warmup_seconds": 180 if short_observation else 1200,
+        **({"minimum_completed_full_cycles": 1, "minimum_distinct_captures": 1}
+           if short_observation else {}),
+        **({"minimum_completed_odds_cycles": 3} if observation_minutes < 10 else {}),
         "first_index_deadline_seconds": 180,
         "profile": "bounded80-v1",
         "max_capture_attempts": campaign.value['max_capture_attempts'] if campaign else 1,
-        "max_logical_requests": 48000 if campaign else 24000,
+        "max_logical_requests": campaign.value['max_logical_requests'] if campaign else 24000,
         "capture_allowance": "PENDING_QUIESCENT_RECONCILIATION",
         "evidence_root": str(evidence),
         "lock_path": str(lock),
@@ -212,6 +230,19 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         }
         if comparison_binding is not None:
             plan["frozen_comparison"] = comparison_binding
+    # Select relative windows only after expensive export/runtime/retention work.
+    # Seal once using the same canonical encoding the launch preflight verifies.
+    if start_after_minutes is not None:
+        start = utc_now() + timedelta(minutes=start_after_minutes)
+    if start.utcoffset() is None:
+        raise ValueError('ambiguous_execution_window')
+    end = start + timedelta(minutes=observation_minutes)
+    from zoneinfo import ZoneInfo
+    zone = ZoneInfo('Australia/Melbourne')
+    if start.astimezone(zone).date() != (end + timedelta(seconds=plan['cleanup_seconds'])).astimezone(zone).date():
+        raise ValueError('execution_window_crosses_source_date')
+    plan.update(starts_at=start.isoformat(), ends_at=end.isoformat(),
+                admission_starts_at=(start-timedelta(minutes=30)).isoformat())
     create_once(output / "plan.json", plan)
     return {
         "plan": str(output / "plan.json"),
@@ -227,9 +258,11 @@ def main():
     parser.add_argument("--campaign-root", type=Path)
     parser.add_argument("--operational-predictions", action="store_true")
     parser.add_argument("--comparison-plan", type=Path, help="Explicit approved comparison binding; omitted by default")
-    parser.add_argument("--observation-minutes", type=int, choices=(60, 90), default=90)
+    parser.add_argument("--observation-minutes", type=int, default=90)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--start", required=True)
+    window = parser.add_mutually_exclusive_group(required=True)
+    window.add_argument("--start")
+    window.add_argument("--start-after-minutes", type=int)
     parser.add_argument("--python", type=Path, required=True)
     parser.add_argument("--db", type=Path, required=True)
     parser.add_argument("--lock", type=Path, required=True)
@@ -244,7 +277,8 @@ def main():
                 comparison_plan=args.comparison_plan,
                 observation_minutes=args.observation_minutes,
                 output=args.output,
-                start=datetime.fromisoformat(args.start),
+                start=datetime.fromisoformat(args.start) if args.start else None,
+                start_after_minutes=args.start_after_minutes,
                 python=args.python,
                 db=args.db,
                 lock=args.lock,

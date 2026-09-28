@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from .source_limits import LIVE_SOURCE_MAX_BYTES
+from .live_authority_scope import source_keys
 
 
 class DeploymentRejected(RuntimeError):
@@ -45,14 +46,6 @@ _ARTIFACTS = {
     "model_artifact": "artifacts/frozen_models/market_form_residual_v1/model.json",
     "model_manifest": "artifacts/frozen_models/market_form_residual_v1/manifest.json",
     "model_schema": "configs/prediction/schemas/market_form_residual_v1.schema.json",
-}
-_LIVE_JSON_KEYS = frozenset(LIVE_SOURCE_MAX_BYTES)
-_LIVE_RAW_KEYS = {
-    "corpus_inventory_csv", "corpus_inventory_jsonl", "corpus_scorecard_csv",
-    "corpus_scorecard_jsonl", "corpus_report_bytes", "corpus_summary",
-    "corpus_final_status", "model_latest_config", "model_latest_schema",
-    "model_latest_artifact", "model_latest_manifest", "model_baseline_config",
-    "model_baseline_schema",
 }
 _UNIT_KEYS = {"full_timer", "full_service", "odds_timer", "odds_service"}
 _DIGEST_ONLY_RAW_KEYS = {"corpus_inventory_csv", "corpus_inventory_jsonl"}
@@ -387,9 +380,13 @@ def _live_authority(path: Path) -> dict[str, Any]:
         value = _strict_json(_retained_file_read(path))
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as error:
         raise DeploymentRejected("live authority observation is malformed") from error
-    if not isinstance(value, dict) or set(value) != {"schema_version", "observed_at", "working_directory", "sources", "raw_sources", "units", "service_status"} or value["schema_version"] != "operator_ui_live_authority_v1":
+    if not isinstance(value, dict) or set(value) != {"schema_version", "observed_at", "working_directory", "sources", "raw_sources", "units", "service_status"}:
         raise DeploymentRejected("live authority observation is incomplete")
-    if set(value.get("sources", {})) != _LIVE_JSON_KEYS or set(value.get("raw_sources", {})) != _LIVE_RAW_KEYS or set(value.get("units", {})) != _UNIT_KEYS or set(value.get("service_status", {})) != {"full", "odds"}:
+    try:
+        json_keys, raw_keys = source_keys(value["schema_version"])
+    except ValueError as error:
+        raise DeploymentRejected("live authority observation is incomplete") from error
+    if set(value.get("sources", {})) != json_keys or set(value.get("raw_sources", {})) != raw_keys or set(value.get("units", {})) != _UNIT_KEYS or set(value.get("service_status", {})) != {"full", "odds"}:
         raise DeploymentRejected("live authority observation is incomplete")
     try:
         observed = __import__("datetime").datetime.fromisoformat(value["observed_at"].replace("Z", "+00:00"))

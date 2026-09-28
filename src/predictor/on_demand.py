@@ -22,6 +22,8 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from scripts.refresh_prejump_upcoming import stable_race_id, stable_race_id_variants
+from config.venue_mapping import VENUE_MAPPING
+from utils.race_identity_equivalence import configured_venue_identity
 from utils.csv_metadata import (
     canonical_thedogs_race_identity,
     canonical_thedogs_venue_identity,
@@ -390,7 +392,11 @@ def validate_prediction_result_v2(value: Any) -> dict[str, Any]:
         or identity["venue_slug"] != race["venue_slug"]
         or url_venue is None
         or sealed_venue != url_venue
-        or race["venue"] != url_venue
+        or (
+            race["venue"] != url_venue
+            and (VENUE_MAPPING.get(race["venue"]) != race["venue"]
+                 or configured_venue_identity(race["venue"]) != url_venue)
+        )
         or race["race_id"] != stable_race_id(race_projection)
         or race["race_id"] not in stable_race_id_variants(race_projection)
     ):

@@ -23,6 +23,7 @@ def install():
         response.status_code = row.get("status", 200)
         response.url, response.request = request.url, request
         response.headers = {"Content-Type": row.get("content_type", "text/html")}
+        response.headers.update(row.get("headers", {}))
         response._content = row["body"].encode()
         return response
 

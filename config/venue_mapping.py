@@ -65,6 +65,7 @@ VENUE_MAPPING = {
     "WARRAGUL": "WRGL",  # Warragul is different from Warrnambool
     "WRGL": "WRGL",
     "SANDOWN": "SAN",
+    "SANDOWN PARK": "SAN",  # Sportsbet venue spelling
     "SAN": "SAN",
     "MEADOWS": "MEA",
     "THE_MEADOWS": "MEA",

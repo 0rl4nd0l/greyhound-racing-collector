@@ -7,6 +7,7 @@ required; started.json is consumed even if admission fails. No retry/resume mode
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import signal
@@ -368,6 +369,7 @@ def _sample_locked(plan, output, status_snapshot):
                 lane + "_active_state": observed["ActiveState"],
                 lane + "_sub_state": observed["SubState"],
                 lane + "_exec_main_pid": int(observed["MainPID"]),
+                lane + "_service_invocation_id": observed.get("InvocationID"),
             }
         )
     hashes = {key: hashlib.sha256(value).hexdigest() for key, value in raw.items()}
@@ -481,12 +483,144 @@ def verify_claim_receipt(claim, handoff, evidence, source_root):
     AttemptAllowance.check_window(reserved["item"], now=datetime.fromisoformat(sealed["append_time"]))
 
 
+def record_refresh_outage(output, plan, run_id, failures):
+    """Allow two scheduled 5xx refresh misses; never retry requests or accept data.
+
+    The native failed state remains visible. Observation may continue only while
+    its independently read, previously published index stays fresh.
+    """
+    if (not plan.get("operational_predictions") or not isinstance(run_id, str)
+            or not re.fullmatch(r"[A-Za-z0-9_+.-]+", run_id)):
+        return False
+    from utils.sportsbet_access import SportsbetAccess
+    access = SportsbetAccess(plan["sportsbet_access_state"]).read()
+    if access.get("phase") != "OPEN" or access["access_basis"]["status"] != "permitted":
+        return False
+    from race_collection.live_freshness_contract import classify_refresh_outage
+    from race_collection.live_phase_checkpoint import native_publication_lock
+    evidence = Path(plan["evidence_root"])
+    classified = classify_refresh_outage(evidence, run_id)
+    if classified is None:
+        return False
+    # The service may retain this failure before the observer samples it.
+    # Share its one record and finite counter under the existing writer mutex.
+    with native_publication_lock(evidence, exclusive=True):
+        directory = output / "refresh-deferrals"
+        retained = directory / (run_id + ".json")
+        records = list(directory.glob("*.json"))
+        if retained.exists():
+            value = json.loads(retained.read_bytes())
+            if any(value.get(key) != item for key, item in classified.items()):
+                return False
+        else:
+            if len(records) >= 2 or len(failures) >= 2:
+                return False
+            create_once(retained, {**classified, "observed_at": now().isoformat(),
+                                   "failed_cycle_count": len(records) + 1})
+        failures.add(run_id)
+    return True
+
+
+def refresh_recovery_proven(output, current, failures):
+    if current["collector_status"] != "AVAILABLE/FRESH":
+        return False
+    # ACTIVE alone is not recovery. The authenticated index must come from a
+    # new successful refresh begun after the last retained failed observation.
+    latest_failure = max(datetime.fromisoformat(json.loads(
+        (output / "refresh-deferrals" / (run_id + ".json")).read_bytes()
+    )["observed_at"]) for run_id in failures)
+    return datetime.fromisoformat(current["source_at"].replace("Z", "+00:00")) > latest_failure
+
+
+def planned_scope_close(plan, scope, current):
+    """Prove idle final-window admission closure without making native data fresh."""
+    try:
+        observed = datetime.fromisoformat(current["observed_at"])
+        end = datetime.fromisoformat(plan["ends_at"])
+        age = current["source_age_seconds"]
+        if (not plan.get("operational_predictions") or not 0 <= (end-observed).total_seconds() < 90
+                or current["collector_status"] != "STALE"
+                or any(current[key] != "AVAILABLE/FRESH" for key in ("index_status", "authority_status"))
+                or type(age) not in {int, float} or not math.isfinite(age) or not 0 <= age < 270
+                or current.get("lock") is not None or Path(plan["lock_path"]).exists()
+                or (scope.session / "STOP.json").exists()):
+            return None
+        lanes = {lane["lane"]: lane for lane in current["lanes"]}
+        odds = lanes["ODDS_ONLY"]
+        if (set(lanes) != {"FULL_DAEMON", "ODDS_ONLY"}
+                or lanes["FULL_DAEMON"]["status"] != "RECEIPT_READY"
+                or odds["status"] != "STALE" or odds["phase"] != "ODDS_CAPTURE_ONLY_READY"
+                or not re.fullmatch(r"[A-Za-z0-9_+.-]+", odds["run_id"])):
+            return None
+        unit = current["unit_status"]["odds"]
+        invocation = unit["InvocationID"]
+        if (not re.fullmatch(r"[0-9a-f]{32}", invocation) or int(unit["MainPID"]) != 0
+                or (unit["ActiveState"], unit["SubState"]) not in {("inactive", "dead"), ("failed", "failed")}):
+            return None
+        from utils.sportsbet_access import SportsbetAccess
+        access = SportsbetAccess(plan["sportsbet_access_state"]).read()
+        if access["phase"] != "OPEN" or access["access_basis"]["status"] != "permitted" or access.get("active"):
+            return None
+        marker_path = scope.session / "admission-closures" / (invocation + ".json")
+        marker_raw = marker_path.read_bytes()
+        marker = json.loads(marker_raw)
+        evidence = Path(plan["evidence_root"])
+        lifecycle_path = evidence / "shadow_autopilot_daemon_runtime/service-lifecycles" / (invocation + ".json")
+        lifecycle_raw = lifecycle_path.read_bytes()
+        lifecycle = json.loads(lifecycle_raw)
+        marked = datetime.fromisoformat(marker["observed_at"])
+        monotonic = [lifecycle["launch_started_monotonic"], marker["observed_monotonic"], lifecycle["completed_monotonic"]]
+        if (any(type(v) not in {int, float} or not math.isfinite(v) for v in monotonic)
+                or not 0 <= monotonic[0] <= monotonic[1] <= monotonic[2]
+                or not 0 <= (end-marked).total_seconds() < 90 or marked > observed
+                or any(marker.get(k) != v for k, v in {
+                    "schema_version": "live_admission_closed_v1", "lane": "odds",
+                    "runtime_action": "OPERATING_SCOPE_CLOSED", "required_seconds": 90,
+                    "rehearsal_id": plan["rehearsal_id"], "ends_at": plan["ends_at"],
+                    "contract_sha256": digest(scope.value), "service_invocation_id": invocation}.items())
+                or type(marker["process_pid"]) is not int or marker["process_pid"] <= 0
+                or lifecycle["child_pid"] != marker["process_pid"]
+                or lifecycle["invocation_id"] != invocation or lifecycle["status"] != "COMPLETE"
+                or lifecycle["children_reaped"] is not True or lifecycle["interrupted"] is not False
+                or lifecycle["returncode"] != 2 or lifecycle["wrapper_pid"] != int(unit["ExecMainPID"])):
+            return None
+        report_path = evidence / ("shadow_autopilot_daemonization_v1_" + odds["run_id"]) / "odds_capture_only_daemon_report.json"
+        report_raw = report_path.read_bytes()
+        report = json.loads(report_raw)
+        if (hashlib.sha256(report_raw).hexdigest() != odds["reference_hashes"]["report"]
+                or report["run_id"] != odds["run_id"] or report["runtime_action"] != "LIVE_COLLECTION_COMPLETE"
+                or report["final_status"] != "ODDS_CAPTURE_ONLY_READY" or report["status"] != "READY"
+                or datetime.fromisoformat(report["generated_at"]) > marked):
+            return None
+        return {"status": "PLANNED_ADMISSION_CLOSED", "native_collector_status": "STALE",
+                "service_invocation_id": invocation, "new_data_accepted": False,
+                "marker_sha256": hashlib.sha256(marker_raw).hexdigest(),
+                "lifecycle_sha256": hashlib.sha256(lifecycle_raw).hexdigest(),
+                "prior_report_sha256": hashlib.sha256(report_raw).hexdigest()}
+    except (OSError, KeyError, ValueError, TypeError, OverflowError):
+        return None
+
+
+def observation_minimums(plan):
+    duration = (datetime.fromisoformat(plan["ends_at"])-datetime.fromisoformat(plan["starts_at"])).total_seconds()
+    short = bool(plan.get("operational_predictions")) and 300 <= duration < 3600 and duration % 60 == 0
+    values = tuple(plan.get(key, 3) for key in ("minimum_completed_full_cycles", "minimum_distinct_captures"))
+    if any(type(v) is not int or not 1 <= v <= 3 or (not short and v != 3) for v in values):
+        raise ValueError("invalid_observation_minimums")
+    odds = plan.get("minimum_completed_odds_cycles", 6)
+    if (type(odds) is not int or odds not in (3, 6)
+            or (odds == 3 and not (short and duration < 600))):
+        raise ValueError("invalid_observation_minimums")
+    return (*values, odds)
+
+
 def observe(output, plan, control, scope, predictions=None):
     from race_collection.freshness_rehearsal import assess_interval, TimerAccounting
 
     evidence = Path(plan["evidence_root"])
     end = datetime.fromisoformat(plan["ends_at"])
     start = datetime.fromisoformat(plan["starts_at"])
+    minimum_full, minimum_captures, minimum_odds = observation_minimums(plan)
     timer_accounting = TimerAccounting(start)
     previous = None
     event_count = 0
@@ -498,6 +632,7 @@ def observe(output, plan, control, scope, predictions=None):
     window_rows = []
     exclusions = []
     seen = set()
+    refresh_failures = set()
     external_overheads = {"full": [], "odds": []}
     while now() < end:
         tick = time.monotonic()
@@ -562,7 +697,9 @@ def observe(output, plan, control, scope, predictions=None):
                 "DEFERRED_LOCK_HELD",
                 "DEFERRED_FULL_LOCK_HANDOFF",
             }:
-                raise ValueError("candidate_terminal_failure")
+                if (report["runtime_action"] != "LIVE_PHASE_FAILED" or not
+                        record_refresh_outage(output, plan, value["cycle_id"], refresh_failures)):
+                    raise ValueError("candidate_terminal_failure")
             seen.add(str(checkpoint))
             lane = "odds" if "odds_capture" in value["cycle_id"] else "full"
             if report["runtime_action"] == "LIVE_COLLECTION_COMPLETE":
@@ -603,7 +740,10 @@ def observe(output, plan, control, scope, predictions=None):
                 current["campaign_logical_requests"] = ledger["logical_requests"]
             current["capture_requests"] = [json.loads(path.read_bytes()) for path in
                 scope.session.glob("captures/*/capture-reservation.requests.json")]
-        # Preserve the failing observation before assessing it.
+        closure = planned_scope_close(plan, scope, current) if current["collector_status"] == "STALE" else None
+        if closure:
+            current["planned_shutdown"] = closure
+        # Preserve native staleness even when final admission is proven closed.
         atomic_json(output / "samples" / f"{samples:06d}.json", current)
         samples += 1
         timer_accounting.observe(current)
@@ -644,17 +784,33 @@ def observe(output, plan, control, scope, predictions=None):
             for key in ("index_status", "collector_status", "authority_status")
         ):
             raise ValueError("native_integrity_or_authority_failed")
+        if refresh_failures and not (
+            current["authority_status"] == "AVAILABLE/FRESH"
+            and current["index_status"] == "AVAILABLE/FRESH"
+            and 0 <= current["source_age_seconds"] < 270
+        ):
+            raise ValueError("failed_refresh_previous_index_unusable")
         if (
             current["collector_status"] != "AVAILABLE/FRESH"
             or current["authority_status"] != "AVAILABLE/FRESH"
         ):
             unavailable += 1
-            if age_from_start >= plan["readiness_warmup_seconds"]:
-                raise ValueError("native_readiness_failed")
+            failed_lanes = [lane for lane in current["lanes"] if lane["status"] == "CAPTURE_FAILED"]
+            if not closure and (age_from_start >= plan["readiness_warmup_seconds"] or refresh_failures or failed_lanes):
+                if not (current["authority_status"] == "AVAILABLE/FRESH"
+                        and current["index_status"] == "AVAILABLE/FRESH"
+                        and 0 <= current["source_age_seconds"] < 270
+                        and failed_lanes
+                        and all(lane["status"] in {"CAPTURE_FAILED", "RECEIPT_READY", "ACTIVE", "WAITING_FOR_PEER"}
+                                for lane in current["lanes"])
+                        and all(record_refresh_outage(output, plan, lane["run_id"], refresh_failures)
+                                for lane in failed_lanes)):
+                    raise ValueError("native_readiness_failed")
         atomic_json(
             output / "progress.json",
             {
                 "completed_cycles": {key: len(value) for key, value in completed.items()},
+                "failed_refresh_cycles": sorted(refresh_failures),
                 "lock_wait_seconds": waits,
                 "logical_requests": current["logical_requests"],
                 "python_network": current["python_network"],
@@ -665,7 +821,9 @@ def observe(output, plan, control, scope, predictions=None):
             },
         )
         time.sleep(max(0, plan["sample_period_seconds"] - (time.monotonic() - tick)))
-    if len(completed["full"]) < 3 or len(completed["odds"]) < 6 or not waits or max(waits) <= 0:
+    if refresh_failures and not refresh_recovery_proven(output, current, refresh_failures):
+        raise ValueError("refresh_recovery_unproven")
+    if len(completed["full"]) < minimum_full or len(completed["odds"]) < minimum_odds or not waits or max(waits) <= 0:
         raise ValueError("lane_progress_or_handoff_unproven")
     if not all(external_overheads.values()):
         raise ValueError("external_completion_timing_unmeasured")
@@ -677,7 +835,7 @@ def observe(output, plan, control, scope, predictions=None):
                 == "AUTONOMOUS_LIVE_ODDS_CAPTURE_APPENDED"]
     verified = (list((output / "capture-verifications").glob("*.json")) if scope.campaign
                 else list(output.glob("capture-receipt-verification.json")))
-    if len(captures) < (3 if scope.campaign else 1) or len(verified) != len(captures):
+    if len(captures) < (minimum_captures if scope.campaign else 1) or len(verified) != len(captures):
         raise ValueError("required_distinct_captures_not_demonstrated")
     atomic_json(
         output / "measurement.json",
@@ -687,6 +845,7 @@ def observe(output, plan, control, scope, predictions=None):
             "unavailable_samples_including_warmup": unavailable,
             "maximum_conservative_source_age": maximum,
             "completed_cycles": {key: len(value) for key, value in completed.items()},
+            "failed_refresh_cycles": sorted(refresh_failures),
             "max_lock_wait_seconds": max(waits),
             "maximum_external_overhead_seconds": {
                 key: max(value) for key, value in external_overheads.items()

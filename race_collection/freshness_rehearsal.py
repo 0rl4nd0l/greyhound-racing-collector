@@ -237,6 +237,24 @@ class TimerAccounting:
                 record["calendar_delay_seconds"] = (
                     triggered_at.second + triggered_at.microsecond / 1e6
                 )
+                nominal = record['triggered_monotonic'] - record['calendar_delay_seconds']
+                # Persistent timers can fire immediately at a mid-minute scope
+                # start. Later calendar activations cannot start a second copy
+                # while the preceding service is still running. Credit only
+                # the predecessor lifetime actually observed in these samples;
+                # missing observations never prove that a service was active.
+                earliest = self.began if nominal < self.began else nominal + 15
+                blocked_until = max(
+                    (min(record['triggered_monotonic'], prior.get('ended_monotonic',
+                         prior.get('observed_active_through', prior['started_monotonic'])))
+                     for prior in self.activations[lane].values()
+                     if prior['started_monotonic'] < started
+                     and prior['started_monotonic'] <= nominal),
+                    default=nominal,
+                )
+                record['calendar_blocked_until_monotonic'] = blocked_until
+                record['calendar_unblocked_delay_seconds'] = max(
+                    0, record['triggered_monotonic'] - max(earliest, blocked_until))
             if record["dispatch_seconds"] > 10:
                 raise ValueError("timer_dispatch_budget_exceeded")
             ended = int(state.get("ExecMainExitTimestampMonotonic") or 0) / 1e6
@@ -249,7 +267,7 @@ class TimerAccounting:
                 record["complete_overhead_seconds"] = (
                     overhead
                     + record["dispatch_seconds"]
-                    + max(0, record.get("calendar_delay_seconds", 0) - 15)
+                    + record.get("calendar_unblocked_delay_seconds", 0)
                 )
                 if record["complete_overhead_seconds"] > 10:
                     raise ValueError("dispatch_plus_process_overhead_exceeded")

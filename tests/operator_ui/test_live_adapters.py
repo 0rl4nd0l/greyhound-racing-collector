@@ -82,10 +82,10 @@ def test_full_sources_have_hard_512_kib_retained_read_ceiling(fixed_source_root,
         bootstrap_module._retained_source_read(path, source_key)
 
 
-@pytest.mark.parametrize("source_key", ["odds_state", "model_catalog"])
-def test_non_full_sources_retain_default_256_kib_ceiling(fixed_source_root, source_key):
+@pytest.mark.parametrize("source_key, maximum", [("odds_state", 2 * 1024 * 1024), ("model_catalog", 256 * 1024)])
+def test_state_and_catalog_retain_their_source_specific_ceiling(fixed_source_root, source_key, maximum):
     path = fixed_source_root / f"{source_key}.json"
-    at_limit = b"{}" + b" " * (256 * 1024 - 2)
+    at_limit = b"{}" + b" " * (maximum - 2)
     path.write_bytes(at_limit)
     assert bootstrap_module._retained_source_read(path, source_key) == at_limit
 

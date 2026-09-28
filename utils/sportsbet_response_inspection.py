@@ -169,6 +169,7 @@ class ResponseInspection:
         self.browser_identity = {}
         self.dom_snapshot = {"state": "not_observed"}
         self.paired_readiness = []
+        self.landing_selection = None
         self.dropped_responses = 0
         self.frame_roles = {}
         self.mark("browser_start")
@@ -219,6 +220,18 @@ class ResponseInspection:
             if len(self.paired_readiness) < 2:
                 self.paired_readiness.append({"boundary": boundary,
                     **{key: counts[key] for key in keys}, **self._stamp()})
+
+    def record_landing_selection(self, counts):
+        """One value-free observation of the already inspected landing links."""
+        keys = ("anchors_total", "anchors_examined", "parsed_race_links",
+                "race_number_matches", "exact_matches")
+        if any(type(counts.get(key)) is not int or counts[key] < 0 for key in keys):
+            raise ValueError("invalid_landing_selection_counts")
+        with self.lock:
+            if self.landing_selection is None:
+                self.landing_selection = {
+                    **{key: counts[key] for key in keys}, **self._stamp(),
+                }
 
     def fail(self):
         with self.lock:
@@ -406,6 +419,7 @@ class ResponseInspection:
                         "browser_identity": self.browser_identity,
                         "dom_snapshot": self.dom_snapshot,
                         "paired_readiness": self.paired_readiness,
+                        "landing_selection": self.landing_selection,
                         "marks": self.marks,
                         "responses": list(self.rows.values()),
                     }

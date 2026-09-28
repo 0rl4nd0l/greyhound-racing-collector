@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import sys
 import time
@@ -253,6 +254,18 @@ def bounded_run(plan_path, claim_path, *, timeout=200):
     return code
 
 
+def failure_reason(error):
+    """Retain a bounded prediction rejection code, never its private details."""
+    from src.operator_ui.prediction_worker import WorkerRejected
+    from src.predictor.on_demand import PredictionBlocked
+    if isinstance(error, (WorkerRejected, PredictionBlocked)):
+        value = error.code if isinstance(error, PredictionBlocked) else str(error)
+        if not isinstance(value, str):
+            return type(error).__name__
+        return value if re.fullmatch(r"[A-Z][A-Z0-9_]{0,95}", value) else type(error).__name__
+    return str(error) if isinstance(error, ValueError) else type(error).__name__
+
+
 def run(plan_path: Path, claim_path: Path):
     from race_collection.manual_prediction_collector_request import ManualPredictionCollectorProtocol
     from race_collection.scheduled_input_retention import ScheduledInputRetention, SCOPE
@@ -387,7 +400,7 @@ def run(plan_path: Path, claim_path: Path):
         if job.phase is not Phase.PREDICTION_READY:
             timing["reason"] = job.reason
     except Exception as exc:
-        timing.update(status="FAILED", stage=stage, reason=str(exc) if isinstance(exc, ValueError) else type(exc).__name__)
+        timing.update(status="FAILED", stage=stage, reason=failure_reason(exc))
     finally:
         timing.update(total_seconds=time.monotonic()-started, completed_at=now().isoformat())
         atomic_json(record / "terminal.json", timing)
