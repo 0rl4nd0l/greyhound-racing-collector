@@ -278,6 +278,12 @@ def run_live_collection_cycle(args, *, odds_only: bool):
             # lock, deadlines and terminal verdict; this is not a ready receipt.
             # Existing state (including unreadable state) is never replaced here.
             if initial_state_missing and completed_report is None:
+                current_state = daemon.load_json(state_path)
+                if state_path.exists() and (
+                    not isinstance(current_state, dict)
+                    or current_state.get("run_id") != report["run_id"]
+                ):
+                    return
                 atomic_json(state_path, {
                     **previous_state,
                     **report,
