@@ -11,20 +11,21 @@ import time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from tests.test_freshness_campaign import make_campaign
 from tests.test_refresh_shared_sportsbet_snapshot import fixture, access
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_second_full_service_waits_for_actual_odds_child_then_completes(tmp_path, monkeypatch):
+@pytest.mark.parametrize('yield_capture', [False, True])
+def test_second_full_service_waits_for_actual_odds_child_then_completes(tmp_path, monkeypatch, yield_capture):
     from scripts import prepare_freshness_rehearsal as packaging
     from scripts.check_freshness_service import service_command
     from race_collection.live_freshness_contract import AttemptAllowance, FreshnessContract, digest
     from race_collection.live_phase_checkpoint import native_publication_lock
-    from race_collection.freshness_rehearsal import native_observation
     from race_collection.synchronous_manual_capture import current_race_index_path
-    from src.operator_ui.live_adapters import InstalledUnits
 
     gate = access(tmp_path)
     monkeypatch.setenv('GREYHOUND_SPORTSBET_ACCESS_STATE', str(gate))
@@ -111,6 +112,24 @@ def test_second_full_service_waits_for_actual_odds_child_then_completes(tmp_path
         seed=start('odds','fixture_seed_odds_capture','2'*32)
         assert seed.wait(timeout=100)==0
         assert json.loads(report('fixture_seed_odds_capture','odds').read_bytes())['runtime_action']=='LIVE_COLLECTION_COMPLETE'
+        original_http = http.read_bytes()
+        if yield_capture:
+            # Only invented provider inputs change: expose a T-10 opportunity
+            # after seeding, so the peer must yield a pending capture rather
+            # than simply finish a no-capture refresh.
+            from urllib.parse import urlsplit
+            from utils.prejump_sportsbet import SPORTSBET_NEXT_EVENTS_ENDPOINT
+            payload = json.loads(original_http)
+            endpoint = urlsplit(SPORTSBET_NEXT_EVENTS_ENDPOINT)
+            events = payload['responses'][endpoint.netloc+endpoint.path]
+            rows = json.loads(events['body'])
+            old_jump = datetime.fromtimestamp(rows[0]['startTime'], ZoneInfo('Australia/Melbourne'))
+            jump = (datetime.now(ZoneInfo('Australia/Melbourne'))+timedelta(minutes=9)).replace(second=0,microsecond=0)
+            rows[0]['startTime'] = int(jump.timestamp())
+            events['body'] = json.dumps(rows)
+            for response in payload['responses'].values():
+                response['body'] = response['body'].replace(old_jump.strftime('%H:%M'), jump.strftime('%H:%M'))
+            http.write_text(json.dumps(payload))
         peer=start('odds','fixture_peer_odds_capture','3'*32,pause=True)
         wait_for(marker.exists)
         full=start('full','fixture_second_full','4'*32)
@@ -149,9 +168,34 @@ def test_second_full_service_waits_for_actual_odds_child_then_completes(tmp_path
             with native_publication_lock(evidence, exclusive=False):
                 current=datetime.now(ZoneInfo('Australia/Melbourne'))
                 args['observed_at']=current
-                return native_observation(now=current,paths=paths,units=InstalledUnits(**args),
-                    evidence_root=evidence,index_path=current_race_index_path(runtime/'odds_capture_state.json'),
-                    authority={**plan,'unit_sha256':hashes},output=tmp_path/'observations')
+                request = tmp_path/'observer-request.json'
+                request.write_text(json.dumps(dict(
+                    now=current.isoformat(), paths={key:str(path) for key,path in paths.items()},
+                    units={key:(value.decode() if isinstance(value,bytes) else value.isoformat()
+                        if isinstance(value,datetime) else value) for key,value in args.items()},
+                    evidence_root=str(evidence), index_path=str(current_race_index_path(runtime/'odds_capture_state.json')),
+                    authority={**plan,'unit_sha256':hashes}, output=str(tmp_path/'observations'))))
+                code = '''from scripts.check_freshness_service import deny_network
+deny_network()
+import json,sys
+from pathlib import Path
+from datetime import datetime
+from race_collection.freshness_rehearsal import native_observation
+from src.operator_ui.live_adapters import InstalledUnits
+request=json.loads(Path(sys.argv[1]).read_bytes())
+units=request.pop('units')
+for key in ('full_service','full_timer','odds_service','odds_timer'):units[key]=units[key].encode()
+units['observed_at']=datetime.fromisoformat(units['observed_at'])
+request['now']=datetime.fromisoformat(request['now'])
+request['paths']={key:Path(value) for key,value in request['paths'].items()}
+for key in ('evidence_root','index_path','output'):request[key]=Path(request[key])
+print(json.dumps(native_observation(units=InstalledUnits(**units),**request)))
+'''
+                result = subprocess.run([sys.executable,'-B','-c',code,str(request)],
+                    cwd=package/'source', env={**os.environ,'PYTHONPATH':str(package/'source')},
+                    text=True,capture_output=True,timeout=20)
+                assert result.returncode == 0, result.stdout+result.stderr
+                return json.loads(result.stdout.splitlines()[-1])
         observed=observe(True)
         full_lane=next(lane for lane in observed['lanes'] if lane['lane']=='FULL_DAEMON')
         assert full_lane['status']=='WAITING_FOR_PEER', observed
@@ -163,11 +207,21 @@ def test_second_full_service_waits_for_actual_odds_child_then_completes(tmp_path
         assert paused_full_pid != full.pid
         os.kill(paused_full_pid, signal.SIGSTOP)
         release.touch()
-        assert peer.wait(timeout=100)==0
-        gap=observe(True, peer_active=False)
+        assert peer.wait(timeout=100)==(2 if yield_capture else 0)
+        if yield_capture:
+            yielded = json.loads(peer_report.read_bytes())
+            assert yielded['runtime_action'] == 'DEFERRED_FULL_LOCK_HANDOFF'
+            pending = json.loads((runtime/'odds.live-phase-checkpoint.json').read_bytes())['pending']
+            assert len(pending) == 1 and pending[0]['kind'] == 'capture'
+            assert not list(AttemptAllowance(scope).claims())
+            assert not Path(plan['lock_path']).exists()
+        gap=observe(True, peer_active=False, peer_failed=yield_capture)
         assert next(lane for lane in gap['lanes'] if lane['lane']=='FULL_DAEMON')['status']=='WAITING_FOR_PEER', gap
-        assert next(lane for lane in gap['lanes'] if lane['lane']=='ODDS_ONLY')['status']=='RECEIPT_READY', gap
+        assert next(lane for lane in gap['lanes'] if lane['lane']=='ODDS_ONLY')['status']==('WAITING_FOR_PEER' if yield_capture else 'RECEIPT_READY'), gap
         assert gap['collector_status']=='AVAILABLE/FRESH', gap
+        # Resume into a future invented schedule so this lock test never needs
+        # browser acquisition. The captured handoff observation remains intact.
+        http.write_bytes(original_http)
         os.kill(paused_full_pid, signal.SIGCONT)
         paused_full_pid=None
         assert full.wait(timeout=100)==0
@@ -176,6 +230,9 @@ def test_second_full_service_waits_for_actual_odds_child_then_completes(tmp_path
         assert completed['timing']['lock_wait_seconds']>0
         assert json.loads((runtime/'state.json').read_bytes())['last_run_id']=='fixture_second_full'
         assert observe(False)['collector_status']=='AVAILABLE/FRESH'
+        if yield_capture:
+            assert not (scope.session/'STOP.json').exists()
+            return
         # Exercise the reverse service seam too: odds defers to a full daemon
         # whose lock-owning child differs from its service wrapper MainPID.
         marker.unlink()
@@ -201,6 +258,8 @@ def test_second_full_service_waits_for_actual_odds_child_then_completes(tmp_path
         assert observe(False,peer_failed=True)['collector_status']=='AVAILABLE/FRESH'
         assert not (scope.session/'STOP.json').exists()
     finally:
+        if 'original_http' in locals():
+            http.write_bytes(original_http)
         if paused_full_pid is not None:
             os.kill(paused_full_pid, signal.SIGCONT)
         release.touch()

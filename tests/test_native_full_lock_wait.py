@@ -152,3 +152,45 @@ def test_reverse_cooperation_binds_active_full_child_not_wrapper(tmp_path,monkey
         unit_overrides={'full_service':daemon.service_file_text(**unit_args).encode(),
                         'odds_service':daemon.odds_capture_service_file_text(**unit_args).encode()})
     assert result.data['lanes'][1]['status']==expected
+
+
+@pytest.mark.parametrize('change', ['none', 'wrong_recipient', 'wrong_child', 'wrong_invocation',
+    'stale_index', 'wrong_publication', 'expired_handoff', 'failed_peer', 'legacy_profile', 'dead_waiter'])
+def test_released_odds_handoff_before_full_poll_is_bounded_and_authenticated(tmp_path, monkeypatch, change):
+    from race_collection.synchronous_manual_capture import VerifiedCurrentRaceIndex
+    from src.operator_ui import live_adapters
+
+    values = waiting_values(tmp_path)
+    peer = values['odds_report']
+    peer.pop('lock')
+    peer.pop('lock_path')
+    peer.pop('odds_capture_refresh_report')
+    peer.update(status='SKIPPED_FULL_DAEMON_LOCK_HANDOFF',
+        final_status='SKIPPED_FULL_DAEMON_LOCK_HANDOFF', final_verdict='PARTIAL_DAEMONIZATION',
+        runtime_action='DEFERRED_FULL_LOCK_HANDOFF', live_freshness_profile='bounded80-v1',
+        generated_at=(NOW-timedelta(seconds=2)).isoformat(),
+        deferred_lock_owner={'run_id': 'full-next', 'pid': 3333})
+    if change == 'wrong_recipient': peer['deferred_lock_owner']['run_id'] = 'other-full'
+    elif change == 'wrong_child': peer['deferred_lock_owner']['pid'] = 4444
+    elif change == 'wrong_invocation': peer['timing']['service_invocation_id'] = 'c'*32
+    elif change == 'expired_handoff': peer['generated_at'] = (NOW-timedelta(seconds=16)).isoformat()
+    elif change == 'failed_peer': peer.update(status='FAILED', final_status='ODDS_CAPTURE_ONLY_FAILED', runtime_action='LIVE_COLLECTION_BLOCKED')
+    elif change == 'legacy_profile': peer.pop('live_freshness_profile')
+    view = VerifiedCurrentRaceIndex('collector_current_race_index_v2',
+        'other_odds_capture' if change == 'wrong_publication' else 'fixture_odds_capture',
+        (NOW-timedelta(seconds=271 if change == 'stale_index' else 70)).isoformat(),
+        '1'*64,b'packet',(),'refresh.json','2'*64,'3'*64,'4'*64,'5'*64)
+    monkeypatch.setattr(live_adapters, 'bounded_current_race_index', lambda **kwargs: view)
+    unit_args = dict(repo_path=Path('/srv/app'), timeout_seconds=600, live_freshness=True,
+        live_freshness_profile='bounded80-v1', live_freshness_contract=tmp_path/'contract.json')
+    adapter = make_live(tmp_path/'observer', values, include_models=False,
+        full_status=('inactive','dead',0) if change == 'dead_waiter' else ('activating','start',3000),
+        odds_status=('failed','failed',0),
+        upcoming_races=live_adapters.UpcomingRaceSource(tmp_path/'index.json',tmp_path),
+        unit_overrides={'full_service':daemon.service_file_text(**unit_args).encode(),
+                        'odds_service':daemon.odds_capture_service_file_text(**unit_args).encode()})
+    adapter._units = replace(adapter._units, full_service_invocation_id='a'*32, odds_service_invocation_id='b'*32)
+    result = adapter.collector(NOW)
+    assert (result.evidence.status == 'AVAILABLE/FRESH') == (change == 'none'), result
+    if change == 'none':
+        assert [lane['status'] for lane in result.data['lanes']] == ['WAITING_FOR_PEER','WAITING_FOR_PEER']

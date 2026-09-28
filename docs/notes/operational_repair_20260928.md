@@ -127,25 +127,25 @@ The independent spec reviewer found no further issue after this correction.
 
 ### Compatible R3 state reader
 
-The pinned collector observation remains commit35b375ba. A separate compatibility
-review found that installed and candidate R3 gave odds_state only256KiB and4KiB
+The pinned collector observation remains commit 35b375ba. A separate compatibility
+review found that installed and candidate R3 gave odds_state only 256 KiB and 4 KiB
 strings, despite retaining the same embedded HTTP provenance as odds_report.
-The second September28 attempt retained a552,067-byte state with a59,520-byte
-maximum string. The September24 final state was326,658bytes/58,680-byte string.
-These exceed R3's limits although the rehearsal's explicit2MiB/128KiB limits
-accept them. A rehearsal pass alone therefore did not prove configuredR3 reading.
+The second September 28 attempt retained a 552,067-byte state with a 59,520-byte
+maximum string. The September 24 final state was 326,658 bytes / 58,680-byte string.
+These exceed R3's limits although the rehearsal's explicit 2 MiB / 128 KiB limits
+accept them. A rehearsal pass alone therefore did not prove configured R3 reading.
 
-The R3-only correction applies the existing2MiB/128KiB odds provenance envelope
-to odds_state. Full state/report retain512KiB/4KiB, other sources remain unchanged,
-as do identity/hash checks, source timestamps and the300-second freshness gate.
-A generated-package regression failed under the old byte limit.34 checks then
+The R3-only correction applies the existing 2 MiB / 128 KiB odds provenance envelope
+to odds_state. Full state/report retain 512 KiB / 4 KiB, other sources remain unchanged,
+as do identity/hash checks, source timestamps and the 300-second freshness gate.
+A generated-package regression failed under the old byte limit. 34 checks then
 passed across actual package generation, startup and configured collector reads,
 including exact limits, over-limit rejection, depth/items, startup/runtime state
 growth, external-refresh divergence and absence of raw bodies in public output.
 The state parametrization's tamper case still targets the external refresh; it
 is a consistency test, not independent state-file tampering. Both review axes
-reported no blocking findings. InstalledR3 remains unchanged; deployment requires
-compatible candidate code as well as new authority binding, because5013ff03 also
+reported no blocking findings. Installed R3 remains unchanged; deployment requires
+compatible candidate code as well as new authority binding, because 5013ff03 also
 lacks candidate lock-wait/deferred-lock handling. Model/config/schema bytes remain
 identical. This UI-only change does not alter the running exported collector.
 
@@ -153,14 +153,14 @@ A further network-denied exported prediction test completed the real synthetic
 capture/retention/frozen-score chain, then launched a fresh predictor process
 with the same claim. The second process rejected the existing race directory,
 preserved claim and terminal bytes, and left exactly one consumed verified job.
-This passed in30.18seconds. It establishes completed-handoff nonduplication;
+This passed in 30.18 seconds. It establishes completed-handoff nonduplication;
 a crash after dispatch remains consumed and can require operator reconciliation.
 The earlier controlled tests cover partial dispatch and interrupted capture too.
 
-Live R3-limit control at11:24:07 rejected the actual current odds state under
+Live R3-limit control at 11:24:07 rejected the actual current odds state under
 old limits as INVALID/INTEGRITY_FAILED while its index and authority were fresh.
 The corrected-limit native read accepted that state. Neither probe started or
-changed installedR3; the full lane was still waiting for its first15-minute tick.
+changed installed R3; the full lane was still waiting for its first 15-minute tick.
 
 ### Operational-only R3 authority
 
@@ -173,9 +173,97 @@ sources, extra corpus sources and unknown schemas. No scientific protocol or
 model configuration changes. The corpus panel returns unavailable without a read.
 
 The generated-package test failed before implementation with corpus fixture files
-removed. The broad affected-module run then passed461checks and retained one old
-odds-state256KiB assertion; its corrected source-specific boundary cases both pass.
+removed. The broad affected-module run then passed 461 checks and retained one old
+odds-state 256 KiB assertion; its corrected source-specific boundary cases both pass.
 Review found that nonempty unavailable corpus data violated the public API rule.
 A real authenticated API route test reproduced NON_OPERATIONAL/PROVIDER_ERROR;
 the empty unavailable response fixed it. All five operational binding cases pass.
-The running collector package remains35b375ba; this separate R3 package is uninstalled.
+The running collector package remains 35b375ba; this separate R3 package is uninstalled.
+
+### Coverage timestamp correction
+
+Independent measurement review found that refresh report `generated_at` is set
+before discovery begins. It is the original source-age timestamp, not proof of
+when each race became known. Interim `coverage_metrics.py` reports incorrectly
+called overlapping schedule races "prospectively discovered". Those reports remain
+retained. Corrected `coverage_metrics_v2.py` separately reports retained schedule
+races with overlapping T-10 windows, consumer-index publication before each window
+closed, planner readiness, attempts and verified predictions. It does not change
+any original timestamp or acceptance threshold.
+
+The broader denominator still includes Healesville Race 4: observation began at
+11:20:42.698 AEST, its T-10 window closed at 11:21, and the first index publication
+completed at 11:21:17.522. That race was excluded as past_or_too_close and never
+indexed. Its exact discovery time is absent. It remains a startup coverage miss;
+removing it would make the coverage claim misleading. Undiscovered races remain
+unassessed. All later coverage uses the corrected definition.
+
+### Evidence boundaries retained for release review
+
+- `committed-packaged-tests.log`: exported runtime and actual subprocess boundaries,
+  including empty startup, input transition, planned shutdown and genuine failure
+  controls. Kernel network denial prevents a synthetic rehearsal contacting providers.
+- `paired-lock-tests.log`: the actual two exported services contend for and hand
+  off the same lock. `timer-overlap-replay-green.json` replays every retained sample
+  from the failed first attempt against the bounded accounting correction.
+- `ownership-denial-separated-tests.log` and `guidance-joined-tests.log`: actual
+  guarded transport and exported weather-guidance stop behavior; busy-owner exclusion
+  uses a separate package so its stop cannot masquerade as a provider-denial test.
+- `restart-worker-tests.log` and `restart-completed-package.log`: interruption and
+  fresh-process nonduplication. Durable consumption remains authoritative; automatic
+  retry of a crashed prediction is not established or proposed.
+- `transition/r3-operational-startup-v3.json`: actual configured R3 startup against
+  preserved live input bytes, network denied, no database or corpus access. This
+  establishes compatible startup reading, not installation or continuous panel refresh.
+- `transition/OPERATING_PLAN.md` and `APPROVED_ACTIVATION_COMMAND.md`: exact pinned
+  collector mode, preparation/preflight/execution commands, foreground monitoring,
+  finite authority and coordinated rollback. Independent specification review found
+  its activation, monitoring and scope gaps resolved. Approval remains conditional
+  on the final live result and verified cleanup.
+
+The immediate proposal excludes installing the staged R3 upgrade. Existing R3
+continues to use its unchanged authority. Supervisor records and verified campaign
+outputs are the operational interface for this collector mode; no campaign job
+import into R3's separate operations store is claimed.
+
+### Third attempt: released-lock handoff gap, fully restored
+
+Pinned package `live-35b375ba` started at 11:20:42.698 AEST and failed at
+12:23:37.223 on `native_integrity_or_authority_failed`. It is not a 90-minute
+pass. Three predictions were verified, from three attempts, four observed-ready
+T-10 races and five schedule races with overlapping T-10 windows. Race 4 was the
+startup miss; Race 8 became ready but remained pending when the run stopped.
+Three full cycles and 60 completed odds cycles were counted; a further odds
+refresh completed before yielding its pending capture. All 64 refresh phases
+took 29.83–44.53 seconds. The three predictions completed 535.76–540.14 seconds
+before jump. All 142 recorded capture browser responses were HTTP 200, with no
+recorder drops. No new source denial occurred.
+
+At the failure, odds had published a fresh index and deliberately yielded to the
+full daemon's live wait marker. Its report was SKIPPED_FULL_DAEMON_LOCK_HANDOFF;
+its expected deferred exit code was 2. The full child was between five-second
+lock polls, so the shared lock was briefly absent. The native reader supported
+an active peer and a completed successful peer, but rejected this authenticated
+yielding peer. The supervisor then stopped the scope, causing the waiting full
+child to exit without another provider request. No producer-side ownership defect
+was established. Restoration completed at 12:23:41.892. Independent restoration
+verification passed with no findings: collector timers disabled, no workers or
+locks, unchanged R3 PID/binding, preserved historical accounting, source OPEN.
+
+The correction recognizes only a reciprocal handoff matching both run IDs,
+collector child PIDs and service invocation IDs, with the yielding peer's fresh
+original publication. Its allowance expires after the next poll plus the existing
+ten-second overhead allowance, bounded by the original wait deadline. It does
+not invent lock ownership or classify the skipped odds invocation as completed
+collection. A focused regression failed before the correction; all 37 selected
+wait/handoff checks then passed, including stale-index, wrong-recipient,
+wrong-invocation, expired-gap and dead-waiter rejection.
+
+An additional generated-package regression uses actual wrappers and a fresh
+exported observer process. It reproduces the same DIVERGENT gap with a fabricated
+pending T-10 capture under kernel network denial. The initial fixture also exposed
+that pending checkpoints resume their original run identity; that fixture failure
+is retained separately. The focused handoff scenario now ends after full-lane
+progress; the existing no-pending scenario still covers reverse cooperation.
+A changed package and a new observation are required. The staged 35b375ba release
+proposal remains unapproved and is superseded by this failure.
