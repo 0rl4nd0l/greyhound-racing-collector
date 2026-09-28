@@ -167,6 +167,52 @@ def test_actual_exported_wrapper_retains_closed_admission_without_traffic(tmp_pa
         'reference_hashes':{'report':hashlib.sha256(previous.read_bytes()).hexdigest()}}]}
     assert run.planned_scope_close(plan,scope,current)['status']=='PLANNED_ADMISSION_CLOSED'
     assert current['collector_status']=='STALE'
+    # Exercise the exported supervisor itself with the real exported wrapper's
+    # closure evidence. Only native samples/clock/systemd transport are invented.
+    observer_input=tmp_path/'observer-input.json'
+    observer_input.write_text(json.dumps(current))
+    driver=r'''
+import copy,json,sys
+from pathlib import Path
+from datetime import datetime,timedelta
+from types import SimpleNamespace
+from scripts import run_freshness_rehearsal as run
+from race_collection.live_freshness_contract import FreshnessContract
+import race_collection.freshness_rehearsal as policy
+package=Path(sys.argv[1]); plan=json.loads((package/'plan.json').read_bytes())
+scope=FreshnessContract(json.loads((package/'contract.json').read_bytes()))
+base=json.loads(Path(sys.argv[2]).read_bytes()); observed=datetime.fromisoformat(base['observed_at'])
+base.update(packet_sha256='packet',source_at=(observed-timedelta(seconds=114)).isoformat(),external_service_overhead_seconds={})
+run.atomic_json(Path(plan['evidence_root'])/'shadow_autopilot_daemon_runtime/live-publication-events/000000.json',{'previous_event_sha256':None,'packet_sha256':'packet'})
+run.now=lambda:observed
+commands=[];ticks=[]
+class Done(Exception):pass
+def tick():
+ ticks.append(1)
+ if len(ticks)==3:raise Done
+def sample(*args):
+ value=copy.deepcopy(base)
+ if len(ticks)==1:
+  value['collector_status']='AVAILABLE/FRESH';value['lanes'][1]['status']='RECEIPT_READY'
+ return value
+run.sample=sample;run.time.sleep=lambda seconds:None
+run.AttemptAllowance=lambda scope:SimpleNamespace(claims=lambda:[])
+run.window_accounting=lambda *args:{}
+policy.TimerAccounting=lambda start:SimpleNamespace(observe=lambda current:None,summary=lambda now:{})
+policy.assess_interval=lambda *args:0
+output=package/'controlled-observer'
+try:run.observe(output,plan,SimpleNamespace(command=lambda *args:commands.append(args)),scope,predictions=SimpleNamespace(tick=tick))
+except Done:pass
+assert commands==[('stop','shadow-autopilot-odds-capture.timer')],commands
+samples=[json.loads(p.read_bytes()) for p in sorted((output/'samples').glob('*.json'))]
+assert [s['collector_status'] for s in samples]==['AVAILABLE/FRESH','STALE']
+assert all(s['planned_shutdown']['new_data_accepted'] is False for s in samples)
+print('EXPORTED_SUPERVISOR_CLOSED_TIMER_ONCE_AND_RETAINED_NATIVE_STALENESS')
+'''
+    supervised=subprocess.run([sys.executable,'-c',launcher,sys.executable,'-B','-c',driver,
+        str(package),str(observer_input)],cwd=cwd,env=env,capture_output=True,text=True,timeout=30)
+    assert supervised.returncode==0,supervised.stdout+supervised.stderr
+    assert 'EXPORTED_SUPERVISOR_CLOSED_TIMER_ONCE' in supervised.stdout
 
 
 @pytest.mark.parametrize('duration,operational,minimum,accepted', [
