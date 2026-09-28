@@ -228,8 +228,8 @@ from pathlib import Path
 package = Path(os.environ['GRC_PACKAGE'])
 from scripts.check_comparison_deployment import inspect
 check = inspect(package, os.environ['GRC_MANIFEST'], preflight=True, installed=True)
-# Retain genuine source holds; they prohibit acquisition, not safe removal.
-blocking = set(check['findings']) - {'source_open', 'campaign_no_source_hold'}
+# Source holds and the admission disk floor do not prohibit safe removal.
+blocking = set(check['findings']) - {'source_open', 'campaign_no_source_hold', 'free_space'}
 if blocking: raise SystemExit(sorted(blocking))
 print(json.dumps(check, sort_keys=True))
 manifest = json.loads((package / 'deployment.json').read_bytes())
@@ -243,8 +243,9 @@ PY
 systemctl --user daemon-reload
 ```
 
-The rollback block permits only the two source-hold findings while requiring
-every quiescence and baseline check to pass. It prints the retained hold receipt
+The rollback block permits source-hold findings and the admission-only free-space
+floor while requiring mount identity, every quiescence check and baseline hashes
+to pass. Disk pressure must not prevent safe removal. It prints the retained hold receipt
 and removes only inactive exact comparison units. Do not clear a source hold
 to make rollback pass. Never enable legacy collector timers while held. Preserve the campaign
 amendment, approved files, all programme evidence, private queue and source history.
