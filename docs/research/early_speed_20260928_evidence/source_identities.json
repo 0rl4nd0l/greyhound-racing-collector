@@ -1,0 +1,6 @@
+{
+  "docs/research/early_speed_20260928_protocol.md": "4782ff8c1aa67200395993c5cea19f4b7e1662e17893a1ebe9a1e31d7962782c",
+  "scripts/audit_early_speed_neighbours.py": "bb88cb8fac3582af101db4092f4be62b8720a7b0f6613aea6fda5aa9526622f5",
+  "scripts/build_form_only_v1_packet.py": "11b56970de0e53975a444d0ad066f7ea566ffc717757b074d5eb0d5f8865f086",
+  "scripts/offline_form_packet.py": "865f18598429a231ca515ec8cbf108312d6c2faa23e392608b398b98bbe28379"
+}

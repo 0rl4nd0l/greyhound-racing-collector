@@ -1,0 +1,806 @@
+{
+  "by_date": {
+    "2026-06-10": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 2,
+      "runners": 15
+    },
+    "2026-06-11": {
+      "complete_numeric_ge1": 2,
+      "complete_numeric_ge3": 1,
+      "races": 10,
+      "runners": 72
+    },
+    "2026-06-12": {
+      "complete_numeric_ge1": 3,
+      "complete_numeric_ge3": 0,
+      "races": 37,
+      "runners": 271
+    },
+    "2026-06-13": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 4,
+      "runners": 29
+    },
+    "2026-06-14": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 16,
+      "runners": 115
+    },
+    "2026-06-15": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 5,
+      "runners": 37
+    },
+    "2026-06-16": {
+      "complete_numeric_ge1": 4,
+      "complete_numeric_ge3": 1,
+      "races": 23,
+      "runners": 166
+    },
+    "2026-06-17": {
+      "complete_numeric_ge1": 1,
+      "complete_numeric_ge3": 0,
+      "races": 16,
+      "runners": 110
+    },
+    "2026-06-18": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 18,
+      "runners": 125
+    },
+    "2026-06-19": {
+      "complete_numeric_ge1": 1,
+      "complete_numeric_ge3": 0,
+      "races": 18,
+      "runners": 134
+    },
+    "2026-06-20": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 1,
+      "runners": 8
+    },
+    "2026-06-21": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 4,
+      "runners": 27
+    },
+    "2026-06-24": {
+      "complete_numeric_ge1": 1,
+      "complete_numeric_ge3": 0,
+      "races": 7,
+      "runners": 55
+    },
+    "2026-06-25": {
+      "complete_numeric_ge1": 1,
+      "complete_numeric_ge3": 0,
+      "races": 11,
+      "runners": 76
+    },
+    "2026-06-26": {
+      "complete_numeric_ge1": 1,
+      "complete_numeric_ge3": 0,
+      "races": 13,
+      "runners": 96
+    },
+    "2026-06-27": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 9,
+      "runners": 65
+    },
+    "2026-06-28": {
+      "complete_numeric_ge1": 1,
+      "complete_numeric_ge3": 1,
+      "races": 17,
+      "runners": 125
+    },
+    "2026-06-29": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 17,
+      "runners": 125
+    },
+    "2026-06-30": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 12,
+      "runners": 84
+    },
+    "2026-07-01": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 13,
+      "runners": 87
+    },
+    "2026-07-02": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 3,
+      "runners": 22
+    },
+    "2026-07-03": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 5,
+      "runners": 34
+    },
+    "2026-07-04": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 11,
+      "runners": 78
+    },
+    "2026-07-05": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 11,
+      "runners": 73
+    },
+    "2026-07-06": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 13,
+      "runners": 92
+    },
+    "2026-07-07": {
+      "complete_numeric_ge1": 8,
+      "complete_numeric_ge3": 4,
+      "races": 18,
+      "runners": 116
+    },
+    "2026-07-08": {
+      "complete_numeric_ge1": 1,
+      "complete_numeric_ge3": 0,
+      "races": 17,
+      "runners": 123
+    }
+  },
+  "by_distance": {
+    "297": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 3,
+      "runners": 24
+    },
+    "300": {
+      "complete_numeric_ge1": 3,
+      "complete_numeric_ge3": 1,
+      "races": 34,
+      "runners": 235
+    },
+    "305": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 13,
+      "runners": 79
+    },
+    "318": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 6,
+      "runners": 41
+    },
+    "320": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 6,
+      "runners": 47
+    },
+    "324": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 11,
+      "runners": 81
+    },
+    "330": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 4,
+      "runners": 31
+    },
+    "340": {
+      "complete_numeric_ge1": 1,
+      "complete_numeric_ge3": 0,
+      "races": 13,
+      "runners": 101
+    },
+    "342": {
+      "complete_numeric_ge1": 10,
+      "complete_numeric_ge3": 5,
+      "races": 13,
+      "runners": 74
+    },
+    "350": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 27,
+      "runners": 196
+    },
+    "352": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 5,
+      "runners": 40
+    },
+    "366": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 32,
+      "runners": 235
+    },
+    "375": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 4,
+      "runners": 31
+    },
+    "380": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 6,
+      "runners": 47
+    },
+    "390": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 24,
+      "runners": 183
+    },
+    "395": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 2,
+      "runners": 11
+    },
+    "400": {
+      "complete_numeric_ge1": 3,
+      "complete_numeric_ge3": 0,
+      "races": 38,
+      "runners": 256
+    },
+    "401": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 2,
+      "runners": 15
+    },
+    "407": {
+      "complete_numeric_ge1": 1,
+      "complete_numeric_ge3": 1,
+      "races": 1,
+      "runners": 8
+    },
+    "410": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 4,
+      "runners": 27
+    },
+    "411": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 1,
+      "runners": 7
+    },
+    "425": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 9,
+      "runners": 68
+    },
+    "435": {
+      "complete_numeric_ge1": 3,
+      "complete_numeric_ge3": 0,
+      "races": 12,
+      "runners": 84
+    },
+    "440": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 3,
+      "runners": 21
+    },
+    "450": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 11,
+      "runners": 83
+    },
+    "455": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 2,
+      "runners": 12
+    },
+    "457": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 8,
+      "runners": 59
+    },
+    "460": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 3,
+      "runners": 24
+    },
+    "461": {
+      "complete_numeric_ge1": 2,
+      "complete_numeric_ge3": 0,
+      "races": 3,
+      "runners": 19
+    },
+    "484": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 1,
+      "runners": 7
+    },
+    "485": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 3,
+      "runners": 22
+    },
+    "488": {
+      "complete_numeric_ge1": 1,
+      "complete_numeric_ge3": 0,
+      "races": 2,
+      "runners": 14
+    },
+    "498": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 1,
+      "runners": 8
+    },
+    "500": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 3,
+      "runners": 23
+    },
+    "509": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 1,
+      "runners": 7
+    },
+    "510": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 3,
+      "runners": 20
+    },
+    "512": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 2,
+      "runners": 16
+    },
+    "515": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 2,
+      "runners": 16
+    },
+    "516": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 1,
+      "runners": 6
+    },
+    "520": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 4,
+      "runners": 27
+    },
+    "525": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 4,
+      "runners": 28
+    },
+    "531": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 1,
+      "runners": 6
+    },
+    "545": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 1,
+      "runners": 6
+    },
+    "600": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 1,
+      "runners": 7
+    },
+    "710": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 1,
+      "runners": 8
+    }
+  },
+  "by_venue": {
+    "AP_K": {
+      "complete_numeric_ge1": 10,
+      "complete_numeric_ge3": 5,
+      "races": 13,
+      "runners": 74
+    },
+    "BAL": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 3,
+      "runners": 22
+    },
+    "BEN": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 7,
+      "runners": 54
+    },
+    "BH": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 5,
+      "runners": 37
+    },
+    "BULLI": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 1,
+      "runners": 8
+    },
+    "CAPA": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 32,
+      "runners": 235
+    },
+    "CASO": {
+      "complete_numeric_ge1": 1,
+      "complete_numeric_ge3": 0,
+      "races": 4,
+      "runners": 27
+    },
+    "DUBBO": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 9,
+      "runners": 60
+    },
+    "GAWL": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 4,
+      "runners": 21
+    },
+    "GEE": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 12,
+      "runners": 88
+    },
+    "GOUL": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 13,
+      "runners": 84
+    },
+    "GRAF": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 2,
+      "runners": 16
+    },
+    "GRDN": {
+      "complete_numeric_ge1": 1,
+      "complete_numeric_ge3": 0,
+      "races": 7,
+      "runners": 51
+    },
+    "HEA": {
+      "complete_numeric_ge1": 1,
+      "complete_numeric_ge3": 0,
+      "races": 22,
+      "runners": 167
+    },
+    "HOBT": {
+      "complete_numeric_ge1": 3,
+      "complete_numeric_ge3": 0,
+      "races": 16,
+      "runners": 120
+    },
+    "HOR": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 7,
+      "runners": 49
+    },
+    "MAND": {
+      "complete_numeric_ge1": 4,
+      "complete_numeric_ge3": 1,
+      "races": 6,
+      "runners": 45
+    },
+    "MEA": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 4,
+      "runners": 29
+    },
+    "MOUNT": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 23,
+      "runners": 145
+    },
+    "MURR": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 13,
+      "runners": 74
+    },
+    "NOR": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 4,
+      "runners": 31
+    },
+    "NOWRA": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 1,
+      "runners": 6
+    },
+    "QOT": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 21,
+      "runners": 162
+    },
+    "RICH": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 16,
+      "runners": 120
+    },
+    "ROCK": {
+      "complete_numeric_ge1": 1,
+      "complete_numeric_ge3": 1,
+      "races": 1,
+      "runners": 8
+    },
+    "SAL": {
+      "complete_numeric_ge1": 3,
+      "complete_numeric_ge3": 0,
+      "races": 15,
+      "runners": 104
+    },
+    "SAN": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 2,
+      "runners": 16
+    },
+    "SHEP": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 8,
+      "runners": 63
+    },
+    "TAREE": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 7,
+      "runners": 51
+    },
+    "TEM": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 6,
+      "runners": 46
+    },
+    "TRA": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 12,
+      "runners": 91
+    },
+    "TWN": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 7,
+      "runners": 55
+    },
+    "WAG": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 5,
+      "runners": 36
+    },
+    "WAR": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 16,
+      "runners": 117
+    },
+    "WPK": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 3,
+      "runners": 21
+    },
+    "WRGL": {
+      "complete_numeric_ge1": 0,
+      "complete_numeric_ge3": 0,
+      "races": 4,
+      "runners": 27
+    }
+  },
+  "complete_race_numeric_coverage": {
+    "numeric_section_ge1": 246,
+    "numeric_section_ge3": 118,
+    "same_layout_distance_numeric_section_ge1": 24,
+    "same_layout_distance_numeric_section_ge3": 7,
+    "with_internal_vacancy_gap": 163,
+    "with_unoccupied_boxes": 169
+  },
+  "failed_card_paths": [],
+  "field_parse_states": {
+    "1 SEC": {
+      "missing": 3617,
+      "positive": 7838
+    },
+    "PIR": {
+      "positive": 11455
+    },
+    "PLC": {
+      "positive": 11455
+    },
+    "TIME": {
+      "positive": 11455
+    }
+  },
+  "fits": 0,
+  "history_date_range": [
+    "2022-11-20",
+    "2026-07-06"
+  ],
+  "history_headers": {
+    "1 SEC": 11455,
+    "BON": 11455,
+    "BOX": 11455,
+    "DATE": 11455,
+    "DIST": 11455,
+    "Dog Name": 11455,
+    "G": 11455,
+    "MGN": 11455,
+    "PIR": 11455,
+    "PLC": 11455,
+    "SP": 11455,
+    "Sex": 11455,
+    "TIME": 11455,
+    "TRACK": 11455,
+    "W/2G": 11455,
+    "WGT": 11455,
+    "WIN": 11455
+  },
+  "interpretation": "Positive numeric section coverage is an upper bound, not validated early speed. No model test performed.",
+  "numeric_subset_composition": {
+    "1": {
+      "dates": 11,
+      "periods": {
+        "2026-06-10..2026-06-23": {
+          "dates": 5,
+          "races": 11,
+          "runners": 73
+        },
+        "2026-06-24..2026-06-30": {
+          "dates": 4,
+          "races": 4,
+          "runners": 29
+        },
+        "2026-07-01..2026-07-02": {
+          "dates": 0,
+          "races": 0,
+          "runners": 0
+        },
+        "2026-07-03..2026-07-09": {
+          "dates": 2,
+          "races": 9,
+          "runners": 57
+        }
+      },
+      "races": 24,
+      "runners": 159,
+      "venues": {
+        "AP_K": 10,
+        "CASO": 1,
+        "GRDN": 1,
+        "HEA": 1,
+        "HOBT": 3,
+        "MAND": 4,
+        "ROCK": 1,
+        "SAL": 3
+      }
+    },
+    "3": {
+      "dates": 4,
+      "periods": {
+        "2026-06-10..2026-06-23": {
+          "dates": 2,
+          "races": 2,
+          "runners": 14
+        },
+        "2026-06-24..2026-06-30": {
+          "dates": 1,
+          "races": 1,
+          "runners": 8
+        },
+        "2026-07-01..2026-07-02": {
+          "dates": 0,
+          "races": 0,
+          "runners": 0
+        },
+        "2026-07-03..2026-07-09": {
+          "dates": 1,
+          "races": 4,
+          "runners": 24
+        }
+      },
+      "races": 7,
+      "runners": 46,
+      "venues": {
+        "AP_K": 5,
+        "MAND": 1,
+        "ROCK": 1
+      }
+    }
+  },
+  "population": {
+    "audited_races": 331,
+    "dates": 27,
+    "evaluated_races_prior_study": 177,
+    "races": 331,
+    "runners": 2360,
+    "sample_races": 39
+  },
+  "prior_incident_races": 58,
+  "protected_keys": 1265,
+  "qualified_races": 0,
+  "qualified_runners": 0,
+  "reservation_review_status": "PREPARED_NO_ALLOCATION",
+  "runner_numeric_coverage": {
+    "numeric_section_ge1": 2143,
+    "numeric_section_ge3": 1663,
+    "same_layout_distance_numeric_section_ge1": 738,
+    "same_layout_distance_numeric_section_ge3": 290,
+    "with_vacancy_gap": 482
+  },
+  "semantic_gate": "NO_INDEPENDENT_MEASUREMENT_POINT_UNITS_RUNNER_VS_LEADER_OR_STYLE_CONTRACT",
+  "status": "PARTIALLY_TESTABLE_MEASUREMENT_AUDIT_ONLY",
+  "target_outcomes_decoded": 0,
+  "totals": {
+    "history_observations": 11455,
+    "multi_digit_1_to_8_pir": 4532,
+    "other_pir": 4,
+    "single_digit_pir": 6919,
+    "single_digit_pir_equals_finish": 6919
+  }
+}
