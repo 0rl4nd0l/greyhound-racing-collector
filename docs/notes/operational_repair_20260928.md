@@ -511,3 +511,78 @@ The session FAILED at16:32:01.131 on native_readiness_failed and is not a15-minu
 The narrow correction checks proved idle closure while the native receipt is still fresh and stops only the odds timer after authentication, preventing redundant starts during an already closed admission period. It retains native freshness/staleness, original source-age limits, source holds, completed-child proof and invocation identity. It does not accept an activating condition or an unproved worker. A red observer regression failed in both fresh/stale cases; existing negative controls remain. Independent restoration passed after the last consumed capture window naturally closed; current accounting68attempts,78535requests,32695.031125charged seconds,529sourceoperations and4historicaldenials. The next finite follow-up will use a new package and preserve this failed attempt.
 
 The shutdown action correction passed60 focused tests, including fresh/stale negative controls. The actual exported wrapper and exported supervisor also ran together under kernel network denial with controlled native samples: the supervisor stopped the odds timer exactly once on proved fresh closure, retained the subsequent native STALE sample and accepted no new data. Both review axes found no issue. A distinct10-minute live follow-up is proportionate for this timer-action boundary; it uses the remaining original allocation and unchanged expiry, with no source reauthorization or historical reset. The prior15-minute failure remains failed.
+
+## Final repaired deployment outcome
+
+Release decision: GO for the approved finite, foreground-supervised daytime mode on
+`8b5552c78222f9a0b5dfa1fa7bb30003bb375922`. Its source archive SHA256 is
+`3c63987974ff339a22e767cd882753f64fc0c6c1a5a1aa328f3a02486176b74f` and sealed
+session-3 plan SHA256 is `4e14ba386429639694aa8ce2fd31cc021526d3061512e0e2c1e4c615a73d228a`.
+The clean installed-for-test checkout is `/home/l4nd0/greyhound-collector-release-20260928-closure`.
+The approved mode is adopted with these repairs; no merge, R3 upgrade, unattended
+scheduler, reboot continuation, scientific activation or result collection is included.
+
+Session-3 completed its full10-minute observation16:44:02.821925–16:54:02.821925 AEST,
+with supervisor exit0. It exercised1full and7odds completed cycles,9refreshes,
+and1verified prediction from1attempt (Dubbo R6),537.543seconds before jump.
+There were4 observed schedule-overlap T-10 races,2published/observed-ready races,
+and no fully contained window. WAR R7 was too close at startup, BAL R12 was a
+published startup/shared-lock miss, and NOR R4 lacked safe native source identity.
+Therefore this focused trial achieved1/4 observed-window coverage and1/1 attempt
+success. It does not establish capacity or full-day coverage. The earlier90-minute
+8/8 observation, failed88m18s10/13 session and failed14m58s3/4 follow-up remain
+separate candidate evidence; none has been reset, relabelled or pooled as one pass.
+
+Index startup lasted38.002seconds; paired consumer startup162.009seconds.
+The original source-age adjacent-sample bound was122.857seconds (R3 unchanged300).
+Refresh durations were32.924–41.254seconds; publication took0.016730–0.024862seconds,
+and original source-to-publication age32.157–41.080seconds. Shared-lock waits peaked
+at35seconds during startup. No later index/authority unavailability occurred.
+At16:53 the supervisor authenticated reaped, final admission closure and stopped
+the odds timer before it could replace that invocation. It retained29 explicit
+closure samples, including5native STALE samples from16:53:53.011 to16:54:01.067
+(8.056seconds sampled span;9.811seconds to the planned end). Those samples remain
+STALE, not rewritten fresh. Source data remained fresh, no new data was admitted,
+and no failure was concealed. This specifically proves the repaired boundary live.
+
+Capture took15.125seconds. Retention took2.770seconds, including1.523seconds for
+machine-only historical snapshot preparation and0.618seconds for the feature
+subprocess. Frozen scoring feature projection took0.018708seconds and inference
+0.002758seconds; the prediction subprocess took1.300seconds. Receipt-to-terminal
+processing took4.841seconds; original price-to-verification latency23.095seconds.
+All28 independent retained-chain checks passed. The frozen model/configuration
+and all41generator members match session-2; relative to the original accepted7bd
+candidate, only the reviewed source guard differs among those41members.
+
+The source gate advanced529→539 with9Python and1browser operations,52recorded
+browser responses allHTTP200, no recorder drops and no new denial. The session
+recorded1,359 logical requests; campaign delta1,361 includes its two separately charged
+browser navigation attempts. Wire retries remain unmeasured; HTTP200 alone is not
+prediction acceptance. The exact receipt/identity/retention/verification audits are
+what establish the prediction. Four historical denials and the local512STOP record
+remain. Neither this follow-up nor the previous one reset or expanded the original
+606-operation allocation ceiling or17:23:07 AEST expiry.
+
+Restoration completed16:55:01.339542 after the consumed window naturally closed.
+Independent verification confirms original paired unit bytes, both timers disabled
+and inactive, zero workers/cgroups, released collector lock/source owner/campaign
+lease, unchanged R3PID149626 and unchanged binding. The odds unit retains a
+nonrunning failed flag from closed admission. Collection is PAUSED. Source phase
+isOPEN with no active owner; remaining finite authority does not start anything.
+Final cumulative accounting:69attempts,79,896logical requests,33,353.560854charged
+seconds,539sourceoperations,4historicaldenials. Remaining campaign allowance:
+59attempts,16,104requests,9,846.439146seconds. Future90-minute sessions require a
+fresh sufficient finite source allocation and a foreground operator; no automatic
+all-day scheduler or reboot recovery exists. The1/4 short-window coverage and
+variable warm-up remain practical limitations, as do midnight, peak national
+capacity, source-denial recovery, retained-evidence disk growth and manual handling
+of interrupted consumed jobs. These are not claims of unattended reliability.
+
+The new approved-mode commands, exact-pin preflight, monitoring and rollback are
+in deployment-20260928-7bd839f0/transition-8b5552c7. Final session-3 summary, coverage,
+publication metrics, independent audit, prediction catalog and restoration records
+are beside them. Earlier proposed and failed transition files remain historical.
+Applicable CI passed at the exact live code pin. Both repair commits passed Standards
+and Spec review; the actual exported closure observer and wrapper passed under
+kernel network denial. No further provider attempt is needed for this bounded
+release decision. The draft PR stays unmerged.
