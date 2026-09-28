@@ -1022,6 +1022,63 @@ def test_real_generated_package_startup_is_disabled_or_bootstraps_with_all_deplo
         } == {COMMIT, TREE, "operator-ui-v1", "repository-v1"}
 
 
+def operational_authority(values):
+    authority = json.loads(values["live_authority"].read_text())
+    authority["schema_version"] = "operator_ui_operational_authority_v1"
+    for group in ("sources", "raw_sources"):
+        for key in list(authority[group]):
+            if key.startswith("corpus_"):
+                Path(authority[group].pop(key)).unlink()
+    values["live_authority"].write_text(json.dumps(authority))
+    return authority
+
+
+def test_operational_package_bootstraps_without_scientific_sources(real_startup_tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    values = deployment_inputs(real_startup_tmp_path)
+    git_identity(monkeypatch)
+    operational_authority(values)
+    generate_package(**values, enabled=True)
+    generated = load_generated_environment(monkeypatch, values)
+    app = Flask(__name__)
+    app.config[bootstrap_module.R3_PROFILE_KEY] = generated["OPERATOR_UI_R3_PROFILE"]
+    load_connected_environment(app)
+    monkeypatch.setattr(bootstrap_module, "_REPOSITORY_ROOT", values["source_root"])
+    assert bootstrap_module.configure_r3_startup(app) is True
+    live = app.config[bootstrap_module.CONFIG_KEY]
+    assert not any(key.startswith("corpus_") for key in live._reader._sources)
+    result = live.corpus(datetime.now(timezone.utc))
+    assert result.evidence.status == "UNAVAILABLE/DATA_MISSING"
+    assert result.data == {}
+    assert result.evidence.source_identity == "corpus_not_configured"
+    from tests.operator_ui.test_api import app_for, login, ROUTES
+    from src.operator_ui.api import register_level_1_provider
+    public_app = app_for(values["operations_root"])
+    register_level_1_provider(public_app, "corpus", live.corpus)
+    client = public_app.test_client()
+    login(client)
+    response = client.get(ROUTES["corpus"])
+    assert response.get_json()["classification"] == "UNAVAILABLE/DATA_MISSING"
+    assert not (values["operations_root"] / "jobs.sqlite3").exists()
+
+
+@pytest.mark.parametrize("mutation", ["missing_collector", "extra_corpus", "unknown_schema", "legacy_incomplete"])
+def test_operational_authority_does_not_accept_partial_or_expanded_scope(tmp_path, monkeypatch, mutation):
+    values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
+    authority = operational_authority(values)
+    if mutation == "missing_collector":
+        del authority["sources"]["odds_state"]
+    elif mutation == "extra_corpus":
+        authority["raw_sources"]["corpus_scorecard_csv"] = "/unreadable/protected.csv"
+    else:
+        authority["schema_version"] = "unknown" if mutation == "unknown_schema" else "operator_ui_live_authority_v1"
+    values["live_authority"].write_text(json.dumps(authority))
+    with pytest.raises(DeploymentRejected, match="incomplete"):
+        generate_package(**values, enabled=True)
+    assert all(not target.exists() for target in generated_targets(values))
+
+
 def test_clean_exact_generated_serve_identity_reaches_exec(real_startup_tmp_path, monkeypatch):
     values = deployment_inputs(real_startup_tmp_path)
     git_identity(monkeypatch)

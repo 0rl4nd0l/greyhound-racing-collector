@@ -161,3 +161,21 @@ Live R3-limit control at11:24:07 rejected the actual current odds state under
 old limits as INVALID/INTEGRITY_FAILED while its index and authority were fresh.
 The corrected-limit native read accepted that state. Neither probe started or
 changed installedR3; the full lane was still waiting for its first15-minute tick.
+
+### Operational-only R3 authority
+
+Preparing an enabled legacy R3 authority would require opening corpus inventories
+and scorecards unrelated to this operational repair. A new exact authority schema,
+`operator_ui_operational_authority_v1`, requires all existing collector, deployment
+and model inputs while excluding corpus inputs entirely. The legacy full schema
+keeps its complete input set. Generation and startup both reject missing collector
+sources, extra corpus sources and unknown schemas. No scientific protocol or
+model configuration changes. The corpus panel returns unavailable without a read.
+
+The generated-package test failed before implementation with corpus fixture files
+removed. The broad affected-module run then passed461checks and retained one old
+odds-state256KiB assertion; its corrected source-specific boundary cases both pass.
+Review found that nonempty unavailable corpus data violated the public API rule.
+A real authenticated API route test reproduced NON_OPERATIONAL/PROVIDER_ERROR;
+the empty unavailable response fixed it. All five operational binding cases pass.
+The running collector package remains35b375ba; this separate R3 package is uninstalled.

@@ -1000,6 +1000,7 @@ class LiveEvidenceAdapters:
         self, reader: OperatorEvidenceReader, *, units: InstalledUnits,
         upcoming_races: UpcomingRaceSource | None = None,
         prediction_bundles: PredictionBundleSource | None = None,
+        corpus_enabled: bool = True,
     ):
         if not isinstance(reader, OperatorEvidenceReader) or not isinstance(units, InstalledUnits):
             raise TypeError("reader and installed units are required")
@@ -1007,6 +1008,9 @@ class LiveEvidenceAdapters:
         self._units = units
         self._upcoming_races = upcoming_races
         self._prediction_bundles = prediction_bundles
+        if type(corpus_enabled) is not bool:
+            raise TypeError("corpus enablement must be explicit")
+        self._corpus_enabled = corpus_enabled
 
     @staticmethod
     def _verified_envelope(
@@ -1806,6 +1810,11 @@ class LiveEvidenceAdapters:
         }]})
 
     def corpus(self, now: datetime) -> APIObservation:
+        if not self._corpus_enabled:
+            return APIObservation(self._verified_envelope(
+                now=now, policy="P-REPORT-24H", identity="corpus_not_configured",
+                locator="operator_ui.corpus", status="UNAVAILABLE/DATA_MISSING"),
+                {})
         envelope, report = self._read("corpus_report", now)
         manifest_env, manifest = self._read("corpus_manifest", now)
         if report is None or manifest is None:
