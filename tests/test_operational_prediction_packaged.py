@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 @pytest.mark.parametrize("landing_missing,venue_case", [
     (False, "murray"), (True, "murray"), ("paired_missing", "murray"),
     (False, "sandown_park"), (False, "angle_park"), ("weather_guidance", "murray"),
+    (False, "allocated_murray"),
 ])
 def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, landing_missing, venue_case):
     from scripts.prepare_freshness_rehearsal import prepare, UNITS
@@ -25,7 +26,17 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     from sportsbet_odds_integrator import SportsbetOddsIntegrator
     from race_collection.live_freshness_contract import AttemptAllowance, FreshnessContract, digest
 
-    gate = access(tmp_path)
+    gate = access(tmp_path, previous_operations=512 if venue_case == "allocated_murray" else 0)
+    if venue_case == "allocated_murray":
+        import hashlib
+        import time
+        from utils.sportsbet_access import SportsbetAccess
+        source_gate = SportsbetAccess(gate)
+        prior_operations = source_gate.read()["operations"]
+        source_gate.authorize_diagnostic(reference="synthetic finite continuation",
+            expected_sha256=hashlib.sha256(gate.read_bytes()).hexdigest(),
+            expires_at=time.time()+3600, max_operations=94,
+            rationale="Exercise exported collector and prediction above the legacy ceiling")
     monkeypatch.setenv("GREYHOUND_SPORTSBET_ACCESS_STATE", str(gate))
     stamp, browser = fixture_data(tmp_path, "canonical_alias")
     if venue_case == "sandown_park":
@@ -178,6 +189,11 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
             assert capture_conn.execute('SELECT count(*) FROM live_odds').fetchone()[0] == 0
         return
     assert service.returncode == 0, (tmp_path/'collector.log').read_text()[-3000:]
+    if venue_case == "allocated_murray":
+        source_state = json.loads(gate.read_bytes())
+        assert source_state["operations"][:512] == prior_operations
+        assert 512 < len(source_state["operations"]) < 606
+        assert source_state["phase"] == "OPEN"
     assert inspection['paired_readiness'][-1]['card_count'] == 4
     assert inspection['paired_readiness'][-1]['paired_card_count'] == 4
     claims = allowance.claims()
@@ -206,7 +222,7 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
         for identity in ('model', 'model_manifest', 'configuration', 'feature_schema', 'feature_replay_worker'):
             assert manifest['files'][identity]['sha256'] == frozen[identity]['sha256']
     assert terminal['seconds_to_jump_at_verification'] > 60
-    if venue_case == "murray":
+    if venue_case in {"murray", "allocated_murray"}:
         # A fresh real predictor process must preserve the completed race and
         # consumed claim, even if its caller repeats the same handoff.
         before_terminal = terminals[0].read_bytes()

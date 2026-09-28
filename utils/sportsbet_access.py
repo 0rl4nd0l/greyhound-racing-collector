@@ -192,6 +192,27 @@ class SportsbetAccess:
 
     def _check_diagnostic(self, value):
         diagnostic = value.get('diagnostic_authority')
+        if diagnostic is not None:
+            # Only the retained explicit, finite allocation may supersede the
+            # default lifetime ceiling. A malformed or detached row fails closed.
+            try:
+                valid = (
+                    diagnostic == value['diagnostic_authorizations'][-1]
+                    and bool(diagnostic['reference']) and bool(diagnostic['rationale'])
+                    and type(diagnostic['max_operations']) is int
+                    and 1 <= diagnostic['max_operations'] <= 192
+                    and type(diagnostic['operation_start']) is int
+                    and 0 <= diagnostic['operation_start'] <= len(value.get('operations', []))
+                    and all(type(diagnostic[key]) in {int, float}
+                            and math.isfinite(diagnostic[key])
+                            for key in ('authorized_at', 'expires_at'))
+                    and 0 < diagnostic['expires_at'] - diagnostic['authorized_at'] <= 10800
+                    and self.clock() >= diagnostic['authorized_at']
+                )
+            except (KeyError, IndexError, TypeError):
+                valid = False
+            if not valid:
+                raise SportsbetAccessBlocked('sportsbet_diagnostic_authority_invalid')
         if diagnostic is not None and (
                 self.clock() >= diagnostic['expires_at']
                 or len(value.get('operations', [])) - diagnostic['operation_start'] >= diagnostic['max_operations']):
@@ -275,7 +296,8 @@ class SportsbetAccess:
                 operations = value.setdefault("operations", [])
                 recent = [row for row in operations if row["at"] > now - 60]
                 limit = policy.get(kind + "_per_60_seconds", 0)
-                if (kind not in {"python", "browser"} or len(operations) >= 512
+                if (kind not in {"python", "browser"}
+                        or (value.get('diagnostic_authority') is None and len(operations) >= 512)
                         or sum(row["kind"] == kind for row in recent) >= limit
                         or any(row["at"] > now for row in operations)):
                     value["phase"] = "STOP"
