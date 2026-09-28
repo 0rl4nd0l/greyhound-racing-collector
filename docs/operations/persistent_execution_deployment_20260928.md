@@ -135,8 +135,14 @@ and its authenticated result closure, plus fresh result-worker health. Prior
 passed/failed evidence remains distinct. Scientific activation and result acquisition require the explicit
 consolidated approval, not this preparation task.
 
-Installation, monitoring, rollback and acceptance commands are completed against
-the eventual pinned package before this document is presented for approval.
+Exact installation, monitoring, rollback and first-slot acceptance commands are
+complete in [the executable handoff](persistent_execution_commands_20260928.md).
+Runtime is pinned to `869fca1c66a6ee7c557facdb55e6f7592f2992cb`; the tested
+collector baseline remains `8b5552c7`. Both independent review axes have zero
+remaining blocking findings after the focused correction review. The actual
+export passed network-denied prediction/result subprocess checks; native
+systemd unit syntax and read-only host preflight passed. None of the new units
+or approved authority files is installed.
 
 
 ## Monitoring and practical limits

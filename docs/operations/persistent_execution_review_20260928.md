@@ -65,3 +65,30 @@ Spec 3 findings (worst: two unconditional persistent-launch blockers).
 
 Fixes and final exported verification are recorded in the sealed deployment
 receipt and final handoff. Initial findings remain evidence, not a release claim.
+
+
+## Focused correction review at 869fca1c
+
+Standards: both findings addressed, zero unresolved. Existing and newly published
+closures now run idempotent queue terminalization and record one closure event;
+a synthetic crash after publication is recovered twice without new requests.
+The narrow immutable-claim exception is explicitly documented in
+`docs/research/persistent_comparison_20260928.md`.
+
+Spec: all three blocking findings addressed, zero unresolved. The wrapper now
+hash-checks and decodes its roots; the supervisor forwards the authenticated
+prediction root into contract validation; actual elapsed campaign charging is
+restored. A real preparer-to-contract regression covers the new storage binding.
+The initial regression did not itself call the wrapper decoding helper; an
+additional focused wrapper proof is retained separately with the final evidence.
+
+Operational checks: exact six units pass native systemd syntax validation;
+read-only installed-host preflight passes. A disposable installation/removal
+rehearsal preserves all six original/unrelated files. No new services were
+installed, providers requested or target results accessed. The exported package
+runs with kernel networking denied and synthetic clocks/HTTP inputs. Actual
+persistent systemd activation and future source availability remain live-canary
+acceptance questions. Unknown reboot/PID/lock ownership remains an operator hold.
+
+Final totals: Standards 2 initial findings, 2 addressed, 0 unresolved;
+Spec 3 initial findings, 3 addressed, 0 blocking findings unresolved.
