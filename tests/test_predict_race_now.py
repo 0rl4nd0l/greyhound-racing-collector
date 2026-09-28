@@ -1047,6 +1047,92 @@ def test_scheduled_source_report_rejects_mismatched_source_identity(
     assert mismatch.value.code == "EXACT_RECEIPT_MALFORMED"
 
 
+@pytest.mark.parametrize("change", ["ancestor_sibling", "ancestor_directory", "receipt_directory", "receipt_file", "source_mutation"])
+def test_scheduled_snapshot_distinguishes_sibling_activity_from_selected_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str,
+):
+    import shutil
+
+    protocol, value, paths, _ = scheduled_exact_receipt(tmp_path)
+    public_handoff = {key: item for key, item in value.items() if not key.startswith("_")}
+    receipt_path = protocol.collector_exact_receipt_path(RACE_ID, value["capture_attempt_sha256"])
+    originals = {label: path.read_bytes() for label, path in paths.items()}
+    target = paths["form"] if change == "source_mutation" else receipt_path
+    target_stat = target.stat()
+    real_read = os.read
+    changed = []
+
+    def read_with_concurrent_publication(descriptor: int, size: int) -> bytes:
+        data = real_read(descriptor, size)
+        current = os.fstat(descriptor)
+        if not changed and (current.st_dev, current.st_ino) == (target_stat.st_dev, target_stat.st_ino):
+            changed.append(True)
+            if change == "ancestor_sibling":
+                temporary = protocol.root.parent / "progress.json.tmp"
+                temporary.write_bytes(b'{"phase":"next"}')
+                temporary.replace(protocol.root.parent / "progress.json")
+                # Deterministically model the directory metadata change from publication.
+                ancestor_stat = protocol.root.parent.stat()
+                os.utime(protocol.root.parent, ns=(ancestor_stat.st_atime_ns, ancestor_stat.st_mtime_ns + 1))
+            elif change in {"ancestor_directory", "receipt_directory"}:
+                directory = protocol.root if change == "ancestor_directory" else receipt_path.parent
+                moved = directory.with_name(directory.name + "-replaced")
+                directory.rename(moved)
+                shutil.copytree(moved, directory)
+            elif change == "receipt_file":
+                temporary = receipt_path.with_suffix(".replacement")
+                temporary.write_bytes(receipt_path.read_bytes())
+                temporary.replace(receipt_path)
+            else:
+                paths["form"].write_bytes(b"X" + originals["form"][1:])
+                os.utime(paths["form"], ns=(target_stat.st_atime_ns, target_stat.st_mtime_ns + 1))
+        return data
+
+    monkeypatch.setattr(collector_protocol.os, "read", read_with_concurrent_publication)
+    if change == "ancestor_sibling":
+        chain, protocol_raws, artifacts = protocol.snapshot_collector_exact_handoff(public_handoff)
+        assert chain["capture_attempt_sha256"] == value["capture_attempt_sha256"]
+        assert protocol_raws["collector_exact_receipt"] == receipt_path.read_bytes()
+        assert artifacts == originals
+    else:
+        with pytest.raises(ProtocolRejected) as failure:
+            protocol.snapshot_collector_exact_handoff(public_handoff)
+        expected = "PROTOCOL_DIRECTORY_CHANGED" if change.endswith("directory") else "PROTOCOL_MEMBER_CHANGED"
+        assert failure.value.code == expected
+    assert changed == [True]
+
+
+@pytest.mark.parametrize("reason, expected", [
+    ("PROTOCOL_DIRECTORY_CHANGED", "PROTOCOL_DIRECTORY_CHANGED"),
+    ("private-path-and-payload-marker", "UNCLASSIFIED"),
+])
+def test_scheduled_protocol_failure_seals_only_allowlisted_reason(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reason: str, expected: str,
+):
+    protocol, _, _, _ = scheduled_exact_receipt(tmp_path)
+
+    def reject_snapshot(self, public_handoff):
+        raise ProtocolRejected(reason, path="private-path-and-payload-marker", payload={"secret": "private-path-and-payload-marker"})
+
+    monkeypatch.setattr(ManualPredictionCollectorProtocol, "snapshot_collector_exact_handoff", reject_snapshot)
+    with pytest.raises(PredictionBlocked) as blocked:
+        run_prediction(args(tmp_path, collector_request_root=protocol.root), dependencies())
+    assert blocked.value.code == "COLLECTOR_PROTOCOL_INVALID"
+    index = on_demand.verify_prediction_bundle_index(tmp_path / "bundles")
+    assert len(index["entries"]) == 1
+    bundle = tmp_path / "bundles" / index["entries"][0]["directory"]
+    diagnostic = bundle / "protocol-failure.json"
+    assert json.loads(diagnostic.read_bytes()) == {
+        "schema_version": "prediction_protocol_failure_v1",
+        "code": "COLLECTOR_PROTOCOL_INVALID",
+        "reason": expected,
+    }
+    manifest = json.loads((bundle / "bundle_manifest.json").read_bytes())
+    assert manifest["files"]["protocol-failure.json"]["sha256"] == sha256_bytes(diagnostic.read_bytes())
+    assert all(b"private-path-and-payload-marker" not in path.read_bytes() for path in bundle.rglob("*.json"))
+    on_demand.verify_indexed_prediction_bundle(tmp_path / "bundles", index["entries"][0])
+
+
 def test_scheduled_snapshot_rejects_fifo_without_blocking(tmp_path: Path):
     protocol, value, paths, _ = scheduled_exact_receipt(tmp_path)
     paths["form"].unlink()

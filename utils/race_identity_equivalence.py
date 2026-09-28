@@ -85,7 +85,11 @@ def race_identity_equivalent(
     )
     return bool(
         all(venue is not None for venue in venues)
-        and len(set(venues)) == 1
+        and (
+            len(set(venues)) == 1
+            or len({canonical_thedogs_venue_identity(value)
+                    for value in (caller_venue, evidence_venue, source["venue_slug"])}) == 1
+        )
         and caller_date == evidence_date
         and caller_date.isoformat() == source["race_date"]
         and caller_number == evidence_number

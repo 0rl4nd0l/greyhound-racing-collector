@@ -15,16 +15,44 @@ from tests.test_freshness_campaign import make_campaign
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.mark.parametrize("landing_missing", [False, True])
-def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, landing_missing):
+@pytest.mark.parametrize("landing_missing,venue_case", [
+    (False, "murray"), (True, "murray"), ("paired_missing", "murray"),
+    (False, "sandown_park"), (False, "angle_park"), ("weather_guidance", "murray"),
+    (False, "allocated_murray"),
+])
+def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, landing_missing, venue_case):
     from scripts.prepare_freshness_rehearsal import prepare, UNITS
     from scripts.check_freshness_service import service_command
     from sportsbet_odds_integrator import SportsbetOddsIntegrator
     from race_collection.live_freshness_contract import AttemptAllowance, FreshnessContract, digest
 
-    gate = access(tmp_path)
+    gate = access(tmp_path, previous_operations=512 if venue_case == "allocated_murray" else 0)
+    if venue_case == "allocated_murray":
+        import hashlib
+        import time
+        from utils.sportsbet_access import SportsbetAccess
+        source_gate = SportsbetAccess(gate)
+        prior_operations = source_gate.read()["operations"]
+        source_gate.authorize_diagnostic(reference="synthetic finite continuation",
+            expected_sha256=hashlib.sha256(gate.read_bytes()).hexdigest(),
+            expires_at=time.time()+3600, max_operations=94,
+            rationale="Exercise exported collector and prediction above the legacy ceiling")
     monkeypatch.setenv("GREYHOUND_SPORTSBET_ACCESS_STATE", str(gate))
     stamp, browser = fixture_data(tmp_path, "canonical_alias")
+    if venue_case == "sandown_park":
+        browser = json.loads(json.dumps(browser).replace("murray-bridge-straight", "sandown")
+            .replace("MURRAY-BRIDGE-STRAIGHT", "SANDOWN").replace("Murray Bridge Straight", "Sandown Park")
+            .replace('"MURR"', '"SAN"'))
+        # The two normally observed providers use different venue spellings.
+        browser = json.loads(json.dumps(browser).replace(
+            "sportsbet.com.au/betting/greyhound-racing/australia-nz/sandown/",
+            "sportsbet.com.au/betting/greyhound-racing/australia-nz/sandown-park/"))
+    elif venue_case == "angle_park":
+        browser = json.loads(json.dumps(browser).replace("murray-bridge-straight", "angle-park")
+            .replace("MURRAY-BRIDGE-STRAIGHT", "AP_K").replace("Murray Bridge Straight", "Angle Park")
+            .replace('"MURR"', '"AP_K"').replace('"race_number": 9', '"race_number": 7')
+            .replace("Race 9", "Race 7").replace("R9", "R7")
+            .replace("race-9-", "race-7-").replace("/9/fabricated", "/7/fabricated"))
     from datetime import datetime
     operational_jump = (stamp + timedelta(minutes=9)).replace(second=0, microsecond=0)
     browser["sidecar"]["prejump_shadow_metadata"]["jump_time"] = operational_jump.isoformat()
@@ -38,14 +66,18 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     # The invented HTTP and browser observations refer to the same race/runners.
     responses = {}
     import re
+    venue_slug = {'sandown_park': 'sandown', 'angle_park': 'angle-park'}.get(venue_case, 'murray-bridge-straight')
+    venue_name = {'sandown_park': 'Sandown Park', 'angle_park': 'Angle Park'}.get(venue_case, 'Murray Bridge Straight')
+    race_number = 7 if venue_case == 'angle_park' else 9
     for key, value in payload['responses'].items():
-        key = key.replace('/sale/', '/murray-bridge-straight/').replace('/1/invented', '/9/fabricated')
-        body = value['body'].replace('/sale/', '/murray-bridge-straight/').replace('/1/invented', '/9/fabricated')
-        body = body.replace('Race 1', 'Race 9').replace('>R1<', '>R9<')
+        key = key.replace('/sale/', '/' + venue_slug + '/').replace('/1/invented', f'/{race_number}/fabricated')
+        body = value['body'].replace('/sale/', '/' + venue_slug + '/').replace('/1/invented', f'/{race_number}/fabricated')
+        body = body.replace('Race 1', f'Race {race_number}').replace('>R1<', f'>R{race_number}<')
         body = re.sub(r'(<formatted-time[^>]*>).*?(</formatted-time>)', r'\g<1>'+jump_dt.strftime('%H:%M')+r'\g<2>', body)
         if 'NextEvents' in key:
             events = json.loads(body)
-            events[0].update(competitionName='Murray Bridge Straight', raceNumber=9, startTime=int(jump_dt.timestamp()))
+            events[0].update(competitionName=venue_name,
+                             raceNumber=race_number, startTime=int(jump_dt.timestamp()))
             body = json.dumps(events)
         if 'open-meteo' in key:
             weather = json.loads(body)
@@ -54,11 +86,15 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
         if key.count('/') == 2 and '/racing/' in key:
             body = body.replace('</a>', '<formatted-time data-format="time_24">'+jump_dt.strftime('%H:%M')+'</formatted-time></a>')
         responses[key] = {**value, 'body': body}
+        if 'open-meteo' in key and landing_missing == "weather_guidance":
+            responses[key].update(status=503, headers={"Retry-After": "120"})
     payload['responses'] = responses
     http.write_text(json.dumps(payload))
     for name in ('Alpha', 'Bravo', 'Charlie', 'Delta'):
         browser['race_html'] = browser['race_html'].replace(name, 'Synthetic '+name)
-    if landing_missing:
+    if landing_missing == "paired_missing":
+        browser["race_html"] = browser["race_html"].replace("<span>1.50</span><span>EW</span>", "")
+    if landing_missing is True:
         browser['landing_html'] = '<a href="https://www.sportsbet.com.au/greyhound-racing/australia-nz/murray-bridge-straight">Murray Bridge Straight</a>'
     browser_path = tmp_path / 'browser.json'
     browser_path.write_text(json.dumps(browser))
@@ -71,11 +107,28 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     with sqlite3.connect(db) as conn:
         conn.executescript('CREATE TABLE IF NOT EXISTS race_metadata(race_id TEXT,race_date TEXT,data_source TEXT,url TEXT); CREATE TABLE IF NOT EXISTS dog_race_data(race_id TEXT,dog_name TEXT,finish_position INTEGER,data_source TEXT);')
     campaign = make_campaign(tmp_path/'campaign')
+    if not landing_missing:
+        import hashlib
+        from race_collection.live_freshness_contract import create_once
+        create_once(campaign.root/'prospective-authorization-amendment.json', dict(
+            schema_version='collector_engineering_amendment_v1', campaign_id='synthetic',
+            prior_authorization_sha256=hashlib.sha256((campaign.root/'authorization.json').read_bytes()).hexdigest(),
+            authority_reference='synthetic-explicit-user', rationale='sustained comparison', max_capture_attempts=64))
     package = tmp_path/'package'
     prepare(output=package, start=stamp-timedelta(seconds=5), python=Path(sys.executable), db=db,
         lock=tmp_path/'collector.lock', reconciliation_roots={}, installed_dir=installed,
-        campaign_root=campaign.root, operational_predictions=True)
+        campaign_root=campaign.root, operational_predictions=True, observation_minutes=60)
     plan = json.loads((package/'plan.json').read_bytes())
+    assert (datetime.fromisoformat(plan['ends_at']) - datetime.fromisoformat(plan['starts_at'])).total_seconds() == 3600
+    assert plan['max_capture_attempts'] == (12 if landing_missing else 64)
+    from race_collection.synchronous_manual_capture import _atomic_replace_canonical
+    from race_collection.live_phase_checkpoint import atomic_json
+    # The real supervisor replaces this sibling on every observation tick.
+    # Force that overlap at the publisher's final retained-directory check.
+    evidence = Path(plan['evidence_root'])
+    _atomic_replace_canonical(evidence/'runtime/overlap-probe.json', {'synthetic': True},
+        evidence_root=evidence,
+        _pre_replace=lambda: atomic_json(package/'progress.json', {'synthetic_tick': 1}))
     assert Path(plan['db_path']).resolve() != db.resolve()
     with sqlite3.connect(db) as history_conn:
         initial_odds = history_conn.execute('SELECT count(*) FROM live_odds').fetchone()[0]
@@ -96,6 +149,27 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     launcher = 'from scripts.check_freshness_service import deny_network; import os,sys; deny_network(); os.execv(sys.argv[1],sys.argv[1:])'
     service = subprocess.run([sys.executable,'-c',launcher,*command],cwd=cwd,env=env,capture_output=True,text=True,timeout=100)
     (tmp_path/'collector.log').write_text(service.stdout+service.stderr)
+    if landing_missing == "weather_guidance":
+        assert service.returncode != 0, (tmp_path/'collector.log').read_text()
+        assert allowance.claims() == []
+        with campaign.ledger() as ledger:
+            holds = ledger["source_holds"]
+        assert len(holds) == 1
+        assert holds[0]["host"] == "api.open-meteo.com"
+        assert holds[0]["status"] == 503
+        assert holds[0]["retry_headers"]["retry-after"] == "120"
+        assert (scope.session/"STOP.json").exists()
+        assert not list((campaign.root/"operational-predictions/races").glob("*/terminal.json"))
+        from race_collection.freshness_campaign import Campaign
+        with pytest.raises(ValueError, match="source_hold"):
+            Campaign(campaign.root).request()
+        requests = [json.loads(line) for line in Path(payload["log"]).read_text().splitlines()]
+        assert sum(row["host"] == "api.open-meteo.com" for row in requests) == 1
+        return
+    inspection_path = allowance.claims()[0].with_suffix('.requests.responses.json')
+    inspection = json.loads(inspection_path.read_bytes())
+    assert inspection['operation_id'].startswith('browser:')
+    assert any(mark['name'] == 'browser_ready' for mark in inspection['marks'])
     if landing_missing:
         assert service.returncode == 0, (tmp_path/"collector.log").read_text()[-1500:]
         assert not (scope.session/"STOP.json").exists()
@@ -103,11 +177,25 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
         terminal_capture=json.loads(allowance.claims()[0].with_suffix(".terminal.json").read_bytes())["result"]
         assert terminal_capture["operational_capture_outcome"]["status"] == "UNREADY_NO_CAPTURE"
         assert json.loads(gate.read_bytes())['phase'] == 'OPEN'
-        assert 'target_race_not_visible_within_navigation_allowance' in (tmp_path/'collector.log').read_text() or any('target_race_not_visible_within_navigation_allowance' in p.read_text() for p in (package/'evidence').glob('**/autonomous_live_odds_capture_report.json'))
+        expected_marker = ("target_race_not_visible_within_navigation_allowance" if landing_missing is True
+                           else "required_paired_markets_not_ready_within_readiness_budget")
+        assert terminal_capture["operational_capture_outcome"]["reason"] == expected_marker
+        if landing_missing == "paired_missing":
+            assert inspection["paired_readiness"][-1]["card_count"] == 4
+            assert inspection["paired_readiness"][-1]["paired_card_count"] == 0
+            assert any(m["name"] == "paired_readiness_expired" for m in inspection["marks"])
+        assert not list((campaign.root/"operational-predictions/races").glob("*/terminal.json"))
         with sqlite3.connect(plan['db_path']) as capture_conn:
             assert capture_conn.execute('SELECT count(*) FROM live_odds').fetchone()[0] == 0
         return
     assert service.returncode == 0, (tmp_path/'collector.log').read_text()[-3000:]
+    if venue_case == "allocated_murray":
+        source_state = json.loads(gate.read_bytes())
+        assert source_state["operations"][:512] == prior_operations
+        assert 512 < len(source_state["operations"]) < 606
+        assert source_state["phase"] == "OPEN"
+    assert inspection['paired_readiness'][-1]['card_count'] == 4
+    assert inspection['paired_readiness'][-1]['paired_card_count'] == 4
     claims = allowance.claims()
     assert len(claims) == 1
     result = subprocess.run([sys.executable,'-B','-m','race_collection.operational_prediction',str(package/'plan.json'),str(claims[0])],
@@ -119,7 +207,34 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     with sqlite3.connect(db) as history_conn:
         assert history_conn.execute('SELECT count(*) FROM live_odds').fetchone()[0] == initial_odds
     assert terminal['status'] == 'PREDICTION_READY', terminal
+    if venue_case in {'sandown_park', 'angle_park'}:
+        venue_code = 'SAN' if venue_case == 'sandown_park' else 'AP_K'
+        assert terminal['race_id'] == f"Race {race_number} - {venue_code} - {stamp.date().isoformat()}"
+        retained = list(terminals[0].parent.glob('retention/*/bundle/manifest.json'))
+        assert len(retained) == 1
+        manifest = json.loads(retained[0].read_bytes())
+        features = json.loads((retained[0].parent / 'feature_values.json').read_bytes())
+        assert len(features) == 4
+        assert {row['race_id'] for row in features} == {terminal['race_id']}
+        assert {row['box_number'] for row in features} == {1, 2, 3, 4}
+        assert all(len(row['features']) == 16 for row in features)
+        frozen = json.loads((package / 'operational-retention.json').read_bytes())['static_files']
+        for identity in ('model', 'model_manifest', 'configuration', 'feature_schema', 'feature_replay_worker'):
+            assert manifest['files'][identity]['sha256'] == frozen[identity]['sha256']
     assert terminal['seconds_to_jump_at_verification'] > 60
+    if venue_case in {"murray", "allocated_murray"}:
+        # A fresh real predictor process must preserve the completed race and
+        # consumed claim, even if its caller repeats the same handoff.
+        before_terminal = terminals[0].read_bytes()
+        before_claim = claims[0].read_bytes()
+        restarted = subprocess.run(
+            [sys.executable, '-B', '-m', 'race_collection.operational_prediction',
+             str(package/'plan.json'), str(claims[0])],
+            cwd=cwd, env=env, capture_output=True, text=True, timeout=30)
+        assert restarted.returncode != 0 and 'FileExistsError' in restarted.stderr
+        assert terminals[0].read_bytes() == before_terminal
+        assert claims[0].read_bytes() == before_claim
+        assert list((campaign.root/'operational-predictions/races').glob('*/terminal.json')) == terminals
     from src.operator_ui.job_store import JobStore
     store = JobStore(campaign.root/'operational-predictions/jobs.sqlite3',readonly=True)
     jobs = store.recorded_jobs()

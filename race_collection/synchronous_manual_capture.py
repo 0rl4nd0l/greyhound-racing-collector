@@ -1386,6 +1386,11 @@ def publish_current_race_index(
         report["reason"] = (
             exc.code if isinstance(exc, CaptureOneRejected) else type(exc).__name__
         )
+        if isinstance(exc, CaptureOneRejected):
+            report["failure_detail"] = {
+                key: exc.details[key] for key in ("reason", "path")
+                if isinstance(exc.details.get(key), str)
+            }
         return report
     report.update(
         {

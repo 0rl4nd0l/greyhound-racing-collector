@@ -637,8 +637,10 @@ class ManualPredictionCollectorProtocol:
                     raise ProtocolRejected("PROTOCOL_MEMBER_CHANGED")
             for parent, name, descriptor, expected in retained_dirs:
                 named = os.stat(name, dir_fd=parent, follow_symlinks=False)
+                # Sibling publication changes directory size/mtime, not the
+                # retained path identity. Selected files stay strictly checked.
                 if (
-                    identity(descriptor) != expected
+                    identity(descriptor)[:2] != expected[:2]
                     or (named.st_dev, named.st_ino) != expected[:2]
                 ):
                     raise ProtocolRejected("PROTOCOL_DIRECTORY_CHANGED")

@@ -1,5 +1,6 @@
 """Cumulative limits never depend on package or process identity."""
 import json
+import hashlib
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -13,6 +14,47 @@ def make_campaign(root):
         campaign_id='synthetic', max_capture_attempts=12, max_logical_requests=48000, max_live_seconds=10800))
     create_once(root / 'ledger.json', dict(campaign_id='synthetic', attempts=[], logical_requests=0, launches={}))
     return Campaign(root)
+
+
+def test_append_only_extension_preserves_ledger_and_prior_authority(tmp_path):
+    from race_collection.live_freshness_contract import digest
+    campaign = make_campaign(tmp_path)
+    campaign.request()
+    before = (tmp_path / 'ledger.json').read_bytes()
+    extension = dict(schema_version='collector_engineering_extension_v1',
+        campaign_id='synthetic', prior_effective_authorization_sha256=digest(campaign.value),
+        authority_reference='user:operational-repair-20260928', rationale='90 minutes plus cleanup',
+        max_capture_attempts=128, max_logical_requests=96000, max_live_seconds=43200)
+    create_once(tmp_path / 'authorization-extensions/0001.json', extension)
+    revised = Campaign(tmp_path)
+    assert revised.value['max_live_seconds'] == 43200
+    assert revised.value['max_logical_requests'] == 96000
+    assert revised.value['max_capture_attempts'] == 128
+    assert (tmp_path / 'ledger.json').read_bytes() == before
+    extension['prior_effective_authorization_sha256'] = '0' * 64
+    create_once(tmp_path / 'authorization-extensions/0002.json', extension)
+    with pytest.raises(ValueError, match='invalid_campaign_extension'):
+        Campaign(tmp_path)
+
+
+def test_source_hold_survives_new_process_and_blocks_all_campaign_traffic(tmp_path):
+    campaign = make_campaign(tmp_path)
+    stamp = datetime.now(timezone.utc)
+    campaign.begin('old', now=stamp, deadline=stamp+timedelta(minutes=5))
+    campaign.request()
+    campaign.hold_source({'host':'api.open-meteo.com', 'status':503,
+                          'retry_headers':{'retry-after':'120'}, 'observed_at':stamp.isoformat()})
+    restarted = Campaign(tmp_path)
+    with pytest.raises(ValueError, match='campaign_source_hold'):
+        restarted.request()
+    with pytest.raises(ValueError, match='campaign_source_hold'):
+        restarted.admit('old', stamp)
+    restarted.close('old', now=stamp+timedelta(seconds=1))
+    with pytest.raises(ValueError, match='campaign_source_hold'):
+        restarted.begin('new', now=stamp+timedelta(minutes=10), deadline=stamp+timedelta(minutes=15))
+    retained=json.loads((tmp_path/'ledger.json').read_bytes())
+    assert retained['logical_requests']==1
+    assert retained['source_holds'][0]['retry_headers']=={'retry-after':'120'}
 
 
 def test_attempts_shared_across_instances_and_aliases(tmp_path):
@@ -40,6 +82,49 @@ def test_request_limit_survives_new_launch(tmp_path):
         assert value['logical_requests'] == 48000
 
 
+def test_prospective_capture_allowance_preserves_consumption_and_other_limits(tmp_path):
+    campaign = make_campaign(tmp_path)
+    base = (tmp_path / 'authorization.json').read_bytes()
+    item = dict(race_id='canonical', race_id_aliases=['canonical'], capture_window_minutes=10)
+    campaign.consume(tmp_path / 'first', item)
+    campaign.request()
+    before = (tmp_path / 'ledger.json').read_bytes()
+    amendment = dict(schema_version='collector_engineering_amendment_v1',
+        campaign_id='synthetic', prior_authorization_sha256=hashlib.sha256(base).hexdigest(),
+        authority_reference='explicit-user-recovery', rationale='finite sustained comparison',
+        max_capture_attempts=64)
+    create_once(tmp_path / 'prospective-authorization-amendment.json', amendment)
+    revised = Campaign(tmp_path)
+    assert (tmp_path / 'authorization.json').read_bytes() == base
+    assert (tmp_path / 'ledger.json').read_bytes() == before
+    assert revised.value['max_capture_attempts'] == 64
+    assert revised.value['max_live_seconds'] == 10800
+    assert revised.value['max_logical_requests'] == 48000
+    with pytest.raises(ValueError, match='window_consumed'):
+        revised.consume(tmp_path / 'retry', item)
+    with revised.ledger() as value:
+        value['attempts'] *= 64
+    assert not revised.available()
+    with pytest.raises(ValueError, match='allowance_consumed'):
+        revised.consume(tmp_path / 'extra', {**item, 'race_id':'new'})
+
+
+@pytest.mark.parametrize('change', [
+    {'prior_authorization_sha256':'0'*64}, {'max_capture_attempts':65},
+    {'max_capture_attempts':0}, {'max_capture_attempts':True}, {'authority_reference':''},
+    {'max_live_seconds':True}, {'max_live_seconds':21601}, {'max_live_seconds':10799},
+])
+def test_invalid_prospective_allowance_fails_closed(tmp_path, change):
+    make_campaign(tmp_path)
+    base = (tmp_path / 'authorization.json').read_bytes()
+    amendment = dict(schema_version='collector_engineering_amendment_v1',
+        campaign_id='synthetic', prior_authorization_sha256=hashlib.sha256(base).hexdigest(),
+        authority_reference='explicit-user-recovery', rationale='bounded', max_capture_attempts=64)
+    create_once(tmp_path / 'prospective-authorization-amendment.json', {**amendment, **change})
+    with pytest.raises(ValueError, match='invalid_prospective_campaign_amendment'):
+        Campaign(tmp_path)
+
+
 def test_live_lease_charges_crashes_and_only_restoration_releases_time(tmp_path):
     campaign = make_campaign(tmp_path)
     now = datetime.now(timezone.utc)
@@ -53,3 +138,24 @@ def test_live_lease_charges_crashes_and_only_restoration_releases_time(tmp_path)
     campaign.close('second', now=now + timedelta(seconds=6720))
     with pytest.raises(ValueError, match='time_exhausted'):
         campaign.begin('third', now=now + timedelta(seconds=6720), deadline=now + timedelta(seconds=13320))
+
+
+def test_prospective_live_time_change_preserves_charged_history(tmp_path):
+    campaign=make_campaign(tmp_path)
+    stamp=datetime.now(timezone.utc)
+    campaign.begin('old',now=stamp,deadline=stamp+timedelta(seconds=10000))
+    campaign.close('old',now=stamp+timedelta(seconds=10000))
+    before=(tmp_path/'ledger.json').read_bytes()
+    base=(tmp_path/'authorization.json').read_bytes()
+    create_once(tmp_path/'prospective-authorization-amendment.json',dict(
+        schema_version='collector_engineering_amendment_v1',campaign_id='synthetic',
+        prior_authorization_sha256=hashlib.sha256(base).hexdigest(),
+        authority_reference='explicit-user-autonomous-repair',rationale='one corrected observation plus cleanup',
+        max_capture_attempts=64,max_live_seconds=18000))
+    revised=Campaign(tmp_path)
+    assert (tmp_path/'ledger.json').read_bytes()==before
+    assert (tmp_path/'authorization.json').read_bytes()==base
+    revised.begin('corrected',now=stamp+timedelta(seconds=10000),deadline=stamp+timedelta(seconds=17260))
+    with revised.ledger() as ledger:
+        assert ledger['launches']['old']['charged_seconds']==10000
+        assert sum(x['charged_seconds'] for x in ledger['launches'].values())==17260

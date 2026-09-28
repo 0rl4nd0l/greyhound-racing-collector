@@ -193,7 +193,7 @@ def test_repository_profile_binds_authoritative_sources_and_separate_operations_
     assert source_limits=={
         "full_state":512*1024,
         "full_report":512*1024,
-        "odds_state":256*1024,
+        "odds_state":2*1024*1024,
         "odds_report":2*1024*1024,
         "odds_refresh":2*1024*1024,
         "corpus_report":256*1024,

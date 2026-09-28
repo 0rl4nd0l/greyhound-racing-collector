@@ -114,6 +114,8 @@ class InstalledUnits:
     full_service_sha256: str | None = None
     odds_timer_sha256: str | None = None
     odds_service_sha256: str | None = None
+    full_service_invocation_id: str | None = None
+    odds_service_invocation_id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -998,6 +1000,7 @@ class LiveEvidenceAdapters:
         self, reader: OperatorEvidenceReader, *, units: InstalledUnits,
         upcoming_races: UpcomingRaceSource | None = None,
         prediction_bundles: PredictionBundleSource | None = None,
+        corpus_enabled: bool = True,
     ):
         if not isinstance(reader, OperatorEvidenceReader) or not isinstance(units, InstalledUnits):
             raise TypeError("reader and installed units are required")
@@ -1005,6 +1008,9 @@ class LiveEvidenceAdapters:
         self._units = units
         self._upcoming_races = upcoming_races
         self._prediction_bundles = prediction_bundles
+        if type(corpus_enabled) is not bool:
+            raise TypeError("corpus enablement must be explicit")
+        self._corpus_enabled = corpus_enabled
 
     @staticmethod
     def _verified_envelope(
@@ -1240,6 +1246,94 @@ class LiveEvidenceAdapters:
     ) -> tuple[EvidenceEnvelope, bytes | None, int | None]:
         return self._reader.read_raw_authenticated(key, server_observed_at=now)
 
+    def _full_wait_deadline(self, report, now):
+        """Authenticate the odds child owning a bounded full-service lock wait."""
+        try:
+            if (report.get("live_freshness_profile") != "bounded80-v1"
+                or report.get("runtime_action") != "WAIT_FOR_ODDS_CAPTURE_LOCK_HANDOFF"
+                or report.get("lock_validation_status") != "WAITING_LOCK_HELD"
+                or report.get("lock_owner_kind") != "odds_capture"):
+                return None
+            peer_env, peer = self._lane(lane="ODDS_ONLY", now=now)
+            _, peer_report = self._read("odds_report", now)
+            if not peer_report or peer_report.get("run_id") != peer.get("run_id"):
+                return None
+            yielded = (
+                peer_env.status == "UNAVAILABLE/DATA_MISSING"
+                and peer.get("status") == "CAPTURE_WINDOW_CLOSED"
+                and peer_report.get("final_status") == "SKIPPED_FULL_DAEMON_LOCK_HANDOFF"
+                and peer_report.get("final_verdict") == "PARTIAL_DAEMONIZATION"
+                and peer_report.get("runtime_action") == "DEFERRED_FULL_LOCK_HANDOFF"
+                and peer_report.get("live_freshness_profile") == "bounded80-v1"
+            )
+            if not yielded and (peer_env.status != "AVAILABLE/FRESH"
+                    or peer.get("status") not in {"ACTIVE", "RECEIPT_READY"}):
+                return None
+            retry = report["lock_retry"]
+            if (retry.get("schema_version") != "shadow_autopilot_full_daemon_lock_retry_v1"
+                or retry.get("status") != "WAITING_FOR_ODDS_CAPTURE_LOCK"
+                or retry.get("retried_for_odds_capture_lock") is not True):
+                return None
+            maximum, waited, poll = (retry[key] for key in ("retry_seconds", "waited_seconds", "poll_seconds"))
+            if any(type(value) not in (int, float) or not math.isfinite(value) for value in (maximum, waited, poll)):
+                return None
+            if not 0 <= waited < maximum <= _duration(_one(_unit(self._units.full_service, "Service"), "TimeoutStartSec")) or not 0 < poll <= maximum:
+                return None
+            if type(retry.get("attempt_count")) is not int or retry["attempt_count"] < 1:
+                return None
+            owner = retry["last_lock"]["existing_lock"]
+            peer_owner = peer_report["lock"] if peer["status"] == "ACTIVE" else None
+            if (owner.get("schema_version") != "shadow_autopilot_daemon_lock_v1"
+                or retry["last_lock"].get("reason") != "active_lock_present"
+                or peer_owner is not None and peer_owner.get("schema_version") != owner["schema_version"]):
+                return None
+            _text(owner["hostname"])
+            for key in ("run_id", "pid", "hostname", "started_at", "output_dir"):
+                if (peer_owner is not None and owner.get(key) != peer_owner.get(key)) or owner.get(key) != report.get("lock_owner_" + key):
+                    return None
+            if owner["run_id"] != peer["run_id"] or _path(owner["output_dir"]) != _path(peer_report["output_dir"]):
+                return None
+            if _path(retry["last_lock"]["lock_path"]) != _path(report["lock_path"]) or (peer_owner is not None and _path(peer_report["lock_path"]) != _path(report["lock_path"])):
+                return None
+            if type(owner["pid"]) is not int or owner["pid"] <= 0 or owner["pid"] != peer_report["timing"]["process_pid"]:
+                return None
+            # systemd owns the wrapper; its child owns the collector lock.
+            # Bind them by invocation identity rather than assuming equal PIDs.
+            for payload, invocation in ((report, self._units.full_service_invocation_id),
+                                        (peer_report, self._units.odds_service_invocation_id)):
+                if not isinstance(invocation, str) or re.fullmatch(r"[0-9a-f]{32}", invocation) is None or payload["timing"]["service_invocation_id"] != invocation:
+                    return None
+            if yielded:
+                recipient = peer_report.get("deferred_lock_owner")
+                child_pid = report["timing"]["process_pid"]
+                if (not isinstance(recipient, Mapping) or type(child_pid) is not int or child_pid <= 0
+                    or recipient.get("run_id") != report.get("run_id")
+                    or recipient.get("pid") != child_pid):
+                    return None
+            if peer["status"] == "RECEIPT_READY" or yielded:
+                # The owner may finish during the contender's next lock poll.
+                # Authenticate that completion, without claiming it still owns
+                # the lock or allowing an unrelated later publication.
+                if not yielded and peer_report.get("runtime_action") != "LIVE_COLLECTION_COMPLETE":
+                    return None
+                upcoming = self.upcoming(now)
+                if (upcoming.evidence.status != "AVAILABLE/FRESH"
+                    or upcoming.evidence.age_seconds is None
+                    or not 0 <= upcoming.evidence.age_seconds <= 270
+                    or dict(upcoming.evidence.evidence_identity or ()).get("run_id") != peer["run_id"]):
+                    return None
+            deadline = _time(report["generated_at"]) + timedelta(seconds=maximum)
+            if yielded:
+                # A completed odds refresh can yield its pending capture to the
+                # full waiter. Permit only the next poll plus the existing
+                # ten-second process-overhead allowance, never the whole retry
+                # period after release. This does not assert lock ownership.
+                deadline = min(deadline, _time(peer_report["generated_at"])
+                    + timedelta(seconds=poll + 10))
+            return deadline if now.astimezone(timezone.utc) <= deadline else None
+        except (KeyError, TypeError, ValueError, OverflowError, AttributeError, _UnitMissing, _UnitConflict):
+            return None
+
     def _lane(self, *, lane: str, now: datetime) -> tuple[EvidenceEnvelope, dict[str, Any]]:
         odds = lane == "ODDS_ONLY"
         state_key, report_key = (("odds_state", "odds_report") if odds else ("full_state", "full_report"))
@@ -1276,8 +1370,7 @@ class LiveEvidenceAdapters:
         except (ValueError, OverflowError, TypeError):
             return _status(report_env, "INVALID/INTEGRITY_FAILED"), _lane_data(lane, "INTEGRITY_FAILED")
         observed = now.astimezone(timezone.utc)
-        if report_at > observed or (state_at is not None and state_at > observed):
-            return _status(report_env, "INVALID/INTEGRITY_FAILED"), _lane_data(lane, "INTEGRITY_FAILED", run_id=run_id)
+        clock_rejection = report_at > observed or (state_at is not None and state_at > observed)
         raw_status = report.get("status")
         report_verdict = report.get("final_status") if odds else report.get("final_verdict")
         if (raw_status is not None and not isinstance(raw_status, str)) or not isinstance(report_verdict, str):
@@ -1332,14 +1425,18 @@ class LiveEvidenceAdapters:
                 operational_context["lock_owner"]["started_at"]
                 if operational_context["lock_owner"] is not None else None
             )
-            if owner_started_at is not None and _time(owner_started_at) > observed:
-                raise ValueError("producer lock-owner timestamp is future")
+            if owner_started_at is not None and _time(owner_started_at) > max(observed, report_at):
+                raise ValueError("producer lock-owner timestamp is future beyond its report")
         except (ValueError, OverflowError, TypeError):
             return _status(report_env, "INVALID/INTEGRITY_FAILED"), _lane_data(
                 lane, "INTEGRITY_FAILED", run_id=run_id
             )
         lock_owner = operational_context["lock_owner"]
-        if active and lock_owner is not None and lock_owner["run_id"] != run_id:
+        waiting_for_peer = not odds and (raw_status, report_verdict) == ("WAITING_LOCK_HELD", "DAEMON_WAITING_FOR_ODDS_CAPTURE_LOCK")
+        wait_deadline = self._full_wait_deadline(report, now) if waiting_for_peer else None
+        if waiting_for_peer and wait_deadline is None:
+            return _status(report_env, "DIVERGENT"), _lane_data(lane, "DIVERGENT", run_id=run_id)
+        if active and not waiting_for_peer and lock_owner is not None and lock_owner["run_id"] != run_id:
             return _status(report_env, "DIVERGENT"), _lane_data(
                 lane, "DIVERGENT", run_id=run_id
             )
@@ -1387,7 +1484,7 @@ class LiveEvidenceAdapters:
                 lane, "DIVERGENT", run_id=run_id
             )
         if active:
-            deadline = report_at + timedelta(seconds=timeout)
+            deadline = min(report_at + timedelta(seconds=timeout), wait_deadline) if wait_deadline is not None else report_at + timedelta(seconds=timeout)
             lifecycle = "ACTIVE"
         else:
             deadline = report_at + timedelta(seconds=gap + accuracy)
@@ -1434,10 +1531,20 @@ class LiveEvidenceAdapters:
             if refresh_env.age_seconds is None or refresh_env.generated_at != embedded.get("generated_at"):
                 return _status(refresh_env, "INVALID/INTEGRITY_FAILED"), _lane_data(lane, "INTEGRITY_FAILED", run_id=run_id)
             deadline = min(deadline, refresh_at + timedelta(seconds=300))
+        # Diagnose a write during observation only after every non-time
+        # validation passes. Malformed lifecycle evidence remains ineligible.
+        if clock_rejection:
+            return _status(report_env, "INVALID/INTEGRITY_FAILED"), _lane_data(
+                lane, "INTEGRITY_FAILED", run_id=run_id,
+                references={"report": report_env.content_sha256, "state": state_env.content_sha256},
+                identity={"rejection": "producer_timestamp_after_observation",
+                          "report_generated_at": report_at.isoformat(),
+                          **({"state_updated_at": state_at.isoformat()} if state_at is not None else {})},
+            )
         if observed > deadline:
             outer_status, lane_status = "STALE", "STALE"
         elif active:
-            outer_status, lane_status = "AVAILABLE/FRESH", "ACTIVE"
+            outer_status, lane_status = "AVAILABLE/FRESH", "WAITING_FOR_PEER" if waiting_for_peer else "ACTIVE"
         elif odds:
             lane_status = {
                 "ODDS_CAPTURE_ONLY_READY": "RECEIPT_READY",
@@ -1483,7 +1590,7 @@ class LiveEvidenceAdapters:
     def _cooperating_lane(self, lane, peer, envelope, peer_envelope, now):
         # An idle contender is not ACTIVE and has not completed a capture. Only
         # this opt-in profile may report bounded, evidenced peer cooperation.
-        if lane.get("status") != "CAPTURE_WINDOW_CLOSED" or peer.get("status") not in {"ACTIVE", "RECEIPT_READY"} or peer_envelope.status != "AVAILABLE/FRESH":
+        if lane.get("status") != "CAPTURE_WINDOW_CLOSED" or peer.get("status") not in {"ACTIVE", "RECEIPT_READY", "WAITING_FOR_PEER"} or peer_envelope.status != "AVAILABLE/FRESH":
             return envelope, lane
         key = "odds_report" if lane["lane"] == "ODDS_ONLY" else "full_report"
         _, report = self._read(key, now)
@@ -1497,9 +1604,32 @@ class LiveEvidenceAdapters:
         other_service = self._units.full_service if peer_odds else self._units.odds_service
         if any(b"--live-freshness-profile bounded80-v1" not in raw for raw in (service, other_service)):
             return envelope, lane
+        if peer["status"] == "WAITING_FOR_PEER":
+            # The full lane's bounded wait has independently authenticated this
+            # exact odds invocation and its publication in _full_wait_deadline.
+            # Complete the reciprocal handoff binding without inventing a lock.
+            _, peer_report = self._read("full_report", now)
+            try:
+                if (key != "odds_report" or report.get("runtime_action") != "DEFERRED_FULL_LOCK_HANDOFF"
+                    or peer_report.get("runtime_action") != "WAIT_FOR_ODDS_CAPTURE_LOCK_HANDOFF"
+                    or owner.get("pid") != peer_report["timing"]["process_pid"]):
+                    return envelope, lane
+            except (KeyError, TypeError, AttributeError):
+                return envelope, lane
         if peer["status"] == "ACTIVE":
-            pid = self._units.odds_exec_main_pid if peer_odds else self._units.full_exec_main_pid
-            if owner.get("pid") != pid or not pid:
+            _, peer_report = self._read("odds_report" if peer_odds else "full_report", now)
+            invocation = self._units.odds_service_invocation_id if peer_odds else self._units.full_service_invocation_id
+            try:
+                child_pid = peer_report["timing"]["process_pid"]
+                peer_lock = peer_report["lock"]
+                if (type(child_pid) is not int or child_pid <= 0 or owner.get("pid") != child_pid
+                    or peer_lock.get("schema_version") != "shadow_autopilot_daemon_lock_v1"
+                    or peer_lock.get("pid") != child_pid or peer_lock.get("run_id") != peer["run_id"]
+                    or peer_report.get("run_id") != peer["run_id"]
+                    or not isinstance(invocation, str) or re.fullmatch(r"[0-9a-f]{32}", invocation) is None
+                    or peer_report["timing"]["service_invocation_id"] != invocation):
+                    return envelope, lane
+            except (KeyError, TypeError, AttributeError):
                 return envelope, lane
         upcoming = self.upcoming(now)
         if upcoming.evidence.status != "AVAILABLE/FRESH" or upcoming.evidence.age_seconds is None or upcoming.evidence.age_seconds > 270:
@@ -1715,6 +1845,11 @@ class LiveEvidenceAdapters:
         }]})
 
     def corpus(self, now: datetime) -> APIObservation:
+        if not self._corpus_enabled:
+            return APIObservation(self._verified_envelope(
+                now=now, policy="P-REPORT-24H", identity="corpus_not_configured",
+                locator="operator_ui.corpus", status="UNAVAILABLE/DATA_MISSING"),
+                {})
         envelope, report = self._read("corpus_report", now)
         manifest_env, manifest = self._read("corpus_manifest", now)
         if report is None or manifest is None:

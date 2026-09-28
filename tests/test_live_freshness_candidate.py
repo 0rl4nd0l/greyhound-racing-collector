@@ -256,7 +256,7 @@ def test_native_r3_peer_handoff_requires_fresh_index_and_matching_owner(
     assert (result.evidence.status == "AVAILABLE/FRESH") == (expected == "WAITING_FOR_PEER")
 
 
-@pytest.mark.parametrize("evidence_state", ["complete", "empty", "odds_report_only"])
+@pytest.mark.parametrize("evidence_state", ["complete", "large_complete", "oversized_report", "oversized_string", "empty", "odds_report_only"])
 def test_raw_phase_report_serialization_matches_native_r3(tmp_path, evidence_state):
     import hashlib
     from race_collection.live_phase_checkpoint import atomic_json
@@ -266,6 +266,15 @@ def test_raw_phase_report_serialization_matches_native_r3(tmp_path, evidence_sta
 
     now = datetime(2026, 9, 23, 1, tzinfo=timezone.utc)
     values = actual_payloads(now, include_models=False)
+    if evidence_state in {"large_complete", "oversized_report", "oversized_string"}:
+        # Real completed reports retain encoded source-page evidence (~65KiB
+        # strings) and exceed 512KiB without being malformed or untrustworthy.
+        values['odds_refresh']['downloads'] = [
+            {'native_identity_evidence': {'body_base64': 'A' * (131073 if evidence_state == 'oversized_string' else 65372)}}
+            for _ in range(33 if evidence_state == 'oversized_report' else 9)
+        ]
+        for key in ('odds_report', 'odds_state'):
+            values[key]['odds_capture_refresh_report'] = values['odds_refresh']
     for lane in ("full", "odds"):
         values[lane + "_state"]["last_output_dir" if lane == "full" else "output_dir"] = str(
             tmp_path / lane
@@ -280,7 +289,7 @@ def test_raw_phase_report_serialization_matches_native_r3(tmp_path, evidence_sta
             if key == "odds_refresh"
             else tmp_path / (key + ".json")
         )
-        if evidence_state == "complete" or (
+        if evidence_state in {"complete", "large_complete", "oversized_report", "oversized_string"} or (
             evidence_state == "odds_report_only" and key == "odds_report"
         ):
             atomic_json(path, values[key])
@@ -323,8 +332,11 @@ def test_raw_phase_report_serialization_matches_native_r3(tmp_path, evidence_sta
         },
     )
     assert result["authority_status"] == "AVAILABLE/FRESH"
+    if evidence_state.startswith('oversized'):
+        assert result['collector_status'] == 'INVALID/INTEGRITY_FAILED'
+        return
     assert result["collector_status"] == (
-        "AVAILABLE/FRESH" if evidence_state == "complete" else "UNAVAILABLE/DATA_MISSING"
+        "AVAILABLE/FRESH" if evidence_state in {"complete", "large_complete"} else "UNAVAILABLE/DATA_MISSING"
     )
     assert result["index_status"] == "UNAVAILABLE/DATA_MISSING"
 
@@ -677,6 +689,18 @@ def test_external_exit_time_is_part_of_overhead_allocation():
     status["ExecMainExitTimestampMonotonic"] = "190001000"
     with pytest.raises(ValueError, match="overhead"):
         completed_service_overhead(status, report)
+
+
+def test_old_report_does_not_invalidate_new_service_activation():
+    from race_collection.freshness_rehearsal import completed_service_overhead
+    status = {'ActiveState':'failed', 'InvocationID':'new', 'ExecMainPID':'12',
+        'ExecMainStartTimestampMonotonic':'200000000', 'ExecMainExitTimestampMonotonic':'201000000'}
+    report = {'timing':{'service_invocation_id':'old', 'process_pid':11}}
+    lifecycle = {'invocation_id':'new','wrapper_pid':12,'child_pid':13}
+    assert completed_service_overhead(status, report, lifecycle) is None
+    report['timing']['service_invocation_id'] = 'new'
+    with pytest.raises(ValueError, match='service_lifecycle_identity_mismatch'):
+        completed_service_overhead(status, report, lifecycle)
 
 
 def test_partial_reservation_remains_consumed(tmp_path):
@@ -1042,6 +1066,31 @@ def test_operational_scope_rejects_shared_capture_history_database(tmp_path):
         FreshnessContract(value)
 
 
+@pytest.mark.parametrize("start,end,accepted", [
+    ("19:50", "20:50", True), ("21:30", "22:30", True),
+    ("22:30", "23:30", False),
+])
+def test_operational_cleanup_keeps_source_date_without_old_launch_cutoff(tmp_path, start, end, accepted):
+    from tests.test_freshness_campaign import make_campaign
+    from race_collection.live_freshness_contract import FreshnessContract, digest
+    campaign = make_campaign(tmp_path / "campaign")
+    value = contract_value(tmp_path)
+    capture = campaign.root / "operational-predictions/capture.sqlite3"
+    value.update(starts_at=f"2026-09-23T{start}:00+10:00",
+        ends_at=f"2026-09-23T{end}:00+10:00", cleanup_seconds=1860,
+        max_capture_attempts=12, max_logical_requests=48000,
+        campaign_root=str(campaign.root), campaign_authorization_sha256=digest(campaign.value),
+        db_path=str(capture), operational_predictions={"capture_db_path": str(capture),
+            "history_db_path": str(tmp_path / "history.sqlite")})
+    if accepted:
+        scope = FreshnessContract(value)
+        assert scope.value["cleanup_seconds"] == 1860
+        assert (scope.end - scope.start).total_seconds() == 3600
+    else:
+        with pytest.raises(ValueError, match="one_date_scope_required"):
+            FreshnessContract(value)
+
+
 def test_prediction_lifetime_unknown_prevents_campaign_close(tmp_path):
     from types import SimpleNamespace
     from race_collection.operational_prediction import require_completed_lifetimes
@@ -1069,3 +1118,112 @@ def test_operational_prediction_failure_stops_before_next_race(tmp_path):
     with pytest.raises(ValueError,match='preserved_consumption'):
         supervisor.tick()
     assert supervisor.child is None
+
+
+@pytest.mark.parametrize('offset,retry_status,expected_calls', [
+    (0.004928, 'AVAILABLE/FRESH', 2),
+    (0.004928, 'INVALID/INTEGRITY_FAILED', 2),
+    (0.1, 'AVAILABLE/FRESH', 1),
+    (-0.1, 'AVAILABLE/FRESH', 1),
+])
+def test_clock_boundary_resample_is_local_bounded_and_retained(tmp_path, monkeypatch, offset, retry_status, expected_calls):
+    import json
+    from scripts import run_freshness_rehearsal as run
+    start = datetime(2026, 9, 24, 6, 4, 2, 189239, tzinfo=timezone.utc)
+    first = dict(read_start=start.isoformat(), read_end=(start+timedelta(seconds=.057385)).isoformat(),
+        monotonic_start=10., monotonic_end=10.057385, index_status='AVAILABLE/FRESH',
+        authority_status='AVAILABLE/FRESH', collector_status='INVALID/INTEGRITY_FAILED',
+        lanes=[dict(lane='ODDS_ONLY',status='INTEGRITY_FAILED',run_id='new-run',
+            reference_hashes={'report':'a'*64,'state':'b'*64},
+            component_identity={'rejection':'producer_timestamp_after_observation',
+                'report_generated_at':(start+timedelta(seconds=offset)).isoformat(),
+                'state_updated_at':(start-timedelta(seconds=10)).isoformat()})])
+    second = {**first, 'collector_status':retry_status, 'read_start':(start+timedelta(seconds=.08)).isoformat(),
+        'read_end':(start+timedelta(seconds=.13)).isoformat(), 'monotonic_start':10.08,'monotonic_end':10.13}
+    calls=[]
+    def read(*args):
+        calls.append(None)
+        return dict(first if len(calls)==1 else second)
+    monkeypatch.setattr(run, '_sample_once', read)
+    actual=run.sample({},tmp_path,None)
+    assert len(calls)==expected_calls
+    assert actual['monotonic_start']==10.
+    assert actual['read_start']==first['read_start']
+    if expected_calls==2:
+        assert actual['collector_status']==retry_status
+        assert actual['monotonic_end']==10.13
+        retained=json.loads(Path(actual['clock_boundary_resample']['initial_observation_path']).read_bytes())
+        assert retained==first
+    else:
+        assert actual==first
+
+
+@pytest.mark.parametrize('malformed_status', [False, True])
+def test_native_future_report_retains_authenticated_clock_diagnostic(tmp_path, malformed_status):
+    from tests.operator_ui.test_live_adapters import actual_payloads, make_live, NOW
+    values=actual_payloads()
+    stamp=(NOW+timedelta(microseconds=4928)).isoformat()
+    values['odds_report']['generated_at']=stamp
+    if malformed_status:
+        values['odds_report']['final_status']='INVALID_STATUS'
+    lane=make_live(tmp_path,values).collector(NOW).data['lanes'][1]
+    assert lane['status']=='INTEGRITY_FAILED'
+    if malformed_status:
+        assert lane['component_identity'].get('rejection') is None
+        return
+    assert lane['component_identity']['report_generated_at']==stamp
+    assert lane['component_identity']['rejection']=='producer_timestamp_after_observation'
+    assert len(lane['reference_hashes']['report'])==64
+
+
+def test_clock_retry_preserves_first_failure_when_second_read_raises(tmp_path, monkeypatch):
+    import json
+    from scripts import run_freshness_rehearsal as run
+    first={'read_start':'2026-09-24T06:04:02+00:00','monotonic_start':10.,'collector_status':'INVALID/INTEGRITY_FAILED'}
+    calls=[]
+    def read(*args):
+        calls.append(None)
+        if len(calls)==2:
+            raise ValueError('identity_changed')
+        return first
+    monkeypatch.setattr(run,'_sample_once',read)
+    monkeypatch.setattr(run,'_clock_boundary_rejection',lambda value:True)
+    with pytest.raises(ValueError,match='identity_changed'):
+        run.sample({},tmp_path,None)
+    assert len(calls)==2
+    assert json.loads(next((tmp_path/'clock-boundary-samples').glob('*.json')).read_bytes())==first
+
+
+@pytest.mark.parametrize('change', ['future','naive','malformed','missing_hash','index_invalid','authority_invalid','clock_jump'])
+def test_clock_retry_rejects_unrelated_or_unauthenticated_failures(change):
+    from scripts.run_freshness_rehearsal import _clock_boundary_rejection
+    start=datetime(2026,9,24,6,tzinfo=timezone.utc)
+    value=dict(read_start=start.isoformat(),read_end=(start+timedelta(seconds=.05)).isoformat(),
+        monotonic_start=1.,monotonic_end=1.05,index_status='AVAILABLE/FRESH',
+        authority_status='AVAILABLE/FRESH',collector_status='INVALID/INTEGRITY_FAILED',
+        lanes=[dict(status='INTEGRITY_FAILED',run_id='run',reference_hashes={'report':'a'*64,'state':'b'*64},
+            component_identity={'rejection':'producer_timestamp_after_observation',
+                'report_generated_at':(start+timedelta(seconds=.005)).isoformat()})])
+    lane=value['lanes'][0]
+    if change in {'future','naive','malformed'}:
+        lane['component_identity']['report_generated_at']={
+            'future':(start+timedelta(seconds=1)).isoformat(),
+            'naive':'2026-09-24T06:00:00.005','malformed':'bad'}[change]
+    elif change=='missing_hash':lane['reference_hashes'].pop('report')
+    elif change=='index_invalid':value['index_status']='INVALID/INTEGRITY_FAILED'
+    elif change=='authority_invalid':value['authority_status']='INVALID/INTEGRITY_FAILED'
+    else:value['monotonic_end']=2.
+    assert not _clock_boundary_rejection(value)
+
+
+@pytest.mark.parametrize("minutes, operational", [(60, False), (4, True), (5.5, True), (91, True), (0, True)])
+def test_short_observation_requires_exact_operational_duration(tmp_path, minutes, operational):
+    from datetime import timedelta
+    from race_collection.live_freshness_contract import FreshnessContract
+
+    value = contract_value(tmp_path)
+    value["ends_at"] = (datetime.fromisoformat(value["starts_at"]) + timedelta(minutes=minutes)).isoformat()
+    if operational:
+        value.update(campaign_root=str(tmp_path / "never-opened-campaign"), operational_predictions=True)
+    with pytest.raises(ValueError, match="invalid_scope_duration"):
+        FreshnessContract(value)

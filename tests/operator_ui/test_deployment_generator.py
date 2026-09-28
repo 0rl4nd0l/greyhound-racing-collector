@@ -833,7 +833,7 @@ def write_sized_report(report, size):
     assert report.stat().st_size == size
 
 
-@pytest.mark.parametrize("source_key", ["odds_report", "odds_refresh"])
+@pytest.mark.parametrize("source_key", ["odds_report", "odds_refresh", "odds_state"])
 def test_generated_package_accepts_retained_odds_report_size(
     real_startup_tmp_path, monkeypatch, source_key
 ):
@@ -854,7 +854,7 @@ def test_generated_package_accepts_retained_odds_report_size(
 
 
 @pytest.mark.parametrize("size", [512 * 1024, 2 * 1024 * 1024])
-@pytest.mark.parametrize("source_key", ["odds_report", "odds_refresh"])
+@pytest.mark.parametrize("source_key", ["odds_report", "odds_refresh", "odds_state"])
 def test_generated_package_bootstraps_with_bounded_large_odds_reports(
     real_startup_tmp_path, monkeypatch, source_key, size
 ):
@@ -877,8 +877,9 @@ def test_generated_package_bootstraps_with_bounded_large_odds_reports(
     "observed", "string_boundary", "over_string", "depth", "items",
     "tampered_refresh", "grown_refresh", "startup_growth",
 ])
+@pytest.mark.parametrize("source_key", ["odds_refresh", "odds_state"])
 def test_packaged_collector_reads_retained_http_provenance(
-    real_startup_tmp_path, monkeypatch, record_property, case
+    real_startup_tmp_path, monkeypatch, record_property, case, source_key
 ):
     from tests.operator_ui.test_live_adapters import actual_payloads, NOW
     from scripts.shadow_autopilot_daemon import (
@@ -900,6 +901,8 @@ def test_packaged_collector_reads_retained_http_provenance(
             "body_base64": body
         }}
     }}} for _ in range(15 if case == "string_boundary" else 9)]
+    if source_key != "odds_refresh":
+        payloads[source_key]["odds_capture_refresh_report"] = refresh
     if case == "depth":
         nested = {}
         for _ in range(13):
@@ -929,8 +932,9 @@ def test_packaged_collector_reads_retained_http_provenance(
     load_connected_environment(app)
     monkeypatch.setattr(bootstrap_module, "_REPOSITORY_ROOT", values["source_root"])
     refresh_path = Path(authority["sources"]["odds_refresh"])
+    growth_path = Path(authority["sources"][source_key])
     if case == "startup_growth":
-        refresh_path.write_bytes(b" " * (2 * 1024 * 1024 + 1))
+        growth_path.write_bytes(b" " * (2 * 1024 * 1024 + 1))
         with pytest.raises(RuntimeError, match="fixed R3 runtime oversized"):
             bootstrap_module.configure_r3_startup(app)
         return
@@ -946,7 +950,7 @@ def test_packaged_collector_reads_retained_http_provenance(
         if case == "tampered_refresh":
             refresh_path.write_bytes(refresh_path.read_bytes().replace(b"eHh4", b"eXh4", 1))
         if case == "grown_refresh":
-            refresh_path.write_bytes(b" " * (2 * 1024 * 1024 + 1))
+            growth_path.write_bytes(b" " * (2 * 1024 * 1024 + 1))
         observation = app.config[bootstrap_module.CONFIG_KEY].collector(NOW)
     finally:
         if measuring:
@@ -970,7 +974,7 @@ def test_packaged_collector_reads_retained_http_provenance(
 @pytest.mark.parametrize("source_key, maximum", [
     ("full_state", 512 * 1024),
     ("full_report", 512 * 1024),
-    ("odds_state", 256 * 1024),
+    ("odds_state", 2 * 1024 * 1024),
     ("odds_report", 2 * 1024 * 1024),
     ("odds_refresh", 2 * 1024 * 1024),
     ("corpus_report", 256 * 1024),
@@ -1016,6 +1020,63 @@ def test_real_generated_package_startup_is_disabled_or_bootstraps_with_all_deplo
                 "OPERATOR_UI_DEPLOYED_PROFILE",
             )
         } == {COMMIT, TREE, "operator-ui-v1", "repository-v1"}
+
+
+def operational_authority(values):
+    authority = json.loads(values["live_authority"].read_text())
+    authority["schema_version"] = "operator_ui_operational_authority_v1"
+    for group in ("sources", "raw_sources"):
+        for key in list(authority[group]):
+            if key.startswith("corpus_"):
+                Path(authority[group].pop(key)).unlink()
+    values["live_authority"].write_text(json.dumps(authority))
+    return authority
+
+
+def test_operational_package_bootstraps_without_scientific_sources(real_startup_tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    values = deployment_inputs(real_startup_tmp_path)
+    git_identity(monkeypatch)
+    operational_authority(values)
+    generate_package(**values, enabled=True)
+    generated = load_generated_environment(monkeypatch, values)
+    app = Flask(__name__)
+    app.config[bootstrap_module.R3_PROFILE_KEY] = generated["OPERATOR_UI_R3_PROFILE"]
+    load_connected_environment(app)
+    monkeypatch.setattr(bootstrap_module, "_REPOSITORY_ROOT", values["source_root"])
+    assert bootstrap_module.configure_r3_startup(app) is True
+    live = app.config[bootstrap_module.CONFIG_KEY]
+    assert not any(key.startswith("corpus_") for key in live._reader._sources)
+    result = live.corpus(datetime.now(timezone.utc))
+    assert result.evidence.status == "UNAVAILABLE/DATA_MISSING"
+    assert result.data == {}
+    assert result.evidence.source_identity == "corpus_not_configured"
+    from tests.operator_ui.test_api import app_for, login, ROUTES
+    from src.operator_ui.api import register_level_1_provider
+    public_app = app_for(values["operations_root"])
+    register_level_1_provider(public_app, "corpus", live.corpus)
+    client = public_app.test_client()
+    login(client)
+    response = client.get(ROUTES["corpus"])
+    assert response.get_json()["classification"] == "UNAVAILABLE/DATA_MISSING"
+    assert not (values["operations_root"] / "jobs.sqlite3").exists()
+
+
+@pytest.mark.parametrize("mutation", ["missing_collector", "extra_corpus", "unknown_schema", "legacy_incomplete"])
+def test_operational_authority_does_not_accept_partial_or_expanded_scope(tmp_path, monkeypatch, mutation):
+    values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
+    authority = operational_authority(values)
+    if mutation == "missing_collector":
+        del authority["sources"]["odds_state"]
+    elif mutation == "extra_corpus":
+        authority["raw_sources"]["corpus_scorecard_csv"] = "/unreadable/protected.csv"
+    else:
+        authority["schema_version"] = "unknown" if mutation == "unknown_schema" else "operator_ui_live_authority_v1"
+    values["live_authority"].write_text(json.dumps(authority))
+    with pytest.raises(DeploymentRejected, match="incomplete"):
+        generate_package(**values, enabled=True)
+    assert all(not target.exists() for target in generated_targets(values))
 
 
 def test_clean_exact_generated_serve_identity_reaches_exec(real_startup_tmp_path, monkeypatch):

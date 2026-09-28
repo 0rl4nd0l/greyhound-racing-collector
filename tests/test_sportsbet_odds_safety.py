@@ -516,6 +516,43 @@ class _FakeSportsbetRunnerCardDriver:
         return True
 
 
+@pytest.mark.parametrize("complete_pairs", [True, False])
+def test_rendered_paired_cards_do_not_wait_for_absent_legacy_selectors(
+    monkeypatch, tmp_path, complete_pairs
+):
+    waits, sleeps = [], []
+
+    class Wait(_FakeSportsbetWait):
+        def __init__(self, driver, timeout):
+            waits.append(timeout)
+
+    cards = [
+        _FakeSportsbetCard(box, name, "3.00")
+        for box, name in enumerate(["Alpha One", "Bravo Two", "Charlie Three", "Delta Four"], 1)
+    ]
+    for card in cards:
+        card.text += "\n1.50\nEW"
+    if not complete_pairs:
+        cards[-1].text = "4. Delta Four (4)\nLoading"
+    integrator = SportsbetOddsIntegrator(db_path=str(tmp_path / "odds.db"), setup_database=False)
+    integrator.driver = _FakeSportsbetRunnerCardDriver(cards)
+    monkeypatch.setattr(integrator, "_selenium_primitives", lambda: (
+        _FakeSportsbetBy, Wait, _FakeSportsbetEC, TimeoutError,
+    ))
+    monkeypatch.setattr("sportsbet_odds_integrator.time.sleep", sleeps.append)
+    rows = integrator.extract_odds_strategy_runner_cards()
+    win, place = sportsbet_paired_market_rows(rows)
+    if complete_pairs:
+        assert waits == []
+        assert sleeps == []
+        assert len(win) == len(place) == 4
+        assert [row["box_number"] for row in win] == [1, 2, 3, 4]
+    else:
+        assert waits == [12]
+        assert sleeps == [2]
+        assert len(win) == len(place) == 3
+
+
 def test_runner_card_extractor_scans_all_candidates_before_deduping(monkeypatch, tmp_path):
     monkeypatch.setattr("sportsbet_odds_integrator.time.sleep", lambda _seconds: None)
     runners = [
@@ -807,6 +844,113 @@ def test_race_page_recovers_win_and_place_from_second_explicit_paired_render(
     assert [row["odds_decimal"] for row in race["odds_data_place"]] == [
         runner[3] for runner in runners
     ]
+
+
+@pytest.mark.parametrize("scenario", ["delayed_pairs", "single_win", "denied", "denied_after_poll", "timeout_poll", "timeout_discovery", "timeout_scroll", "legacy"])
+def test_operational_paired_readiness_is_bounded_and_source_guarded(tmp_path, monkeypatch, scenario):
+    from datetime import datetime, timedelta, timezone
+    from scripts.autonomous_live_odds_capture import FetchTimeoutError
+    from utils.sportsbet_access import SportsbetAccessBlocked
+    from utils.sportsbet_response_inspection import ResponseInspection
+    import sportsbet_odds_integrator as module
+
+    elapsed = [0.0]
+    base = datetime(2026, 9, 24, tzinfo=timezone.utc)
+    cards = [_FakeSportsbetCard(box, name, "3.00") for box, name in enumerate(
+        ["Fixture Alpha", "Fixture Bravo", "Fixture Charlie", "Fixture Delta"], 1)]
+    checks, selections, waits = [], [], []
+
+    class Driver(_FakeSportsbetRunnerCardDriver):
+        @property
+        def title(self):
+            if scenario == "timeout_discovery":
+                raise FetchTimeoutError("fixture capture deadline")
+            return "Synthetic race"
+
+        def get(self, url):
+            self.current_url = url
+
+        def execute_script(self, *args):
+            if scenario == "timeout_scroll" and "scrollIntoView" in args[0]:
+                raise FetchTimeoutError("fixture capture deadline")
+            return "complete"
+
+        def find_elements(self, by, selector):
+            if scenario == "timeout_poll" and by == _FakeSportsbetBy.XPATH:
+                raise FetchTimeoutError("fixture capture deadline")
+            if scenario == "timeout_scroll" or scenario == "delayed_pairs" and elapsed[0] >= 0.5:
+                for card in cards:
+                    if "EW" not in card.text:
+                        card.text += "\n1.50\nEW"
+            return super().find_elements(by, selector)
+
+        def sportsbet_check_access(self):
+            checks.append(elapsed[0])
+            if scenario == "denied" or (scenario == "denied_after_poll" and len(checks) == 2):
+                raise SportsbetAccessBlocked("sportsbet_source_hold")
+
+    class Wait:
+        def __init__(self, driver, timeout):
+            self.driver = driver
+            waits.append(timeout)
+
+        def until(self, condition):
+            return condition(self.driver)
+
+    integrator = SportsbetOddsIntegrator(str(tmp_path / "unused.sqlite"), setup_database=False)
+    integrator.driver = Driver(cards)
+    monkeypatch.setattr(module.time, "monotonic", lambda: elapsed[0])
+    monkeypatch.setattr(module.time, "sleep", lambda seconds: elapsed.__setitem__(0, elapsed[0] + seconds))
+    monkeypatch.setattr(integrator, "_selenium_primitives", lambda: (
+        _FakeSportsbetBy, Wait, _FakeSportsbetEC, TimeoutError,
+    ))
+    monkeypatch.setattr(integrator, "extract_race_number_from_page", lambda _venue: 1)
+    monkeypatch.setattr(integrator, "_select_place_market", lambda: selections.append(None))
+    if scenario != "legacy":
+        integrator.response_inspection = ResponseInspection(
+            expires_at=base + timedelta(seconds=50),
+            clock=lambda: base + timedelta(seconds=elapsed[0]), monotonic=lambda: elapsed[0],
+        )
+    race = {"race_id": "synthetic", "venue": "Synthetic", "race_number": 1,
+            "race_date": date(2026, 9, 24),
+            "venue_url": "https://www.sportsbet.com.au/greyhound-racing/australia-nz/synthetic/race-1-12345678"}
+    if scenario in {"denied", "denied_after_poll"}:
+        with pytest.raises(SportsbetAccessBlocked):
+            integrator.get_race_odds_from_page(race)
+        assert elapsed[0] == 0
+        assert selections == []
+        return
+    if scenario.startswith("timeout_"):
+        with pytest.raises(FetchTimeoutError, match="fixture capture deadline"):
+            integrator.get_race_odds_from_page(race)
+        assert "operational_coverage_warning" not in race
+        assert "paired_readiness_expired" not in str(integrator.response_inspection.report())
+        assert not selections
+        return
+    result = integrator.get_race_odds_from_page(race)
+    if scenario == "legacy":
+        assert len(result["odds_data"]) == 4
+        assert selections == [None]
+        assert 12 in waits
+        assert not checks
+        return
+    assert not selections
+    assert waits == [10]
+    snapshots = integrator.response_inspection.report()["paired_readiness"]
+    assert len(snapshots) == 2
+    assert [s["boundary"] for s in snapshots] == ["start", "end"]
+    assert all(s["card_count"] == s["single_header_count"] == 4 for s in snapshots)
+    assert "Fixture Alpha" not in str(snapshots)
+    if scenario == "delayed_pairs":
+        assert len(result["odds_data"]) == len(result["odds_data_place"]) == 4
+        assert elapsed[0] == 0.5
+        assert snapshots[0]["paired_card_count"] == 0
+        assert snapshots[1]["paired_card_count"] == 4
+    else:
+        assert elapsed[0] == 5
+        assert not result.get("odds_data") and not result.get("odds_data_place")
+        assert result["operational_coverage_warning"] == "required_paired_markets_not_ready_within_readiness_budget"
+        assert all(s["paired_card_count"] == 0 for s in snapshots)
 
 
 def test_alias_odds_copy_rolls_back_when_metadata_upsert_fails(tmp_path, monkeypatch):
@@ -1217,6 +1361,83 @@ def test_fetch_odds_for_target_race_uses_read_only_integrator(monkeypatch, tmp_p
     assert summary["race_id"] == "HOR_2026-05-26_1"
     assert summary["odds_data"][0]["dog_name"] == "Fast Dog"
     assert not db_path.exists()
+
+
+@pytest.mark.parametrize("venue", ["SAN", "SANDOWN"])
+@pytest.mark.parametrize("include_target", [True, False])
+def test_fetch_sandown_park_selects_only_exact_landing_race(
+    monkeypatch, tmp_path, venue, include_target
+):
+    import sportsbet_odds_integrator as odds_module
+    import json
+
+    monkeypatch.setenv("GREYHOUND_SPORTSBET_RESPONSE_INSPECTION", "1")
+    monkeypatch.delenv("GREYHOUND_LIVE_EXECUTION", raising=False)
+    monkeypatch.setattr(odds_auto_integrator.time, "sleep", lambda _seconds: None)
+    # Synthetic destinations are never requested; the provider's observed
+    # display label is the regression input, not a guessed live race URL.
+    links = [
+        _FakeAnchor("R3 Sandown Park", "https://fixture.invalid/greyhound-racing/wrong-race"),
+        _FakeAnchor("R2 Horsham", "https://fixture.invalid/greyhound-racing/wrong-venue"),
+    ]
+    target_url = "https://fixture.invalid/greyhound-racing/exact-target"
+    if include_target:
+        links.append(_FakeAnchor("R2 Sandown Park", target_url))
+    driver = _FakeDriver(landing_anchors=links)
+    driver.sportsbet_navigation_remaining = lambda: 1
+    driver.sportsbet_inspect_response_shapes = lambda: None
+    selected = []
+    closed = []
+
+    class FakeIntegrator:
+        base_url = "https://fixture.invalid"
+        greyhound_url = base_url + "/betting/greyhound-racing"
+
+        def __init__(self, *_args, **_kwargs):
+            self.driver = driver
+
+        def setup_driver(self):
+            return True
+
+        def get_race_odds_from_page(self, race_info):
+            selected.append(race_info)
+            return {**race_info, "odds_data": [{"box_number": 1}],
+                    "odds_data_place": [{"box_number": 1}]}
+
+        def _canonical_race_id(self, *_args):
+            return "SAN_2026-09-24_2"
+
+        def close_driver(self):
+            closed.append(True)
+
+    monkeypatch.setattr(odds_module, "SportsbetOddsIntegrator", FakeIntegrator)
+    summary = odds_auto_integrator.fetch_odds_for_target_race(
+        str(tmp_path / "unused.db"), venue, 2, "2026-09-24",
+        allow_auto_scrape_odds=True,
+        request_metrics_path=tmp_path / "requests.json",
+    )
+    assert summary["success"] is include_target
+    assert summary["write_performed"] is False
+    assert closed == [True]
+    assert driver.urls == [FakeIntegrator.greyhound_url]
+    if include_target:
+        assert len(selected) == 1
+        assert selected[0]["venue_url"] == target_url
+        assert selected[0]["race_number"] == 2
+        assert summary["discovery_method"] == "sportsbet_landing"
+    else:
+        assert selected == []
+        assert summary["warnings"] == ["target_race_not_visible_within_navigation_allowance"]
+    assert not (tmp_path / "unused.db").exists()
+    report = json.loads((tmp_path / "requests.responses.json").read_text())
+    selection = report["landing_selection"]
+    assert selection["anchors_total"] == (3 if include_target else 2)
+    assert selection["anchors_examined"] == (3 if include_target else 2)
+    assert selection["parsed_race_links"] == (3 if include_target else 2)
+    assert selection["race_number_matches"] == (2 if include_target else 1)
+    assert selection["exact_matches"] == int(include_target)
+    assert "fixture.invalid" not in json.dumps(report)
+    assert "Sandown" not in json.dumps(report)
 
 
 def test_dom_fallback_page_scraping_requires_opt_in_and_is_limited(tmp_path, monkeypatch):

@@ -35,7 +35,7 @@ def install():
 
     def download(self, url, **kwargs):
         assert url == fixture["race"]["url"]
-        if fixture["scenario"].startswith("source_denial_python"):
+        if fixture["scenario"].startswith("source_denial_python") or fixture["scenario"] == "busy_source":
             from utils.prejump_sportsbet import fetch_sportsbet_next_events_snapshot
             result = fetch_sportsbet_next_events_snapshot(session=self.session)
             assert result.get("rejected_weather_track_metadata_sources")
@@ -52,6 +52,7 @@ def install():
         upcoming_race_browser.UpcomingRaceBrowser.download_race_csv = download
     import requests
     def response(adapter, request, **kwargs):
+        Path(fixture["transport_marker"] + ".http").write_text(str(os.getpid()))
         assert request.url.startswith("https://www.sportsbet.com.au/")
         denied = fixture["scenario"].startswith("source_denial_python")
         if denied:
@@ -81,6 +82,17 @@ def install():
 
         def find_elements(self, by, selector):
             if by == "xpath":
+                if selector == "//*[contains(@data-automation-id,'racecard-outcome-name')]/ancestor::*[contains(@data-automation-id,'racecard-outcome')][1]":
+                    # Execute the source selector's ancestor semantics against
+                    # the fabricated HTML, rather than making XPath always empty.
+                    rows = []
+                    for name in self.node.select("[data-automation-id*='racecard-outcome-name']"):
+                        for ancestor in name.parents:
+                            if "racecard-outcome" in ancestor.get("data-automation-id", ""):
+                                if all(row is not ancestor for row in rows):
+                                    rows.append(ancestor)
+                                break
+                    return [Element(row) for row in rows]
                 return []
             return [Element(x) for x in self.node.select(selector)]
 
@@ -104,6 +116,7 @@ def install():
         title = "Murray Bridge Straight Race 9"
 
         def __init__(self, *args, **kwargs):
+            Path(fixture["transport_marker"] + ".browser").write_text(str(os.getpid()))
             # The actual production driver factory must supply explicit binaries.
             assert kwargs["service"].path == os.environ["GREYHOUND_CHROMEDRIVER"]
             assert kwargs["options"].binary_location == os.environ["GREYHOUND_CHROME_BINARY"]

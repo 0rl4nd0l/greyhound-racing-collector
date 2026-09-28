@@ -224,7 +224,8 @@ time.sleep(300)
         parent.wait(timeout=3)
 
 
-def test_queued_denial_is_drained_before_navigation(tmp_path, monkeypatch):
+@pytest.mark.parametrize("operation", ["navigation", "readiness"])
+def test_queued_denial_is_drained_before_navigation(tmp_path, monkeypatch, operation):
     import threading
     from types import SimpleNamespace
     from tests.fixtures.freshness_transport.fake_cdp import BrowserTransport
@@ -248,7 +249,10 @@ def test_queued_denial_is_drained_before_navigation(tmp_path, monkeypatch):
     errors = []
     def navigate():
         try:
-            driver.get('https://www.sportsbet.com.au/next')
+            if operation == 'navigation':
+                driver.get('https://www.sportsbet.com.au/next')
+            else:
+                driver.sportsbet_check_access()
         except SportsbetAccessBlocked as error:
             errors.append(error)
     worker = threading.Thread(target=navigate)
@@ -459,3 +463,107 @@ else:
     subprocess.run([sys.executable, '-c', code, kind], check=True, timeout=10,
                    env={**os.environ, 'GREYHOUND_SPORTSBET_ACCESS_STATE': str(path)})
     assert path.read_bytes() == before
+
+
+def test_supervised_transport_has_no_implicit_retry_for_any_provider(monkeypatch):
+    import utils.http_client as client
+    monkeypatch.setenv("GREYHOUND_LIVE_EXECUTION", "1")
+    monkeypatch.setattr(client, "_shared_session", None)
+    session = client.get_shared_session()
+    try:
+        for url in ("https://www.sportsbet.com.au/fixture", "https://www.thedogs.com.au/fixture", "https://api.open-meteo.com/fixture"):
+            assert session.get_adapter(url).max_retries.total == 0
+    finally:
+        session.close()
+
+
+@pytest.mark.parametrize("condition", ["OPEN", "STOP", "RECOVERY", "COOLDOWN", "cooldown_elapsed", "denial", "expired", "operation_cap", "unresolved"])
+def test_service_condition_can_queue_behind_owned_operation_without_transport_admission(
+    tmp_path, monkeypatch, condition,
+):
+    from scripts import check_sportsbet_access as service_condition
+    from utils.sportsbet_access import SportsbetAccess, SportsbetAccessBlocked
+
+    gate = SportsbetAccess(tmp_path / "access.json", clock=lambda: 1000)
+    gate.initialize(access_basis={"status": "permitted", "reference": "synthetic admission fixture"})
+    monkeypatch.setattr(service_condition, "SportsbetAccess", lambda: gate)
+    with gate.operation("browser") as operation:
+        if condition in {"STOP", "RECOVERY", "COOLDOWN"}:
+            operation.value["phase"] = condition
+            operation.value["not_before"] = 1100
+        elif condition in {"expired", "operation_cap"}:
+            operation.value["diagnostic_authority"] = {
+                "expires_at": 999 if condition == "expired" else 1100,
+                "operation_start": 0,
+                "max_operations": 2 if condition == "expired" else 1,
+            }
+            operation.value["operations"] = [{"kind": "browser", "at": 1000}]
+        elif condition == "unresolved":
+            operation.value["access_basis"]["status"] = "unresolved"
+        elif condition == "denial":
+            operation.response(403, {})
+        elif condition == "cooldown_elapsed":
+            operation.value["phase"] = "COOLDOWN"
+            operation.value["not_before"] = 900
+        gate.write(operation.value)
+        before = gate.path.read_bytes()
+
+        assert service_condition.main() == (0 if condition == "OPEN" else 1)
+        if condition == "OPEN":
+            # Exercise the exact systemd condition CLI in the pinned interpreter
+            # while this process retains provider ownership and its mutex.
+            result = subprocess.run(
+                [sys.executable, "-B", service_condition.__file__],
+                env={**os.environ, "GREYHOUND_SPORTSBET_ACCESS_STATE": str(gate.path)},
+                capture_output=True, text=True, timeout=5,
+            )
+            assert result.returncode == 0, result.stdout + result.stderr
+        with pytest.raises(SportsbetAccessBlocked):
+            gate.check_admission()
+        with pytest.raises(SportsbetAccessBlocked):
+            with gate.operation("python"):
+                pytest.fail("service admission granted concurrent provider ownership")
+        assert gate.path.read_bytes() == before
+        assert gate.read()["active"] == operation.value["active"]
+    if condition == "OPEN":
+        gate.check_admission()
+        with gate.operation("python"):
+            pass
+
+
+@pytest.mark.parametrize("phase, expected_returncode", [("OPEN", 42), ("STOP", 1)])
+def test_actual_service_wrapper_queues_before_configuration_while_owner_is_active(
+    tmp_path, phase, expected_returncode,
+):
+    from pathlib import Path
+    from utils.sportsbet_access import SportsbetAccess
+
+    root = Path(__file__).resolve().parents[1]
+    gate = SportsbetAccess(tmp_path / "access.json")
+    gate.initialize(access_basis={"status": "permitted", "reference": "synthetic wrapper fixture"})
+    bootstrap = """
+import os, runpy, sys
+from pathlib import Path
+sys.argv = sys.argv[1:]
+sys.path.insert(0, str(Path(sys.argv[0]).resolve().parents[1]))
+from scripts.check_freshness_service import deny_network
+deny_network()
+import race_collection.live_execution as execution
+execution.configure_profile_execution = lambda contract: os._exit(42)
+runpy.run_path(sys.argv[0], run_name='__main__')
+"""
+    with gate.operation("browser") as operation:
+        operation.value["phase"] = phase
+        gate.write(operation.value)
+        original = gate.path.read_bytes()
+        result = subprocess.run(
+            [sys.executable, "-B", "-c", bootstrap,
+             str(root / "scripts/run_freshness_service.py"),
+             "--live-freshness-contract", str(tmp_path / "unread-contract.json")],
+            env={**os.environ, "GREYHOUND_SPORTSBET_ACCESS_STATE": str(gate.path)},
+            cwd=root, capture_output=True, text=True, timeout=10,
+        )
+        assert result.returncode == expected_returncode, result.stderr
+        if phase == "STOP":
+            assert "sportsbet_source_hold" in result.stderr
+        assert gate.path.read_bytes() == original

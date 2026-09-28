@@ -7,6 +7,7 @@ step. Absence, ambiguity, interrupted writes and spent reservations fail closed.
 import hashlib
 import json
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -20,6 +21,57 @@ def encoded(value):
 
 def digest(value):
     return hashlib.sha256(encoded(value)).hexdigest()
+
+
+def classify_refresh_outage(evidence, run_id):
+    """Classify one retained refresh failure; no requests or state changes."""
+    if not isinstance(run_id, str) or not re.fullmatch(r"[A-Za-z0-9_+.-]+", run_id):
+        return None
+    evidence = Path(evidence)
+    root = evidence / ("shadow_autopilot_daemonization_v1_" + run_id)
+    try:
+        checkpoint = json.loads((root / "phase-checkpoint.json").read_bytes())
+        phases = checkpoint["phases"]
+        if (checkpoint["cycle_id"] != run_id or len(phases) != 1
+                or phases[0]["kind"] != "refresh" or phases[0]["status"] != "COMPLETE"
+                or phases[0]["budget_exceeded"]):
+            return None
+        raw = (root / "phase-0-result.json").read_bytes()
+        if hashlib.sha256(raw).hexdigest() != phases[0]["result_sha256"]:
+            return None
+        result = json.loads(raw)
+        if result.get("collection_phase") != "refresh" or result.get("final_verdict") != "COLLECTION_PHASE_BLOCKED":
+            return None
+        name = "odds_capture_refresh_report.json" if run_id.endswith("_odds_capture") else "refresh_prejump_report.json"
+        refresh_raw = (evidence / ("shadow_autopilot_v1_" + run_id + "_phase_0") / name).read_bytes()
+        refresh = json.loads(refresh_raw)
+        if (refresh.get("status") != "METADATA_COVERAGE_INCOMPLETE"
+                or refresh.get("reason") != "no_selected_race_csv_sidecars"
+                or refresh.get("accepted_csv_count") != 0 or refresh.get("sidecar_count") != 0):
+            return None
+        statuses = []
+        for download in refresh["downloads"]:
+            item = download["result"]
+            if download.get("success") or item.get("success"):
+                return None
+            if item.get("source_retry_after") or item.get("source_rate_limit_reset"):
+                return None
+            status = item.get("source_http_status")
+            if type(status) is int and status in {502, 503, 504}:
+                statuses.append(status)
+            elif status is not None or item.get("source_failure_category") != "observed_export_absent":
+                return None
+        if not statuses:
+            return None
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return {
+        "status": "FAILED_REFRESH_AWAITING_NORMAL_TIMER", "run_id": run_id,
+        "refresh_sha256": hashlib.sha256(refresh_raw).hexdigest(),
+        "phase_result_sha256": hashlib.sha256(raw).hexdigest(),
+        "upstream_statuses": statuses, "request_retries_added": 0,
+        "maximum_failed_cycles": 2,
+    }
 
 
 def create_once(path, value):
@@ -47,15 +99,24 @@ class FreshnessContract:
             raise ValueError("invalid_freshness_contract")
         self.start = datetime.fromisoformat(value["starts_at"])
         self.end = datetime.fromisoformat(value["ends_at"])
+        if self.start.utcoffset() is None or self.end.utcoffset() is None:
+            raise ValueError("invalid_scope_duration")
+        duration = (self.end - self.start).total_seconds()
+        operational = bool(value.get("campaign_root") and value.get("operational_predictions"))
+        valid_duration = (300 <= duration <= 5400 and duration % 60 == 0) if operational else duration == 5400
         if (
             self.start.utcoffset() is None
             or self.end.utcoffset() is None
-            or (self.end - self.start).total_seconds() != 5400
+            or not valid_duration
         ):
             raise ValueError("invalid_scope_duration")
         zone = ZoneInfo("Australia/Melbourne")
         local_start, local_end = self.start.astimezone(zone), self.end.astimezone(zone)
         cutoff = local_start.replace(hour=21, minute=20, second=0, microsecond=0)
+        if value.get("campaign_root") and value.get("operational_predictions"):
+            # Operational recovery has prospective scheduling authority. Keep
+            # execution and cleanup on the source date, not an old launch cutoff.
+            cutoff = local_start.replace(hour=23, minute=59, second=59, microsecond=999999)
         if (
             local_start.date().isoformat() != value["source_date"]
             or local_end.date() != local_start.date()
@@ -69,8 +130,8 @@ class FreshnessContract:
             self.campaign = Campaign(value["campaign_root"])
             if digest(self.campaign.value) != value["campaign_authorization_sha256"]:
                 raise ValueError("campaign_authorization_changed")
-        if (value["max_capture_attempts"] != (12 if self.campaign else 1)
-                or not 0 < value["max_logical_requests"] <= (48000 if self.campaign else 24000)):
+        if (value["max_capture_attempts"] != (self.campaign.value['max_capture_attempts'] if self.campaign else 1)
+                or not 0 < value["max_logical_requests"] <= (self.campaign.value['max_logical_requests'] if self.campaign else 24000)):
             raise ValueError("invalid_scope_allowance")
         for key in ("lock_path", "evidence_root", "db_path"):
             if not Path(value[key]).is_absolute():
@@ -410,16 +471,26 @@ def install_request_guard(scope):
             atomic_json(network_path, network)
             atomic_json(path, {"started": count + 1})
         response = original(session, method, url, **kwargs)
-        if getattr(response, "status_code", None) in {401, 403, 429}:
-            scope.stop("SOURCE_ACCESS_DENIED")
-            from utils.http_client import source_retry_headers
-
-            atomic_json(scope.session / ("source-access-denied-" + str(os.getpid()) + ".json"), {
+        from utils.http_client import source_retry_headers
+        status = getattr(response, 'status_code', None)
+        guidance = source_retry_headers(getattr(response, 'headers', {}))
+        instructed = any(key in guidance for key in ('retry-after', 'ratelimit-reset', 'x-ratelimit-reset'))
+        if type(status) is int and status >= 400:
+            observation = {
                 "host": host,
-                "status": response.status_code,
+                "status": status,
                 "observed_at": datetime.now(timezone.utc).isoformat(),
-                "retry_headers": source_retry_headers(getattr(response, "headers", {})),
-            })
+                "retry_headers": guidance,
+            }
+            # Retain error guidance for auxiliary sources too. A bare 5xx is
+            # still an unavailable input, never fabricated weather or a denial.
+            import uuid
+            create_once(scope.session / ('source-response-error-' + uuid.uuid4().hex + '.json'), observation)
+        if status in {401, 403, 429} or (type(status) is int and status >= 400 and instructed):
+            if scope.campaign:
+                scope.campaign.hold_source(observation)
+            scope.stop("SOURCE_ACCESS_DENIED" if status in {401,403,429} else "SOURCE_RETRY_GUIDANCE")
+            atomic_json(scope.session / ("source-access-denied-" + str(os.getpid()) + ".json"), observation)
             raise ValueError("source_access_denied")
         return response
 

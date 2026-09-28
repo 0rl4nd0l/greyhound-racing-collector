@@ -282,9 +282,11 @@ def _synthetic_thedogs_export(runners):
     return "\n".join(",".join(row) for row in rows) + "\n"
 
 
+@pytest.mark.parametrize("acquisition", ["legacy", "supervised", "supervised_form", "supervised_link_url", "odds_502", "api_503"])
 def test_primary_download_reallocates_duplicate_refetches_to_native_identity(
     monkeypatch,
     _isolate_upcoming_dir,
+    acquisition,
 ):
     import upcoming_race_browser as browser_module
     from upcoming_race_browser import UpcomingRaceBrowser
@@ -293,6 +295,10 @@ def test_primary_download_reallocates_duplicate_refetches_to_native_identity(
         sidecar_metadata_coverage,
     )
 
+    if acquisition != "legacy":
+        monkeypatch.setenv("GREYHOUND_LIVE_EXECUTION", "fixture")
+    else:
+        monkeypatch.delenv("GREYHOUND_LIVE_EXECUTION", raising=False)
     jump = datetime(2099, 6, 9, 13, 15, tzinfo=timezone.utc)
     race_url = "https://www.thedogs.com.au/racing/the-meadows/2099-06-09/1/test-race"
     odds_url = f"{race_url}/odds"
@@ -340,6 +346,13 @@ def test_primary_download_reallocates_duplicate_refetches_to_native_identity(
       </div>
     </body></html>
     """.encode()
+    if acquisition == "supervised_form":
+        expert_html = expert_html.replace(
+            f'<a href="{export_url}">Download CSV</a>'.encode(),
+            b'<form method="GET"><input name="sort_by" value=""><button name="export_csv" value="true">Export CSV</button></form>',
+        )
+    if acquisition == "supervised_link_url":
+        expert_html = expert_html.replace(export_url.encode(), (expert_url + "?export_csv=true").encode())
     csv_content = _synthetic_thedogs_export(
         [
             (1, "Alpha Runner"),
@@ -399,13 +412,21 @@ def test_primary_download_reallocates_duplicate_refetches_to_native_identity(
             if url == race_url:
                 return Response(url, race_html, "text/html; charset=utf-8")
             if url == expert_url:
+                if acquisition == "supervised_form" and "params" in kwargs:
+                    assert kwargs["params"] == {"sort_by": "", "export_csv": "true"}
+                    return Response(url, export_url.encode(), "text/plain")
                 return Response(url, expert_html, "text/html; charset=utf-8")
+            if acquisition == "supervised_link_url" and url == expert_url + "?export_csv=true":
+                return Response(url, export_url.encode(), "text/plain")
             if url == export_url:
                 return Response(url, csv_content.encode(), "text/csv")
-            if url == odds_url:
-                return Response(url, odds_html, "text/html; charset=utf-8")
-            if url.startswith(api_url_prefix):
-                return Response(url, api_body, "application/json; charset=utf-8")
+            if url == odds_url or url.startswith(api_url_prefix):
+                value = Response(url, odds_html if url == odds_url else api_body,
+                                 "text/html; charset=utf-8" if url == odds_url else "application/json; charset=utf-8")
+                if (url == odds_url and acquisition == "odds_502") or (url.startswith(api_url_prefix) and acquisition == "api_503"):
+                    value.status_code = 502 if acquisition == "odds_502" else 503
+                    value.headers.update({"Retry-After": "120", "RateLimit-Reset": "12345"})
+                return value
             if url.startswith("https://api.open-meteo.com/v1/forecast?"):
                 weather = {
                     "hourly": {
@@ -439,14 +460,30 @@ def test_primary_download_reallocates_duplicate_refetches_to_native_identity(
         race_info_hint=race_info_hint,
     )
 
+    if acquisition in {"odds_502", "api_503"}:
+        assert result["success"] is False
+        assert result["source_http_status"] == (502 if acquisition == "odds_502" else 503)
+        assert result["source_retry_after"] == "120"
+        assert result["source_rate_limit_reset"] == "12345"
+        assert "must-not-be-retained" not in json.dumps(result)
+        assert len(session.calls) == (5 if acquisition == "odds_502" else 6)
+        assert not list(Path(_isolate_upcoming_dir).glob("*.csv"))
+        return
     assert result["success"] is True, result
     assert session.calls[0] == race_url
     assert session.calls[1].startswith("https://api.open-meteo.com/v1/forecast?")
-    assert len(session.calls) == 6
-    assert session.calls[2:5] == [expert_url, export_url, odds_url]
+    if acquisition == "supervised_link_url":
+        assert session.calls[2:6] == [expert_url, expert_url + "?export_csv=true", export_url, odds_url]
+        assert len(session.calls) == 7
+    elif acquisition == "supervised_form":
+        assert session.calls[2:6] == [expert_url, expert_url, export_url, odds_url]
+        assert len(session.calls) == 7
+    else:
+        assert len(session.calls) == 6
+        assert session.calls[2:5] == [expert_url, export_url, odds_url]
     assert session.calls[-1].startswith(api_url_prefix)
     assert session.calls.count(race_url) == 1
-    assert session.calls.count(expert_url) == 1
+    assert session.calls.count(expert_url) == (2 if acquisition == "supervised_form" else 1)
     sidecar = json.loads(Path(f"{result['filepath']}.metadata.json").read_text())
     page_evidence = sidecar["primary_race_page_evidence"]
     raw_page_path = Path(_isolate_upcoming_dir) / page_evidence["raw_path"]
@@ -538,7 +575,7 @@ def test_primary_download_reallocates_duplicate_refetches_to_native_identity(
     )
     assert repeated["success"] is True, repeated
     assert repeated["already_exists"] is True
-    assert len(session.calls) == 9
+    assert len(session.calls) == (10 if acquisition in {"supervised_form", "supervised_link_url"} else 9)
     assert session.calls.count(race_url) == 2
     assert len(list(evidence_dir.glob("*.race-page.html"))) == 1
     assert len(list(evidence_dir.glob("*.race-page.receipt.json"))) == 2
@@ -583,7 +620,7 @@ def test_primary_download_reallocates_duplicate_refetches_to_native_identity(
         "success": False,
         "error": "Error downloading race CSV: synthetic_parser_failure",
     }
-    assert len(failing_session.calls) == 4
+    assert len(failing_session.calls) == (5 if acquisition in {"supervised_form", "supervised_link_url"} else 4)
     assert failing_session.calls.count(race_url) == 1
     assert odds_url not in failing_session.calls
     assert not any(url.startswith(api_url_prefix) for url in failing_session.calls)

@@ -33,6 +33,7 @@ VENUE_NAME_HINTS = {
     "CASO": "Casino",
     "NOWRA": "Nowra",
     "SHEP": "Shepparton",
+    "SAN": "Sandown Park",
     "QOT": ("Ladbrokes Q", "Q1 Lakeside", "Q2 Parklands"),
 }
 
@@ -470,6 +471,14 @@ def fetch_odds_for_target_race(
         allow_auto_scrape_odds=True,
         setup_database=False,
     )
+    inspection = None
+    if os.environ.get("GREYHOUND_SPORTSBET_RESPONSE_INSPECTION") == "1":
+        if request_metrics_path is None:
+            raise ValueError("response_inspection_requires_evidence_path")
+        from datetime import datetime, timedelta, timezone
+        from utils.sportsbet_response_inspection import ResponseInspection
+        inspection = ResponseInspection(expires_at=datetime.now(timezone.utc) + timedelta(seconds=50))
+        integrator.response_inspection = inspection
     network_accounting = None
     try:
         if not integrator.setup_driver():
@@ -500,18 +509,28 @@ def fetch_odds_for_target_race(
         time.sleep(5)
         anchors = driver.find_elements("css selector", "a[href*='greyhound-racing']")
         selected = None
+        selection_counts = {
+            "anchors_total": len(anchors), "anchors_examined": 0,
+            "parsed_race_links": 0, "race_number_matches": 0, "exact_matches": 0,
+        }
         for anchor in anchors:
+            selection_counts["anchors_examined"] += 1
             href = anchor.get_attribute("href") or ""
             text = (anchor.text or "").strip()
             parsed = _parse_anchor(text, href, target_date)
             if not parsed:
                 continue
+            selection_counts["parsed_race_links"] += 1
             if int(parsed["race_number"]) != int(race_number):
                 continue
+            selection_counts["race_number_matches"] += 1
             if target_names and _norm(parsed["venue"]) not in target_names:
                 continue
             selected = parsed
+            selection_counts["exact_matches"] += 1
             break
+        if inspection is not None:
+            inspection.record_landing_selection(selection_counts)
         if not selected:
             remaining = getattr(driver, "sportsbet_navigation_remaining", lambda: None)()
             # A meeting lookup and the subsequent exact race load require two
@@ -544,6 +563,19 @@ def fetch_odds_for_target_race(
         alias = _alias_race_id(int(race_number), venue, target_date)
         summary["race_id"] = source_race_id
         summary["alias_race_id"] = alias
+        coverage_warning = enhanced.get("operational_coverage_warning")
+        if coverage_warning is not None:
+            if (inspection is None or coverage_warning !=
+                    "required_paired_markets_not_ready_within_readiness_budget"
+                    or enhanced.get("odds_data") or enhanced.get("odds_data_place")):
+                raise ValueError("invalid_operational_coverage_marker")
+            driver.sportsbet_check_access()
+            summary["warnings"] = [coverage_warning]
+            summary["discovery_method"] = "sportsbet_exact_race_paired_markets_unready"
+            # Inspect only already delivered bodies. A concurrent denial still
+            # raises and cannot become a harmless coverage miss.
+            driver.sportsbet_inspect_response_shapes()
+            return summary
         summary["win_count"] = len(enhanced.get("odds_data") or [])
         summary["place_count"] = len(enhanced.get("odds_data_place") or [])
         summary["race_info"] = dict(enhanced)
@@ -553,13 +585,42 @@ def fetch_odds_for_target_race(
             summary["warnings"].append("race found but no win odds extracted")
         if validate_result is not None and validate_result(summary):
             driver.sportsbet_accept_validated_data()
+        if inspection is not None:
+            driver.sportsbet_inspect_response_shapes()
         return summary
     finally:
         try:
             if network_accounting is not None:
                 network_accounting.drain()
         finally:
-            integrator.close_driver()
+            try:
+                if (inspection is not None and integrator.driver is not None
+                        and inspection.clock() < inspection.expires_at
+                        and time.monotonic() - inspection.started < 40):
+                    # Read only the existing DOM, including after stopped loading.
+                    # Counts are diagnostic evidence, never market/receipt proof.
+                    try:
+                        counts = integrator.driver.sportsbet_snapshot_dom_counts()
+                        if isinstance(counts, dict) and all(
+                            type(counts.get(key)) is int and counts[key] >= 0
+                            for key in ('runner_elements', 'price_elements')
+                        ):
+                            inspection.dom_snapshot = {
+                                'state': 'counts_only_not_validated_prices',
+                                **{key: counts[key] for key in ('runner_elements', 'price_elements')},
+                            }
+                    except TimeoutError:
+                        raise
+                    except Exception:
+                        inspection.dom_snapshot = {'state': 'unavailable'}
+            finally:
+                try:
+                    integrator.close_driver()
+                finally:
+                    if inspection is not None:
+                        from pathlib import Path
+                        from race_collection.live_phase_checkpoint import atomic_json
+                        atomic_json(Path(request_metrics_path).with_suffix(".responses.json"), inspection.report())
 
 
 def ensure_odds_for_target_race(

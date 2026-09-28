@@ -1,5 +1,6 @@
 """Durable cumulative engineering limits, independent of launch/package identity."""
 import fcntl
+import hashlib
 import json
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -17,6 +18,42 @@ class Campaign:
                 or self.value['max_logical_requests'] != 48000
                 or self.value['max_live_seconds'] != 10800):
             raise ValueError('invalid_campaign_authorization')
+        amendment = self.root / 'prospective-authorization-amendment.json'
+        if amendment.exists():
+            extra = json.loads(amendment.read_bytes())
+            if (extra.get('schema_version') != 'collector_engineering_amendment_v1'
+                    or extra.get('campaign_id') != self.value['campaign_id']
+                    or extra.get('prior_authorization_sha256') != hashlib.sha256(
+                        (self.root / 'authorization.json').read_bytes()).hexdigest()
+                    or not extra.get('authority_reference') or not extra.get('rationale')
+                    or type(extra.get('max_capture_attempts')) is not int
+                    or not 12 <= extra['max_capture_attempts'] <= 64
+                    or type(extra.get('max_live_seconds', 10800)) is not int
+                    or not 10800 <= extra.get('max_live_seconds', 10800) <= 21600):
+                raise ValueError('invalid_prospective_campaign_amendment')
+            # The original authority bytes and all ledger consumption remain.
+            # A new package binds the effective authority, including this record.
+            self.value = {**self.value, 'max_capture_attempts': extra['max_capture_attempts'],
+                          'max_live_seconds': extra.get('max_live_seconds', 10800),
+                          'prospective_amendment': extra}
+        # New authorizations are immutable, ordered and bound to the entire
+        # preceding effective authority. Historical files and charges stay put.
+        from race_collection.live_freshness_contract import digest
+        for number, path in enumerate(sorted((self.root / 'authorization-extensions').glob('*.json')), 1):
+            extra = json.loads(path.read_bytes())
+            limits = {'max_capture_attempts': 128, 'max_logical_requests': 96000,
+                      'max_live_seconds': 43200}
+            if (path.name != f'{number:04d}.json'
+                    or extra.get('schema_version') != 'collector_engineering_extension_v1'
+                    or extra.get('campaign_id') != self.value['campaign_id']
+                    or extra.get('prior_effective_authorization_sha256') != digest(self.value)
+                    or not extra.get('authority_reference') or not extra.get('rationale')
+                    or any(type(extra.get(key)) is not int
+                           or not self.value[key] <= extra[key] <= ceiling
+                           for key, ceiling in limits.items())):
+                raise ValueError('invalid_campaign_extension')
+            self.value = {**self.value, **{key: extra[key] for key in limits},
+                          'extensions': [*self.value.get('extensions', []), extra]}
 
     @contextmanager
     def ledger(self):
@@ -31,12 +68,16 @@ class Campaign:
 
     def admit(self, launch, now):
         with self.ledger() as value:
+            if value.get('source_holds'):
+                raise ValueError('campaign_source_hold')
             row = value['launches'].get(launch)
             if row is None or row.get('closed_at') or now.timestamp() >= row['deadline_epoch']:
                 raise ValueError('campaign_live_lease_closed')
 
     def begin(self, launch, *, now, deadline):
         with self.ledger() as value:
+            if value.get('source_holds'):
+                raise ValueError('campaign_source_hold')
             if launch in value['launches'] or any(not r.get('closed_at') for r in value['launches'].values()):
                 raise ValueError('campaign_owner_or_launch_already_exists')
             used = sum(r['charged_seconds'] for r in value['launches'].values())
@@ -72,6 +113,17 @@ class Campaign:
 
     def request(self):
         with self.ledger() as value:
+            if value.get('source_holds'):
+                raise ValueError('campaign_source_hold')
             if value['logical_requests'] >= self.value['max_logical_requests']:
                 raise ValueError('campaign_request_cap_exhausted')
             value['logical_requests'] += 1
+
+    def hold_source(self, observation):
+        """A denial or retry instruction survives package/process replacement.
+
+        Elapsed time alone never authorizes an unchanged retry. A subsequent
+        recovery needs a separately reviewed prospective disposition.
+        """
+        with self.ledger() as value:
+            value.setdefault('source_holds', []).append(observation)

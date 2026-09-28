@@ -52,6 +52,7 @@ from .live_adapters import (
 )
 from .prediction_worker import ServerChoice, WorkerConfig, run_once
 from .source_limits import CONTROL_BYTES, LIVE_SOURCE_MAX_BYTES, LIVE_SOURCE_MAX_STRING_BYTES
+from .live_authority_scope import FULL_AUTHORITY, source_keys
 from .r3_api import (
     R3Rejected,
     R3Services,
@@ -228,7 +229,10 @@ def _repository_layout()->dict[str,Any]:
 
 def _configured_live(layout:Mapping[str,Any])->LiveEvidenceAdapters:
     live=layout.get("live_evidence")
-    if not isinstance(live,dict) or set(live)!={"schema_version","observed_at","working_directory","sources","raw_sources","units","service_status"} or live.get("schema_version")!="operator_ui_live_authority_v1":raise RuntimeError("generated live evidence binding invalid")
+    if not isinstance(live,dict) or set(live)!={"schema_version","observed_at","working_directory","sources","raw_sources","units","service_status"}:raise RuntimeError("generated live evidence binding invalid")
+    try:json_keys,raw_keys=source_keys(live["schema_version"])
+    except ValueError as exc:raise RuntimeError("generated live evidence binding invalid") from exc
+    if set(live.get("sources",{}))!=json_keys or set(live.get("raw_sources",{}))!=raw_keys:raise RuntimeError("generated live evidence binding invalid")
     def entry(group:str,key:str)->tuple[Path,str,Path|None]:
         item=live[group].get(key)
         digest_only=group=="raw_sources" and key in _DIGEST_ONLY_RAW_KEYS
@@ -245,6 +249,7 @@ def _configured_live(layout:Mapping[str,Any])->LiveEvidenceAdapters:
     policies={"full_state":"P-COLLECTOR-FULL-DYNAMIC","full_report":"P-COLLECTOR-FULL-DYNAMIC","odds_state":"P-COLLECTOR-ODDS-DYNAMIC","odds_report":"P-COLLECTOR-ODDS-DYNAMIC","odds_refresh":"P-COLLECTOR-ODDS-DYNAMIC","corpus_report":"P-REPORT-24H","corpus_manifest":"P-REPORT-24H","deployment_manifest":"P-DEPLOY-60","model_catalog":"P-CATALOG-60"}
     sources={}
     for key,policy in policies.items():
+        if key not in json_keys:continue
         path,digest,sealed_root=entry("sources",key)
         try:payload=json.loads(_retained_source_read(path,key))
         except (UnicodeDecodeError,json.JSONDecodeError) as exc:raise RuntimeError("generated live evidence source invalid") from exc
@@ -276,7 +281,7 @@ def _configured_live(layout:Mapping[str,Any])->LiveEvidenceAdapters:
         unit_values.update({f"{lane}_unit_name":status[lane]["unit_name"],f"{lane}_active_state":status[lane]["active_state"],f"{lane}_sub_state":status[lane]["sub_state"],f"{lane}_exec_main_pid":status[lane]["exec_main_pid"]})
     units=InstalledUnits(**unit_values,observed_at=observed,working_directory=live["working_directory"])
     reader=OperatorEvidenceReader(sources,raw_sources=raw_sources)
-    return LiveEvidenceAdapters(reader,units=units,upcoming_races=UpcomingRaceSource(layout["paths"]["current_index.json"],layout["dirs"]["current_evidence"]),prediction_bundles=PredictionBundleSource(layout["dirs"]["prediction_bundles"]))
+    return LiveEvidenceAdapters(reader,units=units,upcoming_races=UpcomingRaceSource(layout["paths"]["current_index.json"],layout["dirs"]["current_evidence"]),prediction_bundles=PredictionBundleSource(layout["dirs"]["prediction_bundles"]),corpus_enabled=live["schema_version"]==FULL_AUTHORITY)
 
 
 def _runner(row: Mapping[str, Any]) -> dict[str, Any]:

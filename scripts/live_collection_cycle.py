@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 from race_collection.live_phase_budget import LiveBudget
-from race_collection.live_phase_checkpoint import PhaseCheckpoint, atomic_json
+from race_collection.live_phase_checkpoint import PhaseCheckpoint, atomic_json, native_publication_lock
 from race_collection.synchronous_manual_capture import (
     bounded_current_race_index,
     current_race_index_path,
@@ -38,6 +38,7 @@ def run_live_collection_cycle(args, *, odds_only: bool):
     index_state = state_path if odds_only else args.odds_capture_state_path
     lock_path = (args.lock_path or daemon.DEFAULT_LOCK_PATH).resolve()
     scope = allowance = None
+    refresh_deferred = False
     if profile:
         from race_collection.live_freshness_contract import FreshnessContract, AttemptAllowance
 
@@ -49,6 +50,25 @@ def run_live_collection_cycle(args, *, odds_only: bool):
             raise ValueError("live_profile_forbids_result_access")
         now = daemon.wall_clock_now()
         if scope.start <= now <= scope.end and (scope.end - now).total_seconds() < 90:
+            # Closing admission is not a successful collection. Retain evidence
+            # that the real service child deliberately made no source request.
+            scope.admit(now, seconds=0)
+            invocation = os.environ.get("GREYHOUND_SERVICE_INVOCATION", "")
+            if len(invocation) == 32 and all(c in "0123456789abcdef" for c in invocation):
+                from race_collection.live_freshness_contract import create_once, digest
+                create_once(scope.session / "admission-closures" / (invocation + ".json"), {
+                    "schema_version": "live_admission_closed_v1",
+                    "runtime_action": "OPERATING_SCOPE_CLOSED",
+                    "lane": "odds" if odds_only else "full",
+                    "rehearsal_id": scope.value["rehearsal_id"],
+                    "contract_sha256": digest(scope.value),
+                    "ends_at": scope.value["ends_at"],
+                    "service_invocation_id": invocation,
+                    "process_pid": os.getpid(),
+                    "observed_at": now.isoformat(),
+                    "observed_monotonic": time.monotonic(),
+                    "required_seconds": 90,
+                })
             return {"runtime_action": "OPERATING_SCOPE_CLOSED", "status": "SKIPPED"}
         scope.admit(now, seconds=90)
         allowance = AttemptAllowance(scope)
@@ -247,6 +267,12 @@ def run_live_collection_cycle(args, *, odds_only: bool):
             result["autopilot_output_dir"] = None
         return result
 
+    def publish_native_report(report):
+        name = 'odds_capture_only_daemon_report.json' if odds_only else 'daemon_run_report.json'
+        with native_publication_lock(evidence, exclusive=True):
+            atomic_json(output / name, report)
+
+    @native_publication_lock(evidence, exclusive=True)
     def finish_checkpoint():
         nonlocal completed_report, outcome
         finalization_started = time.monotonic()
@@ -518,6 +544,40 @@ def run_live_collection_cycle(args, *, odds_only: bool):
         except Exception:
             return None
 
+    def defer_failed_refresh():
+        if not scope or not scope.value.get("operational_predictions") or timing_failed():
+            return False
+        from race_collection.live_freshness_contract import classify_refresh_outage, create_once
+        from utils.sportsbet_access import SportsbetAccess
+        try:
+            scope.admit(daemon.wall_clock_now(), seconds=0)
+            access = SportsbetAccess().read()
+            if access["phase"] != "OPEN" or access["access_basis"]["status"] != "permitted":
+                return False
+            classified = classify_refresh_outage(evidence, run_id)
+            if classified is None:
+                return False
+            # Verify the previous publication while still owning the collector
+            # lock. This runs no provider/systemd work and holds no writer mutex.
+            view_now()
+            if not 0 <= budget.age(last_observed, daemon.wall_clock_now()) < 270 or timing_failed():
+                return False
+            directory = Path(args.live_freshness_contract).resolve().parent / "refresh-deferrals"
+            with native_publication_lock(evidence, exclusive=True):
+                retained = directory / (run_id + ".json")
+                records = list(directory.glob("*.json"))
+                if retained.exists():
+                    value = json.loads(retained.read_bytes())
+                    return all(value.get(key) == item for key, item in classified.items())
+                if len(records) >= 2:
+                    return False
+                create_once(retained, {**classified,
+                    "observed_at": daemon.wall_clock_now().isoformat(),
+                    "failed_cycle_count": len(records) + 1})
+            return True
+        except (OSError, ValueError, KeyError, TypeError):
+            return False
+
     def command_for(kind, phase_id, inputs):
         command = [
             sys.executable,
@@ -594,7 +654,7 @@ def run_live_collection_cycle(args, *, odds_only: bool):
         return command
 
     def phase(kind, inputs=None):
-        nonlocal checkpoint, refresh_result, capture_result, outcome, output, run_id, active_lock_started, deferred_owner
+        nonlocal checkpoint, refresh_result, capture_result, outcome, output, run_id, active_lock_started, deferred_owner, refresh_deferred
         inputs = inputs or {}
         if scope:
             scope.admit(daemon.wall_clock_now(), seconds=90 if kind == "refresh" else 155)
@@ -614,15 +674,7 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                 final_verdict="DAEMON_RUNNING",
                 final_status="ODDS_CAPTURE_ONLY_RUNNING",
             )
-            atomic_json(
-                output
-                / (
-                    "odds_capture_only_daemon_report.json"
-                    if odds_only
-                    else "daemon_run_report.json"
-                ),
-                waiting,
-            )
+            publish_native_report(waiting)
         try:
             owner = daemon.acquire_lock_with_odds_capture_retry(
                 lock_path=lock_path,
@@ -651,6 +703,15 @@ def run_live_collection_cycle(args, *, odds_only: bool):
         try:
             if scope:
                 scope.admit(daemon.wall_clock_now(), seconds=90 if kind == "refresh" else 155)
+                if scope.value.get("operational_predictions"):
+                    directory = Path(args.live_freshness_contract).resolve().parent / "refresh-deferrals"
+                    # Collector ownership serializes this check with the prior
+                    # cycle's failure classification, before any next request.
+                    with native_publication_lock(evidence, exclusive=True):
+                        exhausted = len(list(directory.glob("*.json"))) >= 2
+                    if exhausted:
+                        scope.stop("REFRESH_OUTAGE_LIMIT_REACHED")
+                        raise ValueError("refresh_outage_limit_reached")
             running = report_payload()
             running.update(
                 status="RUNNING",
@@ -664,15 +725,7 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                     final_status="ODDS_CAPTURE_ONLY_RUNNING",
                     **daemon.odds_capture_only_operator_fields("ODDS_CAPTURE_ONLY_RUNNING"),
                 )
-            atomic_json(
-                output
-                / (
-                    "odds_capture_only_daemon_report.json"
-                    if odds_only
-                    else "daemon_run_report.json"
-                ),
-                running,
-            )
+            publish_native_report(running)
             if checkpoint is None:
                 checkpoint = PhaseCheckpoint(
                     checkpoint_path, identity=identity, cycle_id=run_id, output_dir=output
@@ -849,6 +902,10 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                     )
                 )
                 finish_checkpoint()
+                if kind == "refresh" and outcome == "LIVE_PHASE_FAILED":
+                    refresh_deferred = defer_failed_refresh()
+                if scope and not refresh_deferred:
+                    scope.stop(outcome)
                 return False
             if not checkpoint.value["pending"] and budget.safe_to_yield(
                 source_observed(), daemon.wall_clock_now()
@@ -908,19 +965,21 @@ def run_live_collection_cycle(args, *, odds_only: bool):
         "LIVE_COLLECTION_COMPLETE",
         "DEFERRED_LOCK_HELD",
         "DEFERRED_FULL_LOCK_HANDOFF",
-    }:
+    } and not (refresh_deferred and outcome == "LIVE_PHASE_FAILED" and not timing_failed()):
         scope.stop(outcome)
-    terminal_report = report_payload()
-    atomic_json(output / "terminal-timing.json", terminal_report)
-    if outcome == "LIVE_COLLECTION_COMPLETE" and terminal_timing_failed():
-        outcome = "LIVE_TIMING_BUDGET_EXCEEDED"
+    with native_publication_lock(evidence, exclusive=True):
         terminal_report = report_payload()
         atomic_json(output / "terminal-timing.json", terminal_report)
+    if outcome == "LIVE_COLLECTION_COMPLETE" and terminal_timing_failed():
+        outcome = "LIVE_TIMING_BUDGET_EXCEEDED"
+        with native_publication_lock(evidence, exclusive=True):
+            terminal_report = report_payload()
+            atomic_json(output / "terminal-timing.json", terminal_report)
     if completed_report is not None and completed_report["runtime_action"] == outcome:
         return terminal_report
     result = report_payload()
     report_name = "odds_capture_only_daemon_report.json" if odds_only else "daemon_run_report.json"
-    atomic_json(output / report_name, result)
+    publish_native_report(result)
     if completed_report is not None and outcome == "LIVE_TIMING_BUDGET_EXCEEDED":
         from race_collection.synchronous_manual_capture import (
             CollectorBusy,
@@ -942,7 +1001,8 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                     current_state.update(result)
                     current_state["schema_version"] = state_schema
                     current_state["last_verdict"] = result["final_verdict"]
-                    atomic_json(state_path, current_state)
+                    with native_publication_lock(evidence, exclusive=True):
+                        atomic_json(state_path, current_state)
             finally:
                 release_owned_collector_lock(correction_lock)
         atomic_json(output / "terminal-timing-failure.json", result)
