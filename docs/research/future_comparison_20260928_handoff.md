@@ -1,5 +1,7 @@
 # Inactive comparison handoff to collector and scientific owners
 
+> Persistent execution update: [server scheduling and result retention](persistent_comparison_20260928.md) supersedes the manual-session and unassigned-result-owner assumptions below. Scientific allocation remains unapproved; the historical evidence is preserved.
+
 Research PR 194 includes the collector through
 `deada7607e6aafd5be85c3cb6d910922c0a2e26e` (allocation repair
 `23567cbec57f10472b093cfe0caf743c5a3ad63f`), preserving the September28 timer,

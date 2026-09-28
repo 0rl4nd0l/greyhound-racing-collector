@@ -109,7 +109,7 @@ class Transport:
                 raise ValueError('result_queue_attempt_required')
             if db.execute('SELECT count(*) FROM requests WHERE race=?', (self.race,)).fetchone()[0] >= self.cfg['max_attempts_per_race']:
                 raise ValueError('RESULT_RACE_REQUEST_BUDGET')
-            self.campaign.request()  # shared holds/counters; never reset or bypass
+            self.campaign.request(kind='results')  # shared holds/counters; never reset or bypass
             db.execute('UPDATE jobs SET attempts=attempts+1 WHERE race=?', (self.race,))
             db.execute('INSERT INTO requests(at,race,artifact) VALUES(?,?,?)',
                        (now.isoformat(), self.race, str(artifact)))
@@ -138,7 +138,8 @@ class Transport:
                 atomic_json(self.output / 'transport-status.json', {'status': 'SOURCE_HOLD'})
                 raise ValueError('RESULT_SOURCE_HOLD')
             if (len(body) > MAX_BODY or response.url != url or 300 <= response.status_code < 400
-                    or response.headers.get('Content-Encoding', 'identity').lower() not in ('', 'identity')):
+                    or response.headers.get('Content-Encoding', 'identity').lower() not in ('', 'identity')
+                    or (response.status_code==200 and not response.headers.get('Content-Type','').lower().startswith('text/html'))):
                 atomic_json(self.output / 'transport-status.json', {'status': 'QUARANTINED_ENVELOPE'})
                 raise ValueError('RESULT_SOURCE_ENVELOPE')
             # Detect denial HTML too; a 200 challenge is not a pending result.

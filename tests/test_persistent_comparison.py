@@ -128,3 +128,28 @@ def test_private_storage_checks_and_finite_backoff(tmp_path,monkeypatch):
     assert next_due(jump,2,jump)==jump+timedelta(days=1)
     assert next_due(jump,3,jump)==jump+timedelta(days=7)
     assert next_due(jump,3,jump+timedelta(days=30))==jump+timedelta(days=30,minutes=20)
+
+
+def test_reboot_after_closure_publish_reconciles_queue_once(tmp_path):
+    run(tmp_path,'setup');run(tmp_path,'queue')
+    scenario(tmp_path,'pending',days=16)
+    assert run(tmp_path,'queue')['status']=='CLOSURE_SEALED'
+    with sqlite3.connect(tmp_path/'private/queue.sqlite3') as db:
+        db.execute("UPDATE jobs SET state='RUNNING'")
+        db.execute("DELETE FROM events WHERE status='CLOSURE_SEALED'")
+    assert run(tmp_path,'queue')['counts']=={'DEADLINE_UNRESOLVED':1}
+    run(tmp_path,'queue')
+    with sqlite3.connect(tmp_path/'private/queue.sqlite3') as db:
+        assert db.execute("SELECT count(*) FROM events WHERE status='CLOSURE_SEALED'").fetchone()[0]==1
+    assert requests(tmp_path)==1
+
+
+def test_missing_jobstore_bootstrap_vs_lost_membership(tmp_path):
+    run(tmp_path,'setup')
+    jobstore=tmp_path/'predictions-jobs.db';jobstore.rename(tmp_path/'saved-jobs.db')
+    assert run(tmp_path,'queue')['status']=='JOB_STORE_MISSING'
+    # Move only synthetic admission to model the pre-first-job state.
+    claim=next((tmp_path/'comparison-programme').glob('*/attempts/*/admission.json'))
+    claim.rename(claim.with_suffix('.saved'))
+    assert run(tmp_path,'queue')['status']=='CYCLE_COMPLETE'
+    assert requests(tmp_path)==0

@@ -129,6 +129,23 @@ def verify_canary(cfg, result_cfg, root, now):
     return True
 
 
+def prepare_session(cfg, package, slot):
+    from scripts.prepare_freshness_rehearsal import prepare
+    roots=json.loads(checked(Path(cfg['reconciliation_roots']),cfg['reconciliation_roots_sha256']))
+    # Each prior owned immutable package joins the next reconciliation inventory.
+    # No old receipt or shared campaign root inventory is edited.
+    for plan_path in sorted(Path(cfg['state_root']).glob('slots/*/*/plan.json')):
+        prior=json.loads(plan_path.read_bytes())
+        for key in ('scheduled_progress','scheduled_reports','phase_checkpoints'):
+            roots[key]=sorted(set(roots[key]+[prior['evidence_root']]))
+        roots['prior_rehearsals']=sorted(set(roots['prior_rehearsals']+[str(plan_path.parent)]))
+    return prepare(output=package,start=slot,python=Path(cfg['python']),
+        db=Path(cfg['history_database']),lock=Path(cfg['lock_path']),reconciliation_roots=roots,
+        installed_dir=Path(cfg['installed_dir']),campaign_root=Path(cfg['campaign_root']),
+        operational_predictions=True,observation_minutes=90,comparison_plan=Path(cfg['comparison_plan']),
+        prediction_root=Path(cfg['prediction_root']))
+
+
 def tick(config_path):
     os.umask(0o077)
     cfg, plan = load_config(config_path)
@@ -165,7 +182,8 @@ def tick(config_path):
                 'config_sha256':digest(cfg),'boot_id':Path('/proc/sys/kernel/random/boot_id').read_text().strip()})
             if now > slot-timedelta(minutes=5):
                 create_once(claim/'terminal.json',{'status':'MISSED_SLOT','at':now.isoformat()}); continue
-            if shutil.disk_usage(root).free < 10*2**30 or sum(p.stat().st_size for p in root.rglob('*') if p.is_file()) > 40*2**30:
+            if (shutil.disk_usage(root).free < 10*2**30 or sum(p.stat().st_size for p in root.rglob('*') if p.is_file()) > 40*2**30
+                    or sum(p.stat().st_size for p in Path(cfg['prediction_root']).rglob('*') if p.is_file()) > 20*2**30):
                 create_once(claim/'terminal.json',{'status':'DISK_HOLD','at':now.isoformat()})
                 return {'status':'DISK_HOLD'}
             from src.predictor.comparison_result_runtime import load_runtime
@@ -182,13 +200,8 @@ def tick(config_path):
                     return {'status':'RESULT_RETENTION_HOLD'}
             atomic_json(root/'health.json',{'status':'SESSION_RUNNING','at':now.isoformat(),'slot':text,'outcomes_released':False})
             create_once(claim/'source-lease.json',renew_source(cfg,str(index+1),now=now))
-            from scripts.prepare_freshness_rehearsal import prepare
             package = claim/(cfg['programme_id']+'-'+claim.name)
-            prepare(output=package,start=slot,python=Path(cfg['python']),
-                db=Path(cfg['history_database']),lock=Path(cfg['lock_path']),
-                reconciliation_roots=Path(cfg['reconciliation_roots']),installed_dir=Path(cfg['installed_dir']),
-                campaign_root=Path(cfg['campaign_root']),operational_predictions=True,observation_minutes=90,
-                comparison_plan=Path(cfg['comparison_plan']), prediction_root=Path(cfg['prediction_root']))
+            prepare_session(cfg, package, slot)
             pp=package/'plan.json'; prepared=json.loads(pp.read_bytes())
             code=child([cfg['python'],'-B',str(Path(prepared['source_root'])/'scripts/run_freshness_rehearsal.py'),
                 '--plan',str(pp),'--plan-sha256',digest(prepared),'--approval-id',cfg['authority_reference']],claim/'session.log')

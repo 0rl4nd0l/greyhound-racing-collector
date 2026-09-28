@@ -52,6 +52,13 @@ def status(root, db, now, code):
     return value
 
 
+def _reconcile_closed_queue(db, now, final):
+    db.execute("UPDATE jobs SET state='DEADLINE_UNRESOLVED' WHERE state IN ('PENDING','RUNNING')")
+    if not db.execute("SELECT 1 FROM events WHERE status='CLOSURE_SEALED'").fetchone():
+        event(db, now, None, 'CLOSURE_SEALED', final)
+    db.commit()
+
+
 def _closure(binding_path, root, db, now):
     from scripts.seal_comparison_result_closure import seal
     final = root / 'closure'
@@ -59,6 +66,7 @@ def _closure(binding_path, root, db, now):
         receipt = json.loads((final / 'closure.json').read_bytes())
         if hashlib.sha256((final / 'official-results.sqlite3').read_bytes()).hexdigest() != receipt['result_database_sha256']:
             raise ValueError('closure_identity_changed')
+        _reconcile_closed_queue(db,now,final)
         return status(root, db, now, 'CLOSURE_SEALED')
     # Interrupted staging directories remain private evidence. A subsequent pass
     # seals to a new directory, then publishes exactly once under worker flock.
@@ -71,8 +79,7 @@ def _closure(binding_path, root, db, now):
     fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
     try: os.fsync(fd)
     finally: os.close(fd)
-    db.execute("UPDATE jobs SET state='DEADLINE_UNRESOLVED' WHERE state IN ('PENDING','RUNNING')")
-    event(db, now, None, 'CLOSURE_SEALED', final)
+    _reconcile_closed_queue(db,now,final)
     return status(root, db, now, 'CLOSURE_SEALED')
 
 
@@ -102,6 +109,11 @@ def cycle(binding_path):
             from src.operator_ui.job_store import JobStore, Phase
             from src.operator_ui.r3_api import build_verified_bundle_reader
             from src.predictor.comparison_results import ComparisonResultSource
+            if not Path(cfg['job_store']).exists():
+                claims=Path(plan['programme_root'])/binding['plan_sha256']/'attempts'
+                if db.execute('SELECT count(*) FROM jobs').fetchone()[0] or any(claims.glob('*/admission.json')):
+                    return status(root,db,now,'JOB_STORE_MISSING')
+                return status(root,db,now,'CYCLE_COMPLETE')
             store = JobStore(Path(cfg['job_store']), readonly=True)
             bundles = Path(cfg['prediction_bundles'])
             read_bundle = build_verified_bundle_reader(bundles, store)
@@ -227,7 +239,7 @@ def main():
     try:
         value = cycle(args.binding)
         print(json.dumps(value))
-        return 0 if value['status'] in ('CYCLE_COMPLETE', 'CLOSURE_SEALED') else 2
+        return 0 if value['status'] in ('CYCLE_COMPLETE', 'CLOSURE_SEALED','COLLECTOR_LOCK_BUSY','CAMPAIGN_OWNER_BUSY') else 2
     except Exception as exc:
         # Even exception messages can contain provider data. Only class is public.
         value={'status': 'RESULT_WORKER_FAILED', 'failure_class': type(exc).__name__,

@@ -1,5 +1,7 @@
 # Four-way comparison: proposed allocation and executable closure
 
+> Persistent execution update: [server scheduling and result retention](persistent_comparison_20260928.md) supersedes the manual-session and unassigned-result-owner assumptions below. Scientific allocation remains unapproved; the historical evidence is preserved.
+
 **PREPARED_NOT_AUTHORIZED.** This supersedes the September 24 *proposal*, not any
 approved scientific protocol. No operational race is retrospectively a member.
 No study activation, services, provider requests, target-result reads or fitting

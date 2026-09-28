@@ -84,3 +84,27 @@ def test_open_only_renewal_preserves_denials_and_consumed_slot(tmp_path,monkeypa
     access.retain_denial(403,reason='SYNTHETIC')
     with pytest.raises(ValueError,match='explicit_disposition'):schedule.renew_source(cfg,'2',now=now)
     assert access.read()['phase']=='STOP' and len(access.read()['denials'])==1
+
+# Reuse environment stubs, but execute the real package preparer and the exact
+# supervisor contract constructor. This caught the NVMe path and Path/JSON bugs.
+from tests.test_short_operational_observation import prepared
+
+
+def test_real_prepare_and_supervisor_contract_accept_prospective_root(prepared,monkeypatch):
+    from scripts.prepare_freshness_rehearsal import prepare
+    from scripts.run_freshness_rehearsal import execution_contract
+    from race_collection.live_freshness_contract import FreshnessContract
+    from race_collection.freshness_campaign import Campaign
+    campaign=Campaign(prepared['campaign_root'])
+    prediction=prepared['output'].parent/'new-nvme-predictions'
+    campaign.programme={'prediction_root':str(prediction)}
+    roots={k:[str(prepared['output'].parent)] for k in ('scheduled_progress','scheduled_reports','phase_checkpoints','prior_rehearsals','manual_claims','manual_attempts')}
+    prepared['reconciliation_roots']=roots
+    prepare(**prepared,prediction_root=prediction)
+    plan=json.loads((prepared['output']/'plan.json').read_bytes())
+    assert plan['reconciliation_roots']==roots
+    assert plan['max_logical_requests']==16000
+    contract=execution_contract(plan,{'source_date':'2026-09-24'})
+    scope=FreshnessContract(contract)
+    assert scope.value['db_path']==str(prediction/'capture.sqlite3')
+    assert scope.value['prediction_root']==str(prediction)

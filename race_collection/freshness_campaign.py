@@ -126,7 +126,7 @@ class Campaign:
         with self.ledger() as value:
             row = value['launches'][launch]
             if not row.get('closed_at'):
-                row['charged_seconds'] = min(row['charged_seconds'], max(0, (now - datetime.fromisoformat(row['started_at'])).total_seconds()))
+                row['charged_seconds'] = max(0, (now - datetime.fromisoformat(row['started_at'])).total_seconds())
                 row['closed_at'] = now.isoformat()
 
     def available(self):
@@ -148,7 +148,7 @@ class Campaign:
                 aliases=sorted(aliases), window=item['capture_window_minutes'], item=item,
                 consumed_at=datetime.now(timezone.utc).isoformat()))
 
-    def request(self):
+    def request(self, *, kind='prediction'):
         self.check_programme_time()
         with self.ledger() as value:
             if value.get('source_holds'):
@@ -156,6 +156,12 @@ class Campaign:
             if (value['logical_requests'] >= self.value['max_logical_requests']
                     or self.programme and value['logical_requests']-self.programme['initial_counters']['logical_requests']>=1304000):
                 raise ValueError('campaign_request_cap_exhausted')
+            if self.programme:
+                ceilings={'prediction':1280000,'results':24000}
+                if kind not in ceilings:raise ValueError('unknown_programme_request_kind')
+                usage=value.setdefault('persistent_request_usage',{'prediction':0,'results':0})
+                if usage[kind]>=ceilings[kind]:raise ValueError('programme_kind_request_cap_exhausted')
+                usage[kind]+=1
             value['logical_requests'] += 1
 
     def hold_source(self, observation):

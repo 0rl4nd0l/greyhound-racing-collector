@@ -1,5 +1,7 @@
 # September 28 integration and feasibility result
 
+> Persistent execution update: [server scheduling and result retention](persistent_comparison_20260928.md) supersedes the manual-session and unassigned-result-owner assumptions below. Scientific allocation remains unapproved; the historical evidence is preserved.
+
 The frozen four-way comparison runs through the repaired collector's exported
 worker path, with production unchanged. All 12 prespecified retained inputs can
 execute the frozen feature routes under narrowly scoped earlier-history

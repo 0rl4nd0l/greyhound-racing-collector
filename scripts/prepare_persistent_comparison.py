@@ -14,7 +14,7 @@ from scripts.prepare_frozen_comparison_activation import prepare as prepare_scie
 from src.predictor.on_demand import canonical_bytes
 
 
-def prepare(output,programme_root,starts_at,source_commit,campaign_root,source_state,python):
+def prepare(output,programme_root,starts_at,source_commit,campaign_root,source_state,python,reconciliation_roots):
     start=datetime.fromisoformat(starts_at).astimezone(ZoneInfo('Australia/Melbourne'))
     campaign=Campaign(campaign_root)
     ledger=json.loads((campaign_root/'ledger.json').read_bytes())
@@ -65,10 +65,13 @@ def prepare(output,programme_root,starts_at,source_commit,campaign_root,source_s
             'recovery_attempts':source['recovery_attempts'],'access_basis_sha256':digest(source['access_basis']),
             'operating_policy_sha256':digest(source.get('operating_policy'))},
         'history_database':'/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/greyhound_racing_data.db',
-        'lock_path':authority['runtime']['lock_path'],'reconciliation_roots':str(campaign_root/'reconciliation-roots.json'),
+        'lock_path':authority['runtime']['lock_path'],'reconciliation_roots':str(reconciliation_roots),
+        'reconciliation_roots_sha256':hashlib.sha256(reconciliation_roots.read_bytes()).hexdigest(),
         'installed_dir':str(Path.home()/'.config/systemd/user')}
     put('schedule.prepared.json',schedule)
-    return {'status':'PREPARED_NOT_AUTHORIZED','slots':len(slots),'starts_at':start.isoformat(),'ends_at':end.isoformat(),
+    manifest={'schema_version':'persistent_prepared_packet_v1','files':{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(output.glob('*.prepared.json'))}}
+    (output/'prepared-manifest.json').write_bytes(canonical_bytes(manifest))
+    return {'prepared_manifest_sha256':hashlib.sha256((output/'prepared-manifest.json').read_bytes()).hexdigest(),'status':'PREPARED_NOT_AUTHORIZED','slots':len(slots),'starts_at':start.isoformat(),'ends_at':end.isoformat(),
             'closure_at':closure.isoformat(),'runtime_writes':False}
 
 
@@ -76,6 +79,7 @@ if __name__=='__main__':
     p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--programme-root',type=Path,required=True)
     p.add_argument('--starts-at',required=True);p.add_argument('--source-commit',required=True)
     p.add_argument('--campaign-root',type=Path,default=Path.home()/'greyhound-collector-campaign-20260923')
+    p.add_argument('--reconciliation-roots',type=Path,required=True)
     p.add_argument('--source-state',type=Path,default=Path.home()/'.local/state/greyhound/sportsbet-access.json')
     p.add_argument('--python',type=Path,default=Path(sys.executable));a=p.parse_args()
-    print(json.dumps(prepare(a.output.absolute(),a.programme_root,a.starts_at,a.source_commit,a.campaign_root,a.source_state,a.python)))
+    print(json.dumps(prepare(a.output.absolute(),a.programme_root,a.starts_at,a.source_commit,a.campaign_root,a.source_state,a.python,a.reconciliation_roots)))

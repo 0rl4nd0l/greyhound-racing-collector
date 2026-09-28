@@ -28,7 +28,7 @@ def run(output,python,repetitions=3):
     tracked=subprocess.check_output(['git','ls-tree','-r','--name-only',commit],cwd=ROOT,text=True).splitlines()
     names=[name for name in tracked if (name.endswith('.py') and not name.startswith('docs/')) or
         name.startswith('artifacts/research_comparison/frozen_20260924/') or
-        name in ('artifacts/frozen_models/market_form_residual_v1/model.json','artifacts/frozen_models/market_form_residual_v1/manifest.json','accuracy_program/repaired_non_tgr_schema.json') or
+        name in ('docs/research/future_comparison_20260928_evidence/reservation_review.json','artifacts/frozen_models/market_form_residual_v1/model.json','artifacts/frozen_models/market_form_residual_v1/manifest.json','accuracy_program/repaired_non_tgr_schema.json') or
         (name.startswith(('configs/','config/')) and name.endswith('.json'))]
     raw=subprocess.check_output(['git','archive',commit,*names],cwd=ROOT)
     source=output/'source';source.mkdir()
