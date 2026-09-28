@@ -124,3 +124,27 @@ probe already stopping the same test scope; ownership exclusion and actual denia
 now use independent packages. Dedicated unconditional HTTP/browser fixture
 markers prove exclusion, with a positive transport assertion on genuine denial.
 The independent spec reviewer found no further issue after this correction.
+
+### Compatible R3 state reader
+
+The pinned collector observation remains commit35b375ba. A separate compatibility
+review found that installed and candidate R3 gave odds_state only256KiB and4KiB
+strings, despite retaining the same embedded HTTP provenance as odds_report.
+The second September28 attempt retained a552,067-byte state with a59,520-byte
+maximum string. The September24 final state was326,658bytes/58,680-byte string.
+These exceed R3's limits although the rehearsal's explicit2MiB/128KiB limits
+accept them. A rehearsal pass alone therefore did not prove configuredR3 reading.
+
+The R3-only correction applies the existing2MiB/128KiB odds provenance envelope
+to odds_state. Full state/report retain512KiB/4KiB, other sources remain unchanged,
+as do identity/hash checks, source timestamps and the300-second freshness gate.
+A generated-package regression failed under the old byte limit.34 checks then
+passed across actual package generation, startup and configured collector reads,
+including exact limits, over-limit rejection, depth/items, startup/runtime state
+growth, external-refresh divergence and absence of raw bodies in public output.
+The state parametrization's tamper case still targets the external refresh; it
+is a consistency test, not independent state-file tampering. Both review axes
+reported no blocking findings. InstalledR3 remains unchanged; deployment requires
+compatible candidate code as well as new authority binding, because5013ff03 also
+lacks candidate lock-wait/deferred-lock handling. Model/config/schema bytes remain
+identical. This UI-only change does not alter the running exported collector.
