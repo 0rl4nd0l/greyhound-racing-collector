@@ -41,6 +41,9 @@ def test_q_straight_is_not_a_lakeside_or_parklands_alias():
     straight = next(group for group in VENUE_EXCLUSION_ALIAS_GROUPS if 'QOT' in group)
     assert 'LADBROKES-Q-STRAIGHT' in straight
     assert not straight.intersection({'Q1', 'Q2', 'LADBROKES-Q1-LAKESIDE', 'LADBROKES-Q2-PARKLANDS'})
+    assert canonical_thedogs_venue_identity('LADBROKES-Q-STRAIGHT') == canonical_thedogs_venue_identity('QOT')
+    assert len({canonical_thedogs_venue_identity(value) for value in (
+        'LADBROKES-Q-STRAIGHT', 'LADBROKES-Q1-LAKESIDE', 'LADBROKES-Q2-PARKLANDS')}) == 3
 
 
 @pytest.mark.parametrize('missing', ['weather', 'track', 'identity'])
