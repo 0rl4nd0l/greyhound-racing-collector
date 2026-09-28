@@ -775,6 +775,10 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                         }
                     )
                     atomic_json(checkpoint.path, checkpoint.value)
+                    if not checkpoint.value["pending"] and budget.safe_to_yield(
+                        source_observed(), daemon.wall_clock_now()
+                    ):
+                        finish_checkpoint()
                     return "excluded"
                 view = view_now()
                 selected = next(
@@ -849,6 +853,10 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                         "observed_at": daemon.wall_clock_now().isoformat(),
                     })
                     atomic_json(checkpoint.path, checkpoint.value)
+                    if not checkpoint.value["pending"] and budget.safe_to_yield(
+                        source_observed(), daemon.wall_clock_now()
+                    ):
+                        finish_checkpoint()
                     return "excluded"
             started = time.monotonic()
             record = checkpoint.begin(kind, inputs, daemon.wall_clock_now().isoformat())
