@@ -5,8 +5,9 @@ Research PR 194 includes the collector through
 `23567cbec57f10472b093cfe0caf743c5a3ad63f`), preserving the September28 timer,
 handoff, shutdown, receipt, accounting and R 3 changes. The exported comparison
 proof pins integration `557b7ecb1350e3b85f4f0d8199351c50bcfbaf2c`.
-Subsequent closure/preparation changes are recorded in the final integration
-commit/report. **No deployment, activation, live provider call or service change
+Final runnable closure/preparation integration is
+`d7f5cf807a6d476720796bf9301f3b1f69ad8137`; its exported verification is recorded
+in the closeout manifest. **No deployment, activation, live provider call or service change
 was performed by this track. Operational rollout is independent.**
 
 Frozen files are `artifacts/research_comparison/frozen_20260924/{registry,
@@ -42,8 +43,11 @@ The scientific owner must approve the [specification](future_comparison_20260928
 defer both inactive overlapping proposals, grant prospective earlier-history
 scope, and appoint/authorize a result-retention owner. The operational owner has
 not accepted that duty and its current campaign does not include results.
-Before activation that result owner must demonstrate prompt acquisition/storage
-under its finite provider budget and the existing source/lock rules. No research
+Before activation that result owner must accept prompt acquisition/storage
+under its finite provider budget and the existing source/lock rules. The first
+approved session supplies actual outcome-blind result-retention acceptance;
+pause new research admissions if its next-day result cycle cannot run, without
+resetting membership or the endpoint. No research
 code can supply provider authority or guarantee future availability.
 
 ## Prepared configuration; do not execute live under this task

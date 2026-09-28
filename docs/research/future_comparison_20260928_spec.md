@@ -25,11 +25,14 @@ Do not silently enlarge the population to all Australian races.
 A separate scientific/result-retention owner must be appointed and given a
 finite source budget. The operational repair owner explicitly **does not own
 result capture** under the current campaign. Operational deployment may proceed
-without this decision. Before activating, demonstrate the existing result
-collector's scoped invocation under that owner's authority, prompt retention,
-private output permissions, source accounting and closure-snapshot procedure.
-This preparation has tested that interface with synthetic evidence; it has not
-established future provider availability or appointed that owner.
+without this decision. Before activating, the appointed owner must accept the scheduled result cycles,
+finite source budget, private storage and closure procedure, using the already
+tested scoped interface. Actual provider result closure cannot precede future
+study membership: the first approved session is its outcome-blind acceptance.
+Pause further scientific admission if its due next-day result-retention cycle
+cannot run; preserve those members and the original fixed endpoint. Operational
+collection can continue independently. This preparation proves the synthetic
+interface, not future provider availability or appointment of an owner.
 
 ## Reservations and the unapplied allocation amendment
 
@@ -107,12 +110,14 @@ result exclusion remains. No new scheduler, transport or parallel prediction
 pipeline. Other R 3/operational jobs cannot be accessed through the study binding.
 
 Result owner runs the existing collector after T+15 minutes, at session close,
-and during the next-day repair cycle. Keep every attempt/quarantine and source
-hash in private storage immediately; do not wait 16 weeks to discover unavailable
+and during the next-day repair cycle. Keep every attempt/quarantine, source URL/timestamp and parsed-evidence
+content hash in private storage immediately; do not wait 16 weeks to discover unavailable
 source evidence. Retry only under the existing source owner's permitted policy
 and finite budget: scheduled next-day and weekly unresolved queues, ending at
 the fixed closure deadline. Source denial stops that acquisition lane; never
-bypass its gate. No forecast attempt is reclaimed by result repair. Publish
+bypass its gate. No forecast attempt is reclaimed by result repair. The existing result adapter
+retains parsed result evidence rather than complete HTTP response bodies; that
+limits later parser re-auditing and must be disclosed. Publish
 only counts, timestamps, hashes and reason categories during collection.
 
 Use a dedicated collector-owned result-evidence DB for this allocation. At the

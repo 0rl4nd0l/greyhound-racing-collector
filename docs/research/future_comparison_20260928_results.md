@@ -101,8 +101,10 @@ in `/home/l4nd0/greyhound-future-comparison-output-20260928/`.
 New result/closure tests exercise real synthetic v 2 worker nomination, default
 operational exclusion, authority tamper rejection, no existing-artifact bypass,
 fixed cutoff, fractional dead heats, identity rejection, sparse-block inference,
-bounded missing winners and inactive preparation. Final counts and source pins
-are in the verification manifest added at closeout. Unrelated collector suites
+bounded missing winners and inactive preparation. Final validation: **68 targeted tests passed in 17.76 s**, then **12 tests
+passed in 3.41 s from the exported final package**. The final code pin is
+`d7f5cf807a6d476720796bf9301f3b1f69ad8137`; one additional exported off/on
+pair passed at that pin. See the [verification manifest](future_comparison_20260928_evidence/verification.json). Unrelated collector suites
 were not rerun; the owner maintains its separate live evidence.
 
 ## Practical study recommendation
