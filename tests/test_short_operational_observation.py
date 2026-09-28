@@ -10,12 +10,33 @@ from scripts import prepare_freshness_rehearsal as prep
 from race_collection.live_freshness_contract import FreshnessContract, digest
 
 
+def test_relative_window_is_selected_after_packaging_and_canonically_sealed(prepared, monkeypatch):
+    stamp = datetime(2026, 9, 28, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(prep, 'utc_now', lambda: stamp)
+    prepared['start'] = None
+    result = prep.prepare(**prepared, start_after_minutes=10)
+    raw = (prepared['output'] / 'plan.json').read_bytes()
+    plan = json.loads(raw)
+    import hashlib
+    assert datetime.fromisoformat(plan['starts_at']) == stamp + timedelta(minutes=10)
+    assert datetime.fromisoformat(plan['ends_at']) == stamp + timedelta(minutes=100)
+    assert result['plan_sha256'] == digest(plan) == hashlib.sha256(raw).hexdigest()
+
+
+def test_relative_window_rejects_cross_midnight_before_sealing(prepared, monkeypatch):
+    monkeypatch.setattr(prep, 'utc_now', lambda: datetime(2026, 9, 28, 13, tzinfo=timezone.utc))
+    prepared['start'] = None
+    with pytest.raises(ValueError, match='execution_window_crosses_source_date'):
+        prep.prepare(**prepared, start_after_minutes=10)
+    assert not (prepared['output'] / 'plan.json').exists()
+
+
 @pytest.fixture
 def prepared(tmp_path, monkeypatch):
     root = tmp_path / 'campaign'
     root.mkdir()
     (root / 'ledger.json').write_text('{"attempts": []}')
-    campaign = SimpleNamespace(root=root, value={'max_capture_attempts': 64})
+    campaign = SimpleNamespace(root=root, value={'max_capture_attempts': 64, 'max_logical_requests': 48000})
     monkeypatch.setattr('race_collection.freshness_campaign.Campaign', lambda _: campaign)
     monkeypatch.setitem(sys.modules, 'sportsbet_odds_integrator', SimpleNamespace(
         SportsbetOddsIntegrator=lambda path, **kw: Path(path).touch()))

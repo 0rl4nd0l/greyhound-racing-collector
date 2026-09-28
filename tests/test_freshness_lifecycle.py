@@ -29,8 +29,9 @@ def test_invocation_binding_includes_pre_exec_start_and_final_process_exit():
         "children_reaped": True,
     }
     assert completed_service_overhead(status, report, lifecycle) == 2.5
+    assert completed_service_overhead({**status, "InvocationID": "b" * 32}, report, lifecycle) is None
     with pytest.raises(ValueError, match="identity"):
-        completed_service_overhead({**status, "InvocationID": "b" * 32}, report, lifecycle)
+        completed_service_overhead(status, report, {**lifecycle, "child_pid": 99})
 
 
 def test_phase_lifecycle_waits_for_detached_child_cleanup(tmp_path):

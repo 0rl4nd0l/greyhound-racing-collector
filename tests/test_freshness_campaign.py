@@ -16,6 +16,27 @@ def make_campaign(root):
     return Campaign(root)
 
 
+def test_append_only_extension_preserves_ledger_and_prior_authority(tmp_path):
+    from race_collection.live_freshness_contract import digest
+    campaign = make_campaign(tmp_path)
+    campaign.request()
+    before = (tmp_path / 'ledger.json').read_bytes()
+    extension = dict(schema_version='collector_engineering_extension_v1',
+        campaign_id='synthetic', prior_effective_authorization_sha256=digest(campaign.value),
+        authority_reference='user:operational-repair-20260928', rationale='90 minutes plus cleanup',
+        max_capture_attempts=128, max_logical_requests=96000, max_live_seconds=43200)
+    create_once(tmp_path / 'authorization-extensions/0001.json', extension)
+    revised = Campaign(tmp_path)
+    assert revised.value['max_live_seconds'] == 43200
+    assert revised.value['max_logical_requests'] == 96000
+    assert revised.value['max_capture_attempts'] == 128
+    assert (tmp_path / 'ledger.json').read_bytes() == before
+    extension['prior_effective_authorization_sha256'] = '0' * 64
+    create_once(tmp_path / 'authorization-extensions/0002.json', extension)
+    with pytest.raises(ValueError, match='invalid_campaign_extension'):
+        Campaign(tmp_path)
+
+
 def test_attempts_shared_across_instances_and_aliases(tmp_path):
     campaign = make_campaign(tmp_path)
     item = dict(race_id='canonical', race_id_aliases=['canonical', 'alias'], capture_window_minutes=10)

@@ -36,6 +36,24 @@ class Campaign:
             self.value = {**self.value, 'max_capture_attempts': extra['max_capture_attempts'],
                           'max_live_seconds': extra.get('max_live_seconds', 10800),
                           'prospective_amendment': extra}
+        # New authorizations are immutable, ordered and bound to the entire
+        # preceding effective authority. Historical files and charges stay put.
+        from race_collection.live_freshness_contract import digest
+        for number, path in enumerate(sorted((self.root / 'authorization-extensions').glob('*.json')), 1):
+            extra = json.loads(path.read_bytes())
+            limits = {'max_capture_attempts': 128, 'max_logical_requests': 96000,
+                      'max_live_seconds': 43200}
+            if (path.name != f'{number:04d}.json'
+                    or extra.get('schema_version') != 'collector_engineering_extension_v1'
+                    or extra.get('campaign_id') != self.value['campaign_id']
+                    or extra.get('prior_effective_authorization_sha256') != digest(self.value)
+                    or not extra.get('authority_reference') or not extra.get('rationale')
+                    or any(type(extra.get(key)) is not int
+                           or not self.value[key] <= extra[key] <= ceiling
+                           for key, ceiling in limits.items())):
+                raise ValueError('invalid_campaign_extension')
+            self.value = {**self.value, **{key: extra[key] for key in limits},
+                          'extensions': [*self.value.get('extensions', []), extra]}
 
     @contextmanager
     def ledger(self):

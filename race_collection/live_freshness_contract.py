@@ -131,7 +131,7 @@ class FreshnessContract:
             if digest(self.campaign.value) != value["campaign_authorization_sha256"]:
                 raise ValueError("campaign_authorization_changed")
         if (value["max_capture_attempts"] != (self.campaign.value['max_capture_attempts'] if self.campaign else 1)
-                or not 0 < value["max_logical_requests"] <= (48000 if self.campaign else 24000)):
+                or not 0 < value["max_logical_requests"] <= (self.campaign.value['max_logical_requests'] if self.campaign else 24000)):
             raise ValueError("invalid_scope_allowance")
         for key in ("lock_path", "evidence_root", "db_path"):
             if not Path(value[key]).is_absolute():
