@@ -1,0 +1,12 @@
+{
+  "python": "3.10.12 (main, Aug 31 2026, 10:18:17) [GCC 11.4.0]",
+  "executable": "/usr/bin/python3",
+  "platform": "Linux-6.8.0-138-generic-x86_64-with-glibc2.35",
+  "source_base": "956d8289b8be062e9fe5ccdf554b9a9462391c20",
+  "resource_policy": "nice 10; one stdlib process; no network or numerical library",
+  "run04_time_output": "\tCommand being timed: \"nice -n 10 python3 -m scripts.audit_early_speed_neighbours --out /home/l4nd0/greyhound-early-speed-audit-output-20260928/run04\"\n\tUser time (seconds): 1.90\n\tSystem time (seconds): 0.06\n\tPercent of CPU this job got: 99%\n\tElapsed (wall clock) time (h:mm:ss or m:ss): 0:01.96\n\tAverage shared text size (kbytes): 0\n\tAverage unshared data size (kbytes): 0\n\tAverage stack size (kbytes): 0\n\tAverage total size (kbytes): 0\n\tMaximum resident set size (kbytes): 79928\n\tAverage resident set size (kbytes): 0\n\tMajor (requiring I/O) page faults: 0\n\tMinor (reclaiming a frame) page faults: 24954\n\tVoluntary context switches: 1\n\tInvoluntary context switches: 14\n\tSwaps: 0\n\tFile system inputs: 0\n\tFile system outputs: 4416\n\tSocket messages sent: 0\n\tSocket messages received: 0\n\tSignals delivered: 0\n\tPage size (bytes): 4096\n\tExit status: 0\n",
+  "failed_source_snapshots": "run01/run02 reconstructed by exact reversal of recorded patches; run03/run04 saved from executed source",
+  "operational_files_written": 0,
+  "provider_requests": 0,
+  "target_outcomes_decoded": 0
+}

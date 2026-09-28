@@ -1,0 +1,94 @@
+{
+  "/home/l4nd0/greyhound-early-speed-audit-output-20260928/run01/audit_executed.py": {
+    "bytes": 17364,
+    "sha256": "e7b76ec5eb418210d76211a31b1206de7ddf6c4ac1fb0ae544952451ea903d12"
+  },
+  "/home/l4nd0/greyhound-early-speed-audit-output-20260928/run01/trial_ledger.jsonl": {
+    "bytes": 379,
+    "sha256": "ea409c2551c27e649bb94ed957e15be213359ec575e7cd900813e83d9d95ae21"
+  },
+  "/home/l4nd0/greyhound-early-speed-audit-output-20260928/run02/audit_executed.py": {
+    "bytes": 17435,
+    "sha256": "0107d875d679a1473567426afc3cfd316101c17ec5edd7624118e32de1a992a5"
+  },
+  "/home/l4nd0/greyhound-early-speed-audit-output-20260928/run02/trial_ledger.jsonl": {
+    "bytes": 263,
+    "sha256": "06e27e3b14c7e244e90b903055a26c4b4d258d56ec98a626af3a9f3074835aa6"
+  },
+  "/home/l4nd0/greyhound-early-speed-audit-output-20260928/run03/audit_executed.py": {
+    "bytes": 17741,
+    "sha256": "6b2a6b439912f5ce08f0c2d37204ee8786bf82c8e4ade4114d20a253a206975a"
+  },
+  "/home/l4nd0/greyhound-early-speed-audit-output-20260928/run03/audit_sample.json": {
+    "bytes": 1636,
+    "sha256": "e61540c0ed39670185ec2aec7a25a39f7b9c81e93dcd041e7e009898ec0a48d9"
+  },
+  "/home/l4nd0/greyhound-early-speed-audit-output-20260928/run03/coverage.json": {
+    "bytes": 15747,
+    "sha256": "a794bd2dd93f6a10572e6a6eec2dfdaea09995fbb4807592c76b6fffb522f6f0"
+  },
+  "/home/l4nd0/greyhound-early-speed-audit-output-20260928/run03/eligible_identities.json": {
+    "bytes": 313271,
+    "sha256": "0a3974092a9addc98c8890f15f5362cbb8d75e1d0a49ea6a70e865add555c7c8"
+  },
+  "/home/l4nd0/greyhound-early-speed-audit-output-20260928/run03/fixed_sample_rows.json": {
+    "bytes": 670093,
+    "sha256": "6a48421a5db64a67e0ed4bd4ee2fcaff9ba7e2e94d0e2bc18a581050bb49cd71"
+  },
+  "/home/l4nd0/greyhound-early-speed-audit-output-20260928/run03/input_identities.json": {
+    "bytes": 254146,
+    "sha256": "a211856b51a1aef74e82b71c20a7954d52f8fda069f546339ffa0b376e708843"
+  },
+  "/home/l4nd0/greyhound-early-speed-audit-output-20260928/run03/race_audit.json": {
+    "bytes": 927686,
+    "sha256": "d346996939d1054ae1547b9a2f33337f53fb05fab64496ee8b26da83a46e9442"
+  },
+  "/home/l4nd0/greyhound-early-speed-audit-output-20260928/run03/source_identities.json": {
+    "bytes": 450,
+    "sha256": "6ab64b82616004d1ad66201d8c8ec1fadd5ca6c761bd6da6a10070d3083048f2"
+  },
+  "/home/l4nd0/greyhound-early-speed-audit-output-20260928/run03/trial_ledger.jsonl": {
+    "bytes": 831,
+    "sha256": "e76d9b9746ec511831eaa34f8b85a582ba6c90310b5a7f5736df1c71125db339"
+  },
+  "/home/l4nd0/greyhound-early-speed-audit-output-20260928/run04/audit_executed.py": {
+    "bytes": 19997,
+    "sha256": "bb88cb8fac3582af101db4092f4be62b8720a7b0f6613aea6fda5aa9526622f5"
+  },
+  "/home/l4nd0/greyhound-early-speed-audit-output-20260928/run04/audit_sample.json": {
+    "bytes": 1636,
+    "sha256": "e61540c0ed39670185ec2aec7a25a39f7b9c81e93dcd041e7e009898ec0a48d9"
+  },
+  "/home/l4nd0/greyhound-early-speed-audit-output-20260928/run04/coverage.json": {
+    "bytes": 17168,
+    "sha256": "8fe172ec6f86c4f106ced25172691a7479d46c12b8847954f4975468d52ccf3f"
+  },
+  "/home/l4nd0/greyhound-early-speed-audit-output-20260928/run04/eligible_identities.json": {
+    "bytes": 313271,
+    "sha256": "0a3974092a9addc98c8890f15f5362cbb8d75e1d0a49ea6a70e865add555c7c8"
+  },
+  "/home/l4nd0/greyhound-early-speed-audit-output-20260928/run04/fixed_sample_rows.json": {
+    "bytes": 670093,
+    "sha256": "6a48421a5db64a67e0ed4bd4ee2fcaff9ba7e2e94d0e2bc18a581050bb49cd71"
+  },
+  "/home/l4nd0/greyhound-early-speed-audit-output-20260928/run04/input_identities.json": {
+    "bytes": 254146,
+    "sha256": "a211856b51a1aef74e82b71c20a7954d52f8fda069f546339ffa0b376e708843"
+  },
+  "/home/l4nd0/greyhound-early-speed-audit-output-20260928/run04/race_audit.json": {
+    "bytes": 927686,
+    "sha256": "d346996939d1054ae1547b9a2f33337f53fb05fab64496ee8b26da83a46e9442"
+  },
+  "/home/l4nd0/greyhound-early-speed-audit-output-20260928/run04/retained_raw_exports.json": {
+    "bytes": 27974,
+    "sha256": "82e11462712150e025aa00ca2d1a2d166041428569d3b34fd79e8c5eb7f9f92b"
+  },
+  "/home/l4nd0/greyhound-early-speed-audit-output-20260928/run04/source_identities.json": {
+    "bytes": 450,
+    "sha256": "c3f1ae9082a164006dcfd319546a927a7b7558d7055c65484e9f3a2bbe844c28"
+  },
+  "/home/l4nd0/greyhound-early-speed-audit-output-20260928/run04/trial_ledger.jsonl": {
+    "bytes": 914,
+    "sha256": "2e6f5d0825fc5f48dead454d36340fdeb98b715d666e5e4455f38690fce08e95"
+  }
+}
