@@ -206,6 +206,19 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
         for identity in ('model', 'model_manifest', 'configuration', 'feature_schema', 'feature_replay_worker'):
             assert manifest['files'][identity]['sha256'] == frozen[identity]['sha256']
     assert terminal['seconds_to_jump_at_verification'] > 60
+    if venue_case == "murray":
+        # A fresh real predictor process must preserve the completed race and
+        # consumed claim, even if its caller repeats the same handoff.
+        before_terminal = terminals[0].read_bytes()
+        before_claim = claims[0].read_bytes()
+        restarted = subprocess.run(
+            [sys.executable, '-B', '-m', 'race_collection.operational_prediction',
+             str(package/'plan.json'), str(claims[0])],
+            cwd=cwd, env=env, capture_output=True, text=True, timeout=30)
+        assert restarted.returncode != 0 and 'FileExistsError' in restarted.stderr
+        assert terminals[0].read_bytes() == before_terminal
+        assert claims[0].read_bytes() == before_claim
+        assert list((campaign.root/'operational-predictions/races').glob('*/terminal.json')) == terminals
     from src.operator_ui.job_store import JobStore
     store = JobStore(campaign.root/'operational-predictions/jobs.sqlite3',readonly=True)
     jobs = store.recorded_jobs()

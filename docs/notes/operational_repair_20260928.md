@@ -148,3 +148,16 @@ reported no blocking findings. InstalledR3 remains unchanged; deployment require
 compatible candidate code as well as new authority binding, because5013ff03 also
 lacks candidate lock-wait/deferred-lock handling. Model/config/schema bytes remain
 identical. This UI-only change does not alter the running exported collector.
+
+A further network-denied exported prediction test completed the real synthetic
+capture/retention/frozen-score chain, then launched a fresh predictor process
+with the same claim. The second process rejected the existing race directory,
+preserved claim and terminal bytes, and left exactly one consumed verified job.
+This passed in30.18seconds. It establishes completed-handoff nonduplication;
+a crash after dispatch remains consumed and can require operator reconciliation.
+The earlier controlled tests cover partial dispatch and interrupted capture too.
+
+Live R3-limit control at11:24:07 rejected the actual current odds state under
+old limits as INVALID/INTEGRITY_FAILED while its index and authority were fresh.
+The corrected-limit native read accepted that state. Neither probe started or
+changed installedR3; the full lane was still waiting for its first15-minute tick.
