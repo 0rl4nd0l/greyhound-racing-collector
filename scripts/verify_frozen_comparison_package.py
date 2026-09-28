@@ -43,7 +43,7 @@ def run(output,python,repetitions=3):
     records=[]
     for i in range(repetitions):
         trial=output/f'trial-{i+1}'
-        proc=subprocess.run([str(python),'-B','-m','tests.fixtures.frozen_comparison_case','--output',str(trial),*(['--comparison-first'] if i%2 else [])],
+        proc=subprocess.run([str(python),'-B','-m','tests.fixtures.frozen_comparison_case','--output',str(trial),'--plan-v2',*(['--comparison-first'] if i%2 else [])],
             cwd=source,env=env,capture_output=True,text=True,timeout=90)
         (output/f'trial-{i+1}.log').write_text(proc.stdout+proc.stderr)
         if proc.returncode: raise RuntimeError(f'packaged_trial_{i+1}_failed')

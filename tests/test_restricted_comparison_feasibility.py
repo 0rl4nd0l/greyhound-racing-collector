@@ -57,3 +57,15 @@ def test_unapproved_retained_worker_rejected():
     from scripts.restricted_comparison_feasibility import verify_replay_source
     with pytest.raises(InputBoundary,match='UNAPPROVED_REPLAY_WORKER'):
         verify_replay_source({'feature_replay_worker':b'print("not approved")'})
+
+
+def test_request_identity_is_opaque_not_a_required_scalar():
+    from src.predictor.research_input_firewall import REQUEST_PATHS
+    raw=b'{"race_id":"synthetic","runners":[{"box_number":1,"display_name":"Invented","identity":{"native":"opaque"}}]}'
+    assert project_metadata(raw,REQUEST_PATHS)['runners']==[{'box_number':1,'display_name':'Invented'}]
+
+
+def test_known_weather_provenance_union_projects_only_named_sources():
+    from src.predictor.research_input_firewall import FORM_PATHS
+    raw=b'{"weather_track_metadata_source_url":{"open_meteo_forecast_api":"https://example.invalid","unknownResult":"\xff"}}'
+    assert project_metadata(raw,FORM_PATHS)=={'weather_track_metadata_source_url':{'open_meteo_forecast_api':'https://example.invalid'}}

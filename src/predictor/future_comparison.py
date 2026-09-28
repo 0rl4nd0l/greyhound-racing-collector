@@ -5,7 +5,7 @@ Scientific admission is separate from operational prediction success.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 import hashlib
 import json
 import math
@@ -39,18 +39,25 @@ def put(path, value):
 
 def load_plan(path, expected):
     raw = checked(path, expected); plan = json.loads(raw)
-    if plan["schema_version"] != PLAN_SCHEMA: raise ValueError("comparison_plan_schema")
+    if plan["schema_version"] not in {PLAN_SCHEMA, "frozen_four_way_comparison_plan_v2"}: raise ValueError("comparison_plan_schema")
     if plan["status"] not in {"AUTHORIZED", "SYNTHETIC_REHEARSAL_ONLY"}:
         raise ValueError("comparison_not_activated")
     if not plan["authority_reference"] or plan["decision_seconds_before_jump"] != 120 or plan["quote_lead_seconds"] != [120,600]:
         raise ValueError("comparison_policy_changed")
     if set(plan["candidate_registry"]) != {"path", "sha256"}: raise ValueError("comparison_registry_binding")
-    if not any(start <= "2026-07-15" and end >= "2026-09-30" for start,end in plan["denied_history_intervals"]):
+    if plan["schema_version"]==PLAN_SCHEMA and not any(start <= "2026-07-15" and end >= "2026-09-30" for start,end in plan["denied_history_intervals"]):
         raise ValueError("historical_reservations_not_protected")
     if not stamp(plan["activated_at"]) < stamp(plan["starts_at"]) < stamp(plan["ends_at"]):
         raise ValueError("comparison_population_interval")
     if plan["status"] == "AUTHORIZED" and (not plan.get("exclusive_population_allocation_reference") or not plan.get("reservation_review_sha256") or not plan.get("machine_history_authority_reference")):
         raise ValueError("comparison_reservation_allocation_missing")
+    if plan["schema_version"]=="frozen_four_way_comparison_plan_v2":
+        if (plan.get("history_policy")!="strictly_earlier_machine_features_only"
+                or not plan.get("machine_history_authority_reference")
+                or plan.get("denied_history_intervals")!=[]
+                or plan.get("fixed_closure_days")!=14
+                or plan.get("missing_result_policy")!="bounded_paired_losses_v1"):
+            raise ValueError("comparison_v2_policy_unbound")
     return plan, raw
 
 
@@ -220,6 +227,12 @@ class Comparison:
                 # No protected results may enter through the production history
                 # either. This query projects metadata only, never dog outcomes.
                 denied=self.plan["denied_history_intervals"]
+                if self.plan["schema_version"]=="frozen_four_way_comparison_plan_v2":
+                    from src.predictor.research_input_firewall import card_dates_before_decode, database_dates_before_decode
+                    target=date.fromisoformat(self.state["race"]["race_date"])
+                    captured=capture_timestamp(data[5],require_timezone=True).date()
+                    card_dates_before_decode(data[4],target,captured)
+                    database_dates_before_decode(self.bundle/'features/sealed_history.db',self.state["race"]["race_id"],target,captured)
                 uri=f"file:{self.bundle/'features/sealed_history.db'}?mode=ro&immutable=1"
                 with sqlite3.connect(uri,uri=True) as conn:
                     for (day,) in conn.execute("SELECT DISTINCT race_date FROM race_metadata"):
@@ -347,6 +360,12 @@ def verify_comparison(root, admission_path, *, expected_plan_sha256=None):
         from scripts.build_form_only_v1_packet import capture_timestamp
         metadata=json.loads(contents[forms[0]+".metadata.json"])
         if "comparison/features.json" in contents:
+            if plan["schema_version"]=="frozen_four_way_comparison_plan_v2":
+                from src.predictor.research_input_firewall import card_dates_before_decode, database_dates_before_decode
+                target=date.fromisoformat(admission["race"]["race_date"])
+                captured=capture_timestamp(metadata,require_timezone=True).date()
+                card_dates_before_decode(contents[forms[0]],target,captured)
+                database_dates_before_decode(directory/'features/sealed_history.db',admission["race"]["race_id"],target,captured)
             replay_features=card_features(contents[forms[0]],metadata,admission["race"]["race_id"],inputs["runners"],
                 captured_at=capture_timestamp(metadata,require_timezone=True),denied_history_intervals=plan["denied_history_intervals"])
             if canonical_bytes(replay_features)!=contents["comparison/features.json"]:

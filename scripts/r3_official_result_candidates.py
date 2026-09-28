@@ -19,7 +19,7 @@ from utils.runner_completeness import RunnerRow, analyze_runner_rows
 def r3_prediction_candidates(*, job_store_path: Path, prediction_bundles: Path,
                              result_database: Path, target_date: str,
                              current_time: datetime, race_ids, output_dir: Path,
-                             limit: int = 128):
+                             limit: int = 128, comparison_result_binding: dict | None = None):
     """Return bounded candidates authenticated against job and sealed bundle truth."""
     utc_text(current_time)
     if not 1 <= limit <= 128:
@@ -28,6 +28,10 @@ def r3_prediction_candidates(*, job_store_path: Path, prediction_bundles: Path,
               "candidate_source": "verified_r3_predictions", "candidate_count": 0,
               "candidate_race_ids": [], "limit": limit,
               "result_horizon": "all_persisted_ready_jobs", "requested_target_date": target_date}
+    comparison_plan=None
+    if comparison_result_binding is not None:
+        from src.predictor.comparison_result_scope import result_scope
+        comparison_plan=result_scope(comparison_result_binding,now=current_time,prediction_bundles=prediction_bundles)
     try:
         store = JobStore(job_store_path, separate_from=(result_database,), readonly=True)
         jobs = store.recorded_jobs()
@@ -37,13 +41,16 @@ def r3_prediction_candidates(*, job_store_path: Path, prediction_bundles: Path,
     candidates, skipped = [], []
     selected_ids = set(race_ids)
     for job in jobs:
-        if job.operation == "operational_prediction":
+        if job.operation == "operational_prediction" and comparison_result_binding is None:
             skipped.append({"race_id": job.input.race_id, "reason": "OPERATIONAL_RESULT_ACCESS_FORBIDDEN"})
             continue
         if job.phase is not Phase.PREDICTION_READY or selected_ids and job.input.race_id not in selected_ids:
             continue
         reason = None
         try:
+            if comparison_result_binding is not None:
+                from src.predictor.comparison_result_scope import authorize_job
+                authorize_job(job,comparison_result_binding,comparison_plan,now=current_time,prediction_bundles=prediction_bundles)
             jump = datetime.fromisoformat(job.input.jump_timestamp.replace("Z", "+00:00"))
             if jump >= current_time:
                 reason = "R3_RACE_NOT_OFF"

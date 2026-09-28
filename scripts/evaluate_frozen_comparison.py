@@ -92,7 +92,7 @@ def evaluate(plan_path, plan_sha, authority_path, authority_sha, result_database
     # Membership, missingness and exclusions frozen BEFORE any result lookup.
     put(out/'membership.json',{'plan_sha256':plan_sha,'opportunities':opportunities,'attempts':attempts,'common_races':len(common),'locked_at':now.isoformat()})
     from src.operator_ui.journal_results import OfficialResultSource
-    source=OfficialResultSource(result_database); races=[]; closure=[]
+    source=OfficialResultSource(result_database); races=[]; closure=[]; bounded_races=[]
     for root,value in common:
         record=value['records']['production']; race=record['race']
         if not stamp(plan['starts_at'])<=stamp(race['jump_timestamp'])<stamp(plan['ends_at']): raise ValueError('outside_allocated_population')
@@ -100,14 +100,33 @@ def evaluate(plan_path, plan_sha, authority_path, authority_sha, result_database
         inputs=json.loads((root/verified.directory/'comparison/inputs.json').read_bytes())
         job=SimpleNamespace(input=SimpleNamespace(race_id=race['race_id'],jump_timestamp=race['jump_timestamp'],
             ordered_runners=[{'box':r['box_number'],'name':r['display_name'],'source_native_runner_id':r.get('source_native_runner_id')} for r in inputs['runners']]))
+        boxes=[r['box_number'] for r in record['predictions']]
+        bounded={'race_id':race['race_id'],'date':race['race_date'],'venue':race['venue'],'boxes':boxes,'winner':None,
+            'probabilities':{m:[r['probability'] for r in value['records'][m]['predictions']] for m in MODELS}}
+        bounded_races.append(bounded)
         result=source.read(job,verified,now=now)
         closure.append({'race_id':race['race_id'],**result})
         if result['state']!='RESULT_AVAILABLE': continue
         winner=next(r['box_number'] for r in result['evidence']['runner_rows'] if r['is_winner'])
         boxes=[r['box_number'] for r in record['predictions']]
+        bounded['winner']=boxes.index(winner)
         races.append({'race_id':race['race_id'],'date':race['race_date'],'venue':race['venue'],'boxes':boxes,'winner':boxes.index(winner),
             'probabilities':{m:[r['probability'] for r in value['records'][m]['predictions']] for m in MODELS}})
     put(out/'result_closure.json',closure)
+    if plan['schema_version']=='frozen_four_way_comparison_plan_v2':
+        from src.predictor.comparison_missingness import paired_bounds
+        bounds=paired_bounds(bounded_races) if bounded_races else None
+        # Rejections may include an outside-field runner; finite winner bounds
+        # cannot establish that field eligibility is independent of performance.
+        structurally_unresolved=any(r['state']=='RESULT_REJECTED' for r in closure)
+        put(out/'assessment.json',{'status':'TERMINAL_FIXED_METHOD_COMPARISON',
+            'complete_case_is_descriptive':len(races)!=len(common),
+            'common_seals':len(common),'complete_results':len(races),
+            'descriptive_complete_results_only':summarize(races) if races else None,
+            'missing_result_sensitivity':bounds,
+            'structural_result_rejection_blocks_broader_claim':structurally_unresolved,
+            'inferential_limits':'No claim beyond all-four sealed stable fields; no missing-at-random assumption. Date and week intervals are approximate; no automatic promotion.'})
+        return
     if len(races)!=len(common) or not common:
         put(out/'assessment.json',{'status':'INCOMPLETE_RESULT_CLOSURE_NO_CONFIRMATORY_CLAIM','common_seals':len(common),'complete_results':len(races),
             'descriptive_complete_results_only':summarize(races) if races else None})

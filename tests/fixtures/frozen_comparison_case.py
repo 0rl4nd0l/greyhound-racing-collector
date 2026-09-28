@@ -101,6 +101,17 @@ def prepare(root, *, late=False):
     return dict(root=root,evidence=evidence,protocol=protocol,index=index,view=view,db=db,retained=retained,retained_root=claim/"bundle",comparison=config,jump=jump,race_id=rid)
 
 
+def use_v2(case, *, status="SYNTHETIC_REHEARSAL_ONLY"):
+    plan=json.loads(case['comparison'].read_bytes())
+    plan.update(schema_version="frozen_four_way_comparison_plan_v2",status=status,
+        history_policy="strictly_earlier_machine_features_only",denied_history_intervals=[],
+        machine_history_authority_reference="SYNTHETIC_TEST_ONLY",fixed_closure_days=14,
+        missing_result_policy="bounded_paired_losses_v1",exclusive_population_allocation_reference="SYNTHETIC_TEST_ONLY",
+        reservation_review_sha256="a"*64,prediction_output_roots=[str(case['root']/'predictions')])
+    case['comparison'].write_bytes(canonical_bytes(plan))
+    return case
+
+
 def execute(case, *, comparison=True, output_name="predictions"):
     from src.operator_ui.job_store import JobInput, JobStore, OperationalIndexProvenance, Phase, resolve_audit_confirmation
     from src.operator_ui.prediction_worker import WorkerConfig, ServerChoice, run_once
@@ -161,7 +172,7 @@ def execute(case, *, comparison=True, output_name="predictions"):
 
 if __name__=="__main__":
     import argparse
-    p=argparse.ArgumentParser();p.add_argument("--output",type=Path,required=True);p.add_argument('--comparison-first',action='store_true');a=p.parse_args();a.output.mkdir(parents=True,exist_ok=False)
+    p=argparse.ArgumentParser();p.add_argument("--output",type=Path,required=True);p.add_argument('--comparison-first',action='store_true');p.add_argument('--plan-v2',action='store_true');a=p.parse_args();a.output.mkdir(parents=True,exist_ok=False)
     from scripts.check_freshness_service import deny_network
     deny_network()
     import socket
@@ -170,6 +181,7 @@ if __name__=="__main__":
         except PermissionError:continue
         raise RuntimeError("network not denied")
     case=prepare(a.output)
+    if a.plan_v2:use_v2(case)
     case["db"].unlink()  # Genuine retained consumer must not fall back to DB.
     if a.comparison_first:
         compared=execute(case);baseline=execute(case,comparison=False,output_name="baseline")

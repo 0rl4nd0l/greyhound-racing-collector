@@ -1145,12 +1145,15 @@ def run_shadow_run_official_dry_run(
     race_ids: Sequence[str],
     r3_job_store: Path | None = None,
     r3_prediction_bundles: Path | None = None,
+    comparison_result_binding: dict | None = None,
     include_live_odds_backlog: bool = False,
     backlog_evidence_root: Path | None = None,
     backlog_limit: int = 0,
     backlog_shadow_run_limit: int = 0,
     backlog_lookback_days: int = 0,
 ) -> tuple[dict[str, Any], int]:
+    if comparison_result_binding is not None and r3_job_store is None:
+        raise ValueError("Comparison results require the existing R3 binding")
     if (r3_job_store is None) != (r3_prediction_bundles is None):
         raise ValueError("R3 result discovery requires both bindings")
     if r3_job_store is not None:
@@ -1160,6 +1163,7 @@ def run_shadow_run_official_dry_run(
             result_database=db_path, target_date=target_date, current_time=current_time,
             race_ids=race_ids, output_dir=output_dir,
             limit=backlog_limit or DEFAULT_BACKLOG_LIMIT,
+            comparison_result_binding=comparison_result_binding,
         )
         # The explicitly configured source owns this cycle; never reconstruct an
         # R3 candidate from unrelated shadow predictions or mutable form inputs.
@@ -3177,6 +3181,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--date", default=date.today().isoformat())
     parser.add_argument("--upcoming-dir", type=Path)
     parser.add_argument("--shadow-run-dir", type=Path)
+    parser.add_argument("--comparison-result-binding", type=Path, help="Explicit plan and restricted result authority bindings; absent by default")
     parser.add_argument("--r3-job-store", type=Path)
     parser.add_argument("--r3-prediction-bundles", type=Path)
     parser.add_argument("--snapshot-dir", type=Path, default=ROOT / "artifacts/prediction_snapshots")
@@ -3216,6 +3221,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         ),
     )
     args = parser.parse_args(argv)
+    if args.comparison_result_binding is not None and args.r3_job_store is None:
+        parser.error("--comparison-result-binding requires --r3-job-store")
     if (args.r3_job_store is None) != (args.r3_prediction_bundles is None):
         parser.error("--r3-job-store and --r3-prediction-bundles must be provided together")
     has_existing_artifacts = bool(args.existing_race_rows_jsonl or args.existing_runner_rows_jsonl)
@@ -3354,6 +3361,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             shadow_run_dir=args.shadow_run_dir,
             r3_job_store=args.r3_job_store,
             r3_prediction_bundles=args.r3_prediction_bundles,
+            comparison_result_binding=json.loads(args.comparison_result_binding.read_bytes()) if args.comparison_result_binding else None,
             target_date=args.date,
             current_time=parse_current_time(args.current_time),
             output_dir=output_dir,

@@ -85,7 +85,7 @@ def project_metadata(raw, paths):
         if depth>50:raise InputBoundary('JSON_DEPTH')
         space();kind=raw[i:i+1]
         if kind in (b'{',b'['):
-            if path in allowed:raise InputBoundary('EXPECTED_METADATA_SCALAR')
+            if path in allowed and not any(p[:len(path)]==path and len(p)>len(path) for p in allowed):raise InputBoundary('EXPECTED_METADATA_SCALAR:'+'.'.join(path))
             is_object=kind==b'{';closing=b'}' if is_object else b']';i+=1
             output={} if is_object else [];seen=set();space()
             if raw[i:i+1]==closing:i+=1;return output
@@ -129,8 +129,9 @@ race_url metadata_source_url metadata_is_leakage_safe target_distance target_gra
 FORM_PATHS = (PRE_RACE_SCALARS + ['race_info.'+key for key in
     'date venue race_number race_time url race_time_mapping_status race_time_source distance grade'.split()]
     + ['runner_completeness.runner_count']
-    + ['prejump_shadow_metadata.'+key for key in PRE_RACE_SCALARS+['race_date','jump_time']])
-REQUEST_PATHS = ['race_id','retained_input_manifest_sha256'] + ['runners.*.'+k for k in ['box_number','display_name','identity']]
+    + ['prejump_shadow_metadata.'+key for key in PRE_RACE_SCALARS+['race_date','jump_time','status','source_url','target_distance_safe','target_grade_safe','distance','grade']])
+FORM_PATHS += [prefix+'weather_track_metadata_source_url.'+source for prefix in ('','prejump_shadow_metadata.') for source in ('canonical_pre_race_page','sidecar_weather_track_metadata','explicit_csv_sidecar','open_meteo_forecast_api','sportsbet_pre_race_page')]
+REQUEST_PATHS = ['race_id','retained_input_manifest_sha256'] + ['runners.*.'+k for k in ['box_number','display_name']]
 RECEIPT_PATHS = ['captured_at'] + ['markets.win.*.'+k for k in ['box_number','dog_name','odds_decimal']]
 
 
