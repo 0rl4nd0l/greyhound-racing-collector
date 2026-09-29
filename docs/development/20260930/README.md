@@ -198,3 +198,22 @@ invented. `package_identity.json` pins commit, archive, executable and result;
 `demonstration/demonstration.json` records measurements and the synthetic label.
 
 No deployment, merge, new development activation or study amendment occurred.
+
+Measured exported demonstration, source `01dff7cd`: **PASS**, actual installed
+Python 3.11 executable, kernel network denied. The synthetic collector/retention/
+prediction fixture took 34.06 s; separate CLI processes took 1.46 s to seal,
+2.16 s to join and 2.02 s to replay. The standalone example occupied 1,076,544
+bytes and its original retained-input bundle 841,082 bytes. Peak child RSS was
+512,616 KiB for the whole demonstration, including collector children; this is
+not the marginal assembler RSS. Total elapsed time, including repeated join,
+was 41.86 s. Twenty-three focused tests passed in 37.76 s. No real provider
+operation, protected target decode or fit occurred. These are one labelled
+synthetic measurement, not a real-race capacity or yield estimate.
+
+The first tar-only export failed because the existing collector preparer
+requires `git rev-parse HEAD`. That failed package is preserved at
+`/home/l4nd0/greyhound-development-pipeline-export-20260930`. The corrected
+exact-commit worktree package and complete demonstration are at
+`/home/l4nd0/greyhound-development-pipeline-export-20260930-v2`.
+`verification_summary.json` records the exact source, executable and archive
+identities, measured values and separately labelled planning ceilings.
