@@ -3,7 +3,7 @@ from pathlib import Path
 import argparse
 import json
 
-from race_collection.development_examples import seal, join_result, verify_package
+from race_collection.development_examples import seal, join_result, verify_package,freeze_population
 
 
 def main():

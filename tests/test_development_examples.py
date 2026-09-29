@@ -151,6 +151,82 @@ def test_private_comparison_manifest_rejected_before_full_verifier(synthetic,tmp
         seal(path,pin,rid,tmp_path/'output')
 
 
+def test_shared_output_directory_rejected_before_values(synthetic,tmp_path):
+    from race_collection.development_examples import seal,DevelopmentRejected
+    rid,path,pin=changed_access(synthetic,tmp_path,lambda *args:None)
+    output=tmp_path/'output';output.mkdir(mode=0o755)
+    with pytest.raises(DevelopmentRejected,match='OUTPUT_NOT_PRIVATE'):seal(path,pin,rid,output)
+    assert list(output.iterdir())==[]
+
+
+def test_population_selection_precedes_WIN_qualification_and_keeps_first_six():
+    from race_collection.development_examples import selected_population
+    rows=[{'race_id':f'Race {i} - MURR - 2026-10-03','race_key':f'2026-10-03|MURR|{i}',
+           'jump_at':f'2026-10-03T13:{i+10:02d}:00+10:00','WIN_qualified':i>1} for i in range(1,9)]
+    intended,selected=selected_population(list(reversed(rows)),'2026-10-03')
+    assert len(intended)==8
+    assert selected==[f'Race {i} - MURR - 2026-10-03' for i in range(1,7)]
+
+
+def test_synthetic_grant_rejects_real_identity_before_verifier(synthetic,tmp_path,monkeypatch):
+    from race_collection.development_examples import seal,DevelopmentRejected,canonical
+    from tests.fixtures.development_pipeline import ref
+    def change(access,control):
+        member=next(iter(access['members'].values()));member['bundle_root']=str(control/'untrusted')
+        root=Path(member['bundle_root'])/member['entry']['directory'];(root/'protocol').mkdir(parents=True)
+        request=root/'request.json';request.write_bytes(canonical({'race_id':next(iter(access['members'])),
+            'runners':[{'display_name':'Real Runner'}]}))
+        receipt=root/'protocol/collector_exact_receipt.json';receipt.write_bytes(canonical({'sealed_handoff':{'race':{'url':'real'}}}))
+        manifest=root/'bundle_manifest.json';manifest.write_bytes(canonical({'files':{
+            'request.json':ref(request),'protocol/collector_exact_receipt.json':ref(receipt)}}))
+        member['entry']['manifest_sha256']=ref(manifest)['sha256']
+    rid,path,pin=changed_access(synthetic,tmp_path,change)
+    monkeypatch.setattr('src.predictor.on_demand.verify_indexed_prediction_bundle',lambda *a,**k:pytest.fail('no real payload reads'))
+    with pytest.raises(DevelopmentRejected,match='SYNTHETIC_DATA_REQUIRED'):seal(path,pin,rid,tmp_path/'output')
+
+
+def test_example_replay_rejects_rehashed_packet_probability_change(synthetic,tmp_path):
+    from race_collection.development_examples import seal,verify_package,DevelopmentRejected,canonical,digest
+    rid,path,pin=changed_access(synthetic,tmp_path,lambda *args:None)
+    output=tmp_path/'output';seal(path,pin,rid,output)
+    packet=json.loads((output/'pre_result.json').read_bytes());packet['runners'][0]['model_win_probability']=.9
+    (output/'pre_result.json').write_bytes(canonical(packet))
+    complete=json.loads((output/'completion.json').read_bytes());complete['pre_result_sha256']=digest(canonical(packet))
+    (output/'completion.json').write_bytes(canonical(complete))
+    with pytest.raises(DevelopmentRejected,match='EXAMPLE_SOURCE_REPLAY_MISMATCH'):verify_package(path,pin,rid,output)
+
+
+@pytest.mark.parametrize('late',[False,True])
+def test_population_freeze_uses_actual_index_shape_and_preserves_cutoff_failure(tmp_path,monkeypatch,late):
+    from types import SimpleNamespace
+    from race_collection import development_examples as dev
+    from tests.fixtures.development_pipeline import ref
+    start=datetime.fromisoformat('2026-10-03T02:50:30+00:00')
+    times=iter([start,start+timedelta(seconds=31) if late else start,start])
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls,tz=None):return next(times)
+    monkeypatch.setattr(dev,'datetime',FrozenDateTime)
+    source=tmp_path/'review.json';source.write_bytes(dev.canonical({'identity_only':True}))
+    monkeypatch.setattr(dev,'RESERVATION_PINS',{'fixture':ref(source)['sha256']})
+    registry=tmp_path/'registry.json';registry.write_bytes(dev.canonical({'sources':[{**ref(source),'kind':'fixture'}]}))
+    allocation=tmp_path/'allocation.json';allocation.write_bytes(dev.canonical({'status':'AUTHORIZED','dates':dev.PILOT_DATES,
+        'allocation_id':'test','reservation_registry':ref(registry)}))
+    view=SimpleNamespace(source_generated_at='2026-10-03T12:50:00+10:00',packet_sha256='a'*64,
+        races=({'race_id':'Race 1 - MURR - 2026-10-03','jump_datetime':'2026-10-03T13:10:00+10:00',
+                'runners':[],'source_native_race_id':'999','race_url':'https://example.invalid/fabricated'},))
+    monkeypatch.setattr('race_collection.synchronous_manual_capture.bounded_current_race_index',lambda **kw:view)
+    output=tmp_path/'population.json'
+    if late:
+        with pytest.raises(dev.DevelopmentRejected,match='POPULATION_FREEZE_CROSSED_CUTOFF'):
+            dev.freeze_population(tmp_path/'index',tmp_path,allocation,ref(allocation)['sha256'],output)
+        assert Path(str(output)+'.failure.json').exists()
+    else:
+        value=dev.freeze_population(tmp_path/'index',tmp_path,allocation,ref(allocation)['sha256'],output)
+        assert value['intended'][0]['url']=='https://example.invalid/fabricated'
+        assert Path(str(output)+'.completion.json').exists()
+
+
 def test_default_off_does_not_open_untrusted_inputs(tmp_path):
     from race_collection.development_examples import admit, DevelopmentRejected
     access = tmp_path / 'access.json'

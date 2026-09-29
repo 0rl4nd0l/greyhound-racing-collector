@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 import re
 import sqlite3
+import stat
 import tempfile
 
 # Reviewed identity-only authorities. Real admission must include the complete
@@ -26,6 +27,7 @@ RESERVATION_PINS = {
     'approved_reservation_review': '4c1f859c8292fa76bb1a70809133f56fa534fc16c98d0371d9d36a5875b7030e',
 }
 PILOT_DATES = ['2026-10-03', '2026-10-04', '2026-10-10', '2026-10-11']
+SELECTION_POLICY = 'first_six_1310_1420_melbourne_before_WIN_qualification_v1'
 
 
 class DevelopmentRejected(ValueError):
@@ -74,7 +76,7 @@ def put(path, value):
         if path.read_bytes() != raw:
             raise DevelopmentRejected('IMMUTABLE_RECORD_CHANGED')
         return digest(raw)
-    with path.open('xb') as stream:
+    with os.fdopen(os.open(path,os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600),'wb') as stream:
         stream.write(raw)
         stream.flush()
         os.fsync(stream.fileno())
@@ -86,11 +88,79 @@ def put(path, value):
     return digest(raw)
 
 
+def private_output(output):
+    output=Path(output).absolute()
+    if any(p.is_symlink() for p in (output,*output.parents)):
+        raise DevelopmentRejected('OUTPUT_SYMLINK_FORBIDDEN')
+    output.mkdir(parents=True,exist_ok=True,mode=0o700)
+    mode=output.stat()
+    if mode.st_uid!=os.getuid() or stat.S_IMODE(mode.st_mode)&0o077:
+        raise DevelopmentRejected('OUTPUT_NOT_PRIVATE')
+    return output
+
+
 def race_key(race_id):
     match = re.fullmatch(r'Race ([1-9][0-9]*) - ([A-Z0-9_]+) - (\d{4}-\d{2}-\d{2})', race_id)
     if not match:
         raise DevelopmentRejected('NONCANONICAL_RACE_ID')
     return f'{match[3]}|{match[2]}|{int(match[1])}'
+
+
+def selected_population(races, local_date):
+    from zoneinfo import ZoneInfo
+    zone=ZoneInfo('Australia/Melbourne')
+    intended=[]
+    for row in races:
+        jump=stamp(row['jump_at']).astimezone(zone)
+        if jump.date().isoformat()==local_date and '13:10' <= jump.strftime('%H:%M') <= '14:20':
+            if row['race_key'] != race_key(row['race_id']):
+                raise DevelopmentRejected('POPULATION_IDENTITY_MISMATCH')
+            intended.append(row)
+    intended.sort(key=lambda row:(stamp(row['jump_at']),row['race_id']))
+    if len({row['race_id'] for row in intended}) != len(intended):
+        raise DevelopmentRejected('POPULATION_IDENTITY_DUPLICATE')
+    return intended,[row['race_id'] for row in intended[:6]]
+
+
+def freeze_population(index_path, evidence_root, allocation_path, allocation_sha256, output):
+    """Read the existing verified index once; no discovery or provider call."""
+    from zoneinfo import ZoneInfo
+    allocation=read({'path':str(Path(allocation_path).absolute()),'sha256':allocation_sha256})
+    if allocation.get('status')!='AUTHORIZED' or allocation.get('dates')!=PILOT_DATES:
+        raise DevelopmentRejected('DEVELOPMENT_DISABLED')
+    registry=read(allocation['reservation_registry'])
+    if {r.get('kind'):r['sha256'] for r in registry['sources']}!=RESERVATION_PINS:
+        raise DevelopmentRejected('RESERVATION_REVIEW_REQUIRED')
+    for ref in registry['sources']:checked(ref)
+    now=datetime.now(timezone.utc);local=now.astimezone(ZoneInfo('Australia/Melbourne'))
+    if local.date().isoformat() not in PILOT_DATES or local.strftime('%H:%M')!='12:50':
+        raise DevelopmentRejected('POPULATION_FREEZE_NOT_DUE')
+    from race_collection.synchronous_manual_capture import bounded_current_race_index
+    view=bounded_current_race_index(current_time=now,timeout_seconds=5,index_path=Path(index_path),
+        evidence_root=Path(evidence_root),max_age_seconds=300,return_verified_view=True)
+    rows=[{'race_id':r['race_id'],'race_key':race_key(r['race_id']),'jump_at':r['jump_datetime'],
+        'runners':r['runners'],'source_native_race_id':r.get('source_native_race_id'),'url':r['race_url']}
+        for r in view.races]
+    intended,selected=selected_population(rows,local.date().isoformat())
+    value={'schema_version':'development_population_freeze_v1','synthetic':False,
+        'allocation_id':allocation['allocation_id'],'allocation_sha256':allocation_sha256,
+        'selection_policy':SELECTION_POLICY,'local_date':local.date().isoformat(),
+        'frozen_at':now.isoformat(),'source_observed_at':view.source_generated_at,
+        'source_index':str(Path(index_path).absolute()),'source_packet_sha256':view.packet_sha256,
+        'observed_races':rows,'intended':intended,'selected_race_ids':selected,
+        'coverage_basis':'all entries in verified collector index; source metadata exclusions remain in original collector accounting'}
+    output=Path(output).absolute()
+    population_hash=put(output,value)
+    completed=datetime.now(timezone.utc)
+    if completed.astimezone(ZoneInfo('Australia/Melbourne')).strftime('%H:%M')!='12:50':
+        put(Path(str(output)+'.failure.json'),{'status':'FREEZE_CROSSED_CUTOFF','population_sha256':population_hash})
+        raise DevelopmentRejected('POPULATION_FREEZE_CROSSED_CUTOFF')
+    put(Path(str(output)+'.completion.json'),{'status':'POPULATION_FROZEN',
+        'population_sha256':population_hash,'completed_at':completed.isoformat()})
+    if datetime.now(timezone.utc).astimezone(ZoneInfo('Australia/Melbourne')).strftime('%H:%M')!='12:50':
+        put(Path(str(output)+'.failure.json'),{'status':'FREEZE_CROSSED_CUTOFF','population_sha256':population_hash})
+        raise DevelopmentRejected('POPULATION_FREEZE_CROSSED_CUTOFF')
+    return value
 
 
 def admit(access_path, expected_sha256, race_id):
@@ -137,6 +207,31 @@ def admit(access_path, expected_sha256, race_id):
         raise DevelopmentRejected('RACE_IDENTITY_MISMATCH')
     if day not in allocation['dates'] or not stamp(allocation['starts_at']) <= jump < stamp(allocation['ends_at']):
         raise DevelopmentRejected('RACE_OUTSIDE_ALLOCATION')
+    population=None
+    if not synthetic:
+        population=read(access['population'])
+        population_completion=read(access['population_completion'])
+        if (Path(access['population']['path']+'.failure.json').exists()
+                or population_completion.get('status')!='POPULATION_FROZEN'
+                or population_completion.get('population_sha256')!=access['population']['sha256']):
+            raise DevelopmentRejected('POPULATION_FREEZE_INCOMPLETE')
+        intended,selected=selected_population(population['observed_races'],day)
+        frozen=stamp(population['frozen_at'])
+        if (population.get('schema_version')!='development_population_freeze_v1'
+                or population.get('synthetic') is not False
+                or population.get('allocation_sha256')!=access['allocation']['sha256']
+                or population.get('selection_policy')!=SELECTION_POLICY
+                or population.get('local_date')!=day
+                or frozen.astimezone(ZoneInfo('Australia/Melbourne')).date().isoformat()!=day
+                or stamp(population_completion['completed_at']).astimezone(ZoneInfo('Australia/Melbourne')).strftime('%Y-%m-%dT%H:%M')!=day+'T12:50'
+                or population.get('intended')!=intended or population.get('selected_race_ids')!=selected
+                or race_id not in selected
+                or frozen.astimezone(ZoneInfo('Australia/Melbourne')).strftime('%H:%M')!='12:50'
+                or not 0 <= (frozen-stamp(population['source_observed_at'])).total_seconds() <= 300):
+            raise DevelopmentRejected('POPULATION_NOT_FROZEN_BEFORE_QUALIFICATION')
+        frozen_race=next(row for row in intended if row['race_id']==race_id)
+        if stamp(frozen_race['jump_at'])!=jump:
+            raise DevelopmentRejected('FROZEN_POPULATION_JUMP_CHANGED')
     for ref, reservation in reservations:
         kind = ref.get('kind')
         if kind == 'approved_reservation_review':
@@ -166,7 +261,9 @@ def admit(access_path, expected_sha256, race_id):
             and amend.get('status') == 'AUTHORIZED'
             and amend.get('authority_reference')
             and amend.get('prior_allocation_sha256') == ref['sha256']
-            and day in amend.get('excluded_local_dates', [])
+            and day in amend.get('candidate_local_dates', [])
+            and amend.get('selection_policy') == SELECTION_POLICY
+            and race_id in population['selected_race_ids']
             and amend.get('development_allocation_id') == allocation['allocation_id']
             for amend in exceptions
         ):
@@ -178,6 +275,11 @@ def admit(access_path, expected_sha256, race_id):
     ids = [row['race_id'] for row in opportunities]
     if len(ids) != len(set(ids)) or any(race_key(row['race_id']) != row['race_key'] for row in opportunities):
         raise DevelopmentRejected('OPPORTUNITY_IDENTITY_INVALID')
+    if population is not None:
+        if set(ids)!={r['race_id'] for r in population['intended']} or accounting.get('population_sha256')!=access['population']['sha256']:
+            raise DevelopmentRejected('OPPORTUNITY_MEMBERSHIP_MISMATCH')
+        if any(r['attempt_consumed'] and r['race_id'] not in population['selected_race_ids'] for r in opportunities):
+            raise DevelopmentRejected('UNSELECTED_ATTEMPT')
     attempts = [row for row in opportunities if row['attempt_consumed']]
     if len(attempts) > allocation['max_capture_attempts']:
         raise DevelopmentRejected('ATTEMPT_BUDGET_EXCEEDED')
@@ -264,7 +366,7 @@ def seal(access_path, access_sha256, race_id, output, *, clock=None):
     if clock is not None and not synthetic:
         raise DevelopmentRejected('REAL_CLOCK_REQUIRED')
     clock = clock or (lambda: datetime.now(timezone.utc))
-    output = Path(output).absolute()
+    output = private_output(output)
     identity = {'schema_version': 'development_attempt_v1', 'access_sha256': access_sha256,
                 'race_id': race_id, 'synthetic': synthetic, 'allocation_id': allocation['allocation_id']}
     put(output / 'attempt.json', identity)
@@ -283,6 +385,15 @@ def seal(access_path, access_sha256, race_id, output, *, clock=None):
                           'sha256':member['entry']['manifest_sha256']})
         if any(name.startswith('comparison/') for name in preflight['files']):
             raise DevelopmentRejected('FROZEN_COMPARISON_INPUT_FORBIDDEN')
+        if synthetic:
+            request=read({'path':str(bundle_root/member['entry']['directory']/'request.json'),
+                          'sha256':preflight['files']['request.json']['sha256']})
+            receipt=read({'path':str(bundle_root/member['entry']['directory']/'protocol/collector_exact_receipt.json'),
+                          'sha256':preflight['files']['protocol/collector_exact_receipt.json']['sha256']})
+            if (request['race_id']!=race_id
+                    or not all(r['display_name'].startswith('Synthetic ') for r in request['runners'])
+                    or '/fabricated' not in receipt['sealed_handoff']['race']['url']):
+                raise DevelopmentRejected('SYNTHETIC_DATA_REQUIRED')
         verified = verify_indexed_prediction_bundle(bundle_root, member['entry'])
         forecast = verified.result
         if forecast['race']['race_id'] != race_id or forecast['status'] != 'PREDICTION_READY':
@@ -300,6 +411,9 @@ def seal(access_path, access_sha256, race_id, output, *, clock=None):
         if (verification['status'] != 'PREDICTION_READY' or verification['race_id'] != race_id
                 or verification['job_id'] != forecast['job_id']):
             raise DevelopmentRejected('VERIFICATION_IDENTITY_MISMATCH')
+        verification_raw=checked(member['verification'])
+        with os.fdopen(os.open(output/'verification.json',os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600),'wb') as handle:
+            handle.write(verification_raw);handle.flush();os.fsync(handle.fileno())
         receipt = json.loads(contents['odds_receipt.json'])
         quoted = {row['identity']: row for row in receipt['markets']['win']}
         predictions = {row['identity']: row for row in forecast['prediction']['predictions']}
@@ -329,6 +443,16 @@ def seal(access_path, access_sha256, race_id, output, *, clock=None):
         observed = stamp(capture['source_attempt']['fetch_time'])
         retained_at = stamp(retained['inputs_sealed_at'])
         now = clock()
+        if not synthetic:
+            population=read(access['population'])
+            selected=next(r for r in population['intended'] if r['race_id']==race_id)
+            expected={(r['box'],r['identity'],r.get('source_native_runner_id')) for r in selected['runners']}
+            actual={(r['box_number'],r['identity'],r.get('source_native_runner_id')) for r in runners}
+            capture_native=capture['source_plan_item']['race_identity'].get('source_native_race_id')
+            if (expected!=actual or stamp(population['frozen_at'])>observed
+                    or selected['url']!=forecast['race']['url']
+                    or selected.get('source_native_race_id')!=capture_native):
+                raise DevelopmentRejected('POPULATION_FIELD_OR_CAPTURE_TIMING_CHANGED')
         if not observed <= retained_at <= generated <= verified_at <= now < stamp(member['jump_at']):
             raise DevelopmentRejected('PRE_RESULT_TIMING_INVALID')
         # Keep a standalone verified source package; no later replay depends on
@@ -336,7 +460,7 @@ def seal(access_path, access_sha256, race_id, output, *, clock=None):
         for name, raw in {**contents, 'bundle_manifest.json': canonical(verified.manifest)}.items():
             path = output / 'evidence' / verified.directory / name
             path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-            with path.open('xb') as handle:
+            with os.fdopen(os.open(path,os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600),'wb') as handle:
                 handle.write(raw)
                 handle.flush()
                 os.fsync(handle.fileno())
@@ -391,7 +515,7 @@ def seal(access_path, access_sha256, race_id, output, *, clock=None):
 def join_result(access_path, access_sha256, race_id, output, authority_path, authority_sha256):
     """Read exactly one result after identity, allocation and prior-seal checks."""
     access, allocation, member, _ = admit(access_path, access_sha256, race_id)
-    output = Path(output).absolute()
+    output = private_output(output)
     completion = json.loads((output / 'completion.json').read_bytes())
     if (output / 'failure.json').exists():
         raise DevelopmentRejected('INCOMPLETE_ATTEMPT_PRESERVED')
@@ -402,6 +526,9 @@ def join_result(access_path, access_sha256, race_id, output, authority_path, aut
     verify_package(access_path,access_sha256,race_id,output)
     authority = read({'path': str(Path(authority_path).absolute()), 'sha256': authority_sha256})
     synthetic = access['status'] == 'SYNTHETIC_FIXTURE'
+    actual_now=datetime.now(timezone.utc)
+    if not synthetic and actual_now < stamp(member['jump_at']):
+        raise DevelopmentRejected('RESULT_ACCESS_BEFORE_JUMP')
     if (authority.get('schema_version') != 'development_result_authority_v1'
             or authority.get('status') != ('SYNTHETIC_FIXTURE' if synthetic else 'AUTHORIZED')
             or authority.get('allocation_id') != allocation['allocation_id']
@@ -412,6 +539,13 @@ def join_result(access_path, access_sha256, race_id, output, authority_path, aut
         raise DevelopmentRejected('RESULT_PERMIT_IDENTITY_MISMATCH')
     # This is the first result-bearing read. Mixed files/broad DB joins have no interface.
     result = read(permit['result'])
+    expected_result_keys={'schema_version','synthetic','race_id','race_key','disposition','observed_at',
+                          'official_source','source_evidence_sha256','official_evidence','finishers','reason'}
+    if set(result)!=expected_result_keys or (result.get('official_evidence') is not None
+                                           and set(result['official_evidence'])!={'race_rows','runner_rows'}):
+        raise DevelopmentRejected('RESULT_SCHEMA_NOT_SINGLE_RACE')
+    if not synthetic and stamp(result['observed_at'])>actual_now:
+        raise DevelopmentRejected('RESULT_OBSERVATION_IN_FUTURE')
     if (result.get('schema_version') != 'development_official_result_v1'
             or result.get('race_id') != race_id or result.get('race_key') != member['race_key']
             or result.get('synthetic') is not synthetic):
@@ -433,7 +567,8 @@ def join_result(access_path, access_sha256, race_id, output, authority_path, aut
             ordered_runners=[{'box':r['box_number'],'name':r['display_name'],
                              'source_native_runner_id':r.get('source_native_runner_id')} for r in packet['runners']]))
         bundle = SimpleNamespace(result={'race':packet['race'],'generated_at':packet['times']['prediction_at']})
-        OfficialResultSource._validate(job,bundle,evidence['race_rows'],evidence['runner_rows'],stamp(result['observed_at']))
+        OfficialResultSource._validate(job,bundle,evidence['race_rows'],evidence['runner_rows'],
+                                       stamp(result['observed_at']) if synthetic else actual_now)
         field = {r['identity'] for r in packet['runners']}
         places = result['finishers']
         if (set(places) != field or any(type(p) is not int or p < 1 or p > len(field) for p in places.values())
@@ -457,7 +592,7 @@ def join_result(access_path, access_sha256, race_id, output, authority_path, aut
 def verify_package(access_path, access_sha256, race_id, output):
     """Replay retained production features and history from exported bytes only."""
     _, allocation, member, _ = admit(access_path, access_sha256, race_id)
-    output = Path(output).absolute()
+    output = private_output(output)
     completion = json.loads((output/'completion.json').read_bytes())
     if (output/'failure.json').exists() or completion['race_id'] != race_id or completion['access_sha256'] != access_sha256:
         raise DevelopmentRejected('PRE_RESULT_SEAL_IDENTITY_MISMATCH')
@@ -466,6 +601,22 @@ def verify_package(access_path, access_sha256, race_id, output):
     verified = verify_indexed_prediction_bundle(output/'evidence', member['entry'])
     contents = {name:checked({'path':str(output/'evidence'/verified.directory/name),'sha256':entry['sha256']})
                 for name,entry in verified.manifest['files'].items()}
+    receipt=json.loads(contents['odds_receipt.json'])
+    quotes={r['identity']:r for r in receipt['markets']['win']}
+    predictions={r['identity']:r for r in verified.result['prediction']['predictions']}
+    runners=[{**r,'win_odds':quotes[r['identity']]['odds_decimal'],
+              'model_win_probability':predictions[r['identity']]['probability']} for r in verified.request['runners']]
+    overround=math.fsum(1/r['win_odds'] for r in runners)
+    for runner in runners:runner['normalized_market_probability']=(1/runner['win_odds'])/overround
+    verification=read({'path':str(output/'verification.json'),'sha256':member['verification']['sha256']})
+    if (packet['race']!=verified.result['race'] or packet['model']!=verified.result['model']
+            or packet['runners']!=runners or packet['market']['overround']!=overround
+            or packet['production_features']!=json.loads(contents['features/sealed/shadow_feature_rows.json'])
+            or stamp(packet['times']['prediction_at'])!=stamp(verified.result['generated_at'])
+            or stamp(packet['times']['verification_at'])!=stamp(verification['completed_at'])
+            or stamp(packet['times']['scheduled_jump_at'])!=stamp(member['jump_at'])
+            or stamp(packet['times']['observation_at'])!=stamp(json.loads(contents['source/capture.json'])['source_attempt']['fetch_time'])):
+        raise DevelopmentRejected('EXAMPLE_SOURCE_REPLAY_MISMATCH')
     history = _histories(contents,race_id,packet['runners'],allocation.get('denied_history_intervals',[]))
     if canonical(history) != canonical(packet['history']):
         raise DevelopmentRejected('HISTORY_REPLAY_MISMATCH')

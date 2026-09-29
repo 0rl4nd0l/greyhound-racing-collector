@@ -1,11 +1,13 @@
 {
   "allocation": {
     "path": "/home/l4nd0/greyhound-development-pipeline-20260930/docs/development/20260930/allocation.PROPOSED.json",
-    "sha256": "94277c065182eb621326be91db6508e89dffd9418bd1305e094e5a4cbd1c5d45"
+    "sha256": "782102039474068e989f746323a4d3aaf5906d3164e0d5811fba4d7c752ce873"
   },
   "enabled": false,
   "members": {},
   "opportunities": null,
+  "population": null,
+  "population_completion": null,
   "schema_version": "development_access_v1",
   "status": "PROPOSED"
 }

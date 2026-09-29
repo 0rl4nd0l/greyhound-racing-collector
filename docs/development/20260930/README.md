@@ -74,13 +74,16 @@ are rechecked. The primary owner must freshly attest that no additional
 reservation exists; these documented paths are not a universal registry.
 
 No already authorized near-term development population was found. The smallest
-prepared amendment excludes **October 3, 4, 10 and 11, 2026** local target dates
-from both the exclusive comparison allocation and deferred successor claim,
-reserving them exclusively for this finite development pilot. No historical
+prepared amendment excludes only the **first six intended race keys** on each
+of **October 3, 4, 10 and 11, 2026**, as determined by the fixed pre-price
+selection rule, from both the comparison allocation and deferred successor
+claim. Every nonselected race remains protected. No historical
 record or consumed allowance is changed. The four dates are weekends, so all
 80 scheduled weekday study sessions and four frozen forecasts remain intact.
-The study's scientific population is prospectively narrowed to exclude these
-four dates; it cannot subsequently claim those dates as pristine holdout.
+The study's scientific population is prospectively narrowed by at most 24
+target identities; it cannot subsequently claim those identities as pristine
+holdout. The deterministic rule is authorized prospectively; the exact keys
+are bound in immutable daily population freezes before price qualification.
 Study results can still close on a weekend because allocation concerns the
 target race date, not the result retrieval date.
 
@@ -96,19 +99,43 @@ refresh the reservation review and bind the resulting hashes before use.
 - Sole owner: the primary orchestrator, using the existing finite collector,
   provider state, shared lock and denial STOP. No parallel browser, independent
   subagent owner, new movement snapshot or frozen model change.
-- Four local sessions, 13:00–14:30 on the dates above, preparation at 12:50.
+- Four local sessions, 13:00–14:30 on the dates above, preparation at 12:40
+  and population freeze during 12:50. This ten-minute preparation allowance
+  supplies the already verified collector index before membership is sealed.
   Melbourne changes to daylight time on October 4; store the explicit offset
   and named timezone, never a fixed UTC daily recurrence.
-- Freeze a complete identity-only opportunity list at 12:50. Intended races
+- Run `scripts.freeze_development_population` to freeze the existing verified
+  identity-only collector index at 12:50, with source age at most five minutes.
+  This command cannot discover races or call a provider. Intended races
   have scheduled jumps 13:10–14:20. Select the first six by scheduled jump then
   canonical race ID, before price qualification. Publish exclusions for every
-  other intended identity. Do not substitute for a failed/late/unqualified
+  other intended identity. The freeze retains every verified index entry;
+  source metadata exclusions retain their original collector accounting and
+  are not falsely counted as qualified index members. Real admission checks
+  the complete intended roster, ordering, selected membership, native field,
+  source observation/freeze timestamps and exact opportunity manifest hash.
+  Do not substitute for a failed/late/unqualified
   selected identity and do not replenish a consumed attempt.
 - At most 6 capture attempts/date and 24 total, one WIN snapshot/race. Each
   existing capture/retention/verified prediction feeds the offline seal CLI.
+  Automatic all-race capture timers remain disabled for this pilot. The sole
+  owner matches each intended capture to the immutable selected list, reserves
+  that exact plan item/window through the existing `AttemptAllowance`, and
+  invokes the existing capture phase with `--live-capture-reservation`. The
+  child revalidates that exact reservation; a mismatch fails with consumption
+  preserved. This is per-race dispatch, not enabling the ordinary broad queue
+  and rejecting unallocated races only after provider access.
   At most 48 source operations/date, including discovery, full/odds refresh,
   browser acquisitions and failures (192 total), 6,000 logical requests/date
-  (24,000 total) and 6,000 charged seconds/date including cleanup. These are
+  (24,000 total) and 7,200 charged seconds/date including preparation and cleanup
+  (28,800 total: 20-minute preparation, 90-minute session, 10-minute cleanup).
+  Preparation uses `scripts/shadow_autopilot_v1.py --collection-phase refresh`
+  under the same owner/contract/lease/lock. This existing phase runs the bounded
+  refresh, publishes the native index and returns before WIN acquisition;
+  capture dispatch is not launched until population completion.
+  One fresh metadata refresh shortly before 12:50 is charged within the same
+  48-operation ceiling. Skip the date if the index is absent/stale at freeze;
+  no late freeze, shifted population or new discovery pipeline. These are
   new finite ceilings; none comes from the October study's allocation.
 - At most three official-result checks per selected attempt: after jump +30
   minutes, next local day noon, and final closure October 25 noon. This is up
@@ -144,7 +171,7 @@ at 64 MiB, and the additional standalone copy is about another bundle plus
 the normalized example. Reserve 10 GiB for 24 pilot attempts and bounded logs;
 this is a planning allowance, not a measured expected footprint. Abort before
 storage exhaustion; do not increase inherited caps automatically. The four
-90-minute sessions plus cleanup are at most 24,000 charged seconds; source
+ 90-minute sessions plus preparation/cleanup are at most 28,800 charged seconds; source
 and result ceilings above are maxima, not predicted operation counts.
 
 ## Validation and reproduction
@@ -163,7 +190,8 @@ PIPELINE_PY=/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-p
 "$PIPELINE_PY" -B -m scripts.verify_development_package --output /absolute/new-output
 ```
 
-The verifier exports the committed source, runs actual `seal`, `join` and
+The verifier creates an isolated detached worktree at the exact committed
+source (the existing collector exporter requires real Git metadata), runs actual `seal`, `join` and
 `verify` CLI processes and the existing collector/retention/frozen scorer with
 kernel networking denied. Only HTTP/browser/result fixture evidence is
 invented. `package_identity.json` pins commit, archive, executable and result;

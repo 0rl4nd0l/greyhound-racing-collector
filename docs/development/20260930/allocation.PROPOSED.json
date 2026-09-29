@@ -13,19 +13,20 @@
   "machine_history_authority_reference": null,
   "max_attempts_per_date": 6,
   "max_capture_attempts": 24,
-  "max_live_seconds_per_date": 6000,
+  "max_live_seconds_per_date": 7200,
   "max_logical_requests_per_date": 6000,
   "max_source_operations_per_date": 48,
   "mode": "single_snapshot",
   "operational_owner": "primary_orchestrator",
+  "preparation": "12:40 Melbourne; immutable verified-index population freeze at12:50",
   "reservation_amendments": [
     {
       "path": "/home/l4nd0/greyhound-development-pipeline-20260930/docs/development/20260930/historical_protection.amendment.PROPOSED.json",
-      "sha256": "2c76a726799fecd107f4afe07bb5b893b4b78ffee16d6626a28c9b7b0c06d5c8"
+      "sha256": "f9197803a74339b9d57612f46e06cb66c3ff6d075499643cccc2f185d5f176f2"
     },
     {
       "path": "/home/l4nd0/greyhound-development-pipeline-20260930/docs/development/20260930/exclusive_comparison.amendment.PROPOSED.json",
-      "sha256": "de6cccdc56be843de16e0832d03ad11f17edfa5c92f6a6a5b1adbd7bd301bf22"
+      "sha256": "08abd3ddd8a127bd75759033ab8bb81b5d428324159f401ad773c6c8846d2418"
     }
   ],
   "reservation_registry": {
@@ -36,10 +37,12 @@
   "result_closure": "2026-10-25T12:00:00+11:00",
   "schema_version": "development_allocation_v1",
   "selection": "six earliest canonical races with scheduled jumps 13:10 through 14:20 Melbourne, frozen from complete 12:50 index; all exclusions counted; no substitution after failure",
+  "selection_policy": "first_six_1310_1420_melbourne_before_WIN_qualification_v1",
   "sessions": [
     "13:00-14:30 Australia/Melbourne on each listed date"
   ],
   "snapshot_policy": "one qualified fixed WIN snapshot per race; no movement and no retries",
+  "source_preparation": "existing refresh and index publication under same owner/locks; no capture dispatch until population completion; skip date if index not fresh at12:50",
   "starts_at": "2026-10-03T00:00:00+10:00",
   "status": "PROPOSED"
 }
