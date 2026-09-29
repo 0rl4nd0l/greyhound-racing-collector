@@ -96,6 +96,12 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                 pass
             else:
                 return {"status": "SKIPPED_LOCK_HELD", "runtime_action": "LIVE_CYCLE_OWNER_ACTIVE"}
+        if odds_only and daemon.read_active_full_daemon_lock_wait_marker(lock_path):
+            # The full waiter authenticates the previous odds child from this
+            # cycle's report. A second invocation must not replace that report
+            # or checkpoint before the waiter can observe the released lock.
+            return {"status": "SKIPPED_FULL_DAEMON_LOCK_HANDOFF",
+                    "runtime_action": "LIVE_CYCLE_FULL_WAITER_ACTIVE"}
         run_id = resumable["cycle_id"]
     output = daemon.unique_dir(
         daemon.assert_output_dir_safe(

@@ -19,7 +19,7 @@ from tests.test_refresh_shared_sportsbet_snapshot import fixture, access
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.mark.parametrize('yield_capture,cold_start', [(False,False),(True,False),(False,45),(False,90),('consumed',45),('restarted',45)])
+@pytest.mark.parametrize('yield_capture,cold_start', [(False,False),(True,False),(False,45),(False,90),('consumed',45),('restarted',45),('resumed',45)])
 def test_second_full_service_waits_for_actual_odds_child_then_completes(tmp_path, monkeypatch, yield_capture, cold_start):
     from scripts import prepare_freshness_rehearsal as packaging
     from scripts.check_freshness_service import service_command
@@ -265,6 +265,14 @@ print(json.dumps(observation))
             # systemd may dispatch the next wrapper before the full child's
             # next lock poll; the prior terminal report/lifecycle remain.
             odds_invocation = '8'*32
+        if yield_capture == 'resumed':
+            odds_invocation = '8'*32
+            preserved = {p: p.read_bytes() for p in (peer_report, runtime/'odds.live-phase-checkpoint.json')}
+            operations = json.loads(gate.read_bytes())['operations']
+            peer = start('odds', 'fixture_resuming_odds_capture', odds_invocation)
+            assert peer.wait(timeout=100) == 2
+            assert all(p.read_bytes() == raw for p, raw in preserved.items())
+            assert json.loads(gate.read_bytes())['operations'] == operations
         gap=observe(True, peer_active=yield_capture == 'restarted', peer_failed=yield_capture)
         assert next(lane for lane in gap['lanes'] if lane['lane']=='FULL_DAEMON')['status']=='WAITING_FOR_PEER', gap
         assert next(lane for lane in gap['lanes'] if lane['lane']=='ODDS_ONLY')['status']==('WAITING_FOR_PEER' if yield_capture else 'RECEIPT_READY'), gap
