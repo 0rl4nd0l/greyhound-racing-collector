@@ -12,15 +12,26 @@ import math
 from scripts import offline_form_packet as legacy
 
 VERSION = 'retained_card_form_v2'
-NAMES = dict(zip(legacy.FEATURES, (
-    'retained_start_count', 'days_since_last_retained_start',
-    'recent_finish_mean_3', 'recent_finish_best_5',
-    'recent_win_rate_5', 'recent_top3_rate_5', 'recent_recorded_margin_mean_5',
-    'retained_win_rate', 'retained_top3_rate', 'retained_finish_mean',
-    'retained_same_venue_start_count', 'retained_same_venue_win_rate',
-    'retained_exact_distance_start_count', 'retained_exact_distance_win_rate',
-    'retained_same_grade_label_start_count', 'retained_same_grade_label_win_rate',
-)))
+NAMES = {
+    'prior_start_count': 'retained_start_count',
+    'days_since_last_start': 'days_since_last_retained_start',
+    'recent_finish_mean_3': 'recent_finish_mean_3',
+    'recent_finish_best_5': 'recent_finish_best_5',
+    'recent_win_rate_5': 'recent_win_rate_5',
+    'recent_place_rate_5': 'recent_top3_rate_5',
+    'recent_avg_margin_5': 'recent_recorded_margin_mean_5',
+    'career_win_rate': 'retained_win_rate',
+    'career_place_rate': 'retained_top3_rate',
+    'career_avg_finish': 'retained_finish_mean',
+    'starts_same_venue': 'retained_same_venue_start_count',
+    'win_rate_same_venue': 'retained_same_venue_win_rate',
+    'starts_same_distance': 'retained_exact_distance_start_count',
+    'win_rate_same_distance': 'retained_exact_distance_win_rate',
+    'same_grade_start_count': 'retained_same_grade_label_start_count',
+    'same_grade_win_rate': 'retained_same_grade_label_win_rate',
+}
+if tuple(NAMES) != tuple(legacy.FEATURES):
+    raise ValueError('legacy feature order changed; versioned contract review required')
 
 CONTRACT = {
     'version': VERSION, 'legacy_to_development_names': NAMES,
@@ -34,6 +45,7 @@ CONTRACT = {
     'zero': 'no matches in inspected classifiable retained starts, or no recorded wins/top3 in known denominator',
     'completeness': 'unknown career coverage even if hashes and roster verify',
     'duplicates': 'retain recent and retained columns; no implicit regularization change',
+    'numeric_validation': 'reject nonfinite/nonintegral numeric prior-date PLC/DIST before canonical int conversion; PLC 1..8, DIST positive; unavailable textual values stay missing',
     'preprocessing': 'training medians (all missing ->0), indicators, training standardization, within-race centering; legacy linear residual .35 tanh cap',
 }
 
@@ -41,6 +53,20 @@ CONTRACT = {
 def build_record(raw_rows, *, target_date: date, venue, distance, grade):
     """Describe one admitted runner; never manufacture unavailable context."""
     raw_rows = list(raw_rows)
+    for raw in raw_rows:
+        try:
+            history_date = date.fromisoformat(str(raw.get('DATE') or '').strip())
+        except ValueError:
+            continue  # Canonical parser records date rejection.
+        if history_date >= target_date:
+            continue
+        for field, label in (('PLC', 'finish'), ('DIST', 'distance')):
+            number = legacy.canonical.safe_float(raw.get(field))
+            if number is not None and (
+                not math.isfinite(number) or not number.is_integer() or number < 1
+                or (field == 'PLC' and number > 8)
+            ):
+                raise ValueError('invalid recorded ' + label)
     history, rejected = legacy.canonical.accepted_history(raw_rows, target_date)
     for row in history:
         if row['finish'] is not None and not 1 <= row['finish'] <= 8:

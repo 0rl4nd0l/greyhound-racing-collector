@@ -85,7 +85,8 @@ Implementation is confined to new development files:
 - [Feature record](../../scripts/development_form_quality.py): canonical history
   reuse, 16 explicit names, denominators/status, date/cap/rejection metadata,
   unknown career coverage, strict missing-context handling and invalid-finish/
-  nonfinite-margin rejection. No production imports this interface.
+  nonfinite-margin rejection, including raw ordinal/distance validation before
+  lossy integer conversion. No production imports this interface.
 - [Gated audit](../../scripts/audit_development_form_quality.py): reservation and
   incident manifests first, identity-only whole-file admission, permitted-source
   resolution before card opens, exact rosters and timing, original-value replay,
@@ -101,10 +102,10 @@ Implementation is confined to new development files:
   input admission. New fits are explicitly `new_diagnostic_fit_not_original_artifact`.
   Missing historical box coefficients were not reconstructed or relabelled.
 
-Final [summary](feature_quality_20260929_evidence_verified/summary.json),
-[all runner records](feature_quality_20260929_evidence_verified/runner_quality.jsonl),
-[contract](feature_quality_20260929_evidence_verified/feature_contract.json), and
-[input hashes](feature_quality_20260929_evidence_verified/input_hashes.json) are
+Final [summary](feature_quality_20260929_evidence_reviewed/summary.json),
+[all runner records](feature_quality_20260929_evidence_reviewed/runner_quality.jsonl),
+[contract](feature_quality_20260929_evidence_reviewed/feature_contract.json), and
+[input hashes](feature_quality_20260929_evidence_reviewed/input_hashes.json) are
 retained. Base16 and half saved forecasts replay within **2.22e−16** for all
 1,251 evaluated runners per model. The [27-file preservation check](feature_quality_20260929_preservation.json)
 found unchanged installed/frozen code, units, controls, registry and model bytes.
@@ -161,16 +162,20 @@ RESEARCH_PY=/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accur
 "$RESEARCH_PY" -m scripts.audit_development_form_quality --out /tmp/feature-quality-NEW
 ```
 
-Fourteen focused tests passed at implementation completion. They exercise
+Fifteen focused tests passed after independent review. They exercise
 unknown versus zero context, partial history, known-value denominators, positive
 winner margin preservation, date/dedup/cap limits, >5-start differentiation,
 invalid values, access gates, chronological failure retention and saved-fit
 replay. The earlier explanation seams cover whole-field identity admission and
 missing-indicator/cap/normalization reconstruction. No broad suite or historical
-search was repeated. The initial local audit output remains under
+search was repeated. All five final artifacts reproduce byte-for-byte. See the
+[independent review](feature_quality_20260929_review.md) for findings and repairs. The initial local audit output remains under
 `feature_quality_20260929_evidence/`; the published `_evidence_verified/` output
 adds the explicit post-admission byte check and recency's one-record denominator.
-Neither run fits models or changes feature values.
+The final `_evidence_reviewed/` run additionally validates raw numeric history
+before integer conversion; the demonstrated fractional-finish/distance and zero-
+distance defects affect zero admitted records. All prior outputs remain retained.
+None of these runs fits models or changes admitted feature values.
 
 Worktree base: `bec84e80` (#197); branch `research/feature-quality-20260929`.
 Original dirty worktrees, research artifacts, installed services and frozen

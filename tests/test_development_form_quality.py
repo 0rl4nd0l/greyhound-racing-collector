@@ -22,6 +22,12 @@ def record(rows, **target):
 
 
 class QualityTests(unittest.TestCase):
+    def test_invalid_numeric_history_cannot_become_win_or_zero_context(self):
+        for fields in ({'DIST': '0'}, {'DIST': '400.9'}, {'PLC': '1.9'}, {'DIST': 'nan'}):
+            with self.subTest(fields=fields):
+                with self.assertRaisesRegex(ValueError, 'invalid recorded'):
+                    record([raw('2026-06-09', **fields)])
+
     def test_source_paths_are_selected_only_from_admitted_identities(self):
         from scripts.audit_development_form_quality import admitted_sources
         allowed = {('good', 1): 'dog'}
