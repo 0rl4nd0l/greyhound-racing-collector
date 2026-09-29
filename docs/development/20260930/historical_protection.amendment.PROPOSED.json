@@ -1,0 +1,15 @@
+{
+  "authority_reference": null,
+  "candidate_local_dates": [
+    "2026-10-03",
+    "2026-10-04",
+    "2026-10-10",
+    "2026-10-11"
+  ],
+  "development_allocation_id": "development-single-snapshot-20261003-v1",
+  "prior_allocation_sha256": "9fddce8fa70ea96c4d7a6c33ef61594ddeb47e254cd08bb87555b2d94fc4da88",
+  "schema_version": "development_reservation_amendment_v1",
+  "scope": "only the first six intended race keys per date in the immutable 12:50 verified-index population; every nonselected race remains protected",
+  "selection_policy": "first_six_1310_1420_melbourne_before_WIN_qualification_v1",
+  "status": "PROPOSED"
+}

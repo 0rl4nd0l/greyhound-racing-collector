@@ -1,0 +1,109 @@
+{
+  "activated": false,
+  "allocation_status": "PROPOSED_NOT_APPROVED",
+  "demonstration": {
+    "collector_fixture_seconds": 34.063534677028656,
+    "development_fits": 0,
+    "elapsed_seconds": 41.862618737039156,
+    "example_bytes": 1076544,
+    "idempotent_restart": true,
+    "interpreter": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-python311-20260803-9d58f340/bin/python",
+    "join": {
+      "elapsed_seconds": 2.160982258967124,
+      "result": {
+        "disposition": "OFFICIAL",
+        "example_sha256": "13c87a1f459c00ef88661576e9a6b7c766586d69e66b08f1f6588cec61f9c9ef",
+        "race_id": "Race 9 - MURR - 2026-09-30",
+        "status": "ASSEMBLED",
+        "synthetic": true,
+        "trainable": true
+      }
+    },
+    "kernel_network": "denied_parent_and_inherited_children",
+    "max_child_rss_kib": 512616,
+    "protected_target_decodes": 0,
+    "provider_operations_real": 0,
+    "race_id": "Race 9 - MURR - 2026-09-30",
+    "retained_bundle_bytes": 841082,
+    "seal": {
+      "elapsed_seconds": 1.4561750160064548,
+      "result": {
+        "access_sha256": "790d7f179f983ee4bdad527702d9583a6c2100099d23e0e012a7d2201f4efe08",
+        "pre_result_sha256": "38d618682491e98bc9dab5508a22aeb1a92bc173e256691d70d705a56dc97f7e",
+        "race_id": "Race 9 - MURR - 2026-09-30",
+        "schema_version": "development_pre_result_completion_v1",
+        "sealed_at": "2026-09-29T23:46:21.199207+00:00",
+        "status": "SEALED_PRE_RESULT",
+        "synthetic": true
+      }
+    },
+    "status": "SYNTHETIC_COMPLETE_OFFLINE_ASSEMBLY",
+    "synthetic": true,
+    "verify": {
+      "elapsed_seconds": 2.0154943669913337,
+      "result": {
+        "pre_result_sha256": "38d618682491e98bc9dab5508a22aeb1a92bc173e256691d70d705a56dc97f7e",
+        "race_id": "Race 9 - MURR - 2026-09-30",
+        "retained_features_sha256": "ec63c2214ed7ce089f337872eb202e654721f24a5679a4b27f78b661a4adf139",
+        "status": "REPLAY_VERIFIED",
+        "synthetic": true
+      }
+    }
+  },
+  "fits": 0,
+  "focused_tests": {
+    "command": "python -B -c deny_network_then_pytest tests/test_development_examples.py",
+    "network": "kernel-denied parent and inherited children",
+    "passed": 23,
+    "seconds": 37.76
+  },
+  "installed": false,
+  "package": {
+    "activated": false,
+    "archive_sha256": "de04935b53960e0d0d183e289317c316c6294e62cf74f0f9c2917714cd6f1c8d",
+    "installed": false,
+    "output": "/home/l4nd0/greyhound-development-pipeline-export-20260930-v2",
+    "python": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-python311-20260803-9d58f340/bin/python",
+    "python_sha256": "8ade35c2e4123b4fb44dd3c7b00ff8f7cf980145b3035dee96761838209417f0",
+    "source_commit": "01dff7cdeb6bacf1f518993a542867b58b777556",
+    "source_representation": "isolated_detached_exact_commit_worktree",
+    "status": "PASS",
+    "synthetic": true
+  },
+  "planning": {
+    "attainable_real_examples_hard_range": [
+      0,
+      24
+    ],
+    "charged_seconds_max": 28800,
+    "dates": [
+      "2026-10-03",
+      "2026-10-04",
+      "2026-10-10",
+      "2026-10-11"
+    ],
+    "example_count_measured": 1,
+    "logical_requests_max": 24000,
+    "max_dates": 4,
+    "max_weekend_clusters": 2,
+    "maximum_selected_identities": 24,
+    "result_operations_max": 72,
+    "result_requests_max": 720,
+    "source_operations_max": 192,
+    "storage_reservation_bytes": 10737418240,
+    "synthetic_example_count": 1
+  },
+  "prior_failed_export": {
+    "path": "/home/l4nd0/greyhound-development-pipeline-export-20260930",
+    "preserved": true,
+    "reason": "tar-only package lacked real Git metadata required by existing collector preparer"
+  },
+  "protected_target_decodes": 0,
+  "provider_operations_real": 0,
+  "source_commit": "01dff7cdeb6bacf1f518993a542867b58b777556",
+  "source_inputs": {
+    "feature_quality_source": "62ccffbfbbce801ffd11d896d9b1d3e41ffba28e",
+    "installed_apis_base": "38a2eebd3583c7c3e5351ec428932313909b09ec"
+  },
+  "status": "IMPLEMENTED_DEFAULT_OFF_SYNTHETIC_DEMONSTRATED"
+}
