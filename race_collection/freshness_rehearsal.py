@@ -69,8 +69,6 @@ def native_observation(*, now, paths, units, evidence_root, index_path, authorit
                 "P-COLLECTOR-ODDS-DYNAMIC" if key.startswith("odds") else "P-COLLECTOR-FULL-DYNAMIC"
             )
         )
-        if key == 'odds_lifecycle':
-            policy = 'P-IMMUTABLE-HISTORICAL'
         # Let the native reader report absent adapter evidence as missing. An
         # empty schema with a declared timestamp fails configuration validation.
         time_field = (
