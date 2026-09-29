@@ -609,11 +609,18 @@ def verify_package(access_path, access_sha256, race_id, output):
     overround=math.fsum(1/r['win_odds'] for r in runners)
     for runner in runners:runner['normalized_market_probability']=(1/runner['win_odds'])/overround
     verification=read({'path':str(output/'verification.json'),'sha256':member['verification']['sha256']})
+    import zipfile
+    with zipfile.ZipFile(io.BytesIO(contents['retained_inputs.zip'])) as archive:
+        retained_completion=json.loads(archive.read('bundle/completion.json'))
     if (packet['race']!=verified.result['race'] or packet['model']!=verified.result['model']
             or packet['runners']!=runners or packet['market']['overround']!=overround
             or packet['production_features']!=json.loads(contents['features/sealed/shadow_feature_rows.json'])
             or stamp(packet['times']['prediction_at'])!=stamp(verified.result['generated_at'])
             or stamp(packet['times']['verification_at'])!=stamp(verification['completed_at'])
+            or stamp(packet['times']['availability_upper_bound'])!=stamp(retained_completion['inputs_sealed_at'])
+            or packet['times']['availability_basis']!='retained_inputs_post_fsync_completion'
+            or packet['times']['index_observed_at']!=verification.get('index_observed_at')
+            or packet['times']['index_age_at_dispatch_seconds']!=verification.get('index_age_at_dispatch_seconds')
             or stamp(packet['times']['scheduled_jump_at'])!=stamp(member['jump_at'])
             or stamp(packet['times']['observation_at'])!=stamp(json.loads(contents['source/capture.json'])['source_attempt']['fetch_time'])):
         raise DevelopmentRejected('EXAMPLE_SOURCE_REPLAY_MISMATCH')

@@ -185,11 +185,15 @@ def test_synthetic_grant_rejects_real_identity_before_verifier(synthetic,tmp_pat
     with pytest.raises(DevelopmentRejected,match='SYNTHETIC_DATA_REQUIRED'):seal(path,pin,rid,tmp_path/'output')
 
 
-def test_example_replay_rejects_rehashed_packet_probability_change(synthetic,tmp_path):
+@pytest.mark.parametrize('field',['probability','availability','index_observation'])
+def test_example_replay_rejects_rehashed_packet_source_change(synthetic,tmp_path,field):
     from race_collection.development_examples import seal,verify_package,DevelopmentRejected,canonical,digest
     rid,path,pin=changed_access(synthetic,tmp_path,lambda *args:None)
     output=tmp_path/'output';seal(path,pin,rid,output)
-    packet=json.loads((output/'pre_result.json').read_bytes());packet['runners'][0]['model_win_probability']=.9
+    packet=json.loads((output/'pre_result.json').read_bytes())
+    if field=='probability':packet['runners'][0]['model_win_probability']=.9
+    elif field=='availability':packet['times']['availability_upper_bound']='1900-01-01T00:00:00+00:00'
+    else:packet['times']['index_observed_at']='1900-01-01T00:00:00+00:00'
     (output/'pre_result.json').write_bytes(canonical(packet))
     complete=json.loads((output/'completion.json').read_bytes());complete['pre_result_sha256']=digest(canonical(packet))
     (output/'completion.json').write_bytes(canonical(complete))
