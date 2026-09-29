@@ -427,6 +427,12 @@ def bind_configured_r3(app: Flask) -> bool:
     if not isinstance(selector,str) or selector not in _PROFILES:raise ValueError("unknown finite R3 profile")
     services = _build_r3_services(app,selector)
     installed = install_r3_api(app,services)
+    display_digest = os.environ.get("OPERATOR_UI_FORECAST_DISPLAY_SHA256")
+    if display_digest:
+        from .retained_forecasts import read, install_forecast_display
+        if selector != "repository-v1" or not _HEX64_RE.fullmatch(display_digest):
+            raise RuntimeError("forecast display requires generated identity")
+        install_forecast_display(app, read(_REPOSITORY_ROOT / "var/operator_ui/generated/forecast-display.json", display_digest))
     digest = os.environ.get("OPERATOR_UI_R3_JOURNAL_SHA256", "disabled")
     if digest != "disabled":
         if selector != "repository-v1" or not _HEX64_RE.fullmatch(digest):

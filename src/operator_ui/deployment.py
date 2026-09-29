@@ -665,7 +665,8 @@ def generate_package(*, source_root: Path, pinned_python: Path, evidence_root: P
                      bind_address: str = "127.0.0.1", port: int = 5055,
                      live_authority: Path | None = None, enabled: bool = False,
                      journal_activation: Path | None = None,
-                     retained_input_bindings: Path | None = None) -> dict[str, Any]:
+                     retained_input_bindings: Path | None = None,
+                     forecast_display: Path | None = None) -> dict[str, Any]:
     """Validate every authority input, then write one finite generated package."""
     if not _COMMIT.fullmatch(source_commit) or not _COMMIT.fullmatch(source_tree):
         raise DeploymentRejected("source commit/tree identity is invalid")
@@ -775,6 +776,13 @@ def generate_package(*, source_root: Path, pinned_python: Path, evidence_root: P
         except (ValueError, TypeError, KeyError, AttributeError) as exc:
             raise DeploymentRejected("invalid journal activation: " + str(exc)) from exc
         _validate_target(journal_target, source)
+    display_bytes = None
+    display_target = source / "var/operator_ui/generated/forecast-display.json"
+    if forecast_display is not None:
+        from .retained_forecasts import validate_config
+        display_bytes = _retained_file_read(_safe_existing(forecast_display, directory=False), 65536)
+        validate_config(json.loads(display_bytes))
+        _validate_target(display_target, source)
     environment = "\n".join((
         f"OPERATOR_UI_CONNECTED_MODE={int(active)}",
         f"OPERATOR_UI_LEVEL={2 if active else 1}",
@@ -782,6 +790,7 @@ def generate_package(*, source_root: Path, pinned_python: Path, evidence_root: P
         f"OPERATOR_UI_DEPLOYED_COMMIT={source_commit}", f"OPERATOR_UI_DEPLOYED_TREE={source_tree}",
         f"OPERATOR_UI_DEPLOYED_VERSION={ui_version}", f"OPERATOR_UI_DEPLOYED_PROFILE={profile_id}",
         *(("OPERATOR_UI_R3_JOURNAL_SHA256=" + hashlib.sha256(journal_bytes).hexdigest(),) if journal_bytes is not None else ()),
+        *(("OPERATOR_UI_FORECAST_DISPLAY_SHA256=" + hashlib.sha256(display_bytes).hexdigest(),) if display_bytes is not None else ()),
         "ENABLE_SCRAPING_DEFAULT=0", "ENABLE_LIVE_SCRAPING=0", "ENABLE_RESULTS_SCRAPERS=0", "TGR_ENABLED=0", "PREDICTION_IMPORT_MODE=prediction_only", ""))
     service = "\n".join((
         "[Unit]", "Description=Greyhound Operator UI R3 (generated, private)", "After=network-online.target", "Wants=network-online.target", "",
@@ -812,6 +821,7 @@ by hand and does not alter the canonical database `{database}`.
         (environment_target, environment.encode(), 0o600),
         (service_target, service.encode(), 0o644),
         (rollback_target, rollback.encode(), 0o644),
+        *(((display_target, display_bytes, 0o600),) if display_bytes is not None else ()),
         *(((journal_target, journal_bytes, 0o600),) if journal_bytes is not None else ()),
     ))
     return {"enabled": active, "binding": str(binding_target), "service": str(service_target)}
@@ -829,6 +839,7 @@ def _parser() -> argparse.ArgumentParser:
     generate.add_argument("--live-authority", type=Path)
     generate.add_argument("--journal-activation", type=Path)
     generate.add_argument("--retained-input-bindings", type=Path)
+    generate.add_argument("--forecast-display", type=Path)
     manual = commands.add_parser("generate-manual")
     for name in (
         "source-root", "pinned-python", "manual-root", "browser-profile-root",

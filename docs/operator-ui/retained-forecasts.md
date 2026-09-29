@@ -1,0 +1,13 @@
+# Retained production forecasts
+
+`/operator-ui/forecasts` reads `/operator-ui/api/v1/predictions/retained` through the existing Level 1 authentication and audited prediction-detail contract. `/operator-ui/sign-in` is a browser form over the unchanged CSRF-protected login API. It uses existing credentials and Secure, HttpOnly, SameSite=Strict sessions.
+
+Enable the read-only display by supplying `--forecast-display /absolute/config.json` to the existing deployment generator. The generator retains that configuration in the source snapshot and binds its SHA-256 in the generated environment. Configuration uses schema `operator_ui_retained_forecasts_v1`, two separate `roots` (`operational`, `programme`), frozen `model_sha256`, `model_manifest_sha256`, `config_sha256`, an exact `schedule` and `schedule_sha256`, an `operational_job_ids` allowlist, and `independent_audits` containing `{path, sha256}` records. The operational allowlist is explicit display authorization, not a new job inventory. The programme root must equal the approved schedule's production prediction root.
+
+Each read revalidates the producer index and sealed bundle with the existing validators, verifies the content-addressed independent verification event and terminal identity, and projects only race identity, runner identity, captured WIN odds, normalized market probability, production probability/rank, timestamps and hashes. It does not open history databases, create jobs, rerun inference, read outcomes or disclose challenger outputs. Missing probabilities fail closed. Historical validity does not depend on the current race index.
+
+Programme state is observed separately from collector freshness. An armed timer and `NO_SLOT_DUE` mean scheduled idle. Active collection requires process evidence. Missing, stale or invalid programme evidence is unavailable. Before the first approved session an absent production directory is shown as not started; after that boundary it is unavailable. Schedule changes require a fresh display binding.
+
+The page refreshes authenticated evidence once per minute while visible and on tab return. It clears old forecasts before each refresh and on failures. The artifact-check and quote timestamps remain visible. The generic operator console links to this view and retains its manual job interface.
+
+Deployment requires the ordinary clean-source package generator and a freshly observed collector binding. Preserve the original R3 unit and environment for rollback; retain audit/job stores. The read API deliberately uses the existing prediction-detail access contract so the prior release can verify its audit entries after rollback. Restart only R3, with journal activation absent. No new capture is needed to validate display.

@@ -18,7 +18,7 @@ from functools import wraps
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
-from flask import Flask, Response, jsonify, request, session
+from flask import Flask, Response, jsonify, request, session, render_template
 from werkzeug.security import check_password_hash
 
 from .foundation import EvidenceStatus
@@ -879,6 +879,10 @@ def install_connected_mode(app: Flask) -> AuditStore | None:
     app.extensions["operator_ui_csrf_protect"] = csrf_protect
     app.extensions["operator_ui_authenticated_actor"] = actor
     app.extensions["operator_ui_csrf_token"] = csrf_token
+
+    @app.get("/operator-ui/sign-in")
+    def operator_ui_sign_in_page():
+        return render_template("operator_ui_sign_in.jinja")
 
     @app.get("/operator-ui/login")
     def operator_ui_login_form() -> Response:
