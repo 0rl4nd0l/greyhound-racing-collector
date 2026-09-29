@@ -65,6 +65,23 @@ THEDOGS_VENUE_CODE_OVERRIDES = {
     "APK": "APK",
     "GOSF": "GOSF",
     "GOSFORD": "GOSF",
+    # Exact Launceston aliases. normalize_venue otherwise maps the full name
+    # to LCTN but maps LCTN back to LAU, breaking grade provenance equality.
+    "LAUNCESTON": "LCTN",
+    "LAU": "LCTN",
+    "LCTN": "LCTN",
+    # Source identity must distinguish the three layouts even though the
+    # legacy feature venue map groups their historical labels together.
+    "QOT": "QOT",
+    "QSTRAIGHT": "QOT",
+    "LADBROKESQSTRAIGHT": "QOT",
+    "Q1": "Q1",
+    "Q1L": "Q1",
+    "Q1LAKESIDE": "Q1",
+    "LADBROKESQ1LAKESIDE": "Q1",
+    "Q2": "Q2",
+    "Q2PARKLANDS": "Q2",
+    "LADBROKESQ2PARKLANDS": "Q2",
     "MOUNT": "MOUNT",
     "MOUNTGAMBIER": "MOUNT",
     "MTG": "MOUNT",

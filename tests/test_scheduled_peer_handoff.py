@@ -19,8 +19,8 @@ from tests.test_refresh_shared_sportsbet_snapshot import fixture, access
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.mark.parametrize('yield_capture', [False, True])
-def test_second_full_service_waits_for_actual_odds_child_then_completes(tmp_path, monkeypatch, yield_capture):
+@pytest.mark.parametrize('yield_capture,cold_start', [(False,False),(True,False),(False,45),(False,90),('consumed',45),('restarted',45),('resumed',45)])
+def test_second_full_service_waits_for_actual_odds_child_then_completes(tmp_path, monkeypatch, yield_capture, cold_start):
     from scripts import prepare_freshness_rehearsal as packaging
     from scripts.check_freshness_service import service_command
     from race_collection.live_freshness_contract import AttemptAllowance, FreshnessContract, digest
@@ -41,7 +41,7 @@ def test_second_full_service_waits_for_actual_odds_child_then_completes(tmp_path
     package = tmp_path / 'package'
     packaging.prepare(output=package, start=stamp-timedelta(seconds=5), python=Path(sys.executable),
         db=db, lock=tmp_path / 'collector.lock', reconciliation_roots={}, installed_dir=installed,
-        campaign_root=campaign.root, operational_predictions=True, observation_minutes=60)
+        campaign_root=campaign.root, operational_predictions=True, observation_minutes=cold_start or 60)
     plan = json.loads((package / 'plan.json').read_bytes())
     accounting = dict(schema_version='freshness_attempt_reconciliation_v1', complete=True,
                       consumed=[], sources=[{'sha256': 'a'*64}])
@@ -106,12 +106,13 @@ def test_second_full_service_waits_for_actual_odds_child_then_completes(tmp_path
         raise AssertionError('synthetic service boundary was not reached')
 
     try:
-        first=start('full','fixture_first_full','1'*32)
-        assert first.wait(timeout=100)==0
-        assert json.loads(report('fixture_first_full','full').read_bytes())['runtime_action']=='LIVE_COLLECTION_COMPLETE'
-        seed=start('odds','fixture_seed_odds_capture','2'*32)
-        assert seed.wait(timeout=100)==0
-        assert json.loads(report('fixture_seed_odds_capture','odds').read_bytes())['runtime_action']=='LIVE_COLLECTION_COMPLETE'
+        if not cold_start:
+            first=start('full','fixture_first_full','1'*32)
+            assert first.wait(timeout=100)==0
+            assert json.loads(report('fixture_first_full','full').read_bytes())['runtime_action']=='LIVE_COLLECTION_COMPLETE'
+            seed=start('odds','fixture_seed_odds_capture','2'*32)
+            assert seed.wait(timeout=100)==0
+            assert json.loads(report('fixture_seed_odds_capture','odds').read_bytes())['runtime_action']=='LIVE_COLLECTION_COMPLETE'
         original_http = http.read_bytes()
         if yield_capture:
             # Only invented provider inputs change: expose a T-10 opportunity
@@ -143,12 +144,13 @@ def test_second_full_service_waits_for_actual_odds_child_then_completes(tmp_path
         owner=json.loads(peer_report.read_bytes())['lock']
         assert owner['pid'] != peer.pid  # Service MainPID is its real wrapper.
         assert owner['run_id']=='fixture_peer_odds_capture'
-        assert json.loads((runtime/'state.json').read_bytes())['last_run_id']=='fixture_first_full'
+        if not cold_start:
+            assert json.loads((runtime/'state.json').read_bytes())['last_run_id']=='fixture_first_full'
         unit_map=dict(zip(('full_service','full_timer','odds_service','odds_timer'),packaging.UNITS))
         raw={key:(package/'units'/name).read_bytes() for key,name in unit_map.items()}
         hashes={key:hashlib.sha256(value).hexdigest() for key,value in raw.items()}
         full_invocation, odds_invocation = '4'*32, '3'*32
-        def observe(active, peer_active=None, *, peer_failed=False):
+        def observe(active, peer_active=None, *, peer_failed=False, supervisor_check=None):
             peer_active = active if peer_active is None else peer_active
             current=datetime.now(ZoneInfo('Australia/Melbourne'))
             args={**raw,**{key+'_sha256':value for key,value in hashes.items()},
@@ -161,10 +163,10 @@ def test_second_full_service_waits_for_actual_odds_child_then_completes(tmp_path
                   'odds_exec_main_pid':peer.pid if peer_active else 0,
                   'full_service_invocation_id':full_invocation,
                   'odds_service_invocation_id':odds_invocation}
-            state=json.loads((runtime/'odds_capture_state.json').read_bytes())
+            state=json.loads((runtime/'odds_capture_state.json').read_bytes()) if (runtime/'odds_capture_state.json').exists() else {}
             paths={'full_state':runtime/'state.json','odds_state':runtime/'odds_capture_state.json',
                    'full_report':full_report,'odds_report':peer_report,
-                   'odds_refresh':Path(state['autopilot_output_dir'])/'odds_capture_refresh_report.json'}
+                   'odds_refresh':Path(state.get('autopilot_output_dir') or runtime/'pending')/'odds_capture_refresh_report.json'}
             with native_publication_lock(evidence, exclusive=False):
                 current=datetime.now(ZoneInfo('Australia/Melbourne'))
                 args['observed_at']=current
@@ -174,7 +176,8 @@ def test_second_full_service_waits_for_actual_odds_child_then_completes(tmp_path
                     units={key:(value.decode() if isinstance(value,bytes) else value.isoformat()
                         if isinstance(value,datetime) else value) for key,value in args.items()},
                     evidence_root=str(evidence), index_path=str(current_race_index_path(runtime/'odds_capture_state.json')),
-                    authority={**plan,'unit_sha256':hashes}, output=str(tmp_path/'observations'))))
+                        authority={**plan,'unit_sha256':hashes}, output=str(tmp_path/'observations'),
+                        supervisor_check=supervisor_check, package=str(package))))
                 code = '''from scripts.check_freshness_service import deny_network
 deny_network()
 import json,sys
@@ -183,13 +186,56 @@ from datetime import datetime
 from race_collection.freshness_rehearsal import native_observation
 from src.operator_ui.live_adapters import InstalledUnits
 request=json.loads(Path(sys.argv[1]).read_bytes())
+supervisor_check=request.pop('supervisor_check')
+package=Path(request.pop('package'))
 units=request.pop('units')
 for key in ('full_service','full_timer','odds_service','odds_timer'):units[key]=units[key].encode()
 units['observed_at']=datetime.fromisoformat(units['observed_at'])
 request['now']=datetime.fromisoformat(request['now'])
 request['paths']={key:Path(value) for key,value in request['paths'].items()}
 for key in ('evidence_root','index_path','output'):request[key]=Path(request[key])
-print(json.dumps(native_observation(units=InstalledUnits(**units),**request)))
+observation=native_observation(units=InstalledUnits(**units),**request)
+if supervisor_check:
+    # Real exported supervisor sample + monitor. Only systemd and elapsed
+    # startup time are simulated; reports, states, publication chain, running
+    # children and locks are the actual exported services' evidence.
+    import hashlib,time
+    from datetime import timedelta
+    from types import SimpleNamespace
+    from scripts import run_freshness_rehearsal as run
+    from race_collection.live_freshness_contract import FreshnessContract
+    plan=json.loads((package/'plan.json').read_bytes())
+    output=package/('supervisor-'+supervisor_check)
+    output.mkdir()
+    installed=Path(plan['installed_dir'])
+    for name in run.UNITS:(installed/name).write_bytes((package/'units'/name).read_bytes())
+    (output/'restoration.json').write_text(json.dumps({'r3_pid':'123','hashes':{
+        'greyhound-operator-ui-r3.service':hashlib.sha256((installed/'greyhound-operator-ui-r3.service').read_bytes()).hexdigest()}}))
+    duration=datetime.fromisoformat(plan['ends_at'])-datetime.fromisoformat(plan['starts_at'])
+    monitor_start=datetime.now(request['now'].tzinfo)-timedelta(seconds=plan['readiness_warmup_seconds']+1)
+    plan['starts_at']=monitor_start.isoformat()
+    plan['ends_at']=(monitor_start+duration).isoformat()
+    class Control:
+        def show(self,name):
+            if name=='greyhound-operator-ui-r3.service':return {'MainPID':'123'}
+            lane='odds' if 'odds-capture' in name else 'full'
+            return {'WorkingDirectory':plan['source_root'],'DropInPaths':'',
+                'ActiveState':units[lane+'_active_state'],'SubState':units[lane+'_sub_state'],
+                'MainPID':str(units[lane+'_exec_main_pid']),'InvocationID':units[lane+'_service_invocation_id'],
+                'ExecMainStartTimestampMonotonic':'0','ExecMainExitTimestampMonotonic':'0'}
+        def command(self,*args):
+            assert args[0]=='show',args
+            return 'LastTriggerUSecMonotonic=0\\nNextElapseUSecMonotonic=0\\nNextElapseUSecRealtime=0\\nActiveState=active\\n'
+    def stop_after_sample(_):raise RuntimeError('fixture_sample_complete')
+    run.time=SimpleNamespace(monotonic=time.monotonic,sleep=stop_after_sample)
+    try:run.observe(output,plan,Control(),FreshnessContract(json.loads((package/'contract.json').read_bytes())))
+    except (RuntimeError,ValueError) as exc:
+        expected='native_readiness_failed' if supervisor_check=='missing' else 'fixture_sample_complete'
+        assert str(exc)==expected,(str(exc),expected)
+    else:raise AssertionError('monitor did not reach its deciding boundary')
+    if supervisor_check=='ready':assert json.loads((output/'progress.json').read_bytes())['unavailable_samples_including_warmup']==0
+    observation['supervisor_check']=supervisor_check
+print(json.dumps(observation))
 '''
                 result = subprocess.run([sys.executable,'-B','-c',code,str(request)],
                     cwd=package/'source', env={**os.environ,'PYTHONPATH':str(package/'source')},
@@ -215,10 +261,39 @@ print(json.dumps(native_observation(units=InstalledUnits(**units),**request)))
             assert len(pending) == 1 and pending[0]['kind'] == 'capture'
             assert not list(AttemptAllowance(scope).claims())
             assert not Path(plan['lock_path']).exists()
-        gap=observe(True, peer_active=False, peer_failed=yield_capture)
+        if yield_capture == 'restarted':
+            # systemd may dispatch the next wrapper before the full child's
+            # next lock poll; the prior terminal report/lifecycle remain.
+            odds_invocation = '8'*32
+        if yield_capture == 'resumed':
+            odds_invocation = '8'*32
+            preserved = {p: p.read_bytes() for p in (peer_report, runtime/'odds.live-phase-checkpoint.json')}
+            operations = json.loads(gate.read_bytes())['operations']
+            peer = start('odds', 'fixture_resuming_odds_capture', odds_invocation)
+            assert peer.wait(timeout=100) == 2
+            assert all(p.read_bytes() == raw for p, raw in preserved.items())
+            assert json.loads(gate.read_bytes())['operations'] == operations
+        gap=observe(True, peer_active=yield_capture == 'restarted', peer_failed=yield_capture)
         assert next(lane for lane in gap['lanes'] if lane['lane']=='FULL_DAEMON')['status']=='WAITING_FOR_PEER', gap
         assert next(lane for lane in gap['lanes'] if lane['lane']=='ODDS_ONLY')['status']==('WAITING_FOR_PEER' if yield_capture else 'RECEIPT_READY'), gap
         assert gap['collector_status']=='AVAILABLE/FRESH', gap
+        if yield_capture == 'restarted':
+            lifecycle_path = runtime/'service-lifecycles'/('3'*32+'.json')
+            raw_lifecycle = lifecycle_path.read_bytes()
+            for change in ({'children_reaped':False}, {'invocation_id':'9'*32}):
+                lifecycle_path.write_text(json.dumps({**json.loads(raw_lifecycle), **change}))
+                rejected = observe(True, peer_active=True)
+                assert next(l for l in rejected['lanes'] if l['lane']=='FULL_DAEMON')['status']=='DIVERGENT'
+            lifecycle_path.write_bytes(raw_lifecycle)
+        if cold_start and not yield_capture:
+            initial = runtime/'state.json'
+            retained = initial.read_bytes()
+            initial.unlink()
+            try:
+                observe(True, peer_active=False, supervisor_check='missing')
+            finally:
+                initial.write_bytes(retained)
+            observe(True, peer_active=False, supervisor_check='ready')
         # Resume into a future invented schedule so this lock test never needs
         # browser acquisition. The captured handoff observation remains intact.
         http.write_bytes(original_http)
@@ -230,6 +305,23 @@ print(json.dumps(native_observation(units=InstalledUnits(**units),**request)))
         assert completed['timing']['lock_wait_seconds']>0
         assert json.loads((runtime/'state.json').read_bytes())['last_run_id']=='fixture_second_full'
         assert observe(False)['collector_status']=='AVAILABLE/FRESH'
+        if yield_capture == 'consumed':
+            # Tonight's retained sequence: odds yielded its queued capture,
+            # then the other owner consumed that exact shared race/window.
+            # Retain a real ledger claim, without fake capture or refund.
+            pending=json.loads((runtime/'odds.live-phase-checkpoint.json').read_bytes())['pending'][0]
+            claim=AttemptAllowance(scope).reserve(pending,now=datetime.now(ZoneInfo('Australia/Melbourne')))
+            consumed=claim.read_bytes()
+            peer=start('odds','fixture_resumed_odds_capture','7'*32)
+            assert peer.wait(timeout=100)==0
+            terminal=json.loads((runtime/'odds.live-phase-checkpoint.json').read_bytes())
+            assert terminal['pending']==[]
+            assert terminal['exclusions'][-1]['reason']=='shared_capture_allowance_consumed'
+            assert terminal['status']!='RUNNING', terminal
+            assert (Path(terminal['output_dir'])/'phase-checkpoint.json').exists()
+            assert len(AttemptAllowance(scope).claims())==1
+            assert claim.read_bytes()==consumed
+            assert json.loads((runtime/'odds_capture_state.json').read_bytes())['runtime_action']=='LIVE_COLLECTION_COMPLETE'
         if yield_capture:
             assert not (scope.session/'STOP.json').exists()
             return

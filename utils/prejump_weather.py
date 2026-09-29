@@ -57,6 +57,11 @@ VENUE_WEATHER_LOCATIONS: dict[str, VenueWeatherLocation] = {
     "GEELONG": VenueWeatherLocation("GEE", "Geelong", -38.1499, 144.3617, "Australia/Melbourne"),
     "GOSF": VenueWeatherLocation("GOSF", "Gosford", -33.4142, 151.3411, "Australia/Sydney"),
     "GOSFORD": VenueWeatherLocation("GOSF", "Gosford", -33.4142, 151.3411, "Australia/Sydney"),
+    # Geographic lookup only; observations still require the existing provider
+    # response and pre-jump validation. Coordinate sources are in
+    # docs/operations/reliability-20260928.md.
+    "GRAF": VenueWeatherLocation("GRAF", "Grafton", -29.67417, 152.92556, "Australia/Sydney"),
+    "GRAFTON": VenueWeatherLocation("GRAF", "Grafton", -29.67417, 152.92556, "Australia/Sydney"),
     "GRDN": VenueWeatherLocation("GRDN", "The Gardens", -32.8810, 151.7280, "Australia/Sydney"),
     "THE-GARDENS": VenueWeatherLocation("GRDN", "The Gardens", -32.8810, 151.7280, "Australia/Sydney"),
     "GUNN": VenueWeatherLocation("GUNN", "Gunnedah", -30.9833, 150.2500, "Australia/Sydney"),
@@ -67,6 +72,10 @@ VENUE_WEATHER_LOCATIONS: dict[str, VenueWeatherLocation] = {
     "HOBART": VenueWeatherLocation("HOBT", "Hobart", -42.8826, 147.3257, "Australia/Hobart"),
     "HOR": VenueWeatherLocation("HOR", "Horsham", -36.7167, 142.2000, "Australia/Melbourne"),
     "HORSHAM": VenueWeatherLocation("HOR", "Horsham", -36.7167, 142.2000, "Australia/Melbourne"),
+    "LCTN": VenueWeatherLocation("LCTN", "Launceston", -41.40447, 147.14146, "Australia/Hobart"),
+    "LAU": VenueWeatherLocation("LCTN", "Launceston", -41.40447, 147.14146, "Australia/Hobart"),
+    "LAUNCESTON": VenueWeatherLocation("LCTN", "Launceston", -41.40447, 147.14146, "Australia/Hobart"),
+    "MAITLAND": VenueWeatherLocation("MAITLAND", "Maitland", -32.74574, 151.56155, "Australia/Sydney"),
     "MAND": VenueWeatherLocation("MAND", "Mandurah", -32.5269, 115.7219, "Australia/Perth"),
     "MANDURAH": VenueWeatherLocation("MAND", "Mandurah", -32.5269, 115.7219, "Australia/Perth"),
     "MEA": VenueWeatherLocation("MEA", "The Meadows", -37.6822, 144.9528, "Australia/Melbourne"),

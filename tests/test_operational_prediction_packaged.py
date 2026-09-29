@@ -19,6 +19,8 @@ ROOT = Path(__file__).resolve().parents[1]
     (False, "murray"), (True, "murray"), ("paired_missing", "murray"),
     (False, "sandown_park"), (False, "angle_park"), ("weather_guidance", "murray"),
     (False, "allocated_murray"),
+    (False, "preprogramme_murray"),
+    (False, "maitland"), (False, "grafton"), (False, "launceston"),
 ])
 def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, landing_missing, venue_case):
     from scripts.prepare_freshness_rehearsal import prepare, UNITS
@@ -53,6 +55,16 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
             .replace('"MURR"', '"AP_K"').replace('"race_number": 9', '"race_number": 7')
             .replace("Race 9", "Race 7").replace("R9", "R7")
             .replace("race-9-", "race-7-").replace("/9/fabricated", "/7/fabricated"))
+    repaired_venues = {'maitland': ('Maitland', 'MAITLAND', 3),
+                       'grafton': ('Grafton', 'GRAF', 4),
+                       'launceston': ('Launceston', 'LCTN', 2)}
+    if venue_case in repaired_venues:
+        name, code, number = repaired_venues[venue_case]
+        browser = json.loads(json.dumps(browser).replace('murray-bridge-straight', venue_case)
+            .replace('MURRAY-BRIDGE-STRAIGHT', code).replace('Murray Bridge Straight', name)
+            .replace('"MURR"', '"'+code+'"').replace('"race_number": 9', '"race_number": '+str(number))
+            .replace('Race 9', f'Race {number}').replace('R9', f'R{number}')
+            .replace('race-9-', f'race-{number}-').replace('/9/fabricated', f'/{number}/fabricated'))
     from datetime import datetime
     operational_jump = (stamp + timedelta(minutes=9)).replace(second=0, microsecond=0)
     browser["sidecar"]["prejump_shadow_metadata"]["jump_time"] = operational_jump.isoformat()
@@ -69,6 +81,9 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     venue_slug = {'sandown_park': 'sandown', 'angle_park': 'angle-park'}.get(venue_case, 'murray-bridge-straight')
     venue_name = {'sandown_park': 'Sandown Park', 'angle_park': 'Angle Park'}.get(venue_case, 'Murray Bridge Straight')
     race_number = 7 if venue_case == 'angle_park' else 9
+    if venue_case in repaired_venues:
+        venue_slug = venue_case
+        venue_name, _, race_number = repaired_venues[venue_case]
     for key, value in payload['responses'].items():
         key = key.replace('/sale/', '/' + venue_slug + '/').replace('/1/invented', f'/{race_number}/fabricated')
         body = value['body'].replace('/sale/', '/' + venue_slug + '/').replace('/1/invented', f'/{race_number}/fabricated')
@@ -115,9 +130,23 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
             prior_authorization_sha256=hashlib.sha256((campaign.root/'authorization.json').read_bytes()).hexdigest(),
             authority_reference='synthetic-explicit-user', rationale='sustained comparison', max_capture_attempts=64))
     package = tmp_path/'package'
+    authority = None
+    if venue_case == 'preprogramme_murray':
+        from race_collection.freshness_campaign import Campaign
+        campaign = Campaign(campaign.root)
+        create_once(campaign.root/'persistent-programme-authority.json', dict(
+            schema_version='collector_persistent_programme_v1', status='AUTHORIZED_PERSISTENT_PROGRAMME',
+            campaign_id='synthetic', programme_id='future-study', authority_reference='synthetic-study',
+            prior_effective_authorization_sha256=digest(campaign.value),
+            starts_at=(stamp+timedelta(days=2)).isoformat(), expires_at=(stamp+timedelta(days=126)).isoformat(),
+            max_capture_attempts=1064, max_logical_requests=1352000, max_live_seconds=591600,
+            initial_counters=dict(capture_attempts=0, logical_requests=0, live_seconds=0)))
+        authority = 'synthetic-separate-operational'
+        campaign = Campaign(campaign.root, engineering_authority=authority)
     prepare(output=package, start=stamp-timedelta(seconds=5), python=Path(sys.executable), db=db,
         lock=tmp_path/'collector.lock', reconciliation_roots={}, installed_dir=installed,
-        campaign_root=campaign.root, operational_predictions=True, observation_minutes=60)
+        campaign_root=campaign.root, operational_predictions=True, observation_minutes=60,
+        engineering_authority=authority)
     plan = json.loads((package/'plan.json').read_bytes())
     assert (datetime.fromisoformat(plan['ends_at']) - datetime.fromisoformat(plan['starts_at'])).total_seconds() == 3600
     assert plan['max_capture_attempts'] == (12 if landing_missing else 64)
@@ -137,6 +166,9 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
         'max_capture_attempts','max_logical_requests','source_identity_sha256','runtime_sha256',
         'campaign_root','campaign_authorization_sha256','operational_predictions')
     contract = {k:plan[k] for k in keys}
+    if authority is not None:
+        from scripts.run_freshness_rehearsal import execution_contract
+        contract = execution_contract(plan, {**accounting, 'source_date': stamp.date().isoformat()})
     contract.update(schema_version='freshness_rehearsal_contract_v1',source_date=stamp.date().isoformat(),reconciliation_sha256=digest(accounting))
     (package/'contract.json').write_text(json.dumps(contract))
     scope = FreshnessContract(contract)
@@ -203,6 +235,12 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     (tmp_path/'prediction.log').write_text(result.stdout+result.stderr)
     terminals = list((campaign.root/'operational-predictions/races').glob('*/terminal.json'))
     assert len(terminals) == 1, result.stderr
+    if authority is not None:
+        study = Campaign(campaign.root)
+        ledger = json.loads((campaign.root/'ledger.json').read_bytes())
+        assert study.programme_usage(ledger) == dict(capture_attempts=0, logical_requests=0, live_seconds=0)
+        assert ledger['logical_requests'] > 0 and len(ledger['attempts']) == 1
+        assert not (campaign.root/'slots').exists()
     terminal = json.loads(terminals[0].read_bytes())
     with sqlite3.connect(db) as history_conn:
         assert history_conn.execute('SELECT count(*) FROM live_odds').fetchone()[0] == initial_odds

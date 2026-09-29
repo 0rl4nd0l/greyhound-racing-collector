@@ -25,7 +25,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from config.venue_mapping import normalize_venue
+from utils.csv_metadata import canonical_thedogs_venue_identity
 from race_collection.manual_prediction_collector_request import (
     RECEIPT_READY,
     CollectorRequest,
@@ -907,7 +907,8 @@ def _v2_runner_rows(
         shadow.get("source_url") != race["race_url"]
         or shadow.get("race_date") != race["date"]
         or not isinstance(shadow.get("venue"), str)
-        or normalize_venue(shadow["venue"]) != normalize_venue(race["venue"])
+        or canonical_thedogs_venue_identity(shadow["venue"])
+        != canonical_thedogs_venue_identity(race["venue"])
         or shadow.get("race_number") != race["race_number"]
         or (
             race.get("source_native_race_id") is not None

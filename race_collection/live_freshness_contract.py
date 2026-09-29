@@ -127,7 +127,7 @@ class FreshnessContract:
         self.campaign = None
         if value.get("campaign_root"):
             from race_collection.freshness_campaign import Campaign
-            self.campaign = Campaign(value["campaign_root"])
+            self.campaign = Campaign.from_scope(value) if value.get('engineering_authority') is not None else Campaign(value['campaign_root'])
             if digest(self.campaign.value) != value["campaign_authorization_sha256"]:
                 raise ValueError("campaign_authorization_changed")
         if (value["max_capture_attempts"] != (self.campaign.value['max_capture_attempts'] if self.campaign else 1)

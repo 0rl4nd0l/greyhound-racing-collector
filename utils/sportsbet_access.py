@@ -135,11 +135,17 @@ class SportsbetAccess:
                 or value["phase"] != "OPEN" or value["active"] is not None)
 
     def authorize_diagnostic(self, *, reference, expected_sha256, expires_at,
-                             max_operations, rationale, engineering_quiet_seconds=None):
+                             max_operations, rationale, engineering_quiet_seconds=None,
+                             engineering_authority=None):
         """Explicit prospective user authority; never automatic denial recovery."""
         with self.locked():
             value = self.read()
             now = self.clock()
+            if engineering_authority is not None and (
+                    not isinstance(engineering_authority, str) or not engineering_authority.strip()
+                    or engineering_authority != reference or value['phase'] != 'OPEN'
+                    or engineering_quiet_seconds is not None):
+                raise ValueError('invalid_separate_engineering_source_authority')
             effective_not_before = value['not_before']
             cooldown_revision = None
             if engineering_quiet_seconds is not None:
@@ -183,6 +189,8 @@ class SportsbetAccess:
                        prior_denial_count=len(value['denials']))
             if cooldown_revision is not None:
                 row['cooldown_revision'] = cooldown_revision
+            if engineering_authority is not None:
+                row['engineering_authority'] = engineering_authority
             value.setdefault('diagnostic_authorizations', []).append(row)
             value['diagnostic_authority'] = row
             value.setdefault('operating_policy', dict(reference=reference,

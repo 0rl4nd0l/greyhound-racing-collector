@@ -118,7 +118,7 @@ def restore(output, plan, control, *, clock=time.monotonic, sleep=time.sleep):
         items = [json.loads(path.read_bytes())["item"] for path in claims]
         if plan.get("campaign_root"):
             from race_collection.freshness_campaign import Campaign
-            with Campaign(plan["campaign_root"]).ledger() as ledger:
+            with Campaign.from_scope(plan).ledger() as ledger:
                 items.extend(row["item"] for row in ledger["attempts"]
                              if Path(row["claim"]).is_relative_to(claim.parent))
         for item in items:
@@ -896,6 +896,8 @@ def execution_contract(plan, accounting):
     }
     if plan.get("campaign_root"):
         contract.update({key: plan[key] for key in ("campaign_root", "campaign_authorization_sha256")})
+    if plan.get('engineering_authority') is not None:
+        contract['engineering_authority'] = plan['engineering_authority']
     contract.update(
         schema_version="freshness_rehearsal_contract_v1",
         source_date=accounting["source_date"],
@@ -940,9 +942,10 @@ def execute(plan_path, expected_digest, approval_id):
     if plan.get("campaign_root"):
         import fcntl
         from race_collection.freshness_campaign import Campaign
-        campaign = Campaign(plan["campaign_root"])
+        campaign = Campaign.from_scope(plan)
         if digest(campaign.value) != plan["campaign_authorization_sha256"]:
             raise ValueError("campaign_authorization_changed")
+        campaign.check_programme_time()
         # A single owner across packages and launches, held through restoration.
         campaign_owner = (campaign.root / "owner.lock").open("a")
         fcntl.flock(campaign_owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -1084,7 +1087,7 @@ def main():
         if plan.get("campaign_root"):
             import fcntl
             from race_collection.freshness_campaign import Campaign
-            campaign = Campaign(plan["campaign_root"])
+            campaign = Campaign.from_scope(plan)
             with (campaign.root / "owner.lock").open("a") as owner:
                 fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 restore(args.plan.parent, plan, SystemdControl())

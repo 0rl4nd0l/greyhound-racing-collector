@@ -96,6 +96,12 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                 pass
             else:
                 return {"status": "SKIPPED_LOCK_HELD", "runtime_action": "LIVE_CYCLE_OWNER_ACTIVE"}
+        if odds_only and daemon.read_active_full_daemon_lock_wait_marker(lock_path):
+            # The full waiter authenticates the previous odds child from this
+            # cycle's report. A second invocation must not replace that report
+            # or checkpoint before the waiter can observe the released lock.
+            return {"status": "SKIPPED_FULL_DAEMON_LOCK_HANDOFF",
+                    "runtime_action": "LIVE_CYCLE_FULL_WAITER_ACTIVE"}
         run_id = resumable["cycle_id"]
     output = daemon.unique_dir(
         daemon.assert_output_dir_safe(
@@ -164,6 +170,7 @@ def run_live_collection_cycle(args, *, odds_only: bool):
     completed_report = None
     outcome = "LIVE_COLLECTION_COMPLETE"
     previous_state = daemon.load_json(state_path) or {}
+    initial_state_missing = not state_path.exists()
     timing = {
         "service_invocation_id": os.environ.get("GREYHOUND_SERVICE_INVOCATION"),
         "process_pid": os.getpid(),
@@ -271,6 +278,32 @@ def run_live_collection_cycle(args, *, odds_only: bool):
         name = 'odds_capture_only_daemon_report.json' if odds_only else 'daemon_run_report.json'
         with native_publication_lock(evidence, exclusive=True):
             atomic_json(output / name, report)
+            # A cold lane has no completed state to retain. Publish its actual
+            # initial lifecycle alongside the report, including active, deferred
+            # and failed states. The reader still validates the service, peer,
+            # lock, deadlines and terminal verdict; this is not a ready receipt.
+            # Existing state (including unreadable state) is never replaced here.
+            if initial_state_missing and completed_report is None:
+                current_state = daemon.load_json(state_path)
+                if state_path.exists() and (
+                    not isinstance(current_state, dict)
+                    or current_state.get("run_id") != report["run_id"]
+                ):
+                    return
+                atomic_json(state_path, {
+                    **previous_state,
+                    **report,
+                    "schema_version": (
+                        "shadow_autopilot_odds_capture_only_state_v1" if odds_only
+                        else "shadow_autopilot_daemon_state_v1"
+                    ),
+                    "last_run_id": run_id,
+                    "last_output_dir": str(output),
+                    "last_verdict": report["final_verdict"],
+                    "updated_at": report["generated_at"],
+                    "odds_capture_refresh_status": report.get(
+                        "odds_capture_refresh_report", {}).get("status"),
+                })
 
     @native_publication_lock(evidence, exclusive=True)
     def finish_checkpoint():
@@ -754,6 +787,10 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                         }
                     )
                     atomic_json(checkpoint.path, checkpoint.value)
+                    if not checkpoint.value["pending"] and budget.safe_to_yield(
+                        source_observed(), daemon.wall_clock_now()
+                    ):
+                        finish_checkpoint()
                     return "excluded"
                 view = view_now()
                 selected = next(
@@ -828,6 +865,10 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                         "observed_at": daemon.wall_clock_now().isoformat(),
                     })
                     atomic_json(checkpoint.path, checkpoint.value)
+                    if not checkpoint.value["pending"] and budget.safe_to_yield(
+                        source_observed(), daemon.wall_clock_now()
+                    ):
+                        finish_checkpoint()
                     return "excluded"
             started = time.monotonic()
             record = checkpoint.begin(kind, inputs, daemon.wall_clock_now().isoformat())

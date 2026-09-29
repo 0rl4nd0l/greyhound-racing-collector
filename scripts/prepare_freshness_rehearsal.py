@@ -26,7 +26,11 @@ def utc_now():
     return datetime.now(timezone.utc)
 
 
-def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False, observation_minutes=90, start_after_minutes=None, comparison_plan=None, prediction_root=None):
+def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False, observation_minutes=90, start_after_minutes=None, comparison_plan=None, prediction_root=None, engineering_authority=None):
+    if engineering_authority is not None and (
+            not operational_predictions or campaign_root is None
+            or comparison_plan is not None or prediction_root is not None):
+        raise ValueError('engineering_requires_separate_operational_predictions')
     comparison_binding = None
     if comparison_plan is not None:
         if not operational_predictions:
@@ -166,10 +170,12 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
     campaign = None
     if campaign_root is not None:
         from race_collection.freshness_campaign import Campaign
-        campaign = Campaign(campaign_root)
+        campaign = (Campaign(campaign_root, engineering_authority=engineering_authority)
+                    if engineering_authority is not None else Campaign(campaign_root))
     from utils.sportsbet_access import state_path
 
     plan = {
+        **({'engineering_authority': engineering_authority} if engineering_authority is not None else {}),
         **({"prediction_root": str(prediction_root)} if prediction_root is not None else {}),
         "sportsbet_access_state": str(state_path()),
         "baseline_source_coordination_verified": False,
@@ -244,6 +250,11 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
     if start.utcoffset() is None:
         raise ValueError('ambiguous_execution_window')
     end = start + timedelta(minutes=observation_minutes)
+    if engineering_authority is not None:
+        campaign.check_programme_time()
+        if (campaign.study_programme and end + timedelta(seconds=plan['cleanup_seconds'])
+                >= datetime.fromisoformat(campaign.study_programme['starts_at'])):
+            raise ValueError('engineering_window_overlaps_programme')
     from zoneinfo import ZoneInfo
     zone = ZoneInfo('Australia/Melbourne')
     if start.astimezone(zone).date() != (end + timedelta(seconds=plan['cleanup_seconds'])).astimezone(zone).date():
@@ -264,6 +275,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--campaign-root", type=Path)
     parser.add_argument("--operational-predictions", action="store_true")
+    parser.add_argument("--engineering-authority", help="Explicit separate pre-programme operational authority; uses existing engineering limits")
     parser.add_argument("--comparison-plan", type=Path, help="Explicit approved comparison binding; omitted by default")
     parser.add_argument("--observation-minutes", type=int, default=90)
     parser.add_argument("--output", type=Path, required=True)
@@ -281,6 +293,7 @@ def main():
             prepare(
                 campaign_root=args.campaign_root,
                 operational_predictions=args.operational_predictions,
+                engineering_authority=args.engineering_authority,
                 comparison_plan=args.comparison_plan,
                 observation_minutes=args.observation_minutes,
                 output=args.output,
