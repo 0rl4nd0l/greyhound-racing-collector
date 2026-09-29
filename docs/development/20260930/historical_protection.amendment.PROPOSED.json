@@ -1,0 +1,14 @@
+{
+  "authority_reference": null,
+  "development_allocation_id": "development-single-snapshot-20261003-v1",
+  "excluded_local_dates": [
+    "2026-10-03",
+    "2026-10-04",
+    "2026-10-10",
+    "2026-10-11"
+  ],
+  "prior_allocation_sha256": "9fddce8fa70ea96c4d7a6c33ef61594ddeb47e254cd08bb87555b2d94fc4da88",
+  "schema_version": "development_reservation_amendment_v1",
+  "scope": "prospective target allocation only; preserve all historical reservations and consumed accounting",
+  "status": "PROPOSED"
+}

@@ -1,0 +1,22 @@
+{
+  "owner_attestation": "REQUIRED_AT_ACTIVATION_NOT_YET_GRANTED",
+  "schema_version": "development_reservation_registry_v1",
+  "sources": [
+    {
+      "kind": "historical_protection",
+      "path": "/home/l4nd0/greyhound-offline-systematic-output-20260924/foundation/protected_records.json",
+      "sha256": "9fddce8fa70ea96c4d7a6c33ef61594ddeb47e254cd08bb87555b2d94fc4da88"
+    },
+    {
+      "kind": "exclusive_comparison",
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-persistent-comparison-20261005/control-october1-v2-20260928/allocation.APPROVED.json",
+      "sha256": "b708fa973aa972b8cd248b4b4d3269fa7aa16402755ee0fb84da5212db6822d1"
+    },
+    {
+      "kind": "approved_reservation_review",
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-persistent-comparison-20261005/control-october1-v2-20260928/reservation-review.json",
+      "sha256": "4c1f859c8292fa76bb1a70809133f56fa534fc16c98d0371d9d36a5875b7030e"
+    }
+  ],
+  "status": "PROPOSED"
+}

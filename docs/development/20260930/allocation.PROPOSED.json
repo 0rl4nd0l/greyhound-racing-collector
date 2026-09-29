@@ -1,0 +1,45 @@
+{
+  "allocation_id": "development-single-snapshot-20261003-v1",
+  "authority_reference": null,
+  "dates": [
+    "2026-10-03",
+    "2026-10-04",
+    "2026-10-10",
+    "2026-10-11"
+  ],
+  "denied_history_intervals": [],
+  "ends_at": "2026-10-12T00:00:00+11:00",
+  "history_policy": "explicitly_authorized_strictly_earlier_machine_only_including_reserved",
+  "machine_history_authority_reference": null,
+  "max_attempts_per_date": 6,
+  "max_capture_attempts": 24,
+  "max_live_seconds_per_date": 6000,
+  "max_logical_requests_per_date": 6000,
+  "max_source_operations_per_date": 48,
+  "mode": "single_snapshot",
+  "operational_owner": "primary_orchestrator",
+  "reservation_amendments": [
+    {
+      "path": "/home/l4nd0/greyhound-development-pipeline-20260930/docs/development/20260930/historical_protection.amendment.PROPOSED.json",
+      "sha256": "2c76a726799fecd107f4afe07bb5b893b4b78ffee16d6626a28c9b7b0c06d5c8"
+    },
+    {
+      "path": "/home/l4nd0/greyhound-development-pipeline-20260930/docs/development/20260930/exclusive_comparison.amendment.PROPOSED.json",
+      "sha256": "de6cccdc56be843de16e0832d03ad11f17edfa5c92f6a6a5b1adbd7bd301bf22"
+    }
+  ],
+  "reservation_registry": {
+    "path": "/home/l4nd0/greyhound-development-pipeline-20260930/docs/development/20260930/reservation_registry.PROPOSED.json",
+    "sha256": "063ccb02eaf7dee83fd810179df87d3f5175fcc62f9a7fc58a3dffa759d1fd49"
+  },
+  "result_checks_per_attempt": 3,
+  "result_closure": "2026-10-25T12:00:00+11:00",
+  "schema_version": "development_allocation_v1",
+  "selection": "six earliest canonical races with scheduled jumps 13:10 through 14:20 Melbourne, frozen from complete 12:50 index; all exclusions counted; no substitution after failure",
+  "sessions": [
+    "13:00-14:30 Australia/Melbourne on each listed date"
+  ],
+  "snapshot_policy": "one qualified fixed WIN snapshot per race; no movement and no retries",
+  "starts_at": "2026-10-03T00:00:00+10:00",
+  "status": "PROPOSED"
+}
