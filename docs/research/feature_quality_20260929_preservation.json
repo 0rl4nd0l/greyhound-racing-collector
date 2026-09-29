@@ -1,0 +1,6 @@
+{
+  "baseline_sha256": "9174aeded888df5a47c190a2dad9b92bff5d5a9312bd8b237d2dac8941e0b895",
+  "changed": [],
+  "claim": "source/control/model byte preservation; installed forecasts not replayed",
+  "files_checked": 27
+}

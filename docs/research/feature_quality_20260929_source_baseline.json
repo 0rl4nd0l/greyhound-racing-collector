@@ -1,0 +1,149 @@
+{
+  "claim_limit": "Byte identity is not predictive replay, deployment activation, historical completeness or live acceptance.",
+  "files": [
+    {
+      "bytes": 177116,
+      "path": "/home/l4nd0/greyhound-feature-quality-20260929/scripts/build_form_only_v1_packet.py",
+      "sha256": "11b56970de0e53975a444d0ad066f7ea566ffc717757b074d5eb0d5f8865f086"
+    },
+    {
+      "bytes": 11506,
+      "path": "/home/l4nd0/greyhound-feature-quality-20260929/scripts/offline_form_packet.py",
+      "sha256": "865f18598429a231ca515ec8cbf108312d6c2faa23e392608b398b98bbe28379"
+    },
+    {
+      "bytes": 46776,
+      "path": "/home/l4nd0/greyhound-feature-quality-20260929/src/predictor/market_form_residual.py",
+      "sha256": "50039cbc46f48d2f2d0dda8973e75dc73055872ff74b082821535060cc36b7f6"
+    },
+    {
+      "bytes": 127647,
+      "path": "/home/l4nd0/greyhound-feature-quality-20260929/scripts/run_feature_recovery_execution_v1.py",
+      "sha256": "0e21032359969cde58aa5419d11076184c3f21cba71ec6fd3051fcc3125b0fb0"
+    },
+    {
+      "bytes": 117757,
+      "path": "/home/l4nd0/greyhound-feature-quality-20260929/scripts/run_shadow_non_tgr_rf_evaluation.py",
+      "sha256": "afe229f290dd12100c7ad47bd9b091894d44aaf6405fb2716e2d4b814383ae92"
+    },
+    {
+      "bytes": 177116,
+      "path": "/home/l4nd0/greyhound-persistent-release-handoff-1cd7ccff/scripts/build_form_only_v1_packet.py",
+      "sha256": "11b56970de0e53975a444d0ad066f7ea566ffc717757b074d5eb0d5f8865f086"
+    },
+    {
+      "bytes": 11506,
+      "path": "/home/l4nd0/greyhound-persistent-release-handoff-1cd7ccff/scripts/offline_form_packet.py",
+      "sha256": "865f18598429a231ca515ec8cbf108312d6c2faa23e392608b398b98bbe28379"
+    },
+    {
+      "bytes": 46776,
+      "path": "/home/l4nd0/greyhound-persistent-release-handoff-1cd7ccff/src/predictor/market_form_residual.py",
+      "sha256": "50039cbc46f48d2f2d0dda8973e75dc73055872ff74b082821535060cc36b7f6"
+    },
+    {
+      "bytes": 127647,
+      "path": "/home/l4nd0/greyhound-persistent-release-handoff-1cd7ccff/scripts/run_feature_recovery_execution_v1.py",
+      "sha256": "0e21032359969cde58aa5419d11076184c3f21cba71ec6fd3051fcc3125b0fb0"
+    },
+    {
+      "bytes": 117757,
+      "path": "/home/l4nd0/greyhound-persistent-release-handoff-1cd7ccff/scripts/run_shadow_non_tgr_rf_evaluation.py",
+      "sha256": "afe229f290dd12100c7ad47bd9b091894d44aaf6405fb2716e2d4b814383ae92"
+    },
+    {
+      "bytes": 7099,
+      "path": "/home/l4nd0/greyhound-persistent-release-handoff-1cd7ccff/src/predictor/comparison_candidates.py",
+      "sha256": "d42f0d3d0a45a326c47a853841f467b8a0bfb4a78f6af43626298709cc7567f6"
+    },
+    {
+      "bytes": 7099,
+      "path": "/home/l4nd0/greyhound-future-comparison-20260924/src/predictor/comparison_candidates.py",
+      "sha256": "d42f0d3d0a45a326c47a853841f467b8a0bfb4a78f6af43626298709cc7567f6"
+    },
+    {
+      "bytes": 127647,
+      "path": "/home/l4nd0/greyhound-retention-lanes-repair-20260917/source/scripts/run_feature_recovery_execution_v1.py",
+      "sha256": "0e21032359969cde58aa5419d11076184c3f21cba71ec6fd3051fcc3125b0fb0"
+    },
+    {
+      "bytes": 117757,
+      "path": "/home/l4nd0/greyhound-retention-lanes-repair-20260917/source/scripts/run_shadow_non_tgr_rf_evaluation.py",
+      "sha256": "afe229f290dd12100c7ad47bd9b091894d44aaf6405fb2716e2d4b814383ae92"
+    },
+    {
+      "bytes": 4763,
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-persistent-comparison-20261005/control-october1-v2-20260928/schedule.APPROVED.json",
+      "sha256": "d053131e7d259835c1e475dfb5d1ef981d714e3b1e370961941b0afef922be88"
+    },
+    {
+      "bytes": 1676,
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-persistent-comparison-20261005/control-october1-v2-20260928/plan.APPROVED.json",
+      "sha256": "e0c71cba1618a05416a0087e85141803c32bd806b8faad36259a8a0d70808adb"
+    },
+    {
+      "bytes": 2235,
+      "path": "/home/l4nd0/greyhound-persistent-release-869fca1c/artifacts/research_comparison/frozen_20260924/registry.json",
+      "sha256": "938f433133057591e4ebd17a1ceef4fb25da252b5e3d6aba903194eb54b96ca9"
+    },
+    {
+      "bytes": 3815,
+      "path": "/home/l4nd0/greyhound-persistent-release-869fca1c/artifacts/research_comparison/frozen_20260924/residual_box.json",
+      "sha256": "51639ddada362b1a14110461ef258dbff852eb7b2797ea074cd85f22381a4d32"
+    },
+    {
+      "bytes": 3716,
+      "path": "/home/l4nd0/greyhound-persistent-release-869fca1c/artifacts/research_comparison/frozen_20260924/residual_half.json",
+      "sha256": "e827e8f29c756c8995de08e15f8a6c25ca92f0709693cb55ad6bbeb9e16716e0"
+    },
+    {
+      "bytes": 5807,
+      "path": "/home/l4nd0/greyhound-future-comparison-20260924/artifacts/frozen_models/market_form_residual_v1/model.json",
+      "sha256": "624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d"
+    },
+    {
+      "bytes": 17191,
+      "path": "/home/l4nd0/greyhound-future-comparison-20260924/artifacts/frozen_models/market_form_residual_v1/manifest.json",
+      "sha256": "8537cbc3d843d106a1fe48793ef01197454ef092c0244025fd65685636a42080"
+    },
+    {
+      "bytes": 2235,
+      "path": "/home/l4nd0/greyhound-future-comparison-20260924/artifacts/research_comparison/frozen_20260924/registry.json",
+      "sha256": "938f433133057591e4ebd17a1ceef4fb25da252b5e3d6aba903194eb54b96ca9"
+    },
+    {
+      "bytes": 3815,
+      "path": "/home/l4nd0/greyhound-future-comparison-20260924/artifacts/research_comparison/frozen_20260924/residual_box.json",
+      "sha256": "51639ddada362b1a14110461ef258dbff852eb7b2797ea074cd85f22381a4d32"
+    },
+    {
+      "bytes": 3716,
+      "path": "/home/l4nd0/greyhound-future-comparison-20260924/artifacts/research_comparison/frozen_20260924/residual_half.json",
+      "sha256": "e827e8f29c756c8995de08e15f8a6c25ca92f0709693cb55ad6bbeb9e16716e0"
+    },
+    {
+      "bytes": 1032,
+      "path": "/home/l4nd0/.config/systemd/user/greyhound-comparison-schedule.service",
+      "sha256": "f3a925f21943954fe8b2e910a62360017a691c3dbbb204897bb63358d2a74c55"
+    },
+    {
+      "bytes": 1044,
+      "path": "/home/l4nd0/.config/systemd/user/greyhound-comparison-results.service",
+      "sha256": "73d4c98f48869c76f5b83c7358f5fa3bf7cbe840f9f83449f506af9d8e662e38"
+    },
+    {
+      "bytes": 2587,
+      "path": "/home/l4nd0/.config/systemd/user/shadow-autopilot.service",
+      "sha256": "b8b51c1053ef730832979cf4181cf56c986f4c8802ee52f95118691ce63d9a97"
+    }
+  ],
+  "git_heads": {
+    "/home/l4nd0/greyhound-feature-quality-20260929": "bec84e8074dacf9c32330f040a67dc46919f3d88",
+    "/home/l4nd0/greyhound-future-comparison-20260924": "043c14a2722cfd55a9154d7d26cb5586c30ae9b2",
+    "/home/l4nd0/greyhound-persistent-release-handoff-1cd7ccff": "1cd7ccff79b0fed33e5411b9bf1fb3f24b5ac280"
+  },
+  "method": "Source/control/model/registry bytes only; no databases, predictions or outcomes decoded; model files hashed without decoding. Candidate registry decoded only to verify plan-bound candidate paths and hashes.",
+  "observed_at": "2026-09-29T08:11:40.339760+00:00",
+  "plan_registry_binding_verified": true,
+  "schema_version": "feature_quality_source_baseline_v1"
+}

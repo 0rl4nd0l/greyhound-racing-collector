@@ -1,0 +1,327 @@
+{
+  "development": {
+    "any_missing_races": 306,
+    "any_missing_runners": 1422,
+    "equal_recent_retained_top3": 2360,
+    "equal_recent_retained_win": 2360,
+    "history_length_runners": {
+      "1": 31,
+      "2": 43,
+      "3": 25,
+      "4": 42,
+      "5": 2219
+    },
+    "history_rejections": {},
+    "numeric_changed_races": 0,
+    "numeric_changed_runners": 0,
+    "numeric_changed_values": 0,
+    "per_feature": {
+      "career_avg_finish": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "observed": 2360
+        },
+        "zero_runners": 0
+      },
+      "career_place_rate": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "observed": 2360
+        },
+        "zero_runners": 288
+      },
+      "career_win_rate": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "observed": 2360
+        },
+        "zero_runners": 1245
+      },
+      "days_since_last_start": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "observed": 2360
+        },
+        "zero_runners": 0
+      },
+      "prior_start_count": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "observed": 2360
+        },
+        "zero_runners": 0
+      },
+      "recent_avg_margin_5": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "observed": 2360
+        },
+        "zero_runners": 0
+      },
+      "recent_finish_best_5": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "observed": 2360
+        },
+        "zero_runners": 0
+      },
+      "recent_finish_mean_3": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "observed": 2360
+        },
+        "zero_runners": 0
+      },
+      "recent_place_rate_5": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "observed": 2360
+        },
+        "zero_runners": 288
+      },
+      "recent_win_rate_5": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "observed": 2360
+        },
+        "zero_runners": 1245
+      },
+      "same_grade_start_count": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "no_matching_retained_starts": 746,
+          "observed": 1614
+        },
+        "zero_runners": 746
+      },
+      "same_grade_win_rate": {
+        "missing_races": 217,
+        "missing_runners": 746,
+        "quality_statuses": {
+          "no_matching_retained_starts": 746,
+          "observed": 1614
+        },
+        "zero_runners": 1280
+      },
+      "starts_same_distance": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "no_matching_retained_starts": 523,
+          "observed": 1837
+        },
+        "zero_runners": 523
+      },
+      "starts_same_venue": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "no_matching_retained_starts": 940,
+          "observed": 1420
+        },
+        "zero_runners": 940
+      },
+      "win_rate_same_distance": {
+        "missing_races": 240,
+        "missing_runners": 523,
+        "quality_statuses": {
+          "no_matching_retained_starts": 523,
+          "observed": 1837
+        },
+        "zero_runners": 1255
+      },
+      "win_rate_same_venue": {
+        "missing_races": 243,
+        "missing_runners": 940,
+        "quality_statuses": {
+          "no_matching_retained_starts": 940,
+          "observed": 1420
+        },
+        "zero_runners": 928
+      }
+    },
+    "positive_winner_margin_repeated_observations": 1608,
+    "races": 331,
+    "renamed_columns": 13,
+    "renamed_values": 30680,
+    "runners": 2360
+  },
+  "evaluation": {
+    "any_missing_races": 159,
+    "any_missing_runners": 710,
+    "equal_recent_retained_top3": 1251,
+    "equal_recent_retained_win": 1251,
+    "history_length_runners": {
+      "1": 16,
+      "2": 23,
+      "3": 14,
+      "4": 22,
+      "5": 1176
+    },
+    "history_rejections": {},
+    "numeric_changed_races": 0,
+    "numeric_changed_runners": 0,
+    "numeric_changed_values": 0,
+    "per_feature": {
+      "career_avg_finish": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "observed": 1251
+        },
+        "zero_runners": 0
+      },
+      "career_place_rate": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "observed": 1251
+        },
+        "zero_runners": 162
+      },
+      "career_win_rate": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "observed": 1251
+        },
+        "zero_runners": 691
+      },
+      "days_since_last_start": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "observed": 1251
+        },
+        "zero_runners": 0
+      },
+      "prior_start_count": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "observed": 1251
+        },
+        "zero_runners": 0
+      },
+      "recent_avg_margin_5": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "observed": 1251
+        },
+        "zero_runners": 0
+      },
+      "recent_finish_best_5": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "observed": 1251
+        },
+        "zero_runners": 0
+      },
+      "recent_finish_mean_3": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "observed": 1251
+        },
+        "zero_runners": 0
+      },
+      "recent_place_rate_5": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "observed": 1251
+        },
+        "zero_runners": 162
+      },
+      "recent_win_rate_5": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "observed": 1251
+        },
+        "zero_runners": 691
+      },
+      "same_grade_start_count": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "no_matching_retained_starts": 383,
+          "observed": 868
+        },
+        "zero_runners": 383
+      },
+      "same_grade_win_rate": {
+        "missing_races": 110,
+        "missing_runners": 383,
+        "quality_statuses": {
+          "no_matching_retained_starts": 383,
+          "observed": 868
+        },
+        "zero_runners": 700
+      },
+      "starts_same_distance": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "no_matching_retained_starts": 268,
+          "observed": 983
+        },
+        "zero_runners": 268
+      },
+      "starts_same_venue": {
+        "missing_races": 0,
+        "missing_runners": 0,
+        "quality_statuses": {
+          "no_matching_retained_starts": 444,
+          "observed": 807
+        },
+        "zero_runners": 444
+      },
+      "win_rate_same_distance": {
+        "missing_races": 127,
+        "missing_runners": 268,
+        "quality_statuses": {
+          "no_matching_retained_starts": 268,
+          "observed": 983
+        },
+        "zero_runners": 682
+      },
+      "win_rate_same_venue": {
+        "missing_races": 125,
+        "missing_runners": 444,
+        "quality_statuses": {
+          "no_matching_retained_starts": 444,
+          "observed": 807
+        },
+        "zero_runners": 544
+      }
+    },
+    "positive_winner_margin_repeated_observations": 815,
+    "races": 177,
+    "renamed_columns": 13,
+    "renamed_values": 16263,
+    "runners": 1251
+  },
+  "replay": {
+    "development_fits": 0,
+    "installed_forecast_replay": "not_attempted_no_protected_inputs_opened",
+    "maximum_probability_error": 2.220446049250313e-16,
+    "nonzero_missing_indicator_contribution_runners": 1033,
+    "original_feature_values_checked": 37760,
+    "protected_decodes": 0,
+    "saved_forecast_runners_per_model": 1251
+  }
+}
