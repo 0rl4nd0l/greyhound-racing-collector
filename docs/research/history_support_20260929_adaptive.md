@@ -39,7 +39,7 @@ alpha0 returns market and alpha1 returns full residual.
 
 All three chronological periods select lambda **.25**. Validation race counts
 are 101, 127 and 143; those populations overlap and are not independent repeats.
-The original inner splits and outer dates are preserved. The 3×2 candidate
+The original inner splits and outer dates are preserved. The 3 × 2 candidate
 evaluations were sealed before opening retained outer predictions. All labels
 are restricted to the existing admitted development population; earlier outer
 dates can legitimately enter later validation. No new fits were needed.
@@ -57,7 +57,7 @@ Top-pick accuracy uses fractional credit for ties and is secondary.
 | Adaptive support residual | 1.401073 | .678414 | 45.76% |
 
 Differences are **adaptive minus comparator**; negative favors adaptive.
-3,000 paired calendar-date bootstrap draws, seed20260929, preserve complete
+3,000 paired calendar-date bootstrap draws, seed 20260929, preserve complete
 race weighting within sampled dates. Simultaneous intervals cover six
 LL/Brier contrasts, not the whole prior history of experimentation.
 
@@ -78,17 +78,17 @@ these scores would be a new trial, not confirmation.
 
 | Evaluation period | Races / dates | Adaptive−half LL | Adaptive−full LL |
 |---|---:|---:|---:|
-| June24–30 | 86 / 7 | −.002618 | +.001056 |
-| July1–2 | 16 / 2 | −.003587 | +.013144 |
-| July3–8 | 75 / 6 | −.002102 | +.004165 |
+| June 24–30 | 86 / 7 | −.002618 | +.001056 |
+| July 1–2 | 16 / 2 | −.003587 | +.013144 |
+| July 3–8 | 75 / 6 | −.002102 | +.004165 |
 
-Adaptive improves LL over half on 96 races and harms81; ten dates improve and
-five worsen. Brier improves on91 and harms86. Removing any date retains a small
+Adaptive improves LL over half on 96 races and harms 81; ten dates improve and
+five worsen. Brier improves on 91 and harms 86. Removing any date retains a small
 LL improvement over half (−.003267 to−.001936), but removing the best five races
-reduces it to−.001127. Those five contribute56.0% of the net LL improvement.
-Worst harm versus half is +.05658 on WAR R7 June29; best gain is−.06430 on
-Capalaba R8 June24. Full residual is better on average in every period, and
-adaptive is worse than full on99/177 races and11/15 dates.
+reduces it to −.001127. Those five contribute 56.0% of the net LL improvement.
+Worst harm versus half is +.05658 on WAR R7 June 29; best gain is −.06430 on
+Capalaba R8 June 24. Full residual is better on average in every period, and
+adaptive is worse than full on 99/177 races and 11/15 dates.
 
 Prespecified support groups further weaken the simple sparse-history story:
 
@@ -109,8 +109,8 @@ and source support cannot identify causes of individual winners.
 and incident metadata before decoding the exact331-race foundation. It checks
 saved inner-array hashes, runner order/membership, chronology and original OOF
 log loss. Retained outer full/half probabilities replay against saved base16
-preprocessing/coefficients. The market, labels and16 features agree with the
-foundation; all four methods use the same177 complete fields.
+preprocessing/coefficients. The market, labels and 16 features agree with the
+foundation; all four methods use the same 177 complete fields.
 
 Each output directory retains the protocol, six trial results and selections,
 both candidate OOF predictions, exact admitted development inputs, evaluation

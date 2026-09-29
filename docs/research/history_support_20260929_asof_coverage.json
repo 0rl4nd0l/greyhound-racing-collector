@@ -1,0 +1,98 @@
+{
+  "development": {
+    "added_starts": 678,
+    "changed_values": {
+      "career_avg_finish": 347,
+      "career_place_rate": 325,
+      "career_win_rate": 190,
+      "prior_start_count": 360,
+      "same_grade_start_count": 149,
+      "same_grade_win_rate": 42,
+      "starts_same_distance": 200,
+      "starts_same_venue": 170,
+      "win_rate_same_distance": 82,
+      "win_rate_same_venue": 74
+    },
+    "enriched_races": 159,
+    "enriched_runners": 360,
+    "missing_richer": {
+      "same_grade_win_rate": 737,
+      "win_rate_same_distance": 514,
+      "win_rate_same_venue": 936
+    },
+    "missing_short": {
+      "same_grade_win_rate": 746,
+      "win_rate_same_distance": 523,
+      "win_rate_same_venue": 940
+    },
+    "races": 331,
+    "richer_count_distribution": {
+      "1": 31,
+      "2": 43,
+      "3": 25,
+      "4": 42,
+      "5": 1859,
+      "6": 162,
+      "7": 109,
+      "8": 62,
+      "9": 23,
+      "10": 4
+    },
+    "runners": 2360,
+    "short_count_distribution": {
+      "1": 31,
+      "2": 43,
+      "3": 25,
+      "4": 42,
+      "5": 2219
+    }
+  },
+  "evaluation": {
+    "added_starts": 627,
+    "changed_values": {
+      "career_avg_finish": 302,
+      "career_place_rate": 278,
+      "career_win_rate": 162,
+      "prior_start_count": 311,
+      "same_grade_start_count": 132,
+      "same_grade_win_rate": 38,
+      "starts_same_distance": 176,
+      "starts_same_venue": 153,
+      "win_rate_same_distance": 71,
+      "win_rate_same_venue": 63
+    },
+    "enriched_races": 129,
+    "enriched_runners": 311,
+    "missing_richer": {
+      "same_grade_win_rate": 375,
+      "win_rate_same_distance": 260,
+      "win_rate_same_venue": 440
+    },
+    "missing_short": {
+      "same_grade_win_rate": 383,
+      "win_rate_same_distance": 268,
+      "win_rate_same_venue": 444
+    },
+    "races": 177,
+    "richer_count_distribution": {
+      "1": 16,
+      "2": 23,
+      "3": 14,
+      "4": 22,
+      "5": 865,
+      "6": 115,
+      "7": 107,
+      "8": 62,
+      "9": 23,
+      "10": 4
+    },
+    "runners": 1251,
+    "short_count_distribution": {
+      "1": 16,
+      "2": 23,
+      "3": 14,
+      "4": 22,
+      "5": 1176
+    }
+  }
+}

@@ -1,0 +1,209 @@
+{
+  "files": {
+    "environment.json": {
+      "bytes": 562,
+      "sha256": "c1c596682f323ce1cd0b1706d8faa5f54f9ab53b2d51011b2c8da3c5a51f6263"
+    },
+    "evaluation_predictions.json": {
+      "bytes": 489848,
+      "sha256": "4992b87af509e67e1919415a209184bd8db0821955aa5babca980e50c3534fcd"
+    },
+    "feature_contract.json": {
+      "bytes": 1238,
+      "sha256": "42fd48803a1d35d555b96c700562887784de648b9359992f1431dd032d8acc88"
+    },
+    "final_later_block_richer/admission.json": {
+      "bytes": 68949,
+      "sha256": "f6fb5734ece6af4698b9a425b441d05e0e3a6214e9a332a62376754691f62fea"
+    },
+    "final_later_block_richer/attempt.jsonl": {
+      "bytes": 564,
+      "sha256": "373d4dac99dfedbb4578ee970fdcc5def6c552618211c441bdb8b7ea9ea580ad"
+    },
+    "final_later_block_richer/evaluation_inputs.json": {
+      "bytes": 480479,
+      "sha256": "1bd808dea7f9162f21fd2ea9d604874b1d5f7894165b433a37e1f36cedd26c0e"
+    },
+    "final_later_block_richer/evaluation_probabilities.json": {
+      "bytes": 11822,
+      "sha256": "2e82f98cb383d2dcdfb92d6bb1a4b1168f7b0c8434ac27de2b00257b587e62d3"
+    },
+    "final_later_block_richer/feature_contract.json": {
+      "bytes": 1238,
+      "sha256": "42fd48803a1d35d555b96c700562887784de648b9359992f1431dd032d8acc88"
+    },
+    "final_later_block_richer/receipt.json": {
+      "bytes": 346880,
+      "sha256": "6b3d8d384b138f5337a158ed3074c1e82187d6fa6d6cb9d58c0a977e30523d51"
+    },
+    "final_later_block_richer/training_inputs.json": {
+      "bytes": 1713406,
+      "sha256": "e780813b6dfc993cf52fa4f2faafe3b29435ded3b4f4b7c1d83f249d2b4ef08a"
+    },
+    "final_later_block_short/admission.json": {
+      "bytes": 68949,
+      "sha256": "f6fb5734ece6af4698b9a425b441d05e0e3a6214e9a332a62376754691f62fea"
+    },
+    "final_later_block_short/attempt.jsonl": {
+      "bytes": 563,
+      "sha256": "2f8ebd01a7cc56dabef8a34bb0fc2bda647c388f6f9852898b21c541accaab43"
+    },
+    "final_later_block_short/evaluation_inputs.json": {
+      "bytes": 478250,
+      "sha256": "6dcfbb0b7ed2c173b4fdadb204f5c4b5549fa354f0c71375f3f0df4283c4deee"
+    },
+    "final_later_block_short/evaluation_probabilities.json": {
+      "bytes": 11810,
+      "sha256": "dec9000cbd79235f3c62347c46de5858adef26769285eefa3db411bc3cb1c54f"
+    },
+    "final_later_block_short/feature_contract.json": {
+      "bytes": 1238,
+      "sha256": "42fd48803a1d35d555b96c700562887784de648b9359992f1431dd032d8acc88"
+    },
+    "final_later_block_short/receipt.json": {
+      "bytes": 346882,
+      "sha256": "bacba36a830a3c3c41095d327913f995705baca62158c90b7cb5bbac9a975224"
+    },
+    "final_later_block_short/training_inputs.json": {
+      "bytes": 1710919,
+      "sha256": "d23bc9ea045adaff37c5772a52456d643f7917f054a888fa51b398b31d215ec6"
+    },
+    "input_hashes.json": {
+      "bytes": 2923,
+      "sha256": "75bb0f93c7677d4e4ef85d9097e062b38a3efd5ff8f6ad294dfb7edc0fde96ea"
+    },
+    "paired_features.json": {
+      "bytes": 3420302,
+      "sha256": "cc6a16b27c52210e196de653cf1bcd8b5d5524336a9ea69793e67e9e91013b58"
+    },
+    "period1_richer/admission.json": {
+      "bytes": 68949,
+      "sha256": "f6fb5734ece6af4698b9a425b441d05e0e3a6214e9a332a62376754691f62fea"
+    },
+    "period1_richer/attempt.jsonl": {
+      "bytes": 554,
+      "sha256": "d59c630db8ee849cbd92e00b60a213ec923b56cefa6dcbb23193e691a073cbd0"
+    },
+    "period1_richer/evaluation_inputs.json": {
+      "bytes": 582387,
+      "sha256": "0be908b328ae97c2291376c372b0b5776ecf2601793cf6d6b9761e7d7d8f7701"
+    },
+    "period1_richer/evaluation_probabilities.json": {
+      "bytes": 14364,
+      "sha256": "0b3d76f707a8b5daa18bfc9d55da2f0fd94b2704d23476a4322b6527b9747ab3"
+    },
+    "period1_richer/feature_contract.json": {
+      "bytes": 1238,
+      "sha256": "42fd48803a1d35d555b96c700562887784de648b9359992f1431dd032d8acc88"
+    },
+    "period1_richer/receipt.json": {
+      "bytes": 256506,
+      "sha256": "09fac1805e2dc3a327b1670d7b70ae8155c36255b37a0218590a90dd21486c6f"
+    },
+    "period1_richer/training_inputs.json": {
+      "bytes": 1029125,
+      "sha256": "afee3c9627406affc9205ee5ec63c6c09d7e0b592ff544004cf13fe4e049b88e"
+    },
+    "period1_short/admission.json": {
+      "bytes": 68949,
+      "sha256": "f6fb5734ece6af4698b9a425b441d05e0e3a6214e9a332a62376754691f62fea"
+    },
+    "period1_short/attempt.jsonl": {
+      "bytes": 553,
+      "sha256": "ea4b24d67150fd3264e924393c4fe29008d0ef06f5c4629be675351326431c8e"
+    },
+    "period1_short/evaluation_inputs.json": {
+      "bytes": 580916,
+      "sha256": "3851adbbd7dc30c8282d03d46995b515f06c35b96e19c84dd09b983a7b1ab9d2"
+    },
+    "period1_short/evaluation_probabilities.json": {
+      "bytes": 14341,
+      "sha256": "cf894d2e32f38a4687f0f9fc6639ac7b56aca513b44093bb97d86628cfff0bd8"
+    },
+    "period1_short/feature_contract.json": {
+      "bytes": 1238,
+      "sha256": "42fd48803a1d35d555b96c700562887784de648b9359992f1431dd032d8acc88"
+    },
+    "period1_short/receipt.json": {
+      "bytes": 256488,
+      "sha256": "c9396546d0789e849f23440b3b654ef45ba8d66281866c3fc30c9d6ce77b154f"
+    },
+    "period1_short/training_inputs.json": {
+      "bytes": 1028445,
+      "sha256": "93e9af792f6bd6c15a072f689811e6cdc090a5a78b4ecd361f5852520ce94650"
+    },
+    "period2_richer/admission.json": {
+      "bytes": 68949,
+      "sha256": "f6fb5734ece6af4698b9a425b441d05e0e3a6214e9a332a62376754691f62fea"
+    },
+    "period2_richer/attempt.jsonl": {
+      "bytes": 554,
+      "sha256": "4b792ce6c4ea8aa73387ea8a9c42d890b36659136e88e9db2b90e7c440e8cbe2"
+    },
+    "period2_richer/evaluation_inputs.json": {
+      "bytes": 101900,
+      "sha256": "210a08f765adb60ec7e11ad71b1af582af598dd4cb5b2d5d75c331e1d31edb7f"
+    },
+    "period2_richer/evaluation_probabilities.json": {
+      "bytes": 2507,
+      "sha256": "f662b3c7628dc82c31b3e3dc964c48e87413f8c1768194043624c75fc032d712"
+    },
+    "period2_richer/feature_contract.json": {
+      "bytes": 1238,
+      "sha256": "42fd48803a1d35d555b96c700562887784de648b9359992f1431dd032d8acc88"
+    },
+    "period2_richer/receipt.json": {
+      "bytes": 272780,
+      "sha256": "98908a1932f21a15434166a65445069a541331fda80ff837d9c95b6ea44fb2af"
+    },
+    "period2_richer/training_inputs.json": {
+      "bytes": 1611509,
+      "sha256": "f4925b5e32917d38d098584eda599aa464d844a2515784fa4dcc8503c3a83916"
+    },
+    "period2_short/admission.json": {
+      "bytes": 68949,
+      "sha256": "f6fb5734ece6af4698b9a425b441d05e0e3a6214e9a332a62376754691f62fea"
+    },
+    "period2_short/attempt.jsonl": {
+      "bytes": 553,
+      "sha256": "6d9cff392e7660efadfba13531fb57ef84a4039b6f566b651928e8f9f4707aa6"
+    },
+    "period2_short/evaluation_inputs.json": {
+      "bytes": 101564,
+      "sha256": "92956ccabb7b10dcbc04b660631048fa6565b0b1365dc4cb93ed90beee5a654c"
+    },
+    "period2_short/evaluation_probabilities.json": {
+      "bytes": 2503,
+      "sha256": "f9603e483d0b8b80f4364ef305283bfddf1b12b42e95bc3b525a67a02b1e4d19"
+    },
+    "period2_short/feature_contract.json": {
+      "bytes": 1238,
+      "sha256": "42fd48803a1d35d555b96c700562887784de648b9359992f1431dd032d8acc88"
+    },
+    "period2_short/receipt.json": {
+      "bytes": 272772,
+      "sha256": "72eace4e83f88cd6393df38e6d244eda8685ed7ad4b2c2172eee90151eed5a50"
+    },
+    "period2_short/training_inputs.json": {
+      "bytes": 1609358,
+      "sha256": "cd0cefb004a7004fe782744ba5e81ee833da337343fe6a1027df77d00db90377"
+    },
+    "protocol.json": {
+      "bytes": 3067,
+      "sha256": "20f1245937e5915d1f8b6624f83cacdd2a4fff6a35150ba0716330edc7a286b3"
+    },
+    "race_metrics.json": {
+      "bytes": 98749,
+      "sha256": "426f543a6da013b2c6a1ccc50f38ebc3eaf5116ccf2c2f04d3e6f7a4c0d952dc"
+    },
+    "summary.json": {
+      "bytes": 26326,
+      "sha256": "73c6a1bad92d00b87395d827c14c188e0f15f8ba3ff51baaf2681d3e8ede45f6"
+    },
+    "trial_ledger.jsonl": {
+      "bytes": 4708,
+      "sha256": "8cfe66bb10aeb2af94aef38573883325e5cb6eb057a82f4a313f1e5ae8210e88"
+    }
+  },
+  "root": "/home/l4nd0/greyhound-history-support-output-20260929/depth_attempt1"
+}

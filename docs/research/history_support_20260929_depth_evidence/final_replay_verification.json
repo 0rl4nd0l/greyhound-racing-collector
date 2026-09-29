@@ -1,0 +1,16 @@
+{
+  "all6_saved_models_replayed": true,
+  "errors": {
+    "final_later_block_richer": 2.220446049250313e-16,
+    "final_later_block_short": 1.1102230246251565e-16,
+    "period1_richer": 2.220446049250313e-16,
+    "period1_short": 2.220446049250313e-16,
+    "period2_richer": 2.220446049250313e-16,
+    "period2_short": 1.1102230246251565e-16
+  },
+  "maximum_probability_error": 2.220446049250313e-16,
+  "new_fits": 0,
+  "original_access_scope_verified": true,
+  "protocol_pin_verified": true,
+  "reconstruction_source_pin_verified": true
+}

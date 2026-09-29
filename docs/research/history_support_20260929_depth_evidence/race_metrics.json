@@ -1,0 +1,4427 @@
+[
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.6292868273448026,
+      "ll": 1.0331084205025587,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-24",
+    "race_id": "Race 3 - CAPALABA - 2026-06-24",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.6014869995716263,
+      "ll": 0.9974888270142374,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.5971347914784282,
+      "ll": 0.9923802945461593,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 3,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.2174355516583596,
+      "ll": 0.5470482374559462,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-24",
+    "race_id": "Race 6 - CAPALABA - 2026-06-24",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.16198267583421452,
+      "ll": 0.45861297876677865,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.1612085015151471,
+      "ll": 0.4567942339179497,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 4,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.22074816752145696,
+      "ll": 0.5574996808223994,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-24",
+    "race_id": "Race 6 - SAL - 2026-06-24",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.2038894906813207,
+      "ll": 0.525182723238271,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.20702481451285307,
+      "ll": 0.5313699319790219,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.1961453485371512,
+      "ll": 2.9658469325023975,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-24",
+    "race_id": "Race 6 - TEMORA - 2026-06-24",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 1.2056671526481801,
+      "ll": 3.0831203930888265,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 1.2077127574345492,
+      "ll": 3.083787335393342,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8997168787468257,
+      "ll": 1.769704724565521,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-24",
+    "race_id": "Race 7 - CAPALABA - 2026-06-24",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.8812208154759227,
+      "ll": 1.7016757940567455,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.8984824856853664,
+      "ll": 1.730628694714003,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 8,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.2261302988363285,
+      "ll": 3.2832564536638724,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-24",
+    "race_id": "Race 8 - CAPALABA - 2026-06-24",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 1.1751397873177918,
+      "ll": 3.0823971410815663,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 1.1822782931708238,
+      "ll": 3.056479596590209,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 4,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7351036119987265,
+      "ll": 1.5441582716153777,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-24",
+    "race_id": "Race 8 - SAL - 2026-06-24",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.7345696098157313,
+      "ll": 1.5307283813122314,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.7356997372542489,
+      "ll": 1.5356674712421199,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.6475817582603874,
+      "ll": 1.2170103683195255,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-25",
+    "race_id": "Race 1 - WRGL - 2026-06-25",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.6671563179984148,
+      "ll": 1.2379276452940817,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.6777644634030835,
+      "ll": 1.252697688328974,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.24042354452763676,
+      "ll": 0.5837293135834167,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-25",
+    "race_id": "Race 10 - RICHMOND-STRAIGHT - 2026-06-25",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.1622063670981924,
+      "ll": 0.4517415239281233,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.1634237806597884,
+      "ll": 0.45395434618123387,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.3748215970315822,
+      "ll": 0.7947036472468897,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-25",
+    "race_id": "Race 2 - CASO - 2026-06-25",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.35462102730941814,
+      "ll": 0.7633845845364021,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.3541233683881615,
+      "ll": 0.7627305790908359,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.4382674928712791,
+      "ll": 0.8283437536077674,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-25",
+    "race_id": "Race 2 - WRGL - 2026-06-25",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.4275493506342685,
+      "ll": 0.811687079869327,
+      "top_ties": 1
+    },
+    "runners": 5,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.43967056263472587,
+      "ll": 0.826001611240198,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.6331914835902723,
+      "ll": 1.2562072563643822,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-25",
+    "race_id": "Race 3 - CASO - 2026-06-25",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.5572498595147377,
+      "ll": 1.1028559036803893,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.5554354733738026,
+      "ll": 1.0984327729510166,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8578361819760832,
+      "ll": 1.8264737228556445,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-25",
+    "race_id": "Race 5 - CASO - 2026-06-25",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.88033435851008,
+      "ll": 1.8898735098959352,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.8802313538337858,
+      "ll": 1.8895100232478923,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5071245005804547,
+      "ll": 1.0368288683781,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-25",
+    "race_id": "Race 5 - RICHMOND-STRAIGHT - 2026-06-25",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.4291762355065038,
+      "ll": 0.9055929937757555,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.42660610961693424,
+      "ll": 0.9007805482210665,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8391523798160766,
+      "ll": 1.6224464589857448,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-25",
+    "race_id": "Race 6 - RICHMOND-STRAIGHT - 2026-06-25",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.8044155647437027,
+      "ll": 1.5307604447508598,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.7947838956447121,
+      "ll": 1.5089447594026992,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.1169662059698582,
+      "ll": 3.028287498677457,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-25",
+    "race_id": "Race 7 - RICHMOND-STRAIGHT - 2026-06-25",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 1.1282966788167221,
+      "ll": 3.1576413275469495,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 1.1290134400260843,
+      "ll": 3.169928779792769,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8177054706825968,
+      "ll": 1.3284350270566927,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-25",
+    "race_id": "Race 8 - RICHMOND-STRAIGHT - 2026-06-25",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.8311794766508556,
+      "ll": 1.3318118616247323,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.8227357740609805,
+      "ll": 1.3195239856934058,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5241184567127976,
+      "ll": 0.9240864885658557,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-25",
+    "race_id": "Race 9 - RICHMOND-STRAIGHT - 2026-06-25",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.6120116553246647,
+      "ll": 1.029453814280045,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.6034782900897048,
+      "ll": 1.018515925867369,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8709031829600494,
+      "ll": 1.7862034078680653,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 10 - GRDN - 2026-06-26",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.9367557281647376,
+      "ll": 1.9907773321355675,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.9381931233656081,
+      "ll": 1.993068853948518,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 3,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9253655190697931,
+      "ll": 1.8268467002465616,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 10 - LADBROKES-Q1-LAKESIDE - 2026-06-26",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.9471082544573659,
+      "ll": 1.811451571016672,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.9272444942730413,
+      "ll": 1.782846511011423,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 3,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.197389677777387,
+      "ll": 3.3345138291923306,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 11 - LADBROKES-Q1-LAKESIDE - 2026-06-26",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 1.2044977754164883,
+      "ll": 3.2760741441759293,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 1.206745155700074,
+      "ll": 3.2860062788312434,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.2598713627383817,
+      "ll": 2.5023040893999693,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 11 - MURR - 2026-06-26",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 1.338272188515118,
+      "ll": 2.8039322431739047,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 1.3364859373685096,
+      "ll": 2.8020819022245473,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5943774880363903,
+      "ll": 1.1736711968771505,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 12 - GRDN - 2026-06-26",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.6670211434894243,
+      "ll": 1.3421662765401274,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.6686602790738135,
+      "ll": 1.3445279722878332,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.31341296850164224,
+      "ll": 0.6914596511914987,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 5 - MURR - 2026-06-26",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.27763977310039356,
+      "ll": 0.6328858299883247,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.26139584026948637,
+      "ll": 0.6062826471315127,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.27768338510749,
+      "ll": 0.6558407545178444,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 6 - HOR - 2026-06-26",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.2551493341575136,
+      "ll": 0.6188656143341835,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.25236528204334163,
+      "ll": 0.6141919389919158,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5077240708029469,
+      "ll": 1.0863284230242045,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 7 - GRDN - 2026-06-26",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.43170707667238517,
+      "ll": 0.9391747515076156,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.432413091507725,
+      "ll": 0.9405380358703164,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.37940056644962306,
+      "ll": 0.8303125697939574,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 7 - LADBROKES-Q1-LAKESIDE - 2026-06-26",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.36626561177638295,
+      "ll": 0.8052742071950324,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.3411913473423407,
+      "ll": 0.7647535914510885,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.2649307777206797,
+      "ll": 2.6384429422470643,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 7 - MURR - 2026-06-26",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 1.2392272864832201,
+      "ll": 2.5501678095560907,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 1.2408071215071708,
+      "ll": 2.5520885748475974,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.6358751484785781,
+      "ll": 1.1448637732593638,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 8 - HOR - 2026-06-26",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.7935949073865626,
+      "ll": 1.4172788978594384,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.7929395470728742,
+      "ll": 1.4132200227377096,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.5,
+      "brier": 0.5910629379180645,
+      "ll": 1.0770339299713982,
+      "top_ties": 2
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 9 - HOR - 2026-06-26",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.6813638053158142,
+      "ll": 1.1862502941701958,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.6764259452404754,
+      "ll": 1.1784490541965242,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.3789965261290492,
+      "ll": 0.7795759767000072,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 9 - LADBROKES-Q1-LAKESIDE - 2026-06-26",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.341520995220543,
+      "ll": 0.7101093770777518,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.32123659433236373,
+      "ll": 0.6851208090342891,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9428581807396551,
+      "ll": 2.158345065351936,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-27",
+    "race_id": "Race 2 - DUBBO - 2026-06-27",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.9288501495442457,
+      "ll": 2.083224471216072,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.9233428854957799,
+      "ll": 2.066393528352387,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.6118204706065784,
+      "ll": 1.2172128689331476,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-27",
+    "race_id": "Race 2 - MEADOWS - 2026-06-27",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.6847232342091845,
+      "ll": 1.3493980245419561,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.6796250365416648,
+      "ll": 1.338896973889776,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.36172751856737917,
+      "ll": 0.7531896465823512,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-27",
+    "race_id": "Race 3 - BAL - 2026-06-27",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.4479404203103805,
+      "ll": 0.8865101387620425,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.4401065964363485,
+      "ll": 0.8747886403839643,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.4903939837987065,
+      "ll": 0.9335089901507145,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-27",
+    "race_id": "Race 3 - DUBBO - 2026-06-27",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.5318891357500078,
+      "ll": 0.9996932014523812,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.5120508917103601,
+      "ll": 0.9739374195646996,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.37543094256240295,
+      "ll": 0.7185568960853136,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-27",
+    "race_id": "Race 4 - LADBROKES-Q1-LAKESIDE - 2026-06-27",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.3662729377809971,
+      "ll": 0.7012642591525929,
+      "top_ties": 1
+    },
+    "runners": 5,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.36956186531106905,
+      "ll": 0.7049703031839999,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.1363441075692375,
+      "ll": 3.3827660084043187,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-27",
+    "race_id": "Race 5 - DUBBO - 2026-06-27",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 1.1458721573992154,
+      "ll": 3.443535662193032,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 1.1470630105049817,
+      "ll": 3.44195669060273,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9813638291269223,
+      "ll": 2.2840444081892004,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-27",
+    "race_id": "Race 5 - LADBROKES-Q1-LAKESIDE - 2026-06-27",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.9608225458081117,
+      "ll": 2.2014795848755346,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.9589244041147406,
+      "ll": 2.1880930909767833,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7000033719400536,
+      "ll": 1.382004814334656,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-27",
+    "race_id": "Race 6 - BAL - 2026-06-27",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.692673416156113,
+      "ll": 1.364751255382923,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.6888808931290328,
+      "ll": 1.358579167813134,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.6595126624116714,
+      "ll": 1.3792500888703676,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-27",
+    "race_id": "Race 7 - BAL - 2026-06-27",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.6762147749512494,
+      "ll": 1.4044804499054737,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.678242944187131,
+      "ll": 1.4091822019212326,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.3242494382087159,
+      "ll": 0.724512839838165,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 10 - HEA - 2026-06-28",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.25256775271004095,
+      "ll": 0.6119134494242994,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.25098544141136736,
+      "ll": 0.609204078237815,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 4,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5614686416264691,
+      "ll": 1.0223818329304015,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 10 - MOUNT - 2026-06-28",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.6003319971901931,
+      "ll": 1.0709764435426312,
+      "top_ties": 1
+    },
+    "runners": 5,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.604123085466208,
+      "ll": 1.0818627111082844,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.22225657080363517,
+      "ll": 0.5754963477028481,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 2 - ROCKHAMPTON - 2026-06-28",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.20853690673966935,
+      "ll": 0.5522361318252688,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.21866175738149665,
+      "ll": 0.5700109053192032,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.6280575445601787,
+      "ll": 1.2708785119692563,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 3 - CAPALABA - 2026-06-28",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.6469293058580401,
+      "ll": 1.3043080706338557,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.6379876010625802,
+      "ll": 1.290147719428585,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 3,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5592139518198456,
+      "ll": 1.1719278426601476,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 4 - CAPALABA - 2026-06-28",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.4984409392588295,
+      "ll": 1.0484609659448039,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.4886915503413297,
+      "ll": 1.0262988189616011,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7766041781037372,
+      "ll": 1.6371616400293578,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 5 - BROKEN-HILL - 2026-06-28",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.8039571541800148,
+      "ll": 1.7221470503031706,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.8041517747181084,
+      "ll": 1.7233043701395694,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 4,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.6606326870443119,
+      "ll": 1.1814461933592049,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 5 - MOUNT - 2026-06-28",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.6101726093048054,
+      "ll": 1.080562419250883,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.5982658487453661,
+      "ll": 1.0563867346257394,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.939201659056436,
+      "ll": 1.9757633127297345,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 6 - BROKEN-HILL - 2026-06-28",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.9446538030574838,
+      "ll": 1.914996186225451,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.9431675991639182,
+      "ll": 1.9103066281605694,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.6925088742289033,
+      "ll": 1.292193442633073,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 6 - CAPALABA - 2026-06-28",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.6531482148997456,
+      "ll": 1.211079501993259,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.6567302541840693,
+      "ll": 1.2135726313611348,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.6508893836349315,
+      "ll": 1.275425782330025,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 6 - HEA - 2026-06-28",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.5888262120407972,
+      "ll": 1.159886499768281,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.5903749789313576,
+      "ll": 1.1642874891784505,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8232748945693138,
+      "ll": 1.7765927246248114,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 7 - BROKEN-HILL - 2026-06-28",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.859215826262889,
+      "ll": 1.899560696559822,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.8591915665538766,
+      "ll": 1.9010123951645568,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 3,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.672327620248105,
+      "ll": 1.1050644199525872,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 7 - CAPALABA - 2026-06-28",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.8471078465655886,
+      "ll": 1.3371645417714109,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.865426176453042,
+      "ll": 1.3646955019570446,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.6484605635056211,
+      "ll": 1.190440258248817,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 8 - BROKEN-HILL - 2026-06-28",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.5111923910258438,
+      "ll": 0.9842528759140409,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.5061785365852383,
+      "ll": 0.9773024146289118,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.31790078130546373,
+      "ll": 0.7267591984792177,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 8 - CAPALABA - 2026-06-28",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.272095033987152,
+      "ll": 0.6360488019540872,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.27520961918881565,
+      "ll": 0.6410178240368721,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 5,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9953591851210852,
+      "ll": 2.207402485501329,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 8 - MOUNT - 2026-06-28",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.979253970472778,
+      "ll": 2.1760296003565203,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.9813296314562305,
+      "ll": 2.180522729909168,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.0989778629095923,
+      "ll": 1.6793730840498702,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 9 - BROKEN-HILL - 2026-06-28",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 1.1865358010068545,
+      "ll": 1.7664667681765271,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 1.1917445257499397,
+      "ll": 1.7747959097370338,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.0601836702821985,
+      "ll": 2.045302665567326,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 9 - CAPALABA - 2026-06-28",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.9449271434521058,
+      "ll": 1.7987443163084615,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.9446679643107794,
+      "ll": 1.798294751083792,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.5,
+      "brier": 0.6320681844364114,
+      "ll": 1.1561267644666002,
+      "top_ties": 2
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 1 - MURR - 2026-06-29",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.6410131204432774,
+      "ll": 1.1714660975670135,
+      "top_ties": 1
+    },
+    "runners": 5,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.6410261412297581,
+      "ll": 1.1713313836286123,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.3853927450624658,
+      "ll": 0.8323773262317925,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 10 - TRA - 2026-06-29",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.44729053318561796,
+      "ll": 0.9414905430629423,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.4473920176023548,
+      "ll": 0.9414174067245674,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 3,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.6074076506097779,
+      "ll": 1.243515883411477,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 11 - TRA - 2026-06-29",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.4928365337593388,
+      "ll": 1.0391374268635796,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.4973148848701864,
+      "ll": 1.0474300001082004,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.5,
+      "brier": 0.5828489528513637,
+      "ll": 1.0682365769496385,
+      "top_ties": 2
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 11 - WAR - 2026-06-29",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.49315565696555147,
+      "ll": 0.9205557846137811,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.48859723607926114,
+      "ll": 0.9141987713936163,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9386824910731998,
+      "ll": 1.8704826253575826,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 12 - TRA - 2026-06-29",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.8691649913604399,
+      "ll": 1.673394352549252,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.8709339278183008,
+      "ll": 1.6736486479394797,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.6540999561245124,
+      "ll": 1.3534264425096119,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 12 - WAR - 2026-06-29",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.7104574162857383,
+      "ll": 1.4622125845422016,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.7094033322336165,
+      "ll": 1.457965752143436,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.82412228852446,
+      "ll": 1.6878229993706602,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 13 - WAR - 2026-06-29",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.8293337883747671,
+      "ll": 1.7061443819196582,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.8268412980985121,
+      "ll": 1.6942275090713088,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.33429361992401635,
+      "ll": 0.7659779980155329,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 2 - NOR - 2026-06-29",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.41924380642213027,
+      "ll": 0.9173691525538472,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.4193836243539246,
+      "ll": 0.9177130890757214,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8399058716866523,
+      "ll": 1.7884613641481115,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 4 - NOR - 2026-06-29",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.8314853204355499,
+      "ll": 1.7637577950390302,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.8312247003734661,
+      "ll": 1.7632560636332084,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7974383213849179,
+      "ll": 1.6190724349655345,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 5 - NOR - 2026-06-29",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.7275774757401209,
+      "ll": 1.458040090425956,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.7271989205790941,
+      "ll": 1.457189993799192,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8888343676712753,
+      "ll": 2.0198732710368508,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 5 - WAR - 2026-06-29",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.8752138515855195,
+      "ll": 1.9850701387281455,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.8717753544533455,
+      "ll": 1.9723804507596494,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9918256010630864,
+      "ll": 1.9496925888939554,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 6 - WAR - 2026-06-29",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.8874587907155841,
+      "ll": 1.6866873686427395,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.8885071794934887,
+      "ll": 1.6906918392705117,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.6988705853357287,
+      "ll": 1.3207369982649528,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 7 - NOR - 2026-06-29",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.7021741584058122,
+      "ll": 1.324646195239843,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.6973276279284336,
+      "ll": 1.3179850745710866,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.0409363269530922,
+      "ll": 2.6962958251926095,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 7 - WAR - 2026-06-29",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 1.089823355696403,
+      "ll": 2.9967550519873005,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 1.0886239970777196,
+      "ll": 2.9934443975861447,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 3,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8030440285013051,
+      "ll": 1.6546298193070195,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 8 - TRA - 2026-06-29",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.7360784339910089,
+      "ll": 1.5172071895324404,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.7356559413776195,
+      "ll": 1.5149059935695426,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7815823115977342,
+      "ll": 1.5273541622106492,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 8 - WAR - 2026-06-29",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.8404910476253449,
+      "ll": 1.6024784843563418,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.8470882859048584,
+      "ll": 1.617585988691116,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.4390381717004709,
+      "ll": 0.9094424055545499,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 9 - WAR - 2026-06-29",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.45613942940714486,
+      "ll": 0.9220647797407957,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.4597275384450821,
+      "ll": 0.9279268463374816,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.4444498347708958,
+      "ll": 0.9182994525781655,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-30",
+    "race_id": "Race 1 - GEE - 2026-06-30",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.46763132055276696,
+      "ll": 0.9584726636663593,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.47471633425204673,
+      "ll": 0.9703711201653101,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8408645700732222,
+      "ll": 1.496631570809066,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-30",
+    "race_id": "Race 10 - GAWL - 2026-06-30",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.8451346977807375,
+      "ll": 1.4848609992474644,
+      "top_ties": 1
+    },
+    "runners": 5,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.8424150239107447,
+      "ll": 1.4794467090268666,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.6247585446032471,
+      "ll": 1.277617280496889,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-30",
+    "race_id": "Race 10 - HOBT - 2026-06-30",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.5706953558982116,
+      "ll": 1.1754829908904276,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.5671058918507829,
+      "ll": 1.1682646476065515,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7348259076540665,
+      "ll": 1.3130283450595381,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-30",
+    "race_id": "Race 2 - GEE - 2026-06-30",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.7662739776581647,
+      "ll": 1.3667030503040005,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.7501598390239779,
+      "ll": 1.333199623832735,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8691049205651475,
+      "ll": 1.8813383096823195,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-30",
+    "race_id": "Race 3 - GEE - 2026-06-30",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.861582334796001,
+      "ll": 1.8473233211355382,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.859128610748403,
+      "ll": 1.8423296719134246,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7850861377212414,
+      "ll": 1.4942831406808093,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-30",
+    "race_id": "Race 4 - GAWL - 2026-06-30",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.8092463971039563,
+      "ll": 1.5445790814258258,
+      "top_ties": 1
+    },
+    "runners": 5,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.811340231004198,
+      "ll": 1.5508880705827275,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.36479592344085016,
+      "ll": 0.7577733351185164,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-30",
+    "race_id": "Race 4 - LADBROKES-Q1-LAKESIDE - 2026-06-30",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.36832364856762945,
+      "ll": 0.7547043301653983,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.35255804896486054,
+      "ll": 0.7359063563221736,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.1919034888509656,
+      "ll": 3.3971034115313543,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-30",
+    "race_id": "Race 5 - HOBT - 2026-06-30",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 1.208949877831525,
+      "ll": 3.6487782636164363,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 1.2097673108907419,
+      "ll": 3.632226372766149,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7983651574774879,
+      "ll": 1.5877034202880942,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-30",
+    "race_id": "Race 6 - GAWL - 2026-06-30",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.7967476873412326,
+      "ll": 1.5814649898576894,
+      "top_ties": 1
+    },
+    "runners": 5,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.7860671275309837,
+      "ll": 1.5558841162401762,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.3713519246179035,
+      "ll": 0.8224468676589688,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-30",
+    "race_id": "Race 7 - HOBT - 2026-06-30",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.33607261552215445,
+      "ll": 0.7603320301349124,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.3394197454038651,
+      "ll": 0.7661818871025314,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 4,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.4488834712774431,
+      "ll": 0.9304866645352141,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-30",
+    "race_id": "Race 8 - GAWL - 2026-06-30",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.3775380695771212,
+      "ll": 0.8093869174138034,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.3662764326254819,
+      "ll": 0.793959200856406,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 3,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.798385707136759,
+      "ll": 1.498003175489825,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-30",
+    "race_id": "Race 9 - HOBT - 2026-06-30",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.8478771999860522,
+      "ll": 1.5360119613279486,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.8536160325265728,
+      "ll": 1.5436267479811454,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.6595133208249903,
+      "ll": 1.3198502428524235,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 1 - BEN - 2026-07-01",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.6659465340068088,
+      "ll": 1.3282090525214787,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.6963344849433445,
+      "ll": 1.3910586586634621,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.872360464409234,
+      "ll": 1.8266315552239538,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 1 - TAREE - 2026-07-01",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.8403610918228657,
+      "ll": 1.752512298207234,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.8413012634789098,
+      "ll": 1.765788634527992,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.4197711555506317,
+      "ll": 0.7210362494731376,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 2 - CAPALABA - 2026-07-01",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.43737646740972713,
+      "ll": 0.7252799815477975,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.45221953479762994,
+      "ll": 0.74732379037609,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8343682560658363,
+      "ll": 1.68265239391418,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 2 - LADBROKES-Q1-LAKESIDE - 2026-07-01",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.7979376781485527,
+      "ll": 1.619103724130183,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.7775668219814906,
+      "ll": 1.5785631562436162,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.3833392058810093,
+      "ll": 0.8154701596103389,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 3 - LADBROKES-Q1-LAKESIDE - 2026-07-01",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.3930023654519242,
+      "ll": 0.835488736804855,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.3839609687216113,
+      "ll": 0.8208318291015813,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.2924318591619095,
+      "ll": 0.5857935238179972,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 4 - MURRAY-BRIDGE-STRAIGHT - 2026-07-01",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.26005082962198073,
+      "ll": 0.5355903942985917,
+      "top_ties": 1
+    },
+    "runners": 5,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.26284727303007516,
+      "ll": 0.537737854923128,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 3,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.2587979759631573,
+      "ll": 0.5728481948300511,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 5 - CAPALABA - 2026-07-01",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.2590412968576388,
+      "ll": 0.5737676439137912,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.23659394891078742,
+      "ll": 0.5421971613450669,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7477582231006421,
+      "ll": 1.2472548907050176,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 5 - MURRAY-BRIDGE-STRAIGHT - 2026-07-01",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.7118291544947541,
+      "ll": 1.1959276241850862,
+      "top_ties": 1
+    },
+    "runners": 5,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.7014404013566109,
+      "ll": 1.1794873730714366,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.27353806451720736,
+      "ll": 0.6375323014434138,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 6 - CAPALABA - 2026-07-01",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.20858566151875665,
+      "ll": 0.5284849034579256,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.20953282019967198,
+      "ll": 0.5298428262016034,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.2084851821982716,
+      "ll": 0.508103518002186,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 7 - MURRAY-BRIDGE-STRAIGHT - 2026-07-01",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.16408219629293266,
+      "ll": 0.4343114990885484,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.1649602232904762,
+      "ll": 0.43593606114249445,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 5,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.30577280086254516,
+      "ll": 0.6677483413113048,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 8 - CAPALABA - 2026-07-01",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.2726958867348986,
+      "ll": 0.59799458332349,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.2687500288213289,
+      "ll": 0.591093255804529,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 4,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.6244560418113919,
+      "ll": 1.22472939422248,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 8 - MURRAY-BRIDGE-STRAIGHT - 2026-07-01",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.6199974876581972,
+      "ll": 1.2167167895011135,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.6251009359291155,
+      "ll": 1.2267928327431425,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 3,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7805515823420754,
+      "ll": 1.4868454747516093,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 8 - SAL - 2026-07-01",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.8367335444236885,
+      "ll": 1.5722928267490073,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.8566235251025783,
+      "ll": 1.616483070818807,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.24661288773448503,
+      "ll": 0.5784675679592459,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-02",
+    "race_id": "Race 1 - CASO - 2026-07-02",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.24805024469235842,
+      "ll": 0.5796109924658215,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.2431876842439933,
+      "ll": 0.5725586570846335,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 3,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5654465881710286,
+      "ll": 1.1140557639935467,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-02",
+    "race_id": "Race 11 - RICHMOND-STRAIGHT - 2026-07-02",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.4890457266967984,
+      "ll": 0.979108424510393,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.5139879399866887,
+      "ll": 1.023648362810145,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5979216130577248,
+      "ll": 1.1811493852628183,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-02",
+    "race_id": "Race 3 - WRGL - 2026-07-02",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.5319458256439896,
+      "ll": 1.0605634274267097,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.5218879427157905,
+      "ll": 1.0429421066714955,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8215658191345313,
+      "ll": 1.5796660350588536,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-03",
+    "race_id": "Race 3 - GOULBURN - 2026-07-03",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.7637550149559579,
+      "ll": 1.4587090933175502,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.7615319025759121,
+      "ll": 1.4507454293472195,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9803850455664929,
+      "ll": 1.8054443097109147,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-03",
+    "race_id": "Race 4 - GOULBURN - 2026-07-03",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.9662012352033511,
+      "ll": 1.6533093212456098,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.9672333428197013,
+      "ll": 1.6550142603576654,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7389179035415958,
+      "ll": 1.4535130153334057,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-03",
+    "race_id": "Race 6 - GOULBURN - 2026-07-03",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.725056053655287,
+      "ll": 1.3677598821443058,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.7497949180517604,
+      "ll": 1.4206186298291357,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 3,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.10602202109749174,
+      "ll": 0.3315759988064738,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-03",
+    "race_id": "Race 7 - GOULBURN - 2026-07-03",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.06638370062029743,
+      "ll": 0.2513605512267367,
+      "top_ties": 1
+    },
+    "runners": 5,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.061217626369232656,
+      "ll": 0.240656299772126,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8957445116531098,
+      "ll": 2.009449587721115,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-03",
+    "race_id": "Race 9 - HEA - 2026-07-03",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.9098185894931169,
+      "ll": 2.0703994037253852,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.9045358493780197,
+      "ll": 2.0464086655487,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.3957599748020409,
+      "ll": 0.8464372857664838,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-04",
+    "race_id": "Race 1 - LADBROKES-Q2-PARKLANDS - 2026-07-04",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.3932740307928842,
+      "ll": 0.8485483858606987,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.393767330624071,
+      "ll": 0.8496978068188888,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.568144795610989,
+      "ll": 1.1120280783446563,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-04",
+    "race_id": "Race 1 - WPK - 2026-07-04",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.5076954153245562,
+      "ll": 1.0075067353650615,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.5025712911579557,
+      "ll": 0.9997116200086165,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9943923440688528,
+      "ll": 1.9709262634154563,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-04",
+    "race_id": "Race 10 - TAREE - 2026-07-04",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 1.0171127407905152,
+      "ll": 2.0250756846720788,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 1.0191448084228127,
+      "ll": 2.0273916491829835,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9566560916225633,
+      "ll": 2.3510956968021963,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-04",
+    "race_id": "Race 2 - MEADOWS - 2026-07-04",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.9327330685184372,
+      "ll": 2.2355369585035567,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.9329750477764195,
+      "ll": 2.2367651903166186,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.1563236047891388,
+      "ll": 2.5755203746170103,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-04",
+    "race_id": "Race 4 - DUBBO - 2026-07-04",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 1.1502415862179671,
+      "ll": 2.53449978012544,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 1.1565182895077997,
+      "ll": 2.5592335013999636,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5843837886782212,
+      "ll": 1.2142012189516278,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-04",
+    "race_id": "Race 6 - GEE - 2026-07-04",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.6266393275503154,
+      "ll": 1.2945751310236928,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.6309236224464159,
+      "ll": 1.3035101409099548,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.16595130500362373,
+      "ll": 0.4467868155809708,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-04",
+    "race_id": "Race 7 - DUBBO - 2026-07-04",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.18410079509041094,
+      "ll": 0.4783560338722682,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.18087962931899212,
+      "ll": 0.47368960216569206,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.6005009383106444,
+      "ll": 1.0612516070746552,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-04",
+    "race_id": "Race 8 - DUBBO - 2026-07-04",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.7344233024363338,
+      "ll": 1.2280257109998367,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.7411976513899087,
+      "ll": 1.238616784852808,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7216577435993312,
+      "ll": 1.2612659339678762,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-04",
+    "race_id": "Race 8 - GEE - 2026-07-04",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.8557090159031633,
+      "ll": 1.4526462113313496,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.84956333174721,
+      "ll": 1.4387244792154923,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.6239519357068057,
+      "ll": 1.3105039631848845,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-04",
+    "race_id": "Race 8 - TAREE - 2026-07-04",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.6617159260831308,
+      "ll": 1.390191662352307,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.6623432665009445,
+      "ll": 1.3917260538359177,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.23188739119189,
+      "ll": 2.0958610600874894,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-04",
+    "race_id": "Race 9 - TAREE - 2026-07-04",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 1.3174218420042854,
+      "ll": 2.2350224276381523,
+      "top_ties": 1
+    },
+    "runners": 5,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 1.3228239386745666,
+      "ll": 2.2455373252122213,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.16052271030468065,
+      "ll": 0.4280864216918778,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-05",
+    "race_id": "Race 10 - HEA - 2026-07-05",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.13133882334826152,
+      "ll": 0.3822934374579771,
+      "top_ties": 1
+    },
+    "runners": 5,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.1322387281776938,
+      "ll": 0.38397333285342694,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 4,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9713015521083191,
+      "ll": 1.9505418038626492,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-05",
+    "race_id": "Race 10 - MOUNT - 2026-07-05",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.933923289007916,
+      "ll": 1.881958566273209,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.9255089834486543,
+      "ll": 1.8468416467213782,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9195767798460652,
+      "ll": 1.6448384044585982,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-05",
+    "race_id": "Race 11 - HEA - 2026-07-05",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.9206745720005564,
+      "ll": 1.650957017055444,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.9253039220419828,
+      "ll": 1.6556874115260785,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5654833010166629,
+      "ll": 1.096424551035063,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-05",
+    "race_id": "Race 12 - HEA - 2026-07-05",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.5403708547705829,
+      "ll": 1.059581829395379,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.5337588480597854,
+      "ll": 1.0501401123830383,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 6,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9161618627056786,
+      "ll": 1.8344139300972935,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-05",
+    "race_id": "Race 3 - MOUNT - 2026-07-05",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.918508354550964,
+      "ll": 1.8458350136549924,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.9172620987750001,
+      "ll": 1.8386283673881145,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 4,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.638945229275869,
+      "ll": 1.273641279493376,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-05",
+    "race_id": "Race 5 - MOUNT - 2026-07-05",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.6512827307847134,
+      "ll": 1.2931390658772632,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.6154921442521551,
+      "ll": 1.2272107371435093,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 5,
+    "market": {
+      "accuracy": 0.5,
+      "brier": 0.642273069169278,
+      "ll": 1.2284372145507139,
+      "top_ties": 2
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-05",
+    "race_id": "Race 6 - CAPALABA - 2026-07-05",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.6120829124393035,
+      "ll": 1.1495631428208166,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.5860593452974069,
+      "ll": 1.1109833924873904,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 5,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.175669437548082,
+      "ll": 2.244992215559678,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-05",
+    "race_id": "Race 7 - CAPALABA - 2026-07-05",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 1.2255708153098752,
+      "ll": 2.308640421256634,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 1.2042119695581301,
+      "ll": 2.194775427430591,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 5,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.20018008545298907,
+      "ll": 0.49625642665687625,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-05",
+    "race_id": "Race 8 - CAPALABA - 2026-07-05",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.10942204027441764,
+      "ll": 0.3445675375388745,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.10393604723465824,
+      "ll": 0.33328794253271044,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 6,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8180077612320868,
+      "ll": 1.6296501557162195,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-05",
+    "race_id": "Race 8 - MOUNT - 2026-07-05",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.7172933687757961,
+      "ll": 1.407379059865441,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.7197318007271386,
+      "ll": 1.4065364067978001,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 6,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.1857435964846268,
+      "ll": 2.4217972816880584,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-05",
+    "race_id": "Race 9 - HEA - 2026-07-05",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 1.1261676166664079,
+      "ll": 2.324446320965564,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 1.1260159737831792,
+      "ll": 2.307818202319818,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 3,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.6006171578075494,
+      "ll": 1.1410640038822404,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 1 - DUBBO - 2026-07-06",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.614830221369477,
+      "ll": 1.1708237586953274,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.6225631109545668,
+      "ll": 1.1838403229206393,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 4,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.38820788522850647,
+      "ll": 0.7710248085917799,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 1 - TRA - 2026-07-06",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.40123002858624013,
+      "ll": 0.7852322009885793,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.39608082477237794,
+      "ll": 0.776627006863203,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.36498862294772927,
+      "ll": 0.799893796540228,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 1 - WAR - 2026-07-06",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.37560836473449877,
+      "ll": 0.8201775134177479,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.3774328273501629,
+      "ll": 0.8237751281893787,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8741423653354217,
+      "ll": 1.8487225843972395,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 3 - TRA - 2026-07-06",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.8593428482300978,
+      "ll": 1.7971558074443648,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.8540715120144926,
+      "ll": 1.7799075671115951,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 3,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.28367708522029844,
+      "ll": 0.6471583596448313,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 3 - WAR - 2026-07-06",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.28297189773013504,
+      "ll": 0.6386897515759755,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.283105644575589,
+      "ll": 0.6380889694905083,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.5,
+      "brier": 0.6886571158694402,
+      "ll": 1.4050669638335391,
+      "top_ties": 2
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 4 - TRA - 2026-07-06",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.6062911604479846,
+      "ll": 1.229470154097668,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.596146123720699,
+      "ll": 1.2143176371301214,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 5,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.1402263939686081,
+      "ll": 0.41368629143503066,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 4 - WAR - 2026-07-06",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.09351677781357201,
+      "ll": 0.32579833746163095,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.0900504153964361,
+      "ll": 0.3184163813299926,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.0485519602464026,
+      "ll": 1.7306792327009228,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 5 - DUBBO - 2026-07-06",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 1.0887723195623624,
+      "ll": 1.7679574634115938,
+      "top_ties": 1
+    },
+    "runners": 5,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 1.0872084048227026,
+      "ll": 1.7640386859381019,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9189343764895805,
+      "ll": 1.9638888236690937,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 5 - WAR - 2026-07-06",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.9272006709345356,
+      "ll": 1.9915614982107401,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.9210338346788813,
+      "ll": 1.9734956947562776,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 3,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5357727545009157,
+      "ll": 1.050595064755895,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 6 - WAR - 2026-07-06",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.5395729662998514,
+      "ll": 1.039243530687803,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.5828135976077815,
+      "ll": 1.1141266741696236,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8689913205148512,
+      "ll": 1.6572244685147375,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 7 - DUBBO - 2026-07-06",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.856369969142111,
+      "ll": 1.6080696458776513,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.8561452253541142,
+      "ll": 1.6081880336532428,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 3,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.4113925885893276,
+      "ll": 0.8319598312194453,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 7 - WAR - 2026-07-06",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.3736837448944235,
+      "ll": 0.7828678425104496,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.3782812098275081,
+      "ll": 0.7901399292247475,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 3,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.40600475084629184,
+      "ll": 0.8447937006742879,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 8 - TRA - 2026-07-06",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.32138949186021015,
+      "ll": 0.7112681703300489,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.3452191572424763,
+      "ll": 0.7506455820510752,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9649976691947668,
+      "ll": 1.8797415126432209,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 1 - HOR - 2026-07-07",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.940089273533974,
+      "ll": 1.8698552245970523,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.9388840840245694,
+      "ll": 1.8677043813172902,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 4,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5559593167608557,
+      "ll": 1.0561216849805097,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 10 - AP_K - 2026-07-07",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.5572582684664512,
+      "ll": 1.0518897055132004,
+      "top_ties": 1
+    },
+    "runners": 5,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.5768002907646779,
+      "ll": 1.082940341297698,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5960010072598353,
+      "ll": 1.1854752690824604,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 11 - AP_K - 2026-07-07",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.5499779128523558,
+      "ll": 1.0930464020706332,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.5492257975639596,
+      "ll": 1.091696240741821,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.3355669298595266,
+      "ll": 0.7019670021785571,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 11 - HOBT - 2026-07-07",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.27832276336022005,
+      "ll": 0.6073615363905007,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.27443099033799573,
+      "ll": 0.6007968274253451,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.0692518360374441,
+      "ll": 2.2159042398877755,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 12 - AP_K - 2026-07-07",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 1.0584233100981224,
+      "ll": 2.2692131121571846,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 1.0577852125206069,
+      "ll": 2.261643688546894,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9256128495297383,
+      "ll": 2.080205410941712,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 2 - BULLI - 2026-07-07",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.9310247477556142,
+      "ll": 2.0914030004463138,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.9285666250417192,
+      "ll": 2.082273649918861,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.30884501556949256,
+      "ll": 0.7024619518344928,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 2 - LADBROKES-Q1-LAKESIDE - 2026-07-07",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.32258505263854803,
+      "ll": 0.7211288937286208,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.3275982294913857,
+      "ll": 0.7289857506007563,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.5,
+      "brier": 0.6854977708057364,
+      "ll": 1.4025033197154002,
+      "top_ties": 2
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 3 - GEE - 2026-07-07",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.7617968742511875,
+      "ll": 1.5612097265496656,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.7652296442830675,
+      "ll": 1.5683957012434762,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.2720974210953306,
+      "ll": 0.6148712803630924,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 3 - HOR - 2026-07-07",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.20436931397029962,
+      "ll": 0.5080205963405471,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.20691494017084527,
+      "ll": 0.512005957084217,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 3,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.696617118952584,
+      "ll": 1.2596292260135327,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 4 - AP_K - 2026-07-07",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.7771604889895732,
+      "ll": 1.3923064527563933,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.7780586319605124,
+      "ll": 1.390509399519641,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 5,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.4543106265720348,
+      "ll": 0.8789093372669178,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 5 - AP_K - 2026-07-07",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.5426837194662307,
+      "ll": 1.0063857784651824,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.5114537302435374,
+      "ll": 0.9600068089984818,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.0208985344883608,
+      "ll": 2.2588363317560245,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 5 - HOR - 2026-07-07",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 1.059311918920065,
+      "ll": 2.2510339106008965,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 1.0588139453900955,
+      "ll": 2.2402262323069837,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5799025537255067,
+      "ll": 1.0726603583206915,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 6 - HOBT - 2026-07-07",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.5746176107160061,
+      "ll": 1.0136393545885323,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.5657535031589036,
+      "ll": 0.9998575577387754,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8967820875818793,
+      "ll": 1.8236202577039522,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 7 - AP_K - 2026-07-07",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.9001502969403969,
+      "ll": 1.8229940849348325,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.8955315163316544,
+      "ll": 1.8125039348023162,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.45896749055612296,
+      "ll": 0.9533826523129146,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 7 - HOBT - 2026-07-07",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.4783747517630214,
+      "ll": 0.9916161718603937,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.4728934793521394,
+      "ll": 0.9807414316623593,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.868649769648053,
+      "ll": 1.7945588647078454,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 8 - AP_K - 2026-07-07",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.8011938500228478,
+      "ll": 1.6156068661151457,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.7969763345335008,
+      "ll": 1.6072029495926177,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 3,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8606826991157148,
+      "ll": 1.8299799428256414,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 8 - HOBT - 2026-07-07",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.9559662068295354,
+      "ll": 2.0973278079241573,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.9451356554664683,
+      "ll": 2.0625526203257256,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9909550473095058,
+      "ll": 1.7146850613422728,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 9 - AP_K - 2026-07-07",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 1.0137896338227832,
+      "ll": 1.716438817894387,
+      "top_ties": 1
+    },
+    "runners": 5,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 1.0277905072396127,
+      "ll": 1.7467523563990486,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.1994248714027158,
+      "ll": 3.145058226018956,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 1 - BEN - 2026-07-08",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 1.190081691912601,
+      "ll": 3.057468056705574,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 1.1878776330365617,
+      "ll": 3.060328590022185,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 4,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.46881890334319454,
+      "ll": 0.9887133787791682,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 1 - LADBROKES-Q1-LAKESIDE - 2026-07-08",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.4614912392705752,
+      "ll": 0.976757293290826,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.4790805213111048,
+      "ll": 1.0074484600735438,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 3,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8128583235178901,
+      "ll": 1.7521746629392134,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 10 - SAL - 2026-07-08",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.8134275186959702,
+      "ll": 1.7681018805336208,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.8076405566347755,
+      "ll": 1.7509193840031159,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 3,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.783082426944931,
+      "ll": 1.5850259482889575,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 11 - SAL - 2026-07-08",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.7097275017255485,
+      "ll": 1.4167735062194646,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.7100203593214169,
+      "ll": 1.4130360012680858,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 6,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.1405260124667675,
+      "ll": 2.3377786306461403,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 2 - CAPALABA - 2026-07-08",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 1.1541817535868113,
+      "ll": 2.4224002605543915,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 1.1449266468193777,
+      "ll": 2.38200753600075,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 0,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9912393881372032,
+      "ll": 2.4186107784976865,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 2 - TAREE - 2026-07-08",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 1.0218989747916598,
+      "ll": 2.6049144940360067,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 1.0215273868659587,
+      "ll": 2.604900391241498,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8301192714747722,
+      "ll": 1.8173963400629933,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 3 - BEN - 2026-07-08",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.8352829146728354,
+      "ll": 1.830492677877778,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.8317684634634251,
+      "ll": 1.8158904897731325,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 1,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9106382103034961,
+      "ll": 1.8809109894647125,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 3 - CAPALABA - 2026-07-08",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.8796627038870838,
+      "ll": 1.8096276048252717,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.8800632478318716,
+      "ll": 1.8104097763798572,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.0945771134007838,
+      "ll": 2.4075262196269445,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 4 - BEN - 2026-07-08",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 1.1151913029247371,
+      "ll": 2.4609970106879446,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 1.0870442821872253,
+      "ll": 2.416370670288547,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 3,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9205843636246526,
+      "ll": 2.1501472700083326,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 5 - SAL - 2026-07-08",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.9295872504427616,
+      "ll": 2.1459150423812257,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.9382112298468485,
+      "ll": 2.177722714098997,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 5,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.18897876500265312,
+      "ll": 0.48753204107359943,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 6 - CAPALABA - 2026-07-08",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.16387186211508478,
+      "ll": 0.4458070958012578,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.1969846106019908,
+      "ll": 0.5023509471514349,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7052134222674165,
+      "ll": 1.266352411135831,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 6 - MURRAY-BRIDGE-STRAIGHT - 2026-07-08",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.7416299506041325,
+      "ll": 1.347445018306314,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.741384496502552,
+      "ll": 1.3451303541344364,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 4,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.38197802930800157,
+      "ll": 0.8243834485775786,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 7 - CAPALABA - 2026-07-08",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.40266585746202366,
+      "ll": 0.8611950866928574,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.39101733193067667,
+      "ll": 0.841647644002122,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 2,
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5751089372722662,
+      "ll": 1.1815347142395347,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 7 - SAL - 2026-07-08",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.5159919453344382,
+      "ll": 1.0655593532270007,
+      "top_ties": 1
+    },
+    "runners": 7,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.5145688852098179,
+      "ll": 1.0618014334078523,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 6,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.009695624692773,
+      "ll": 1.680005658945439,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 8 - CAPALABA - 2026-07-08",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 1.0325506491233094,
+      "ll": 1.6286035812732256,
+      "top_ties": 1
+    },
+    "runners": 8,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 1.0654257236582552,
+      "ll": 1.6942368082951567,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 3,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.6274574089519712,
+      "ll": 0.9913205387045309,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 8 - MURRAY-BRIDGE-STRAIGHT - 2026-07-08",
+    "richer": {
+      "accuracy": 0.0,
+      "brier": 0.6164518065389554,
+      "ll": 0.9723321292116327,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 0.0,
+      "brier": 0.6171156207695025,
+      "ll": 0.9720413652662985,
+      "top_ties": 1
+    }
+  },
+  {
+    "enriched_runners": 3,
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.6360995763379784,
+      "ll": 1.2118465518613064,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 8 - SAL - 2026-07-08",
+    "richer": {
+      "accuracy": 1.0,
+      "brier": 0.5456507501764588,
+      "ll": 1.0369979815703716,
+      "top_ties": 1
+    },
+    "runners": 6,
+    "short": {
+      "accuracy": 1.0,
+      "brier": 0.5239098732918923,
+      "ll": 1.0147711053720923,
+      "top_ties": 1
+    }
+  }
+]

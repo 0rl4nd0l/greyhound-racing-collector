@@ -1,0 +1,29 @@
+{
+  "report": {
+    "path": "/home/l4nd0/greyhound-live-replacement-20260929/REPORT.md",
+    "sha256": "2664709dfa2b240face6eb218ab2533f34ca97f5b3228dde4928b6c2f7d017d4"
+  },
+  "authority": {
+    "path": "/home/l4nd0/greyhound-live-replacement-20260929/continuation-b/authority.json",
+    "sha256": "1e3b40d2430b8abfd2444e599c3d61eb75fae248503e1994b0b9400c074643fe"
+  },
+  "manifests": [
+    {
+      "path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/races/8d6a44fe040d585e91e22dd3fd88b529c5e8660a5019f5b62a363aa74db7b17f/retention/962cb6c5e2b86e0ffbaf535b992d24ae17ae21522fb3cfac257b94f00459f633/bundle/manifest.json",
+      "sha256": "1a29572e76cb5f4092eb0b908616060ac6db934c55333fd8b6dff498c3983459",
+      "completion_sha256": "4686fbfc28111ef2c6e98f52ba342ee14fcf241d202ba25d0cf67857e6a576d6"
+    },
+    {
+      "path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/races/321bcdff902b9847e6f4592d0ebd324abd50b5b9d367f322de966e0240868a96/retention/251a3aca4bce15b11b4801e50989da16ae742cdf67085de6b219105a1fecd503/bundle/manifest.json",
+      "sha256": "faa698403d35e88ddcc0d0535ac50868a0e7131dab0474c4818331d632b2aa1d",
+      "completion_sha256": "e86c73495e49a8904dfd7db6aa546d688b66c3c8878eae6d01cc84cbc21c2d9e"
+    },
+    {
+      "path": "/home/l4nd0/greyhound-collector-campaign-20260923/operational-predictions/races/82198a43b5ce3091dcb7b58bcea2161ba49b11fb6ebaaeea8a99ac49239167a9/retention/e18f8978402d54592a5e3e404500bca1eb5574fe7b1323cccd12d5af4970db8a/bundle/manifest.json",
+      "sha256": "3aacf7081a9b69bd56357ed0c0196c03e114a909f22f7ae47256e0790de32f74",
+      "completion_sha256": "f66760a5786dc20374a30183561c96bd63f1438e17a7806977e3048c8d227087"
+    }
+  ],
+  "development_scope_reference": "scripts.explain_market_residual.load_scope",
+  "operational_scope": "Only these three reported operational targets; strictly earlier sealed machine feature inputs; derived aggregate input diagnostics only; zero target results."
+}

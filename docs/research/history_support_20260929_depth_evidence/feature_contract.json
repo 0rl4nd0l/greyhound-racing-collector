@@ -1,0 +1,27 @@
+{
+  "context": "exact integer distance; canonical grade label, no jurisdiction equivalence claim; original known-finish denominators and zero/null rules held fixed",
+  "feature_order": [
+    "prior_start_count",
+    "days_since_last_start",
+    "recent_finish_mean_3",
+    "recent_finish_best_5",
+    "recent_win_rate_5",
+    "recent_place_rate_5",
+    "recent_avg_margin_5",
+    "career_win_rate",
+    "career_place_rate",
+    "career_avg_finish",
+    "starts_same_venue",
+    "win_rate_same_venue",
+    "starts_same_distance",
+    "win_rate_same_distance",
+    "same_grade_start_count",
+    "same_grade_win_rate"
+  ],
+  "formula_identity": "unchanged scripts.offline_form_packet and build_form_only_v1_packet.feature_row",
+  "history": "short: target admitted card; richer: union with earlier-captured admitted cards, exact same-day normalized dedup, cap20; canonical dog token linkage only",
+  "naming": "career means retained history; no full-career coverage claim",
+  "preprocessing": "training medians/allmissing0, missingness indicators, training standardization, within-race centering",
+  "residual": "L2=1; market log offset; 0.35*tanh(z/0.35); fullstrength; whole-field softmax",
+  "version": "asof_card_depth_canonical16_v1"
+}
