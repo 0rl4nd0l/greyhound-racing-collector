@@ -42,10 +42,17 @@ def test_generated_operational_input_binding_allows_pending_session(tmp_path, mo
     retained=tmp_path/'operational';retained.mkdir()
     config={'evidence_root':str(tmp_path/'session/collector/evidence'),'retained_root':str(retained)}
     path=tmp_path/'inputs.json';path.write_text(json.dumps(config))
-    generate_package(**args,operational_inputs=path)
+    generate_package(**args,operational_inputs=path,enabled=True)
     binding=json.loads((args['source_root']/'var/operator_ui/generated/repository-v1.binding.json').read_bytes())
     assert binding['operational_inputs']==config
     assert not Path(config['evidence_root']).exists()
+    load_generated_environment(monkeypatch,args)
+    monkeypatch.setattr(deployment_module,'_RUNTIME_SOURCE_ROOT',args['source_root'])
+    deployment_module.bound_operator_ui_log_dir.cache_clear()
+    try:
+        assert deployment_module.bound_operator_ui_log_dir()==args['operations_root']/'logs'
+    finally:
+        deployment_module.bound_operator_ui_log_dir.cache_clear()
 
 
 @pytest.fixture

@@ -321,7 +321,8 @@ def bound_operator_ui_log_dir() -> Path:
     deployment = binding.get("deployment") if isinstance(binding, dict) else None
     if (
         not isinstance(binding, dict)
-        or set(binding) != expected
+        or not expected <= set(binding)
+        or set(binding) - expected - {"retained_inputs", "operational_inputs"}
         or binding.get("schema_version") != "operator_ui_repository_binding_v1"
         or binding.get("profile_id") != "repository-v1"
         or binding.get("generator") != {
