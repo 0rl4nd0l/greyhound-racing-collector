@@ -66,3 +66,20 @@ def test_mapping_does_not_invent_required_evidence(tmp_path, missing):
     report = refresh(tmp_path, http, access(tmp_path), 1, lane='full')
     assert report['current_index_race_count'] == 0
     assert report['current_index_metadata_selection']['excluded_race_count'] == 1
+
+
+@pytest.mark.parametrize('slug', ['ladbrokes-q-straight', 'ladbrokes-q1-lakeside', 'ladbrokes-q2-parklands'])
+def test_exact_grade_proof_preserves_distinct_q_venue(slug):
+    from utils.csv_metadata import build_safe_target_metadata_payload
+    browser = object.__new__(UpcomingRaceBrowser)
+    browser.venue_map = {}
+    url = f'https://www.thedogs.com.au/racing/{slug}/2026-09-29/6/invented?trial=false'
+    soup = BeautifulSoup('<div class="race-header"><span class="race-box__number">R6</span><div class="race-header__info__grade">6th Grade 390m</div></div>', 'html.parser')
+    parsed = browser._extract_safe_target_metadata_from_page(soup, url, source_sha256='a'*64)
+    assert parsed.get('target_grade') == 'Grade 6'
+    assert parsed['metadata_is_leakage_safe'] is True
+    assert parsed['target_grade_venue'] == canonical_thedogs_venue_identity(slug)
+    assert browser._canonical_thedogs_race_identity(url)[3] == parsed['target_grade_venue']
+    wrong = 'ladbrokes-q2-parklands' if slug != 'ladbrokes-q2-parklands' else 'ladbrokes-q1-lakeside'
+    tampered = {**parsed, 'target_grade_venue': canonical_thedogs_venue_identity(wrong)}
+    assert build_safe_target_metadata_payload(tampered, source_url=url)['target_grade'] is None
