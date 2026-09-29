@@ -100,3 +100,89 @@ def test_engineering_never_routes_to_study(prepared, changes):
     with pytest.raises(ValueError, match='engineering_requires_separate_operational_predictions'):
         prepare(**prepared, engineering_authority='user:separate')
     assert not prepared['output'].exists()
+
+
+def test_operational_limits_remain_cumulative_and_study_time_stays_gated(tmp_path, monkeypatch):
+    import race_collection.freshness_campaign as module
+    now = setup_campaign(tmp_path)
+    operational = Campaign(tmp_path, engineering_authority='user:separate')
+    with operational.ledger() as ledger:
+        ledger['logical_requests'] = 47999
+    operational.request()
+    with pytest.raises(ValueError, match='cap_exhausted'):
+        Campaign(tmp_path, engineering_authority='user:another-reference').request()
+    for number in range(12):
+        operational.consume(tmp_path/str(number), dict(race_id=str(number), capture_window_minutes=10))
+    assert not operational.available()
+    with pytest.raises(ValueError, match='allowance_consumed'):
+        Campaign(tmp_path, engineering_authority='user:another-reference').consume(
+            tmp_path/'extra', dict(race_id='extra', capture_window_minutes=10))
+    operational.begin('bounded', now=now, deadline=now+timedelta(seconds=10800))
+    operational.close('bounded', now=now+timedelta(seconds=10800))
+    with pytest.raises(ValueError, match='time_exhausted'):
+        operational.begin('extra', now=now, deadline=now+timedelta(seconds=1))
+    study = Campaign(tmp_path)
+    with pytest.raises(ValueError, match='persistent_programme_expired_or_not_started'):
+        study.request()
+    class StudyClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now+timedelta(days=3)
+    monkeypatch.setattr(module, 'datetime', StudyClock)
+    with pytest.raises(ValueError, match='engineering_window_overlaps_programme'):
+        operational.request()
+    study.request()
+    ledger = json.loads((tmp_path/'ledger.json').read_bytes())
+    # The 47,999 unclassified historical requests remain charged; only the one
+    # newly classified operational request is excluded from study accounting.
+    assert study.programme_usage(ledger) == dict(capture_attempts=0, logical_requests=48000, live_seconds=0)
+    assert ledger['persistent_request_usage'] == dict(prediction=1, results=0)
+
+
+def test_finite_provider_allocation_excludes_only_explicit_engineering(tmp_path):
+    from utils.sportsbet_access import SportsbetAccess
+    from scripts.run_comparison_schedule import programme_source_usage
+    import hashlib
+    clock = [datetime.now(timezone.utc).timestamp()]
+    gate = SportsbetAccess(tmp_path/'source.json', clock=lambda: clock[0])
+    gate.initialize(access_basis={'status':'permitted','reference':'synthetic'})
+    def allocate(reference, **extra):
+        gate.authorize_diagnostic(reference=reference,
+            expected_sha256=hashlib.sha256(gate.path.read_bytes()).hexdigest(),
+            expires_at=clock[0]+3600, max_operations=192, rationale='synthetic', **extra)
+    allocate('old-unclassified')
+    with gate.operation('python') as op: op.success = True
+    allocate('user:separate', engineering_authority='user:separate')
+    with gate.operation('python') as op: op.success = True
+    start = datetime.fromtimestamp(clock[0]+7200, timezone.utc)
+    assert programme_source_usage(gate.read(), 0, start) == 1
+    assert len(gate.read()['operations']) == 2
+    # The next lease seals the engineering interval; its operations still count.
+    allocate('study:slot:1')
+    with gate.operation('python') as op: op.success = True
+    value = gate.read()
+    assert programme_source_usage(value, 0, start) == 2
+    assert programme_source_usage(value, 1, start) == 1
+    assert programme_source_usage(value, 2, start) == 1
+    assert programme_source_usage(value, 3, start) == 0
+    # Full final-slot boundary: engineering consumption must not deny slot 80.
+    value['operations'] += [{'at':clock[0], 'kind':'python'}] * (79*192-2)
+    assert len(value['operations']) == 79*192+1
+    assert programme_source_usage(value, 0, start) == 79*192
+    value['diagnostic_authorizations'][1]['expires_at'] = start.timestamp()+1
+    with pytest.raises(ValueError, match='invalid_preprogramme_source_accounting'):
+        programme_source_usage(value, 0, start)
+
+
+def test_separate_provider_authority_cannot_clear_denial(tmp_path):
+    from utils.sportsbet_access import SportsbetAccess
+    import hashlib
+    gate = SportsbetAccess(tmp_path/'source.json')
+    gate.initialize(access_basis={'status':'permitted','reference':'synthetic'})
+    gate.retain_denial(403, reason='synthetic')
+    before = gate.path.read_bytes()
+    with pytest.raises(ValueError, match='invalid_separate_engineering_source_authority'):
+        gate.authorize_diagnostic(reference='user:separate', engineering_authority='user:separate',
+            expected_sha256=hashlib.sha256(before).hexdigest(),
+            expires_at=datetime.now(timezone.utc).timestamp()+3600, max_operations=192, rationale='synthetic')
+    assert gate.path.read_bytes() == before

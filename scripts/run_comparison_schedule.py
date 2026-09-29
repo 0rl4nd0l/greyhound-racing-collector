@@ -49,6 +49,29 @@ def load_config(path):
     return cfg, plan
 
 
+def programme_source_usage(value, baseline_count, programme_start):
+    """Keep every operation charged except explicitly separate pre-study leases."""
+    count = len(value.get('operations', []))
+    used = count - baseline_count
+    allocations = value.get('diagnostic_authorizations', [])
+    for index, allocation in enumerate(allocations):
+        if 'engineering_authority' not in allocation:
+            continue
+        start = allocation['operation_start']
+        end = allocations[index+1]['operation_start'] if index+1 < len(allocations) else count
+        if (type(start) is not int or type(end) is not int or not 0 <= start <= end <= count
+                or not allocation['engineering_authority']
+                or allocation['engineering_authority'] != allocation['reference']
+                or allocation['prior_phase'] != 'OPEN'
+                or not allocation['authorized_at'] < allocation['expires_at'] < programme_start.timestamp()
+                or end-start > allocation['max_operations']
+                or any(not allocation['authorized_at'] <= row['at'] < allocation['expires_at']
+                       for row in value['operations'][start:end])):
+            raise ValueError('invalid_preprogramme_source_accounting')
+        used -= max(0, end-max(start, baseline_count))
+    return used
+
+
 def renew_source(cfg, slot, *, now):
     """Only an approved finite programme may renew an expired OPEN lease."""
     from race_collection.freshness_campaign import Campaign
@@ -71,7 +94,7 @@ def renew_source(cfg, slot, *, now):
                 or digest(value['access_basis']) != baseline['access_basis_sha256']
                 or digest(value.get('operating_policy')) != baseline['operating_policy_sha256']):
             raise ValueError('source_requires_explicit_disposition')
-        used = len(value.get('operations', [])) - baseline['operation_count']
+        used = programme_source_usage(value, baseline['operation_count'], stamp(campaign.programme['starts_at']))
         if not 0 <= used <= cfg['max_source_operations'] - 192:
             raise ValueError('programme_source_budget_exhausted')
         previous = [a for a in value.get('diagnostic_authorizations', [])
