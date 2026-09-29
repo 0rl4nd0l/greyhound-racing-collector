@@ -1,0 +1,3989 @@
+[
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.005540934959739327,
+      "lodo_range": [
+        0.003472288940272935,
+        0.008276167361788293
+      ],
+      "negative_races": 84,
+      "pointwise95": [
+        -0.0029635914556169155,
+        0.013921373115403873
+      ],
+      "positive_races": 93,
+      "simultaneous95": [
+        -0.010185427579650592,
+        0.021267297499129246
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 15,
+    "factor": "overall",
+    "group": "all",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.015287210345709169,
+      "lodo_range": [
+        0.010919515216650449,
+        0.019425072815158876
+      ],
+      "negative_races": 75,
+      "pointwise95": [
+        -0.00026135735828085636,
+        0.03183347818269861
+      ],
+      "positive_races": 102,
+      "simultaneous95": [
+        -0.014746837422584903,
+        0.04532125811400324
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.4519774011299435,
+    "market_brier": 0.6829284496985553,
+    "market_ll": 1.4128936696474488,
+    "model": "refit_base16",
+    "model_accuracy": 0.4406779661016949,
+    "model_brier": 0.6773875147388159,
+    "model_ll": 1.3976064593017394,
+    "races": 177,
+    "sparse": false,
+    "tied_favourites": 6
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.003558636542708157,
+      "lodo_range": [
+        0.0025225233701614857,
+        0.004923668597578832
+      ],
+      "negative_races": 83,
+      "pointwise95": [
+        -0.0007247278007417067,
+        0.007741295723185726
+      ],
+      "positive_races": 94,
+      "simultaneous95": [
+        -0.0042890353982484985,
+        0.011406308483664812
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 15,
+    "factor": "overall",
+    "group": "all",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.009334313538235885,
+      "lodo_range": [
+        0.007140504387418023,
+        0.011404931108143454
+      ],
+      "negative_races": 75,
+      "pointwise95": [
+        0.0015453437914197854,
+        0.017597626177608808
+      ],
+      "positive_races": 102,
+      "simultaneous95": [
+        -0.0057002219362095735,
+        0.024368849012681344
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.4519774011299435,
+    "market_brier": 0.6829284496985553,
+    "market_ll": 1.4128936696474488,
+    "model": "refit_half",
+    "model_accuracy": 0.4576271186440678,
+    "model_brier": 0.6793698131558471,
+    "model_ll": 1.4035593561092128,
+    "races": 177,
+    "sparse": false,
+    "tied_favourites": 6
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.006372351906727954,
+      "lodo_range": [
+        0.004340336569688727,
+        0.008806369108535769
+      ],
+      "negative_races": 77,
+      "pointwise95": [
+        -0.0015717014071443332,
+        0.014262711925674637
+      ],
+      "positive_races": 100,
+      "simultaneous95": [
+        -0.008339366161947342,
+        0.021084069975403248
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 15,
+    "factor": "overall",
+    "group": "all",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.016614109500813674,
+      "lodo_range": [
+        0.012386654490168562,
+        0.020771658365674073
+      ],
+      "negative_races": 73,
+      "pointwise95": [
+        0.0017017101983592107,
+        0.032300391579612314
+      ],
+      "positive_races": 104,
+      "simultaneous95": [
+        -0.012031382222702884,
+        0.04525960122433023
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.4519774011299435,
+    "market_brier": 0.6829284496985553,
+    "market_ll": 1.4128936696474488,
+    "model": "refit_box",
+    "model_accuracy": 0.4406779661016949,
+    "model_brier": 0.6765560977918273,
+    "model_ll": 1.3962795601466351,
+    "races": 177,
+    "sparse": false,
+    "tied_favourites": 6
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.006349702118080115,
+      "lodo_range": [
+        0.0037685406344399146,
+        0.009147462459585672
+      ],
+      "negative_races": 27,
+      "pointwise95": [
+        -0.004908367395082442,
+        0.016287349780871624
+      ],
+      "positive_races": 40,
+      "simultaneous95": [
+        -0.013435174505772543,
+        0.02613457874193277
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 15,
+    "factor": "favourite_probability",
+    "group": ".4-.6",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.024926775708336624,
+      "lodo_range": [
+        0.020114987212832242,
+        0.030015738909667546
+      ],
+      "negative_races": 24,
+      "pointwise95": [
+        0.004923630065805206,
+        0.04425390247818507
+      ],
+      "positive_races": 43,
+      "simultaneous95": [
+        -0.012254318826499216,
+        0.062107870243172464
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.5522388059701493,
+    "market_brier": 0.6168264466475256,
+    "market_ll": 1.2437521112882064,
+    "model": "refit_base16",
+    "model_accuracy": 0.5522388059701493,
+    "model_brier": 0.6104767445294454,
+    "model_ll": 1.21882533557987,
+    "races": 67,
+    "sparse": false,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.00575534048276807,
+      "lodo_range": [
+        0.0032544195544350484,
+        0.009506156215574052
+      ],
+      "negative_races": 52,
+      "pointwise95": [
+        -0.007429222433157367,
+        0.017142403019952575
+      ],
+      "positive_races": 48,
+      "simultaneous95": [
+        -0.017423561758869333,
+        0.028934242724405472
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 15,
+    "factor": "favourite_probability",
+    "group": "<.4",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.011569022160693053,
+      "lodo_range": [
+        0.007643739682244021,
+        0.018192530571797202
+      ],
+      "negative_races": 46,
+      "pointwise95": [
+        -0.010547704314955091,
+        0.03065653775554638
+      ],
+      "positive_races": 54,
+      "simultaneous95": [
+        -0.026812743155034888,
+        0.049950787476420996
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.36,
+    "market_brier": 0.7478986059139189,
+    "market_ll": 1.5736122232450427,
+    "model": "refit_base16",
+    "model_accuracy": 0.34,
+    "model_brier": 0.7421432654311511,
+    "model_ll": 1.5620432010843495,
+    "races": 100,
+    "sparse": false,
+    "tied_favourites": 6
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": -0.0020218602314313826,
+      "lodo_range": [
+        -0.01809332783245394,
+        0.010705783685466402
+      ],
+      "negative_races": 5,
+      "pointwise95": [
+        -0.047143479026997136,
+        0.042574243946312956
+      ],
+      "positive_races": 5,
+      "simultaneous95": [
+        -0.08425595967261124,
+        0.08021223920974846
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 8,
+    "factor": "favourite_probability",
+    "group": ">=.6",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": -0.01211599573373362,
+      "lodo_range": [
+        -0.04103019128749411,
+        0.019846428387471318
+      ],
+      "negative_races": 5,
+      "pointwise95": [
+        -0.10633378141779637,
+        0.07671535803784807
+      ],
+      "positive_races": 5,
+      "simultaneous95": [
+        -0.18218346716221753,
+        0.1579514756947503
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.7,
+    "market_brier": 0.4761103079868182,
+    "market_ll": 0.9389565746784344,
+    "model": "refit_base16",
+    "model_accuracy": 0.7,
+    "model_brier": 0.47813216821824955,
+    "model_ll": 0.9510725704121679,
+    "races": 10,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.001035726535598182,
+      "lodo_range": [
+        -0.0021096399616267678,
+        0.006776386729226487
+      ],
+      "negative_races": 32,
+      "pointwise95": [
+        -0.013876034140589764,
+        0.013821459164157635
+      ],
+      "positive_races": 40,
+      "simultaneous95": [
+        -0.025226341613771144,
+        0.027297794684967507
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 15,
+    "factor": "entropy",
+    "group": "<.8",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.012085852167932287,
+      "lodo_range": [
+        0.00724508698538976,
+        0.021038754222147047
+      ],
+      "negative_races": 28,
+      "pointwise95": [
+        -0.01577865097261044,
+        0.03747207661317772
+      ],
+      "positive_races": 44,
+      "simultaneous95": [
+        -0.037475061625916045,
+        0.06164676596178062
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.5416666666666666,
+    "market_brier": 0.6130304570522915,
+    "market_ll": 1.2593998692550015,
+    "model": "refit_base16",
+    "model_accuracy": 0.5277777777777778,
+    "model_brier": 0.6119947305166933,
+    "model_ll": 1.2473140170870696,
+    "races": 72,
+    "sparse": false,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.008630220736293253,
+      "lodo_range": [
+        0.006583975983465025,
+        0.012009259933804122
+      ],
+      "negative_races": 52,
+      "pointwise95": [
+        -0.0005797379522822098,
+        0.017697410054824243
+      ],
+      "positive_races": 53,
+      "simultaneous95": [
+        -0.008681709014563322,
+        0.025942150487149828
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 15,
+    "factor": "entropy",
+    "group": ">=.8",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.01748242738189903,
+      "lodo_range": [
+        0.013160470740053675,
+        0.023113749761307166
+      ],
+      "negative_races": 47,
+      "pointwise95": [
+        0.0010799349800548453,
+        0.033923122003052995
+      ],
+      "positive_races": 58,
+      "simultaneous95": [
+        -0.013484484861499849,
+        0.04844933962529791
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.3904761904761905,
+    "market_brier": 0.7308585017988505,
+    "market_ll": 1.518146561345127,
+    "model": "refit_base16",
+    "model_accuracy": 0.38095238095238093,
+    "model_brier": 0.7222282810625572,
+    "model_ll": 1.5006641339632278,
+    "races": 105,
+    "sparse": false,
+    "tied_favourites": 6
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.01623455350883335,
+      "lodo_range": [
+        0.015058018247106498,
+        0.017993312177095662
+      ],
+      "negative_races": 16,
+      "pointwise95": [
+        0.009972194636649893,
+        0.022660792655213476
+      ],
+      "positive_races": 28,
+      "simultaneous95": [
+        0.004374267490027537,
+        0.02809483952763916
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 14,
+    "factor": "field_size",
+    "group": "7",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.042689902693704776,
+      "lodo_range": [
+        0.03986421197441968,
+        0.04643235942940319
+      ],
+      "negative_races": 12,
+      "pointwise95": [
+        0.02917632410511839,
+        0.05728180286592673
+      ],
+      "positive_races": 32,
+      "simultaneous95": [
+        0.015797138154272344,
+        0.0695826672331372
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.48863636363636365,
+    "market_brier": 0.6573044851647818,
+    "market_ll": 1.3387948339745446,
+    "model": "refit_base16",
+    "model_accuracy": 0.5227272727272727,
+    "model_brier": 0.6410699316559483,
+    "model_ll": 1.2961049312808397,
+    "races": 44,
+    "sparse": false,
+    "tied_favourites": 1
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.0010173528455127354,
+      "lodo_range": [
+        -0.0015123977047606144,
+        0.0035058542963552685
+      ],
+      "negative_races": 44,
+      "pointwise95": [
+        -0.009325801391787165,
+        0.012002873943754626
+      ],
+      "positive_races": 36,
+      "simultaneous95": [
+        -0.019209160790805695,
+        0.021243866481831165
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 15,
+    "factor": "field_size",
+    "group": "8",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.0003541278142768681,
+      "lodo_range": [
+        -0.004249678602662175,
+        0.005569656144772192
+      ],
+      "negative_races": 40,
+      "pointwise95": [
+        -0.019608387364169283,
+        0.021356718682442894
+      ],
+      "positive_races": 40,
+      "simultaneous95": [
+        -0.03809321212458099,
+        0.038801467753134734
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.4125,
+    "market_brier": 0.7234845219756213,
+    "market_ll": 1.5783658023227407,
+    "model": "refit_base16",
+    "model_accuracy": 0.4,
+    "model_brier": 0.7224671691301086,
+    "model_ll": 1.5780116745084638,
+    "races": 80,
+    "sparse": false,
+    "tied_favourites": 2
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.0034912623744183897,
+      "lodo_range": [
+        0.0003227867940512987,
+        0.008631969814429678
+      ],
+      "negative_races": 24,
+      "pointwise95": [
+        -0.013008684943326257,
+        0.017335275942935196
+      ],
+      "positive_races": 29,
+      "simultaneous95": [
+        -0.024549010044635545,
+        0.03153153479347232
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 13,
+    "factor": "field_size",
+    "group": "<=6",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.015078307311799304,
+      "lodo_range": [
+        0.010031595469150532,
+        0.023061890340259385
+      ],
+      "negative_races": 23,
+      "pointwise95": [
+        -0.015582904352420145,
+        0.04245823879406563
+      ],
+      "positive_races": 30,
+      "simultaneous95": [
+        -0.036884266534953414,
+        0.06704088115855202
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.4811320754716981,
+    "market_brier": 0.6429844621008337,
+    "market_ll": 1.2246404272999851,
+    "model": "refit_base16",
+    "model_accuracy": 0.4339622641509434,
+    "model_brier": 0.6394931997264154,
+    "model_ll": 1.2095621199881859,
+    "races": 53,
+    "sparse": false,
+    "tied_favourites": 3
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.002837219047501812,
+      "lodo_range": [
+        0.001486623793700755,
+        0.00562552079685382
+      ],
+      "negative_races": 22,
+      "pointwise95": [
+        -0.003996559012702098,
+        0.010891024712864718
+      ],
+      "positive_races": 15,
+      "simultaneous95": [
+        -0.010858071122400309,
+        0.016532509217403932
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 11,
+    "factor": "minimum_history",
+    "group": "<5",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.009441005869646642,
+      "lodo_range": [
+        0.006527408630315223,
+        0.014505118083224279
+      ],
+      "negative_races": 19,
+      "pointwise95": [
+        -0.0031241131037175614,
+        0.0235862766685784
+      ],
+      "positive_races": 18,
+      "simultaneous95": [
+        -0.015414501042849926,
+        0.03429651278214321
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.5135135135135135,
+    "market_brier": 0.6657596977029865,
+    "market_ll": 1.4248900954383472,
+    "model": "refit_base16",
+    "model_accuracy": 0.4864864864864865,
+    "model_brier": 0.6629224786554847,
+    "model_ll": 1.4154490895687004,
+    "races": 37,
+    "sparse": false,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.00625548845083067,
+      "lodo_range": [
+        0.0036544407699824807,
+        0.009942674778041793
+      ],
+      "negative_races": 62,
+      "pointwise95": [
+        -0.0044262955512275135,
+        0.016616408715872766
+      ],
+      "positive_races": 78,
+      "simultaneous95": [
+        -0.013524293838252687,
+        0.026035270739914025
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 15,
+    "factor": "minimum_history",
+    "group": ">=5",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.016832278671525692,
+      "lodo_range": [
+        0.011343583789046888,
+        0.022996733666346345
+      ],
+      "negative_races": 56,
+      "pointwise95": [
+        -0.003925415003501825,
+        0.03831619338971951
+      ],
+      "positive_races": 84,
+      "simultaneous95": [
+        -0.022019390906383465,
+        0.055683948249434845
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.4357142857142857,
+    "market_brier": 0.6874659055830985,
+    "market_ll": 1.4097231856884256,
+    "model": "refit_base16",
+    "model_accuracy": 0.42857142857142855,
+    "model_brier": 0.6812104171322677,
+    "model_ll": 1.3928909070168998,
+    "races": 140,
+    "sparse": false,
+    "tied_favourites": 6
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.005391372818518681,
+      "lodo_range": [
+        0.002213270792134911,
+        0.00878990323742321
+      ],
+      "negative_races": 44,
+      "pointwise95": [
+        -0.005518900501267814,
+        0.01646922976665331
+      ],
+      "positive_races": 48,
+      "simultaneous95": [
+        -0.015059651227937947,
+        0.02584239686497531
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 15,
+    "factor": "maximum_recency",
+    "group": "<=21",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.02168020388928694,
+      "lodo_range": [
+        0.014948754197349727,
+        0.028354016824672857
+      ],
+      "negative_races": 35,
+      "pointwise95": [
+        -0.0016902795348581157,
+        0.04497219714851155
+      ],
+      "positive_races": 57,
+      "simultaneous95": [
+        -0.02191615134382319,
+        0.06527655912239708
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.41304347826086957,
+    "market_brier": 0.7074324942276181,
+    "market_ll": 1.47063692369387,
+    "model": "refit_base16",
+    "model_accuracy": 0.40217391304347827,
+    "model_brier": 0.7020411214090995,
+    "model_ll": 1.448956719804583,
+    "races": 92,
+    "sparse": false,
+    "tied_favourites": 2
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.005702813983178142,
+      "lodo_range": [
+        0.0035090710051120374,
+        0.008044414891342815
+      ],
+      "negative_races": 40,
+      "pointwise95": [
+        -0.003924424811877565,
+        0.01491523578026929
+      ],
+      "positive_races": 45,
+      "simultaneous95": [
+        -0.011984628016649198,
+        0.02339025598300548
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 15,
+    "factor": "maximum_recency",
+    "group": ">21",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.008367734980895583,
+      "lodo_range": [
+        0.002712211666399583,
+        0.01611162374239203
+      ],
+      "negative_races": 40,
+      "pointwise95": [
+        -0.014992576279569025,
+        0.030248353652799827
+      ],
+      "positive_races": 45,
+      "simultaneous95": [
+        -0.03359475144249704,
+        0.0503302214042882
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.49411764705882355,
+    "market_brier": 0.6564064250318049,
+    "market_ll": 1.3503950887972047,
+    "model": "refit_base16",
+    "model_accuracy": 0.4823529411764706,
+    "model_brier": 0.6507036110486267,
+    "model_ll": 1.3420273538163092,
+    "races": 85,
+    "sparse": false,
+    "tied_favourites": 4
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.026120643336169844,
+      "lodo_range": [
+        0.021995737754866258,
+        0.03093539288332584
+      ],
+      "negative_races": 5,
+      "pointwise95": [
+        0.007890924844248595,
+        0.04054482755358009
+      ],
+      "positive_races": 13,
+      "simultaneous95": [
+        -0.004235683153161789,
+        0.056476969825501475
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 11,
+    "factor": "missing_base_input",
+    "group": "False",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.06361551087460353,
+      "lodo_range": [
+        0.056762964257961554,
+        0.07042063901941224
+      ],
+      "negative_races": 4,
+      "pointwise95": [
+        0.03625845664039964,
+        0.08842185357558668
+      ],
+      "positive_races": 14,
+      "simultaneous95": [
+        0.015439956301037068,
+        0.11179106544817
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.4722222222222222,
+    "market_brier": 0.5959178602618215,
+    "market_ll": 1.2440456833158633,
+    "model": "refit_base16",
+    "model_accuracy": 0.5,
+    "model_brier": 0.5697972169256517,
+    "model_ll": 1.1804301724412598,
+    "races": 18,
+    "sparse": true,
+    "tied_favourites": 1
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.003211156652973608,
+      "lodo_range": [
+        0.0013588753171314143,
+        0.006105893256795941
+      ],
+      "negative_races": 79,
+      "pointwise95": [
+        -0.005018993194624429,
+        0.011493553849118722
+      ],
+      "positive_races": 80,
+      "simultaneous95": [
+        -0.01243046061800106,
+        0.01885277392394828
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 15,
+    "factor": "missing_base_input",
+    "group": "True",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.009816081983947546,
+      "lodo_range": [
+        0.005574018888223337,
+        0.01405056007819939
+      ],
+      "negative_races": 71,
+      "pointwise95": [
+        -0.005347619438616415,
+        0.026007802909122323
+      ],
+      "positive_races": 88,
+      "simultaneous95": [
+        -0.0196255219328501,
+        0.03925768590074519
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.449685534591195,
+    "market_brier": 0.6927787051064874,
+    "market_ll": 1.4320085360246093,
+    "model": "refit_base16",
+    "model_accuracy": 0.4339622641509434,
+    "model_brier": 0.6895675484535139,
+    "model_ll": 1.4221924540406619,
+    "races": 159,
+    "sparse": false,
+    "tied_favourites": 5
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": -0.0019092164826308912,
+      "lodo_range": [
+        -0.003531180880202571,
+        5.977451960583863e-05
+      ],
+      "negative_races": 16,
+      "pointwise95": [
+        -0.007600377596854015,
+        0.004523261368275246
+      ],
+      "positive_races": 6,
+      "simultaneous95": [
+        -0.013350347549425722,
+        0.009531914584163938
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 11,
+    "factor": "disagreement_TV",
+    "group": "<.02",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": -0.004083433022959038,
+      "lodo_range": [
+        -0.006602581578207228,
+        -0.0013227856797004523
+      ],
+      "negative_races": 13,
+      "pointwise95": [
+        -0.012122327465333215,
+        0.007456991713776956
+      ],
+      "positive_races": 9,
+      "simultaneous95": [
+        -0.02248198913892315,
+        0.014315123093005075
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.5,
+    "market_brier": 0.637949055003782,
+    "market_ll": 1.2737964163293687,
+    "model": "refit_base16",
+    "model_accuracy": 0.5,
+    "model_brier": 0.6398582714864129,
+    "model_ll": 1.2778798493523278,
+    "races": 22,
+    "sparse": false,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.006598375809624131,
+      "lodo_range": [
+        0.004388736819572458,
+        0.009593996819456893
+      ],
+      "negative_races": 68,
+      "pointwise95": [
+        -0.0028573745993839884,
+        0.016258061668642205
+      ],
+      "positive_races": 87,
+      "simultaneous95": [
+        -0.011138380476271525,
+        0.02433513209551979
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 15,
+    "factor": "disagreement_TV",
+    "group": ">=.02",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.018036591985133042,
+      "lodo_range": [
+        0.013319802448822731,
+        0.022756695112469888
+      ],
+      "negative_races": 62,
+      "pointwise95": [
+        0.0005114450408345858,
+        0.036991856086832836
+      ],
+      "positive_races": 93,
+      "simultaneous95": [
+        -0.016038716167917577,
+        0.05211190013818366
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.44516129032258067,
+    "market_brier": 0.6893126218487812,
+    "market_ll": 1.432636505602273,
+    "model": "refit_base16",
+    "model_accuracy": 0.432258064516129,
+    "model_brier": 0.6827142460391571,
+    "model_ll": 1.4145999136171399,
+    "races": 155,
+    "sparse": false,
+    "tied_favourites": 6
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.00934289360210015,
+      "lodo_range": [
+        0.00692578086199113,
+        0.013961383442558324
+      ],
+      "negative_races": 31,
+      "pointwise95": [
+        -0.0053805023113333,
+        0.02314086900169748
+      ],
+      "positive_races": 35,
+      "simultaneous95": [
+        -0.017440398654775396,
+        0.0361261858589757
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 15,
+    "factor": "favourite_box",
+    "group": "1-2",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.012706727153802392,
+      "lodo_range": [
+        0.006666266692027974,
+        0.023267960049497688
+      ],
+      "negative_races": 31,
+      "pointwise95": [
+        -0.0187302125810894,
+        0.04184197318961041
+      ],
+      "positive_races": 35,
+      "simultaneous95": [
+        -0.04286066876722455,
+        0.06827412307482933
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.5606060606060606,
+    "market_brier": 0.6359688005029752,
+    "market_ll": 1.31078533593619,
+    "model": "refit_base16",
+    "model_accuracy": 0.5606060606060606,
+    "model_brier": 0.6266259069008749,
+    "model_ll": 1.2980786087823875,
+    "races": 66,
+    "sparse": false,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.0019933786269718365,
+      "lodo_range": [
+        -0.0009256412806801773,
+        0.004748506288927856
+      ],
+      "negative_races": 27,
+      "pointwise95": [
+        -0.010114736632937993,
+        0.01464807791278491
+      ],
+      "positive_races": 29,
+      "simultaneous95": [
+        -0.020781780046569973,
+        0.024768537300513645
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 14,
+    "factor": "favourite_box",
+    "group": "3-6",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.014913804552898887,
+      "lodo_range": [
+        0.010248516892586814,
+        0.021251638231801154
+      ],
+      "negative_races": 24,
+      "pointwise95": [
+        -0.01104661035068789,
+        0.038200385833755866
+      ],
+      "positive_races": 32,
+      "simultaneous95": [
+        -0.030518517955702387,
+        0.060346127061500165
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.375,
+    "market_brier": 0.7516852550444462,
+    "market_ll": 1.5881793864267943,
+    "model": "refit_base16",
+    "model_accuracy": 0.3392857142857143,
+    "model_brier": 0.7496918764174743,
+    "model_ll": 1.5732655818738956,
+    "races": 56,
+    "sparse": false,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.003746157384187791,
+      "lodo_range": [
+        0.0010559142253874386,
+        0.008752142003791697
+      ],
+      "negative_races": 23,
+      "pointwise95": [
+        -0.00993800818693726,
+        0.01613358221030054
+      ],
+      "positive_races": 26,
+      "simultaneous95": [
+        -0.021399552089542244,
+        0.02889186685791783
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 15,
+    "factor": "favourite_box",
+    "group": "7-8",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.017393680707544452,
+      "lodo_range": [
+        0.012318293991961096,
+        0.025285615039673463
+      ],
+      "negative_races": 17,
+      "pointwise95": [
+        -0.007016788864815997,
+        0.044064077591626394
+      ],
+      "positive_races": 32,
+      "simultaneous95": [
+        -0.02999931965330496,
+        0.06478668106839386
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.3877551020408163,
+    "market_brier": 0.6732165806103807,
+    "market_ll": 1.3733652438045327,
+    "model": "refit_base16",
+    "model_accuracy": 0.3877551020408163,
+    "model_brier": 0.6694704232261928,
+    "model_ll": 1.3559715630969884,
+    "races": 49,
+    "sparse": false,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2996,
+      "improvement": 0.011487265866604377,
+      "lodo_range": [
+        -0.004717479389822999,
+        0.030857320504407426
+      ],
+      "negative_races": 3,
+      "pointwise95": [
+        -0.07973187347733113,
+        0.06831281329749446
+      ],
+      "positive_races": 3,
+      "simultaneous95": [
+        -0.11114330318618454,
+        0.1341178349193933
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 5,
+    "factor": "favourite_box",
+    "group": "tied",
+    "ll": {
+      "bootstrap_nonempty": 2996,
+      "improvement": 0.02995480490125822,
+      "lodo_range": [
+        -0.0022040994591736806,
+        0.06912424218712505
+      ],
+      "negative_races": 3,
+      "pointwise95": [
+        -0.12290754332610931,
+        0.14188565694335487
+      ],
+      "positive_races": 3,
+      "simultaneous95": [
+        -0.19163726301560297,
+        0.2515468728181194
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.5,
+    "market_brier": 0.6370680051750491,
+    "market_ll": 1.2229007949145483,
+    "model": "refit_base16",
+    "model_accuracy": 0.5,
+    "model_brier": 0.6255807393084446,
+    "model_ll": 1.1929459900132902,
+    "races": 6,
+    "sparse": true,
+    "tied_favourites": 6
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 1945,
+      "improvement": -0.008136901379483752,
+      "lodo_range": null,
+      "negative_races": 4,
+      "pointwise95": null,
+      "positive_races": 4,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "dates": 1,
+    "factor": "venue",
+    "group": "AP K",
+    "ll": {
+      "bootstrap_nonempty": 1945,
+      "improvement": -0.003043972364156433,
+      "lodo_range": null,
+      "negative_races": 5,
+      "pointwise95": null,
+      "positive_races": 3,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "market_accuracy": 0.375,
+    "market_brier": 0.766065851265274,
+    "market_ll": 1.4911129926231583,
+    "model": "refit_base16",
+    "model_accuracy": 0.375,
+    "model_brier": 0.7742027526447577,
+    "model_ll": 1.4941569649873148,
+    "races": 8,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 1965,
+      "improvement": -0.028662293611136053,
+      "lodo_range": null,
+      "negative_races": 2,
+      "pointwise95": null,
+      "positive_races": 1,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "dates": 1,
+    "factor": "venue",
+    "group": "BAL",
+    "ll": {
+      "bootstrap_nonempty": 1965,
+      "improvement": -0.04270182011031872,
+      "lodo_range": null,
+      "negative_races": 2,
+      "pointwise95": null,
+      "positive_races": 1,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "market_accuracy": 0.6666666666666666,
+    "market_brier": 0.5737478509730347,
+    "market_ll": 1.1714815165957917,
+    "model": "refit_base16",
+    "model_accuracy": 0.6666666666666666,
+    "model_brier": 0.6024101445841707,
+    "model_ll": 1.2141833367061103,
+    "races": 3,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2647,
+      "improvement": -0.004847571631823644,
+      "lodo_range": [
+        -0.03682116411835423,
+        0.005810292530353219
+      ],
+      "negative_races": 2,
+      "pointwise95": [
+        -0.03682116411835423,
+        0.005810292530353219
+      ],
+      "positive_races": 2,
+      "simultaneous95": [
+        -0.06710868516828664,
+        0.05741354190463934
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 2,
+    "factor": "venue",
+    "group": "BEN",
+    "ll": {
+      "bootstrap_nonempty": 2647,
+      "improvement": 0.0015456549534976771,
+      "lodo_range": [
+        -0.07120841581103865,
+        0.025797011875009785
+      ],
+      "negative_races": 2,
+      "pointwise95": [
+        -0.07120841581103865,
+        0.025797011875009785
+      ],
+      "positive_races": 2,
+      "simultaneous95": [
+        -0.14012592799480228,
+        0.14321723790179763
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.25,
+    "market_brier": 0.9459086442758156,
+    "market_ll": 2.172457757140329,
+    "model": "refit_base16",
+    "model_accuracy": 0.0,
+    "model_brier": 0.9507562159076391,
+    "model_ll": 2.170912102186832,
+    "races": 4,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 1868,
+      "improvement": -0.0035829689252761645,
+      "lodo_range": null,
+      "negative_races": 4,
+      "pointwise95": null,
+      "positive_races": 1,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "dates": 1,
+    "factor": "venue",
+    "group": "BH",
+    "ll": {
+      "bootstrap_nonempty": 1868,
+      "improvement": -0.005478139629610057,
+      "lodo_range": null,
+      "negative_races": 3,
+      "pointwise95": null,
+      "positive_races": 2,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "market_accuracy": 0.0,
+    "market_brier": 0.8573038316289401,
+    "market_ll": 1.6518662039365182,
+    "model": "refit_base16",
+    "model_accuracy": 0.2,
+    "model_brier": 0.8608868005542163,
+    "model_ll": 1.6573443435661281,
+    "races": 5,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 1945,
+      "improvement": -0.0029537755119808384,
+      "lodo_range": null,
+      "negative_races": 1,
+      "pointwise95": null,
+      "positive_races": 0,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "dates": 1,
+    "factor": "venue",
+    "group": "BULLI",
+    "ll": {
+      "bootstrap_nonempty": 1945,
+      "improvement": -0.0020682389771491394,
+      "lodo_range": null,
+      "negative_races": 1,
+      "pointwise95": null,
+      "positive_races": 0,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "market_accuracy": 0.0,
+    "market_brier": 0.9256128495297383,
+    "market_ll": 2.080205410941712,
+    "model": "refit_base16",
+    "model_accuracy": 0.0,
+    "model_brier": 0.9285666250417192,
+    "model_ll": 2.082273649918861,
+    "races": 1,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2991,
+      "improvement": 0.01650194258256482,
+      "lodo_range": [
+        0.012585658249277487,
+        0.024096685640288624
+      ],
+      "negative_races": 8,
+      "pointwise95": [
+        0.0001703454560812935,
+        0.03553147268665961
+      ],
+      "positive_races": 14,
+      "simultaneous95": [
+        -0.015770215357692532,
+        0.048774100522822175
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 5,
+    "factor": "venue",
+    "group": "CAPA",
+    "ll": {
+      "bootstrap_nonempty": 2991,
+      "improvement": 0.05337450251715902,
+      "lodo_range": [
+        0.04318911327544007,
+        0.0702518234411382
+      ],
+      "negative_races": 7,
+      "pointwise95": [
+        0.0177215361607381,
+        0.10160968734139565
+      ],
+      "positive_races": 15,
+      "simultaneous95": [
+        -0.019812919822804358,
+        0.1265619248571224
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.5227272727272727,
+    "market_brier": 0.6277536922667543,
+    "market_ll": 1.2738502559082798,
+    "model": "refit_base16",
+    "model_accuracy": 0.5454545454545454,
+    "model_brier": 0.6112517496841894,
+    "model_ll": 1.2204757533911204,
+    "races": 22,
+    "sparse": false,
+    "tied_favourites": 1
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2671,
+      "improvement": 0.01987106762316989,
+      "lodo_range": [
+        0.0034252034904917183,
+        0.025353022334062614
+      ],
+      "negative_races": 1,
+      "pointwise95": [
+        0.0034252034904917183,
+        0.025353022334062614
+      ],
+      "positive_races": 3,
+      "simultaneous95": [
+        -0.011988205558065963,
+        0.05173034080440574
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 2,
+    "factor": "venue",
+    "group": "CASO",
+    "ll": {
+      "bootstrap_nonempty": 2671,
+      "improvement": 0.033155040512946016,
+      "lodo_range": [
+        0.0059089108746124275,
+        0.04223708372572388
+      ],
+      "negative_races": 1,
+      "pointwise95": [
+        0.0059089108746124275,
+        0.04223708372572388
+      ],
+      "positive_races": 3,
+      "simultaneous95": [
+        -0.019626733693386175,
+        0.0859368147192782
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.75,
+    "market_brier": 0.5281155375831057,
+    "market_ll": 1.1139630486065406,
+    "model": "refit_base16",
+    "model_accuracy": 0.75,
+    "model_brier": 0.5082444699599358,
+    "model_ll": 1.0808080080935945,
+    "races": 4,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2895,
+      "improvement": -0.024048504475488508,
+      "lodo_range": [
+        -0.033929337445979,
+        -0.01010280302768384
+      ],
+      "negative_races": 7,
+      "pointwise95": [
+        -0.05193990737109785,
+        -0.004286838534507527
+      ],
+      "positive_races": 2,
+      "simultaneous95": [
+        -0.0717886393410936,
+        0.023691630390116583
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 3,
+    "factor": "venue",
+    "group": "DUBBO",
+    "ll": {
+      "bootstrap_nonempty": 2895,
+      "improvement": -0.024749778130306425,
+      "lodo_range": [
+        -0.03584673809331846,
+        -0.005794485337821731
+      ],
+      "negative_races": 6,
+      "pointwise95": [
+        -0.06266036371527582,
+        -0.002555858204282354
+      ],
+      "positive_races": 3,
+      "simultaneous95": [
+        -0.08820404443705018,
+        0.038704488176437325
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.3333333333333333,
+    "market_brier": 0.7789480620866455,
+    "market_ll": 1.6763496184752786,
+    "model": "refit_base16",
+    "model_accuracy": 0.3333333333333333,
+    "model_brier": 0.8029965665621339,
+    "model_ll": 1.701099396605585,
+    "races": 9,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 1960,
+      "improvement": 0.016775130369496558,
+      "lodo_range": null,
+      "negative_races": 2,
+      "pointwise95": null,
+      "positive_races": 2,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "dates": 1,
+    "factor": "venue",
+    "group": "GAWL",
+    "ll": {
+      "bootstrap_nonempty": 1960,
+      "improvement": 0.03223167490175183,
+      "lodo_range": null,
+      "negative_races": 1,
+      "pointwise95": null,
+      "positive_races": 3,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "market_accuracy": 0.25,
+    "market_brier": 0.7182998341373487,
+    "market_ll": 1.3772761990782958,
+    "model": "refit_base16",
+    "model_accuracy": 0.25,
+    "model_brier": 0.701524703767852,
+    "model_ll": 1.345044524176544,
+    "races": 4,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2902,
+      "improvement": -0.048300236071287056,
+      "lodo_range": [
+        -0.08472576513113488,
+        -0.028838998627912213
+      ],
+      "negative_races": 5,
+      "pointwise95": [
+        -0.08722271095803674,
+        -0.011874707011439242
+      ],
+      "positive_races": 1,
+      "simultaneous95": [
+        -0.13904260375305444,
+        0.04244213161048031
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 3,
+    "factor": "venue",
+    "group": "GEE",
+    "ll": {
+      "bootstrap_nonempty": 2902,
+      "improvement": -0.07764902622091092,
+      "lodo_range": [
+        -0.14421994957800632,
+        -0.04978167252988064
+      ],
+      "negative_races": 5,
+      "pointwise95": [
+        -0.16589238152807595,
+        -0.011078102863815534
+      ],
+      "positive_races": 1,
+      "simultaneous95": [
+        -0.2492503270568559,
+        0.09395227461503404
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.4166666666666667,
+    "market_brier": 0.6733199943455664,
+    "market_ll": 1.3317727633258212,
+    "model": "refit_base16",
+    "model_accuracy": 0.3333333333333333,
+    "model_brier": 0.7216202304168536,
+    "model_ll": 1.4094217895467323,
+    "races": 6,
+    "sparse": true,
+    "tied_favourites": 1
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 1952,
+      "improvement": 0.026778249880876334,
+      "lodo_range": null,
+      "negative_races": 1,
+      "pointwise95": null,
+      "positive_races": 3,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "dates": 1,
+    "factor": "venue",
+    "group": "GOUL",
+    "ll": {
+      "bootstrap_nonempty": 1952,
+      "improvement": 0.10079118490087532,
+      "lodo_range": null,
+      "negative_races": 0,
+      "pointwise95": null,
+      "positive_races": 4,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "market_accuracy": 0.25,
+    "market_brier": 0.661722697335028,
+    "market_ll": 1.292549839727412,
+    "model": "refit_base16",
+    "model_accuracy": 0.25,
+    "model_brier": 0.6349444474541516,
+    "model_ll": 1.1917586548265366,
+    "races": 4,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 1889,
+      "improvement": -0.022087250715919993,
+      "lodo_range": null,
+      "negative_races": 2,
+      "pointwise95": null,
+      "positive_races": 1,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "dates": 1,
+    "factor": "venue",
+    "group": "GRDN",
+    "ll": {
+      "bootstrap_nonempty": 1889,
+      "improvement": -0.07731061144574906,
+      "lodo_range": null,
+      "negative_races": 2,
+      "pointwise95": null,
+      "positive_races": 1,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "market_accuracy": 0.6666666666666666,
+    "market_brier": 0.6576682472664622,
+    "market_ll": 1.3487343425898068,
+    "model": "refit_base16",
+    "model_accuracy": 0.6666666666666666,
+    "model_brier": 0.6797554979823822,
+    "model_ll": 1.4260449540355558,
+    "races": 3,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2883,
+      "improvement": 0.03414228276648672,
+      "lodo_range": [
+        0.02104351557289691,
+        0.04166235459200418
+      ],
+      "negative_races": 2,
+      "pointwise95": [
+        -0.00879133772490992,
+        0.06688920075046123
+      ],
+      "positive_races": 5,
+      "simultaneous95": [
+        -0.03337199476593222,
+        0.10165656029890566
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 3,
+    "factor": "venue",
+    "group": "HEA",
+    "ll": {
+      "bootstrap_nonempty": 2883,
+      "improvement": 0.054716510959367866,
+      "lodo_range": [
+        0.03131370439273011,
+        0.06999577575719339
+      ],
+      "negative_races": 2,
+      "pointwise95": [
+        -0.03695907782758523,
+        0.11322352737596225
+      ],
+      "positive_races": 5,
+      "simultaneous95": [
+        -0.07847218382080118,
+        0.1879052057395369
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.42857142857142855,
+    "market_brier": 0.671744245878399,
+    "market_ll": 1.3715049812518434,
+    "model": "refit_base16",
+    "model_accuracy": 0.5714285714285714,
+    "model_brier": 0.6376019631119122,
+    "model_ll": 1.3167884702924755,
+    "races": 7,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2638,
+      "improvement": -0.0008254088152154088,
+      "lodo_range": [
+        -0.005773488764658982,
+        0.004122671134228165
+      ],
+      "negative_races": 4,
+      "pointwise95": [
+        -0.005773488764658982,
+        0.004122671134228165
+      ],
+      "positive_races": 4,
+      "simultaneous95": [
+        -0.014380967604198375,
+        0.012730149973767558
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 2,
+    "factor": "venue",
+    "group": "HOBT",
+    "ll": {
+      "bootstrap_nonempty": 2638,
+      "improvement": -0.02513592522421758,
+      "lodo_range": [
+        -0.028782230069834963,
+        -0.021489620378600194
+      ],
+      "negative_races": 4,
+      "pointwise95": [
+        -0.028782230069834963,
+        -0.021489620378600194
+      ],
+      "positive_races": 4,
+      "simultaneous95": [
+        -0.03512519382988718,
+        -0.015146656618547978
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.625,
+    "market_brier": 0.6526899173082183,
+    "market_ll": 1.4441450863518552,
+    "model": "refit_base16",
+    "model_accuracy": 0.5,
+    "model_brier": 0.6535153261234337,
+    "model_ll": 1.469281011576073,
+    "races": 8,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2637,
+      "improvement": -0.02728810794326843,
+      "lodo_range": [
+        -0.07236976761751952,
+        0.017793551730982664
+      ],
+      "negative_races": 3,
+      "pointwise95": [
+        -0.07236976761751952,
+        0.017793551730982664
+      ],
+      "positive_races": 3,
+      "simultaneous95": [
+        -0.15333075529089726,
+        0.0987545394043604
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 2,
+    "factor": "venue",
+    "group": "HOR",
+    "ll": {
+      "bootstrap_nonempty": 2637,
+      "improvement": -0.03243500068728274,
+      "lodo_range": [
+        -0.10937418605918107,
+        0.04450418468461559
+      ],
+      "negative_races": 2,
+      "pointwise95": [
+        -0.10937418605918107,
+        0.04450418468461559
+      ],
+      "positive_races": 4,
+      "simultaneous95": [
+        -0.24754728091646275,
+        0.18267727954189725
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.4166666666666667,
+    "market_brier": 0.6271025160470984,
+    "market_ll": 1.2718645970851572,
+    "model": "refit_base16",
+    "model_accuracy": 0.3333333333333333,
+    "model_brier": 0.6543906239903668,
+    "model_ll": 1.30429959777244,
+    "races": 6,
+    "sparse": true,
+    "tied_favourites": 1
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2642,
+      "improvement": -0.02206176104447133,
+      "lodo_range": [
+        -0.06780456593508644,
+        0.02368104384614378
+      ],
+      "negative_races": 1,
+      "pointwise95": [
+        -0.06780456593508644,
+        0.02368104384614378
+      ],
+      "positive_races": 1,
+      "simultaneous95": [
+        -0.14800229229073056,
+        0.1038787702017879
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 2,
+    "factor": "venue",
+    "group": "MEA",
+    "ll": {
+      "bootstrap_nonempty": 2642,
+      "improvement": -0.00367679923552533,
+      "lodo_range": [
+        -0.1216841049566284,
+        0.11433050648557774
+      ],
+      "negative_races": 1,
+      "pointwise95": [
+        -0.1216841049566284,
+        0.11433050648557774
+      ],
+      "positive_races": 1,
+      "simultaneous95": [
+        -0.32857823037851613,
+        0.3212246319074655
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.5,
+    "market_brier": 0.7842382811145708,
+    "market_ll": 1.784154282867672,
+    "model": "refit_base16",
+    "model_accuracy": 0.5,
+    "model_brier": 0.8063000421590422,
+    "model_ll": 1.7878310821031973,
+    "races": 2,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2607,
+      "improvement": 0.028594760891866727,
+      "lodo_range": [
+        0.011247316041353872,
+        0.04160534452975137
+      ],
+      "negative_races": 2,
+      "pointwise95": [
+        0.011247316041353872,
+        0.04160534452975137
+      ],
+      "positive_races": 5,
+      "simultaneous95": [
+        -0.013985096405666805,
+        0.07117461818940025
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 2,
+    "factor": "venue",
+    "group": "MT_G",
+    "ll": {
+      "bootstrap_nonempty": 2607,
+      "improvement": 0.06592690675235424,
+      "lodo_range": [
+        0.03081944538258119,
+        0.09225750277968403
+      ],
+      "negative_races": 2,
+      "pointwise95": [
+        0.03081944538258119,
+        0.09225750277968403
+      ],
+      "positive_races": 5,
+      "simultaneous95": [
+        -0.02024547817725765,
+        0.15209929168196612
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.2857142857142857,
+    "market_brier": 0.7945538455876885,
+    "market_ll": 1.5856396687086394,
+    "model": "refit_base16",
+    "model_accuracy": 0.14285714285714285,
+    "model_brier": 0.7659590846958217,
+    "model_ll": 1.519712761956285,
+    "races": 7,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2975,
+      "improvement": 0.008352143963546079,
+      "lodo_range": [
+        -0.005876838838412761,
+        0.01366884071101596
+      ],
+      "negative_races": 4,
+      "pointwise95": [
+        -0.012914643026333439,
+        0.02969561816648434
+      ],
+      "positive_races": 6,
+      "simultaneous95": [
+        -0.03316225185909359,
+        0.04986653978618576
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 4,
+    "factor": "venue",
+    "group": "MURR",
+    "ll": {
+      "bootstrap_nonempty": 2975,
+      "improvement": -0.0017022625220031006,
+      "lodo_range": [
+        -0.0338249716812517,
+        0.015889116592156312
+      ],
+      "negative_races": 4,
+      "pointwise95": [
+        -0.04274881378837506,
+        0.0464818012168698
+      ],
+      "positive_races": 6,
+      "simultaneous95": [
+        -0.09199755989887942,
+        0.08859303485487321
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.45,
+    "market_brier": 0.6676085430888719,
+    "market_ll": 1.2811887723893176,
+    "model": "refit_base16",
+    "model_accuracy": 0.4,
+    "model_brier": 0.6592563991253256,
+    "model_ll": 1.2828910349113207,
+    "races": 10,
+    "sparse": true,
+    "tied_favourites": 1
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 1956,
+      "improvement": -0.001156618725900796,
+      "lodo_range": null,
+      "negative_races": 1,
+      "pointwise95": null,
+      "positive_races": 3,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "dates": 1,
+    "factor": "venue",
+    "group": "NOR",
+    "ll": {
+      "bootstrap_nonempty": 1956,
+      "improvement": 0.009526143578730883,
+      "lodo_range": null,
+      "negative_races": 1,
+      "pointwise95": null,
+      "positive_races": 3,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "market_accuracy": 0.25,
+    "market_brier": 0.6676270995828288,
+    "market_ll": 1.373562198848533,
+    "model": "refit_base16",
+    "model_accuracy": 0.25,
+    "model_brier": 0.6687837183087296,
+    "model_ll": 1.3640360552698019,
+    "races": 4,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.012869879837454015,
+      "lodo_range": [
+        0.008712982533926938,
+        0.015744706542849207
+      ],
+      "negative_races": 5,
+      "pointwise95": [
+        -0.0027642765323062646,
+        0.02073124452641618
+      ],
+      "positive_races": 7,
+      "simultaneous95": [
+        -0.009150997814144345,
+        0.034890757489052376
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 7,
+    "factor": "venue",
+    "group": "QOT",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.0361779117984303,
+      "lodo_range": [
+        0.02270163199704385,
+        0.04187806730431156
+      ],
+      "negative_races": 4,
+      "pointwise95": [
+        -0.002616855119069139,
+        0.05439477092811269
+      ],
+      "positive_races": 8,
+      "simultaneous95": [
+        -0.016668771405041236,
+        0.08902459500190184
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.6666666666666666,
+    "market_brier": 0.5828228616848001,
+    "market_ll": 1.297279907102546,
+    "model": "refit_base16",
+    "model_accuracy": 0.6666666666666666,
+    "model_brier": 0.5699529818473461,
+    "model_ll": 1.2611019953041156,
+    "races": 12,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2671,
+      "improvement": 0.022415416625079447,
+      "lodo_range": [
+        0.017574878031869374,
+        0.05145864818433987
+      ],
+      "negative_races": 3,
+      "pointwise95": [
+        0.017574878031869374,
+        0.05145864818433987
+      ],
+      "positive_races": 4,
+      "simultaneous95": [
+        -0.028680818516751888,
+        0.07351165176691078
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 2,
+    "factor": "venue",
+    "group": "RICH",
+    "ll": {
+      "bootstrap_nonempty": 2671,
+      "improvement": 0.03465324446744643,
+      "lodo_range": [
+        0.02536088501478721,
+        0.09040740118340174
+      ],
+      "negative_races": 2,
+      "pointwise95": [
+        0.02536088501478721,
+        0.09040740118340174
+      ],
+      "positive_races": 5,
+      "simultaneous95": [
+        -0.06343596078783514,
+        0.132742449722728
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.5714285714285714,
+    "market_brier": 0.6587053066372072,
+    "market_ll": 1.376838488462973,
+    "model": "refit_base16",
+    "model_accuracy": 0.42857142857142855,
+    "model_brier": 0.6362898900121277,
+    "model_ll": 1.342185243995527,
+    "races": 7,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 1868,
+      "improvement": 0.003594813422138521,
+      "lodo_range": null,
+      "negative_races": 0,
+      "pointwise95": null,
+      "positive_races": 1,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "dates": 1,
+    "factor": "venue",
+    "group": "ROCK",
+    "ll": {
+      "bootstrap_nonempty": 1868,
+      "improvement": 0.005485442383644901,
+      "lodo_range": null,
+      "negative_races": 0,
+      "pointwise95": null,
+      "positive_races": 1,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "market_accuracy": 1.0,
+    "market_brier": 0.22225657080363517,
+    "market_ll": 0.5754963477028481,
+    "model": "refit_base16",
+    "model_accuracy": 1.0,
+    "model_brier": 0.21866175738149665,
+    "model_ll": 0.5700109053192032,
+    "races": 1,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2890,
+      "improvement": 0.02130475104819323,
+      "lodo_range": [
+        -0.020981571669140442,
+        0.035215707306578393
+      ],
+      "negative_races": 3,
+      "pointwise95": [
+        -0.07607194276050289,
+        0.04667654467859343
+      ],
+      "positive_races": 5,
+      "simultaneous95": [
+        -0.10375951696555205,
+        0.14636901906193853
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 3,
+    "factor": "venue",
+    "group": "SAL",
+    "ll": {
+      "bootstrap_nonempty": 2890,
+      "improvement": 0.04593268279207989,
+      "lodo_range": [
+        -0.031672348950187446,
+        0.0710141512005481
+      ],
+      "negative_races": 2,
+      "pointwise95": [
+        -0.1296375960671976,
+        0.0924957018374403
+      ],
+      "positive_races": 6,
+      "simultaneous95": [
+        -0.18083711704254435,
+        0.27270248262670416
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.25,
+    "market_brier": 0.6830171236949971,
+    "market_ll": 1.4336540718158415,
+    "model": "refit_base16",
+    "model_accuracy": 0.375,
+    "model_brier": 0.6617123726468039,
+    "model_ll": 1.3877213890237616,
+    "races": 8,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2884,
+      "improvement": -0.030661828085841326,
+      "lodo_range": [
+        -0.04609208533988271,
+        0.000385601100784394
+      ],
+      "negative_races": 4,
+      "pointwise95": [
+        -0.05136011421025847,
+        0.031059200930324216
+      ],
+      "positive_races": 1,
+      "simultaneous95": [
+        -0.11819285228489927,
+        0.05686919611321663
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 3,
+    "factor": "venue",
+    "group": "TAREE",
+    "ll": {
+      "bootstrap_nonempty": 2884,
+      "improvement": -0.08256208671822844,
+      "lodo_range": [
+        -0.118413338571776,
+        -0.05663020521183265
+      ],
+      "negative_races": 4,
+      "pointwise95": [
+        -0.18628961274381162,
+        0.060842920695961755
+      ],
+      "positive_races": 1,
+      "simultaneous95": [
+        -0.3004801950543086,
+        0.1353560216178517
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.2,
+    "market_brier": 0.942766304702797,
+    "market_ll": 1.924506724081894,
+    "model": "refit_base16",
+    "model_accuracy": 0.2,
+    "model_brier": 0.9734281327886386,
+    "model_ll": 2.007068810800123,
+    "races": 5,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 1933,
+      "improvement": -0.011567408897398046,
+      "lodo_range": null,
+      "negative_races": 1,
+      "pointwise95": null,
+      "positive_races": 0,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "dates": 1,
+    "factor": "venue",
+    "group": "TEM",
+    "ll": {
+      "bootstrap_nonempty": 1933,
+      "improvement": -0.11794040289094454,
+      "lodo_range": null,
+      "negative_races": 1,
+      "pointwise95": null,
+      "positive_races": 0,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "market_accuracy": 0.0,
+    "market_brier": 1.1961453485371512,
+    "market_ll": 2.9658469325023975,
+    "model": "refit_base16",
+    "model_accuracy": 0.0,
+    "model_brier": 1.2077127574345492,
+    "model_ll": 3.083787335393342,
+    "races": 1,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2680,
+      "improvement": 0.043590580388487676,
+      "lodo_range": [
+        0.04137362488240359,
+        0.04580753589457176
+      ],
+      "negative_races": 2,
+      "pointwise95": [
+        0.04137362488240359,
+        0.04580753589457176
+      ],
+      "positive_races": 6,
+      "simultaneous95": [
+        0.03740627759964764,
+        0.049774883177327714
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 2,
+    "factor": "venue",
+    "group": "TRA",
+    "ll": {
+      "bootstrap_nonempty": 2680,
+      "improvement": 0.09646423378836665,
+      "lodo_range": [
+        0.08702756608521292,
+        0.10590090149152037
+      ],
+      "negative_races": 2,
+      "pointwise95": [
+        0.08702756608521292,
+        0.10590090149152037
+      ],
+      "positive_races": 6,
+      "simultaneous95": [
+        0.07014020056631387,
+        0.12278826701041942
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.5625,
+    "market_brier": 0.6364423790658011,
+    "market_ll": 1.3088267139755896,
+    "model": "refit_base16",
+    "model_accuracy": 0.625,
+    "model_brier": 0.5928517986773134,
+    "model_ll": 1.212362480187223,
+    "races": 8,
+    "sparse": true,
+    "tied_favourites": 1
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2680,
+      "improvement": 0.0032141462128722604,
+      "lodo_range": [
+        0.002840469337513883,
+        0.0037123820466834303
+      ],
+      "negative_races": 8,
+      "pointwise95": [
+        0.002840469337513883,
+        0.0037123820466834303
+      ],
+      "positive_races": 6,
+      "simultaneous95": [
+        0.0019944736784789996,
+        0.004433818747265521
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 2,
+    "factor": "venue",
+    "group": "WAR",
+    "ll": {
+      "bootstrap_nonempty": 2680,
+      "improvement": -0.000509849530767397,
+      "lodo_range": [
+        -0.00703466044184238,
+        0.008189898350665914
+      ],
+      "negative_races": 8,
+      "pointwise95": [
+        -0.00703466044184238,
+        0.008189898350665914
+      ],
+      "positive_races": 6,
+      "simultaneous95": [
+        -0.021806678917695145,
+        0.020786979856160348
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.5357142857142857,
+    "market_brier": 0.6327342713001753,
+    "market_ll": 1.3513804599273607,
+    "model": "refit_base16",
+    "model_accuracy": 0.5,
+    "model_brier": 0.6295201250873029,
+    "model_ll": 1.3518903094581278,
+    "races": 14,
+    "sparse": true,
+    "tied_favourites": 1
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 1928,
+      "improvement": 0.06557350445303323,
+      "lodo_range": null,
+      "negative_races": 0,
+      "pointwise95": null,
+      "positive_races": 1,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "dates": 1,
+    "factor": "venue",
+    "group": "WPK",
+    "ll": {
+      "bootstrap_nonempty": 1928,
+      "improvement": 0.11231645833603987,
+      "lodo_range": null,
+      "negative_races": 0,
+      "pointwise95": null,
+      "positive_races": 1,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "market_accuracy": 1.0,
+    "market_brier": 0.568144795610989,
+    "market_ll": 1.1120280783446563,
+    "model": "refit_base16",
+    "model_accuracy": 1.0,
+    "model_brier": 0.5025712911579557,
+    "model_ll": 0.9997116200086165,
+    "races": 1,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2671,
+      "improvement": 0.014815965145263824,
+      "lodo_range": [
+        -0.01579288745307142,
+        0.07603367034193431
+      ],
+      "negative_races": 2,
+      "pointwise95": [
+        -0.01579288745307142,
+        0.07603367034193431
+      ],
+      "positive_races": 1,
+      "simultaneous95": [
+        -0.11615270444191282,
+        0.14578463473244047
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 2,
+    "factor": "venue",
+    "group": "WRGL",
+    "ll": {
+      "bootstrap_nonempty": 2671,
+      "improvement": 0.034954033649814566,
+      "lodo_range": [
+        -0.016672588820939582,
+        0.13820727859132287
+      ],
+      "negative_races": 1,
+      "pointwise95": [
+        -0.016672588820939582,
+        0.13820727859132287
+      ],
+      "positive_races": 2,
+      "simultaneous95": [
+        -0.1859451339538039,
+        0.255853201253433
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.6666666666666666,
+    "market_brier": 0.5612569547297972,
+    "market_ll": 1.0755011690633705,
+    "model": "refit_base16",
+    "model_accuracy": 0.6666666666666666,
+    "model_brier": 0.5464409895845334,
+    "model_ll": 1.0405471354135558,
+    "races": 3,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.006565140579696464,
+      "lodo_range": [
+        0.004492570256535766,
+        0.009739327393655413
+      ],
+      "negative_races": 62,
+      "pointwise95": [
+        -0.004803758270558299,
+        0.016333970090495073
+      ],
+      "positive_races": 64,
+      "simultaneous95": [
+        -0.013109631400835004,
+        0.026239912560227934
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 15,
+    "factor": "distance",
+    "group": "<=400",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.014088773555098522,
+      "lodo_range": [
+        0.009526745789950731,
+        0.019274470300042826
+      ],
+      "negative_races": 55,
+      "pointwise95": [
+        -0.00785074411133482,
+        0.03504223796808926
+      ],
+      "positive_races": 71,
+      "simultaneous95": [
+        -0.025513122705392757,
+        0.0536906698155898
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.4642857142857143,
+    "market_brier": 0.6773699621723541,
+    "market_ll": 1.3964387213163483,
+    "model": "refit_base16",
+    "model_accuracy": 0.4603174603174603,
+    "model_brier": 0.6708048215926578,
+    "model_ll": 1.3823499477612495,
+    "races": 126,
+    "sparse": false,
+    "tied_favourites": 5
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.0030105446045511058,
+      "lodo_range": [
+        -0.00226222851516094,
+        0.007372838754705447
+      ],
+      "negative_races": 22,
+      "pointwise95": [
+        -0.012610594320927922,
+        0.01732992021734137
+      ],
+      "positive_races": 29,
+      "simultaneous95": [
+        -0.02530567178869205,
+        0.03132676099779426
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 14,
+    "factor": "distance",
+    "group": ">400",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.018248054181335478,
+      "lodo_range": [
+        0.009087935312462292,
+        0.024945084128216714
+      ],
+      "negative_races": 20,
+      "pointwise95": [
+        -0.007344958721380981,
+        0.04411948022751531
+      ],
+      "positive_races": 31,
+      "simultaneous95": [
+        -0.03087255832660835,
+        0.06736866668927931
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.4215686274509804,
+    "market_brier": 0.696661183586817,
+    "market_ll": 1.4535470714066379,
+    "model": "refit_base16",
+    "model_accuracy": 0.39215686274509803,
+    "model_brier": 0.6936506389822659,
+    "model_ll": 1.4352990172253026,
+    "races": 51,
+    "sparse": false,
+    "tied_favourites": 1
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 1868,
+      "improvement": -0.03591667198456283,
+      "lodo_range": null,
+      "negative_races": 1,
+      "pointwise95": null,
+      "positive_races": 0,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "dates": 1,
+    "factor": "grade",
+    "group": "2nd/3rd Grade",
+    "ll": {
+      "bootstrap_nonempty": 1868,
+      "improvement": -0.12441967053974534,
+      "lodo_range": null,
+      "negative_races": 1,
+      "pointwise95": null,
+      "positive_races": 0,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "market_accuracy": 0.0,
+    "market_brier": 0.8232748945693138,
+    "market_ll": 1.7765927246248114,
+    "model": "refit_base16",
+    "model_accuracy": 0.0,
+    "model_brier": 0.8591915665538766,
+    "model_ll": 1.9010123951645568,
+    "races": 1,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2636,
+      "improvement": 0.002109497032100782,
+      "lodo_range": [
+        -0.00993005650240153,
+        0.014149050566603094
+      ],
+      "negative_races": 1,
+      "pointwise95": [
+        -0.00993005650240153,
+        0.014149050566603094
+      ],
+      "positive_races": 1,
+      "simultaneous95": [
+        -0.031730955187308535,
+        0.0359499492515101
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 2,
+    "factor": "grade",
+    "group": "3rd/4th Grade",
+    "ll": {
+      "bootstrap_nonempty": 2636,
+      "improvement": 0.02676679656129366,
+      "lodo_range": [
+        -0.019269207459328808,
+        0.07280280058191613
+      ],
+      "negative_races": 1,
+      "pointwise95": [
+        -0.019269207459328808,
+        0.07280280058191613
+      ],
+      "positive_races": 1,
+      "simultaneous95": [
+        -0.10262996138059535,
+        0.15616355450318267
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 1.0,
+    "market_brier": 0.6039800491428426,
+    "market_ll": 1.171769435144974,
+    "model": "refit_base16",
+    "model_accuracy": 0.5,
+    "model_brier": 0.6018705521107419,
+    "model_ll": 1.1450026385836802,
+    "races": 2,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2991,
+      "improvement": 0.009136108891112904,
+      "lodo_range": [
+        -0.0038638487664915816,
+        0.021017968812425833
+      ],
+      "negative_races": 3,
+      "pointwise95": [
+        -0.02171081708626127,
+        0.04486046961427759
+      ],
+      "positive_races": 2,
+      "simultaneous95": [
+        -0.053105525465377196,
+        0.071377743247603
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 5,
+    "factor": "grade",
+    "group": "4th Grade",
+    "ll": {
+      "bootstrap_nonempty": 2991,
+      "improvement": 0.03011615811821362,
+      "lodo_range": [
+        0.012352653959464027,
+        0.05795072031052534
+      ],
+      "negative_races": 1,
+      "pointwise95": [
+        -0.03562402429997194,
+        0.08331342966118854
+      ],
+      "positive_races": 4,
+      "simultaneous95": [
+        -0.08292183264353886,
+        0.1431541488799661
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.6,
+    "market_brier": 0.6175555839846537,
+    "market_ll": 1.2278232345617677,
+    "model": "refit_base16",
+    "model_accuracy": 0.6,
+    "model_brier": 0.6084194750935408,
+    "model_ll": 1.1977070764435538,
+    "races": 5,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2997,
+      "improvement": 0.027899270097988482,
+      "lodo_range": [
+        0.01318760526988246,
+        0.03945203395557073
+      ],
+      "negative_races": 2,
+      "pointwise95": [
+        -0.002128106546186559,
+        0.05962154686498762
+      ],
+      "positive_races": 6,
+      "simultaneous95": [
+        -0.031548547695674875,
+        0.08734708789165184
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 6,
+    "factor": "grade",
+    "group": "4th/5th Grade",
+    "ll": {
+      "bootstrap_nonempty": 2997,
+      "improvement": 0.06909944137272728,
+      "lodo_range": [
+        0.03766360415368797,
+        0.10200975091664481
+      ],
+      "negative_races": 2,
+      "pointwise95": [
+        -0.00025903431472265,
+        0.14243104718954025
+      ],
+      "positive_races": 6,
+      "simultaneous95": [
+        -0.06910490011357001,
+        0.20730378285902457
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.0,
+    "market_brier": 0.9311214379934238,
+    "market_ll": 1.9415226997286732,
+    "model": "refit_base16",
+    "model_accuracy": 0.0,
+    "model_brier": 0.9032221678954353,
+    "model_ll": 1.8724232583559461,
+    "races": 8,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.012853659409776532,
+      "lodo_range": [
+        0.009573110181700307,
+        0.0154793934012845
+      ],
+      "negative_races": 18,
+      "pointwise95": [
+        0.002269881602353315,
+        0.022347557344237975
+      ],
+      "positive_races": 21,
+      "simultaneous95": [
+        -0.0061969317160100665,
+        0.03190425053556313
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 14,
+    "factor": "grade",
+    "group": "5th Grade",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.02740007077477256,
+      "lodo_range": [
+        0.01975808924427676,
+        0.03275039715464263
+      ],
+      "negative_races": 13,
+      "pointwise95": [
+        0.0038436710700159543,
+        0.049781131576892484
+      ],
+      "positive_races": 26,
+      "simultaneous95": [
+        -0.014611849427467651,
+        0.06941199097701277
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.4358974358974359,
+    "market_brier": 0.7246765284646668,
+    "market_ll": 1.5157132854865298,
+    "model": "refit_base16",
+    "model_accuracy": 0.41025641025641024,
+    "model_brier": 0.7118228690548902,
+    "model_ll": 1.4883132147117575,
+    "races": 39,
+    "sparse": false,
+    "tied_favourites": 2
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 1956,
+      "improvement": 0.005112064360240642,
+      "lodo_range": null,
+      "negative_races": 0,
+      "pointwise95": null,
+      "positive_races": 2,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "dates": 1,
+    "factor": "grade",
+    "group": "5th/6th Grade",
+    "ll": {
+      "bootstrap_nonempty": 1956,
+      "improvement": 0.013978612104384669,
+      "lodo_range": null,
+      "negative_races": 0,
+      "pointwise95": null,
+      "positive_races": 2,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "market_accuracy": 0.0,
+    "market_brier": 0.7693882285111905,
+    "market_ll": 1.554599181206532,
+    "model": "refit_base16",
+    "model_accuracy": 0.0,
+    "model_brier": 0.7642761641509499,
+    "model_ll": 1.5406205691021475,
+    "races": 2,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2999,
+      "improvement": -0.016290272568188942,
+      "lodo_range": [
+        -0.02321060234455513,
+        -0.00646173944508618
+      ],
+      "negative_races": 4,
+      "pointwise95": [
+        -0.04354976180714443,
+        0.007520493610300467
+      ],
+      "positive_races": 4,
+      "simultaneous95": [
+        -0.0637249433117264,
+        0.031144398175348524
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 7,
+    "factor": "grade",
+    "group": "6th Grade",
+    "ll": {
+      "bootstrap_nonempty": 2999,
+      "improvement": -0.05041510457374389,
+      "lodo_range": [
+        -0.06343556607805008,
+        -0.03145333797089317
+      ],
+      "negative_races": 4,
+      "pointwise95": [
+        -0.09817218534268185,
+        0.008206010257285113
+      ],
+      "positive_races": 4,
+      "simultaneous95": [
+        -0.14817225996269773,
+        0.04734205081520995
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.625,
+    "market_brier": 0.531112731321422,
+    "market_ll": 1.0391885628174866,
+    "model": "refit_base16",
+    "model_accuracy": 0.625,
+    "model_brier": 0.5474030038896109,
+    "model_ll": 1.0896036673912306,
+    "races": 8,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2973,
+      "improvement": -0.027738163161112085,
+      "lodo_range": [
+        -0.049604609626752005,
+        -0.006285418799323983
+      ],
+      "negative_races": 2,
+      "pointwise95": [
+        -0.08445295635075345,
+        0.0597276227014476
+      ],
+      "positive_races": 3,
+      "simultaneous95": [
+        -0.13971321769169662,
+        0.08423689136947243
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 4,
+    "factor": "grade",
+    "group": "Free For All",
+    "ll": {
+      "bootstrap_nonempty": 2973,
+      "improvement": -0.0498658651269275,
+      "lodo_range": [
+        -0.0908271012507195,
+        -0.004189162033638311
+      ],
+      "negative_races": 2,
+      "pointwise95": [
+        -0.23257267750008426,
+        0.11397907936824048
+      ],
+      "positive_races": 3,
+      "simultaneous95": [
+        -0.2896636870577399,
+        0.18993195680388494
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.4,
+    "market_brier": 0.6836868593239132,
+    "market_ll": 1.3599822760779532,
+    "model": "refit_base16",
+    "model_accuracy": 0.4,
+    "model_brier": 0.7114250224850251,
+    "model_ll": 1.4098481412048807,
+    "races": 5,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.012095339903327592,
+      "lodo_range": [
+        0.004567236564398076,
+        0.01945223255972495
+      ],
+      "negative_races": 13,
+      "pointwise95": [
+        -0.026582266755096746,
+        0.03314569759358945
+      ],
+      "positive_races": 16,
+      "simultaneous95": [
+        -0.04307109632950739,
+        0.06726177613616258
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 10,
+    "factor": "grade",
+    "group": "Grade 5",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.03321663415527418,
+      "lodo_range": [
+        0.017493755128840164,
+        0.04555740213736645
+      ],
+      "negative_races": 11,
+      "pointwise95": [
+        -0.03561413609585902,
+        0.06815404991609211
+      ],
+      "positive_races": 18,
+      "simultaneous95": [
+        -0.06490216463008107,
+        0.13133543294062944
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.3620689655172414,
+    "market_brier": 0.7009729758855102,
+    "market_ll": 1.4394838654529563,
+    "model": "refit_base16",
+    "model_accuracy": 0.3793103448275862,
+    "model_brier": 0.6888776359821827,
+    "model_ll": 1.4062672312976823,
+    "races": 29,
+    "sparse": false,
+    "tied_favourites": 3
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2637,
+      "improvement": 0.058812798476575,
+      "lodo_range": [
+        0.007532831213558522,
+        0.11009276573959148
+      ],
+      "negative_races": 0,
+      "pointwise95": [
+        0.007532831213558522,
+        0.11009276573959148
+      ],
+      "positive_races": 2,
+      "simultaneous95": [
+        -0.08348481996500076,
+        0.20111041691815076
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 2,
+    "factor": "grade",
+    "group": "Grade 6",
+    "ll": {
+      "bootstrap_nonempty": 2637,
+      "improvement": 0.09362071632083702,
+      "lodo_range": [
+        -0.008844450661602554,
+        0.1960858833032766
+      ],
+      "negative_races": 1,
+      "pointwise95": [
+        -0.008844450661602554,
+        0.1960858833032766
+      ],
+      "positive_races": 1,
+      "simultaneous95": [
+        -0.1907115485582621,
+        0.37795298119993614
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.5,
+    "market_brier": 0.8509923820052808,
+    "market_ll": 1.8255210515192108,
+    "model": "refit_base16",
+    "model_accuracy": 0.5,
+    "model_brier": 0.7921795835287058,
+    "model_ll": 1.7319003351983737,
+    "races": 2,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2998,
+      "improvement": -0.011049551835261998,
+      "lodo_range": [
+        -0.02629595838721146,
+        0.0024163533714794626
+      ],
+      "negative_races": 3,
+      "pointwise95": [
+        -0.05276419283929127,
+        0.031010315894970227
+      ],
+      "positive_races": 3,
+      "simultaneous95": [
+        -0.08656630096299225,
+        0.06446719729246825
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 6,
+    "factor": "grade",
+    "group": "Grade 7",
+    "ll": {
+      "bootstrap_nonempty": 2998,
+      "improvement": -0.013031645467072325,
+      "lodo_range": [
+        -0.036211039216261856,
+        0.00868182419983583
+      ],
+      "negative_races": 2,
+      "pointwise95": [
+        -0.0843719397194409,
+        0.05482389681957496
+      ],
+      "positive_races": 4,
+      "simultaneous95": [
+        -0.13936943000139107,
+        0.11330613906724642
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.6666666666666666,
+    "market_brier": 0.5003531603308989,
+    "market_ll": 1.0910552104278968,
+    "model": "refit_base16",
+    "model_accuracy": 0.6666666666666666,
+    "model_brier": 0.511402712166161,
+    "model_ll": 1.104086855894969,
+    "races": 6,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 1889,
+      "improvement": -0.1570643985942961,
+      "lodo_range": null,
+      "negative_races": 1,
+      "pointwise95": null,
+      "positive_races": 0,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "dates": 1,
+    "factor": "grade",
+    "group": "Group 2",
+    "ll": {
+      "bootstrap_nonempty": 1889,
+      "improvement": -0.2683562494783458,
+      "lodo_range": null,
+      "negative_races": 1,
+      "pointwise95": null,
+      "positive_races": 0,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "market_accuracy": 0.0,
+    "market_brier": 0.6358751484785781,
+    "market_ll": 1.1448637732593638,
+    "model": "refit_base16",
+    "model_accuracy": 0.0,
+    "model_brier": 0.7929395470728742,
+    "model_ll": 1.4132200227377096,
+    "races": 1,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 1916,
+      "improvement": -0.0011002360693215252,
+      "lodo_range": null,
+      "negative_races": 1,
+      "pointwise95": null,
+      "positive_races": 0,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "dates": 1,
+    "factor": "grade",
+    "group": "Invitation",
+    "ll": {
+      "bootstrap_nonempty": 1916,
+      "improvement": -0.004214437290821049,
+      "lodo_range": null,
+      "negative_races": 1,
+      "pointwise95": null,
+      "positive_races": 0,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "market_accuracy": 0.0,
+    "market_brier": 0.9161618627056786,
+    "market_ll": 1.8344139300972935,
+    "model": "refit_base16",
+    "model_accuracy": 0.0,
+    "model_brier": 0.9172620987750001,
+    "model_ll": 1.8386283673881145,
+    "races": 1,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2658,
+      "improvement": -0.040331398260322504,
+      "lodo_range": [
+        -0.14069671307926424,
+        0.06003391655861923
+      ],
+      "negative_races": 1,
+      "pointwise95": [
+        -0.14069671307926424,
+        0.06003391655861923
+      ],
+      "positive_races": 1,
+      "simultaneous95": [
+        -0.3196780622530214,
+        0.23901526573237641
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 2,
+    "factor": "grade",
+    "group": "M2/M3",
+    "ll": {
+      "bootstrap_nonempty": 2658,
+      "improvement": -0.024222286033259377,
+      "lodo_range": [
+        -0.17736517777815286,
+        0.1289206057116341
+      ],
+      "negative_races": 1,
+      "pointwise95": [
+        -0.17736517777815286,
+        0.1289206057116341
+      ],
+      "positive_races": 1,
+      "simultaneous95": [
+        -0.4504647184941722,
+        0.40202014642765344
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.0,
+    "market_brier": 0.7110333787225879,
+    "market_ll": 1.3204588210667545,
+    "model": "refit_base16",
+    "model_accuracy": 0.0,
+    "model_brier": 0.7513647769829104,
+    "model_ll": 1.3446811071000138,
+    "races": 2,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2898,
+      "improvement": 0.011273324487514355,
+      "lodo_range": [
+        -0.02334920875048868,
+        0.029286218908251505
+      ],
+      "negative_races": 2,
+      "pointwise95": [
+        -0.024752464353959946,
+        0.08051839096352043
+      ],
+      "positive_races": 1,
+      "simultaneous95": [
+        -0.10601298105401075,
+        0.12855963002903945
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 3,
+    "factor": "grade",
+    "group": "M3",
+    "ll": {
+      "bootstrap_nonempty": 2898,
+      "improvement": 0.012268871783702432,
+      "lodo_range": [
+        -0.0496208524029631,
+        0.04663600055931727
+      ],
+      "negative_races": 2,
+      "pointwise95": [
+        -0.05646538576752724,
+        0.1360483201570335
+      ],
+      "positive_races": 1,
+      "simultaneous95": [
+        -0.19785052950721094,
+        0.22238827307461578
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.6666666666666666,
+    "market_brier": 0.7007113341522856,
+    "market_ll": 1.3829397118919322,
+    "model": "refit_base16",
+    "model_accuracy": 0.6666666666666666,
+    "model_brier": 0.6894380096647712,
+    "model_ll": 1.37067084010823,
+    "races": 3,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2889,
+      "improvement": 0.025491981798018183,
+      "lodo_range": [
+        0.01048184190451896,
+        0.05718720357201029
+      ],
+      "negative_races": 2,
+      "pointwise95": [
+        -0.006203239975973926,
+        0.07052240147851585
+      ],
+      "positive_races": 2,
+      "simultaneous95": [
+        -0.05775764668949033,
+        0.1087416102855267
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 3,
+    "factor": "grade",
+    "group": "M5",
+    "ll": {
+      "bootstrap_nonempty": 2889,
+      "improvement": 0.07833951733494109,
+      "lodo_range": [
+        0.02886040408870037,
+        0.18620294038610485
+      ],
+      "negative_races": 2,
+      "pointwise95": [
+        -0.02952390571622268,
+        0.22677685707366324
+      ],
+      "positive_races": 2,
+      "simultaneous95": [
+        -0.20391287885041215,
+        0.36059191352029435
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.5,
+    "market_brier": 0.7787122570313987,
+    "market_ll": 1.82012374201094,
+    "model": "refit_base16",
+    "model_accuracy": 0.5,
+    "model_brier": 0.7532202752333805,
+    "model_ll": 1.741784224675999,
+    "races": 4,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 3000,
+      "improvement": -0.000640549461261717,
+      "lodo_range": [
+        -0.005055541619658428,
+        0.0025251171050624877
+      ],
+      "negative_races": 10,
+      "pointwise95": [
+        -0.011542114110423218,
+        0.007991642792595911
+      ],
+      "positive_races": 6,
+      "simultaneous95": [
+        -0.019215662653627452,
+        0.017934563731104018
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 7,
+    "factor": "grade",
+    "group": "Maiden",
+    "ll": {
+      "bootstrap_nonempty": 3000,
+      "improvement": 0.008991969535568536,
+      "lodo_range": [
+        0.003942791771488366,
+        0.015436747066388439
+      ],
+      "negative_races": 9,
+      "pointwise95": [
+        -0.012023997246017316,
+        0.029489249308133892
+      ],
+      "positive_races": 7,
+      "simultaneous95": [
+        -0.030044734839720297,
+        0.04802867391085737
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.5,
+    "market_brier": 0.6592853021846683,
+    "market_ll": 1.3850027004184038,
+    "model": "refit_base16",
+    "model_accuracy": 0.4375,
+    "model_brier": 0.65992585164593,
+    "model_ll": 1.376010730882835,
+    "races": 16,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2965,
+      "improvement": 0.011168716185404534,
+      "lodo_range": [
+        -0.005279846653985269,
+        0.03749314355890152
+      ],
+      "negative_races": 1,
+      "pointwise95": [
+        -0.06780456593508644,
+        0.06051440470357394
+      ],
+      "positive_races": 3,
+      "simultaneous95": [
+        -0.08693835233831868,
+        0.10927578470912774
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 4,
+    "factor": "grade",
+    "group": "Mixed",
+    "ll": {
+      "bootstrap_nonempty": 2965,
+      "improvement": 0.03697444587974369,
+      "lodo_range": [
+        0.01118909234446567,
+        0.08986062949186772
+      ],
+      "negative_races": 1,
+      "pointwise95": [
+        -0.1216841049566284,
+        0.11433050648557774
+      ],
+      "positive_races": 3,
+      "simultaneous95": [
+        -0.1591367806095064,
+        0.23308567236899377
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.5,
+    "market_brier": 0.5949721640421884,
+    "market_ll": 1.3179551924393116,
+    "model": "refit_base16",
+    "model_accuracy": 0.75,
+    "model_brier": 0.583803447856784,
+    "model_ll": 1.280980746559568,
+    "races": 4,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2893,
+      "improvement": -0.005557372665553082,
+      "lodo_range": [
+        -0.013737761261111167,
+        0.02098725253513646
+      ],
+      "negative_races": 4,
+      "pointwise95": [
+        -0.016175222745828898,
+        0.043524958907795425
+      ],
+      "positive_races": 3,
+      "simultaneous95": [
+        -0.07029511567837726,
+        0.059180370347271104
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 3,
+    "factor": "grade",
+    "group": "N/P",
+    "ll": {
+      "bootstrap_nonempty": 2893,
+      "improvement": -0.007482032365237169,
+      "lodo_range": [
+        -0.020756947236058625,
+        0.04467615932094551
+      ],
+      "negative_races": 4,
+      "pointwise95": [
+        -0.02834530903971024,
+        0.07216745685969156
+      ],
+      "positive_races": 3,
+      "simultaneous95": [
+        -0.12063089101285102,
+        0.10566682628237667
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.42857142857142855,
+    "market_brier": 0.7083048683702456,
+    "market_ll": 1.3480786528739717,
+    "model": "refit_base16",
+    "model_accuracy": 0.42857142857142855,
+    "model_brier": 0.7138622410357985,
+    "model_ll": 1.3555606852392088,
+    "races": 7,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2995,
+      "improvement": 0.00865564128557847,
+      "lodo_range": [
+        -0.018069635841382402,
+        0.026258736218075607
+      ],
+      "negative_races": 3,
+      "pointwise95": [
+        -0.05900813897660362,
+        0.07753689653017855
+      ],
+      "positive_races": 3,
+      "simultaneous95": [
+        -0.1183949648160785,
+        0.13570624738723544
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 5,
+    "factor": "grade",
+    "group": "NG1-4",
+    "ll": {
+      "bootstrap_nonempty": 2995,
+      "improvement": 0.023401514787499727,
+      "lodo_range": [
+        -0.0252351649156497,
+        0.065339740293762
+      ],
+      "negative_races": 3,
+      "pointwise95": [
+        -0.13531289290826742,
+        0.1391674680790199
+      ],
+      "positive_races": 3,
+      "simultaneous95": [
+        -0.23212064857968293,
+        0.2789236781546824
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.3333333333333333,
+    "market_brier": 0.7164629058776683,
+    "market_ll": 1.400139511088445,
+    "model": "refit_base16",
+    "model_accuracy": 0.3333333333333333,
+    "model_brier": 0.7078072645920898,
+    "model_ll": 1.3767379963009452,
+    "races": 6,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2874,
+      "improvement": 0.024756130808817445,
+      "lodo_range": [
+        0.015788615154902125,
+        0.036137874124241215
+      ],
+      "negative_races": 0,
+      "pointwise95": [
+        0.0019926441779699045,
+        0.042691162116648085
+      ],
+      "positive_races": 3,
+      "simultaneous95": [
+        -0.015652697467050378,
+        0.06516495908468527
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 3,
+    "factor": "grade",
+    "group": "Open",
+    "ll": {
+      "bootstrap_nonempty": 2874,
+      "improvement": 0.04351217409493657,
+      "lodo_range": [
+        0.022397573921232095,
+        0.06689852166860738
+      ],
+      "negative_races": 1,
+      "pointwise95": [
+        -0.003260521052405041,
+        0.08574137444234553
+      ],
+      "positive_races": 2,
+      "simultaneous95": [
+        -0.0431979004269889,
+        0.13022224861686205
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 1.0,
+    "market_brier": 0.3353642050898047,
+    "market_ll": 0.7196633360212328,
+    "model": "refit_base16",
+    "model_accuracy": 1.0,
+    "model_brier": 0.3106080742809873,
+    "model_ll": 0.6761511619262963,
+    "races": 3,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2893,
+      "improvement": 0.0035695823126557294,
+      "lodo_range": [
+        0.0025551511615942712,
+        0.004171650374138493
+      ],
+      "negative_races": 4,
+      "pointwise95": [
+        -0.0006448941177236156,
+        0.005260300897758159
+      ],
+      "positive_races": 4,
+      "simultaneous95": [
+        -0.0017409183142184032,
+        0.008880082939529861
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 3,
+    "factor": "grade",
+    "group": "Other",
+    "ll": {
+      "bootstrap_nonempty": 2893,
+      "improvement": 0.022678699137265584,
+      "lodo_range": [
+        0.012810965362564986,
+        0.028827831941159288
+      ],
+      "negative_races": 4,
+      "pointwise95": [
+        -0.002063438520662597,
+        0.039124922095099914
+      ],
+      "positive_races": 4,
+      "simultaneous95": [
+        -0.015389968528463346,
+        0.060747366802994515
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.375,
+    "market_brier": 0.7093648749032864,
+    "market_ll": 1.4040367818618922,
+    "model": "refit_base16",
+    "model_accuracy": 0.375,
+    "model_brier": 0.7057952925906306,
+    "model_ll": 1.3813580827246268,
+    "races": 8,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2647,
+      "improvement": 0.01015972413480772,
+      "lodo_range": [
+        -0.05573009896548209,
+        0.043104635684952625
+      ],
+      "negative_races": 1,
+      "pointwise95": [
+        -0.05573009896548209,
+        0.043104635684952625
+      ],
+      "positive_races": 2,
+      "simultaneous95": [
+        -0.1322632959558782,
+        0.15258274422549367
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 2,
+    "factor": "grade",
+    "group": "P5",
+    "ll": {
+      "bootstrap_nonempty": 2647,
+      "improvement": 0.04136978645902567,
+      "lodo_range": [
+        -0.014231149349717587,
+        0.0691702543633973
+      ],
+      "negative_races": 1,
+      "pointwise95": [
+        -0.014231149349717587,
+        0.0691702543633973
+      ],
+      "positive_races": 2,
+      "simultaneous95": [
+        -0.07881346529589899,
+        0.16155303821395034
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.6666666666666666,
+    "market_brier": 0.5140105550577125,
+    "market_ll": 0.9634620517396346,
+    "model": "refit_base16",
+    "model_accuracy": 0.6666666666666666,
+    "model_brier": 0.5038508309229048,
+    "model_ll": 0.9220922652806091,
+    "races": 3,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 1907,
+      "improvement": -0.010261617967910253,
+      "lodo_range": null,
+      "negative_races": 1,
+      "pointwise95": null,
+      "positive_races": 0,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "dates": 1,
+    "factor": "grade",
+    "group": "PM",
+    "ll": {
+      "bootstrap_nonempty": 1907,
+      "improvement": -0.018735081294375622,
+      "lodo_range": null,
+      "negative_races": 1,
+      "pointwise95": null,
+      "positive_races": 0,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "market_accuracy": 1.0,
+    "market_brier": 0.46881890334319454,
+    "market_ll": 0.9887133787791682,
+    "model": "refit_base16",
+    "model_accuracy": 1.0,
+    "model_brier": 0.4790805213111048,
+    "model_ll": 1.0074484600735438,
+    "races": 1,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2896,
+      "improvement": 0.03325966322427919,
+      "lodo_range": [
+        0.02560386758463475,
+        0.046624911092214366
+      ],
+      "negative_races": 1,
+      "pointwise95": [
+        0.01989441535634401,
+        0.0562270501432125
+      ],
+      "positive_races": 3,
+      "simultaneous95": [
+        -0.003878150765133523,
+        0.0703974772136919
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 3,
+    "factor": "grade",
+    "group": "R/W",
+    "ll": {
+      "bootstrap_nonempty": 2896,
+      "improvement": 0.010284690175078853,
+      "lodo_range": [
+        -0.016371747612560366,
+        0.08345454452238615
+      ],
+      "negative_races": 1,
+      "pointwise95": [
+        -0.06288516417222845,
+        0.09025400353799651
+      ],
+      "positive_races": 3,
+      "simultaneous95": [
+        -0.17322690975095795,
+        0.19379629010111565
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.75,
+    "market_brier": 0.5849675964937794,
+    "market_ll": 1.4723793176988738,
+    "model": "refit_base16",
+    "model_accuracy": 0.75,
+    "model_brier": 0.5517079332695001,
+    "model_ll": 1.4620946275237947,
+    "races": 4,
+    "sparse": true,
+    "tied_favourites": 0
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 2966,
+      "improvement": -0.021141112524313627,
+      "lodo_range": [
+        -0.040576069097563214,
+        -0.008296733564694181
+      ],
+      "negative_races": 5,
+      "pointwise95": [
+        -0.06489321176729423,
+        0.03929294074974978
+      ],
+      "positive_races": 1,
+      "simultaneous95": [
+        -0.11831589539056156,
+        0.07603367034193431
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "dates": 4,
+    "factor": "grade",
+    "group": "Restricted",
+    "ll": {
+      "bootstrap_nonempty": 2966,
+      "improvement": -0.05866322321853042,
+      "lodo_range": [
+        -0.09803732358050107,
+        -0.009086581533678917
+      ],
+      "negative_races": 5,
+      "pointwise95": [
+        -0.15781650658823343,
+        0.07830167788721065
+      ],
+      "positive_races": 1,
+      "simultaneous95": [
+        -0.2686964300839071,
+        0.15136998364684623
+      ],
+      "uncertainty_status": "exploratory_date_cluster_bootstrap"
+    },
+    "market_accuracy": 0.5833333333333334,
+    "market_brier": 0.6872776967699749,
+    "market_ll": 1.4797342390677277,
+    "model": "refit_base16",
+    "model_accuracy": 0.5,
+    "model_brier": 0.7084188092942884,
+    "model_ll": 1.5383974622862577,
+    "races": 6,
+    "sparse": true,
+    "tied_favourites": 1
+  },
+  {
+    "brier": {
+      "bootstrap_nonempty": 1889,
+      "improvement": 0.02531810306414839,
+      "lodo_range": null,
+      "negative_races": 0,
+      "pointwise95": null,
+      "positive_races": 1,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "dates": 1,
+    "factor": "grade",
+    "group": "Special Event",
+    "ll": {
+      "bootstrap_nonempty": 1889,
+      "improvement": 0.041648815525928584,
+      "lodo_range": null,
+      "negative_races": 0,
+      "pointwise95": null,
+      "positive_races": 1,
+      "simultaneous95": null,
+      "uncertainty_status": "insufficient_date_clusters"
+    },
+    "market_accuracy": 1.0,
+    "market_brier": 0.27768338510749,
+    "market_ll": 0.6558407545178444,
+    "model": "refit_base16",
+    "model_accuracy": 1.0,
+    "model_brier": 0.25236528204334163,
+    "model_ll": 0.6141919389919158,
+    "races": 1,
+    "sparse": true,
+    "tied_favourites": 0
+  }
+]

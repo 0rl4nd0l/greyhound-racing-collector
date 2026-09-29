@@ -1,0 +1,53 @@
+{
+  "best_five": [
+    {
+      "gain": 0.25900074962344366,
+      "race_id": "Race 6 - WAR - 2026-06-29"
+    },
+    {
+      "gain": 0.24700791448353399,
+      "race_id": "Race 9 - CAPALABA - 2026-06-28"
+    },
+    {
+      "gain": 0.22677685707366324,
+      "race_id": "Race 8 - CAPALABA - 2026-06-24"
+    },
+    {
+      "gain": 0.2231137489184194,
+      "race_id": "Race 8 - MOUNT - 2026-07-05"
+    },
+    {
+      "gain": 0.21313784361990518,
+      "race_id": "Race 8 - BROKEN-HILL - 2026-06-28"
+    }
+  ],
+  "negative_races": 75,
+  "negative_sum": -6.128372996051798,
+  "positive_races": 102,
+  "positive_sum": 8.834209227242319,
+  "total_ll_improvement": 2.7058362311905233,
+  "without_best_five": 0.008934878589950913,
+  "without_worst_five": 0.023638795983292056,
+  "worst_five": [
+    {
+      "gain": -0.29977781282457805,
+      "race_id": "Race 11 - MURR - 2026-06-26"
+    },
+    {
+      "gain": -0.2971485723935352,
+      "race_id": "Race 7 - WAR - 2026-06-29"
+    },
+    {
+      "gain": -0.2683562494783458,
+      "race_id": "Race 8 - HOR - 2026-06-26"
+    },
+    {
+      "gain": -0.2596310820044574,
+      "race_id": "Race 7 - CAPALABA - 2026-06-28"
+    },
+    {
+      "gain": -0.23512296123479448,
+      "race_id": "Race 5 - HOBT - 2026-06-30"
+    }
+  ]
+}

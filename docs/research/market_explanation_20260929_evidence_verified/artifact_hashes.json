@@ -1,0 +1,15 @@
+{
+  "base16_receipts.json": "afeb7a3ed3ccd138d92f0b15c719add0bf08034fb602c1bfe1de3c7360456c02",
+  "date_losses.json": "d11717b40708b45166932056bcac134ac42795b3f3b8f8cd6ab6b50c171793cc",
+  "examples.json": "6f84e2e0a938b12b36cc2b581b3191efd9a8930abcd46f6673be350e6f94a1a7",
+  "influence.json": "0bc29a95b0d0cad28f9aa1257b1a506802cff09ea788d56f88f76b8c6ec22dee",
+  "input_hashes.json": "aeb1e45a8d6e56a3b901be1d6fb9e4b1b20da338af1b24905c0dc6b4c7b2b827",
+  "mechanical_summary.json": "c9fac1bf5b52bc38c6a7b078fd9069d9795c964a75ad257ac9f5a4d430ea050b",
+  "race_losses.json": "fbcfd0ef8303a3823714e38c27a55ba07730e99a9f29813a36d98e5aae75ff6b",
+  "runner_contributions.jsonl": "789afe81df162d5cfe6fda106b974657b59c06a245622d0b4f320e033ec94acc",
+  "source_exclusions.json": "e7a08aa4835410cb45f5555fc5b47e249a2260673de8ab03ffcd89803e8d2ebf",
+  "table.json": "7735097b8b49b0cb7d25ded2c43420fe5feb492b9f37952029f1299fa4f315e6",
+  "trial_ledger.jsonl": "acba98864070dea60744815c55fea5e387d222c340be7d9a0220ca3e1b730d8d",
+  "uncertainty.json": "a4ef8aef44bb778264914b3a70f7f9164a250020a87a74f89dd062ecd7b153f7",
+  "validation.json": "ca9691586ab8f6efee4c6ac77bc9ef3e89c33588c55aa00e8b97e71215bdb057"
+}

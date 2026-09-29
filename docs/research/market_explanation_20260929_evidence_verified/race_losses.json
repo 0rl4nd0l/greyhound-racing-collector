@@ -1,0 +1,8052 @@
+[
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Maiden",
+      "maximum_recency": ">21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "BEN"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.6595133208249903,
+      "ll": 1.3198502428524235,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 1 - BEN - 2026-07-01",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.6963344849433445,
+      "ll": 1.3910586586634621,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.7014353427651512,
+      "ll": 1.3975709606736362,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.6775962273131475,
+      "ll": 1.3548014588470645,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ".4-.6",
+      "field_size": "7",
+      "grade": "Maiden",
+      "maximum_recency": "<=21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "BEN"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.1994248714027158,
+      "ll": 3.145058226018956,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 1 - BEN - 2026-07-08",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 1.1878776330365617,
+      "ll": 3.060328590022185,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 1.1853045277143766,
+      "ll": 3.0477150700452835,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.1936876121688396,
+      "ll": 3.1022899155998265,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": "<.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "7-8",
+      "favourite_probability": ".4-.6",
+      "field_size": "7",
+      "grade": "5th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "CASO"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.24661288773448503,
+      "ll": 0.5784675679592459,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-02",
+    "race_id": "Race 1 - CASO - 2026-07-02",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.2431876842439933,
+      "ll": 0.5725586570846335,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.25336775364656855,
+      "ll": 0.5884954017691539,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.24485502745321902,
+      "ll": 0.575456661144146,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": "<.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "M3",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "DUBBO"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.6006171578075494,
+      "ll": 1.1410640038822404,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 1 - DUBBO - 2026-07-06",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.6225631109545668,
+      "ll": 1.1838403229206393,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.6177578874406128,
+      "ll": 1.1748975357227778,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.6115818011447636,
+      "ll": 1.1622936316059829,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Maiden",
+      "maximum_recency": "<=21",
+      "minimum_history": "<5",
+      "missing_base_input": "False",
+      "venue": "GEE"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.4444498347708958,
+      "ll": 0.9182994525781655,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-30",
+    "race_id": "Race 1 - GEE - 2026-06-30",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.47471633425204673,
+      "ll": 0.9703711201653101,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.4741267733423146,
+      "ll": 0.9707394267200958,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.45947040728191163,
+      "ll": 0.9439948780163769,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "<=6",
+      "grade": "Maiden",
+      "maximum_recency": "<=21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "HOR"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9649976691947668,
+      "ll": 1.8797415126432209,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 1 - HOR - 2026-07-07",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.9388840840245694,
+      "ll": 1.8677043813172902,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.9344400795682176,
+      "ll": 1.8507583969171388,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.950959982853365,
+      "ll": 1.8722879266139196,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": "<.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "PM",
+      "maximum_recency": ">21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "QOT"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.46881890334319454,
+      "ll": 0.9887133787791682,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 1 - LADBROKES-Q1-LAKESIDE - 2026-07-08",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.4790805213111048,
+      "ll": 1.0074484600735438,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.48858347369280314,
+      "ll": 1.0240354587024378,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.47379233296523837,
+      "ll": 0.9978777940188753,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "Open",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "QOT"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.3957599748020409,
+      "ll": 0.8464372857664838,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-04",
+    "race_id": "Race 1 - LADBROKES-Q2-PARKLANDS - 2026-07-04",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.393767330624071,
+      "ll": 0.8496978068188888,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.38698354356695513,
+      "ll": 0.8378593908719633,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.39415491598195607,
+      "ll": 0.8470905354187853,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "tied",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "5th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "MURR"
+    },
+    "market": {
+      "accuracy": 0.5,
+      "brier": 0.6320681844364114,
+      "ll": 1.1561267644666002,
+      "top_ties": 2
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 1 - MURR - 2026-06-29",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.6410261412297581,
+      "ll": 1.1713313836286123,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.646333476312841,
+      "ll": 1.1796455237560826,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.6354816860708813,
+      "ll": 1.1624857380543054,
+      "top_ties": 1
+    },
+    "runner_count": 5,
+    "unoccupied_boxes": [
+      3,
+      5,
+      7
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Maiden",
+      "maximum_recency": ">21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "TAREE"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.872360464409234,
+      "ll": 1.8266315552239538,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 1 - TAREE - 2026-07-01",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.8413012634789098,
+      "ll": 1.765788634527992,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.8430595124045064,
+      "ll": 1.7718977625986319,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.8562917525225676,
+      "ll": 1.7952346173893745,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": "<.02",
+      "distance": ">400",
+      "entropy": "<.8",
+      "favourite_box": "7-8",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "Maiden",
+      "maximum_recency": "<=21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "TRA"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.38820788522850647,
+      "ll": 0.7710248085917799,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 1 - TRA - 2026-07-06",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.39608082477237794,
+      "ll": 0.776627006863203,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.40837855249270133,
+      "ll": 0.7933056667728922,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.39205755231666256,
+      "ll": 0.7737187934870099,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "7",
+      "grade": "Maiden",
+      "maximum_recency": "<=21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "WAR"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.36498862294772927,
+      "ll": 0.799893796540228,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 1 - WAR - 2026-07-06",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.3774328273501629,
+      "ll": 0.8237751281893787,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.3707773682002053,
+      "ll": 0.8123318004844918,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.37068952432724867,
+      "ll": 0.8111685676222686,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      3
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "7",
+      "grade": "5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "WPK"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.568144795610989,
+      "ll": 1.1120280783446563,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-04",
+    "race_id": "Race 1 - WPK - 2026-07-04",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.5025712911579557,
+      "ll": 0.9997116200086165,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.49286695828950433,
+      "ll": 0.9847773150572658,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.5349358859831441,
+      "ll": 1.0545789077159882,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "7",
+      "grade": "Maiden",
+      "maximum_recency": ">21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "WRGL"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.6475817582603874,
+      "ll": 1.2170103683195255,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-25",
+    "race_id": "Race 1 - WRGL - 2026-06-25",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.6777644634030835,
+      "ll": 1.252697688328974,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.6705472426018173,
+      "ll": 1.242276104122476,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.6622357437819288,
+      "ll": 1.234141173188996,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "N/P",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "AP K"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5559593167608557,
+      "ll": 1.0561216849805097,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 10 - AP_K - 2026-07-07",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.5768002907646779,
+      "ll": 1.082940341297698,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.5719530061833478,
+      "ll": 1.075056945254328,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.5654076169548531,
+      "ll": 1.068569223663806,
+      "top_ties": 1
+    },
+    "runner_count": 5,
+    "unoccupied_boxes": [
+      3,
+      6,
+      8
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": "<.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": ".4-.6",
+      "field_size": "<=6",
+      "grade": "N/P",
+      "maximum_recency": "<=21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "GAWL"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8408645700732222,
+      "ll": 1.496631570809066,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-30",
+    "race_id": "Race 10 - GAWL - 2026-06-30",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.8424150239107447,
+      "ll": 1.4794467090268666,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.8340791104514751,
+      "ll": 1.4681687241081112,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.8414970980331198,
+      "ll": 1.4878073096872968,
+      "top_ties": 1
+    },
+    "runner_count": 5,
+    "unoccupied_boxes": [
+      3,
+      5,
+      7
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "5th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "GRDN"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8709031829600494,
+      "ll": 1.7862034078680653,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 10 - GRDN - 2026-06-26",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.9381931233656081,
+      "ll": 1.993068853948518,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.9413114286939612,
+      "ll": 1.996736629212836,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.9055190327094205,
+      "ll": 1.8881025826254414,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "Free For All",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "HEA"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.3242494382087159,
+      "ll": 0.724512839838165,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 10 - HEA - 2026-06-28",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.25098544141136736,
+      "ll": 0.609204078237815,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.24877071797317785,
+      "ll": 0.6054175657362654,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.2855885656681535,
+      "ll": 0.6640270830748054,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ">=.6",
+      "field_size": "<=6",
+      "grade": "Mixed",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "HEA"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.16052271030468065,
+      "ll": 0.4280864216918778,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-05",
+    "race_id": "Race 10 - HEA - 2026-07-05",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.1322387281776938,
+      "ll": 0.38397333285342694,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.13080932920468233,
+      "ll": 0.3810894844119782,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.14522805727394394,
+      "ll": 0.4045988061953437,
+      "top_ties": 1
+    },
+    "runner_count": 5,
+    "unoccupied_boxes": [
+      4,
+      5,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "R/W",
+      "maximum_recency": ">21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "HOBT"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.6247585446032471,
+      "ll": 1.277617280496889,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-30",
+    "race_id": "Race 10 - HOBT - 2026-06-30",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.5671058918507829,
+      "ll": 1.1682646476065515,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.5627851255141237,
+      "ll": 1.1611195936970689,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.5951650914274991,
+      "ll": 1.2210349241854022,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "7-8",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "False",
+      "venue": "QOT"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9253655190697931,
+      "ll": 1.8268467002465616,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 10 - LADBROKES-Q1-LAKESIDE - 2026-06-26",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.9272444942730413,
+      "ll": 1.782846511011423,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.9222701495120296,
+      "ll": 1.774547439494998,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.9259987255974175,
+      "ll": 1.8037015448874985,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "MT_G"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5614686416264691,
+      "ll": 1.0223818329304015,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 10 - MOUNT - 2026-06-28",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.604123085466208,
+      "ll": 1.0818627111082844,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.5985404466410291,
+      "ll": 1.0736944007056037,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.5821185876688451,
+      "ll": 1.0513106478888727,
+      "top_ties": 1
+    },
+    "runner_count": 5,
+    "unoccupied_boxes": [
+      3,
+      5,
+      7
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ".4-.6",
+      "field_size": "<=6",
+      "grade": "4th/5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "MT_G"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9713015521083191,
+      "ll": 1.9505418038626492,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-05",
+    "race_id": "Race 10 - MOUNT - 2026-07-05",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.9255089834486543,
+      "ll": 1.8468416467213782,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.9310435240367316,
+      "ll": 1.8634259605321217,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.9484612227013263,
+      "ll": 1.8979335880881014,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "7",
+      "grade": "5th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "RICH"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.24042354452763676,
+      "ll": 0.5837293135834167,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-25",
+    "race_id": "Race 10 - RICHMOND-STRAIGHT - 2026-06-25",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.1634237806597884,
+      "ll": 0.45395434618123387,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.16198659492554415,
+      "ll": 0.45137850398331103,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.19940776411718153,
+      "ll": 0.5156537236470166,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "7",
+      "grade": "Grade 5",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "SAL"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8128583235178901,
+      "ll": 1.7521746629392134,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 10 - SAL - 2026-07-08",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.8076405566347755,
+      "ll": 1.7509193840031159,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.8030750212507067,
+      "ll": 1.736509642238368,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.8080286742781186,
+      "ll": 1.748216299559398,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "7",
+      "grade": "M3",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "TAREE"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9943923440688528,
+      "ll": 1.9709262634154563,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-04",
+    "race_id": "Race 10 - TAREE - 2026-07-04",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 1.0191448084228127,
+      "ll": 2.0273916491829835,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 1.0219813931013277,
+      "ll": 2.027606446019188,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.0067766859537604,
+      "ll": 1.9988955884311586,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      4
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "Grade 7",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "TRA"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.3853927450624658,
+      "ll": 0.8323773262317925,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 10 - TRA - 2026-06-29",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.4473920176023548,
+      "ll": 0.9414174067245674,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.44236502969968644,
+      "ll": 0.9322226605477977,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.41591431677535706,
+      "ll": 0.8855891942560334,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "N/P",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "AP K"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5960010072598353,
+      "ll": 1.1854752690824604,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 11 - AP_K - 2026-07-07",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.5492257975639596,
+      "ll": 1.091696240741821,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.5455100622677017,
+      "ll": 1.0844053135827199,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.5722981998167391,
+      "ll": 1.137527949167819,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ".4-.6",
+      "field_size": "7",
+      "grade": "Grade 5",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "HEA"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9195767798460652,
+      "ll": 1.6448384044585982,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-05",
+    "race_id": "Race 11 - HEA - 2026-07-05",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.9253039220419828,
+      "ll": 1.6556874115260785,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.92104360696658,
+      "ll": 1.6451113568497042,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.9222700012247116,
+      "ll": 1.6495451581408076,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "<=6",
+      "grade": "4th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "HOBT"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.3355669298595266,
+      "ll": 0.7019670021785571,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 11 - HOBT - 2026-07-07",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.27443099033799573,
+      "ll": 0.6007968274253451,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.2699628851550826,
+      "ll": 0.5942582896824945,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.30362360759505885,
+      "ll": 0.6492321693630803,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      5,
+      8
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "QOT"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.197389677777387,
+      "ll": 3.3345138291923306,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 11 - LADBROKES-Q1-LAKESIDE - 2026-06-26",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 1.206745155700074,
+      "ll": 3.2860062788312434,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 1.210176631016439,
+      "ll": 3.303421039026939,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.201720100437678,
+      "ll": 3.3091728457581313,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ">=.6",
+      "field_size": "<=6",
+      "grade": "6th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "MURR"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.2598713627383817,
+      "ll": 2.5023040893999693,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 11 - MURR - 2026-06-26",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 1.3364859373685096,
+      "ll": 2.8020819022245473,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 1.340160013249399,
+      "ll": 2.8152783732167683,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.2998437044058784,
+      "ll": 2.651151138444679,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "RICH"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5654465881710286,
+      "ll": 1.1140557639935467,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-02",
+    "race_id": "Race 11 - RICHMOND-STRAIGHT - 2026-07-02",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.5139879399866887,
+      "ll": 1.023648362810145,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.5288284566418218,
+      "ll": 1.048916806231755,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.5394668233639004,
+      "ll": 1.068009167555357,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Grade 5",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "SAL"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.783082426944931,
+      "ll": 1.5850259482889575,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 11 - SAL - 2026-07-08",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.7100203593214169,
+      "ll": 1.4130360012680858,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.7196824056422455,
+      "ll": 1.4308429721149192,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.7471423670277751,
+      "ll": 1.4977998181226733,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Grade 6",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "TRA"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.6074076506097779,
+      "ll": 1.243515883411477,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 11 - TRA - 2026-06-29",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.4973148848701864,
+      "ll": 1.0474300001082004,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.49441633003096697,
+      "ll": 1.0414867537683334,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.5504457481756911,
+      "ll": 1.1409999066920398,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "tied",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "Grade 5",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "False",
+      "venue": "WAR"
+    },
+    "market": {
+      "accuracy": 0.5,
+      "brier": 0.5828489528513637,
+      "ll": 1.0682365769496385,
+      "top_ties": 2
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 11 - WAR - 2026-06-29",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.48859723607926114,
+      "ll": 0.9141987713936163,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.48641996949589866,
+      "ll": 0.9091378028669634,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.5352275899078646,
+      "ll": 0.9889189914463292,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      5,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "<=6",
+      "grade": "N/P",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "AP K"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.0692518360374441,
+      "ll": 2.2159042398877755,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 12 - AP_K - 2026-07-07",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 1.0577852125206069,
+      "ll": 2.261643688546894,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 1.0668872131243028,
+      "ll": 2.2859977400979594,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.06303874864375,
+      "ll": 2.237998968309808,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "5th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "GRDN"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5943774880363903,
+      "ll": 1.1736711968771505,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 12 - GRDN - 2026-06-26",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.6686602790738135,
+      "ll": 1.3445279722878332,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.6727689711208936,
+      "ll": 1.3525822876738816,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.6300225479050972,
+      "ll": 1.2551884056591864,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "7",
+      "grade": "Grade 5",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "HEA"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5654833010166629,
+      "ll": 1.096424551035063,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-05",
+    "race_id": "Race 12 - HEA - 2026-07-05",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.5337588480597854,
+      "ll": 1.0501401123830383,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.5257172695520518,
+      "ll": 1.0361049337057937,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.5491965598911935,
+      "ll": 1.0725223810958384,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "7",
+      "grade": "Grade 5",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "TRA"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9386824910731998,
+      "ll": 1.8704826253575826,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 12 - TRA - 2026-06-29",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.8709339278183008,
+      "ll": 1.6736486479394797,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.8726396866203326,
+      "ll": 1.6728525224236608,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.9056857716986385,
+      "ll": 1.770114893092315,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Grade 5",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "WAR"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.6540999561245124,
+      "ll": 1.3534264425096119,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 12 - WAR - 2026-06-29",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.7094033322336165,
+      "ll": 1.457965752143436,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.7078339906473403,
+      "ll": 1.4530581909487357,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.680404188565635,
+      "ll": 1.4033128794922551,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Grade 5",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "False",
+      "venue": "WAR"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.82412228852446,
+      "ll": 1.6878229993706602,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 13 - WAR - 2026-06-29",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.8268412980985121,
+      "ll": 1.6942275090713088,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.8279801644475964,
+      "ll": 1.6964884797039148,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.8252076609465283,
+      "ll": 1.6903705707757324,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": "<.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "4th/5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "BULLI"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9256128495297383,
+      "ll": 2.080205410941712,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 2 - BULLI - 2026-07-07",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.9285666250417192,
+      "ll": 2.082273649918861,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.9239539604688938,
+      "ll": 2.068619269303197,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.9269936148693025,
+      "ll": 2.0810380795263814,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "7-8",
+      "favourite_probability": ".4-.6",
+      "field_size": "<=6",
+      "grade": "6th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "CAPA"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.4197711555506317,
+      "ll": 0.7210362494731376,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 2 - CAPALABA - 2026-07-01",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.45221953479762994,
+      "ll": 0.74732379037609,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.46574711310731504,
+      "ll": 0.7656629231328916,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.4355510047743141,
+      "ll": 0.7336888596623484,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": "<.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "M5",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "CAPA"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.1405260124667675,
+      "ll": 2.3377786306461403,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 2 - CAPALABA - 2026-07-08",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 1.1449266468193777,
+      "ll": 2.38200753600075,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 1.1435923069648788,
+      "ll": 2.3837879173642005,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.1428108599641882,
+      "ll": 2.3597345392631204,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": ".4-.6",
+      "field_size": "<=6",
+      "grade": "5th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "False",
+      "venue": "CASO"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.3748215970315822,
+      "ll": 0.7947036472468897,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-25",
+    "race_id": "Race 2 - CASO - 2026-06-25",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.3541233683881615,
+      "ll": 0.7627305790908359,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.35922165588540145,
+      "ll": 0.7712709669424404,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.36407423637187286,
+      "ll": 0.7782309702142665,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      1,
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Maiden",
+      "maximum_recency": ">21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "DUBBO"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9428581807396551,
+      "ll": 2.158345065351936,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-27",
+    "race_id": "Race 2 - DUBBO - 2026-06-27",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.9233428854957799,
+      "ll": 2.066393528352387,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.9208783818866154,
+      "ll": 2.058789037105359,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.9329848455172294,
+      "ll": 2.1112112204736126,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": "<.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "Maiden",
+      "maximum_recency": ">21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "GEE"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7348259076540665,
+      "ll": 1.3130283450595381,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-30",
+    "race_id": "Race 2 - GEE - 2026-06-30",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.7501598390239779,
+      "ll": 1.333199623832735,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.7600261060698346,
+      "ll": 1.3479267321397,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.7423894315422703,
+      "ll": 1.3227912023755264,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Maiden",
+      "maximum_recency": "<=21",
+      "minimum_history": "<5",
+      "missing_base_input": "False",
+      "venue": "QOT"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8343682560658363,
+      "ll": 1.68265239391418,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 2 - LADBROKES-Q1-LAKESIDE - 2026-07-01",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.7775668219814906,
+      "ll": 1.5785631562436162,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.7830568616345767,
+      "ll": 1.5922517870093509,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.8044233510918352,
+      "ll": 1.6279958548088778,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ".4-.6",
+      "field_size": "7",
+      "grade": "Maiden",
+      "maximum_recency": ">21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "QOT"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.30884501556949256,
+      "ll": 0.7024619518344928,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 2 - LADBROKES-Q1-LAKESIDE - 2026-07-07",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.3275982294913857,
+      "ll": 0.7289857506007563,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.33301370546433245,
+      "ll": 0.7371588515063381,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.31739528746602674,
+      "ll": 0.7148238623774134,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Mixed",
+      "maximum_recency": "<=21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "MEA"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.6118204706065784,
+      "ll": 1.2172128689331476,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-27",
+    "race_id": "Race 2 - MEADOWS - 2026-06-27",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.6796250365416648,
+      "ll": 1.338896973889776,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.6728409497647847,
+      "ll": 1.3245679117157612,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.6442548238005203,
+      "ll": 1.2753100873597885,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Mixed",
+      "maximum_recency": ">21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "MEA"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9566560916225633,
+      "ll": 2.3510956968021963,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-04",
+    "race_id": "Race 2 - MEADOWS - 2026-07-04",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.9329750477764195,
+      "ll": 2.2367651903166186,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.9379603461899413,
+      "ll": 2.2591022173553017,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.9444824693187129,
+      "ll": 2.292417435550101,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "6th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "NOR"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.33429361992401635,
+      "ll": 0.7659779980155329,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 2 - NOR - 2026-06-29",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.4193836243539246,
+      "ll": 0.9177130890757214,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.41874340461717763,
+      "ll": 0.916384776446195,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.3758244158071813,
+      "ll": 0.839276700979067,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": "<.02",
+      "distance": ">400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "6th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": "<5",
+      "missing_base_input": "False",
+      "venue": "ROCK"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.22225657080363517,
+      "ll": 0.5754963477028481,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 2 - ROCKHAMPTON - 2026-06-28",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.21866175738149665,
+      "ll": 0.5700109053192032,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.21558145895590317,
+      "ll": 0.5644491646439237,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.22027782392656103,
+      "ll": 0.5724818758982834,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "NG1-4",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "TAREE"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9912393881372032,
+      "ll": 2.4186107784976865,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 2 - TAREE - 2026-07-08",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 1.0215273868659587,
+      "ll": 2.604900391241498,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 1.0163994075362277,
+      "ll": 2.581290128329632,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.0066981888620912,
+      "ll": 2.510265973915145,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": "<.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "<=6",
+      "grade": "Maiden",
+      "maximum_recency": "<=21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "WRGL"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.4382674928712791,
+      "ll": 0.8283437536077674,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-25",
+    "race_id": "Race 2 - WRGL - 2026-06-25",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.43967056263472587,
+      "ll": 0.826001611240198,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.4346208078618455,
+      "ll": 0.8182108195752161,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.43887328973016976,
+      "ll": 0.8270272292644443,
+      "top_ties": 1
+    },
+    "runner_count": 5,
+    "unoccupied_boxes": [
+      3,
+      6,
+      7
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "Grade 7",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "BAL"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.36172751856737917,
+      "ll": 0.7531896465823512,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-27",
+    "race_id": "Race 3 - BAL - 2026-06-27",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.4401065964363485,
+      "ll": 0.8747886403839643,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.43499425311812556,
+      "ll": 0.8666622673515822,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.39749739210154333,
+      "ll": 0.8100671064517612,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Grade 7",
+      "maximum_recency": "<=21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "BEN"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8301192714747722,
+      "ll": 1.8173963400629933,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 3 - BEN - 2026-07-08",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.8317684634634251,
+      "ll": 1.8158904897731325,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.8273961763096408,
+      "ll": 1.8015669901680031,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.8301732088060874,
+      "ll": 1.8151246732762811,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": "<.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "6th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "False",
+      "venue": "CAPA"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.6292868273448026,
+      "ll": 1.0331084205025587,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-24",
+    "race_id": "Race 3 - CAPALABA - 2026-06-24",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.5971347914784282,
+      "ll": 0.9923802945461593,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.6089482208381267,
+      "ll": 1.007293623741377,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.6131276493420273,
+      "ll": 1.0125105278464426,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "3rd/4th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "CAPA"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.6280575445601787,
+      "ll": 1.2708785119692563,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 3 - CAPALABA - 2026-06-28",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.6379876010625802,
+      "ll": 1.290147719428585,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.6361036296232949,
+      "ll": 1.285540224641751,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.6327321927684009,
+      "ll": 1.2800699578376893,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "CAPA"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9106382103034961,
+      "ll": 1.8809109894647125,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 3 - CAPALABA - 2026-07-08",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.8800632478318716,
+      "ll": 1.8104097763798572,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.8843500891623681,
+      "ll": 1.81759788373017,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.894840789978163,
+      "ll": 1.844398389416328,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "7",
+      "grade": "5th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "CASO"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.6331914835902723,
+      "ll": 1.2562072563643822,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-25",
+    "race_id": "Race 3 - CASO - 2026-06-25",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.5554354733738026,
+      "ll": 1.0984327729510166,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.5596506487571304,
+      "ll": 1.1056412121949368,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.5939945049043269,
+      "ll": 1.1747945167656868,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "Maiden",
+      "maximum_recency": ">21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "DUBBO"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.4903939837987065,
+      "ll": 0.9335089901507145,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-27",
+    "race_id": "Race 3 - DUBBO - 2026-06-27",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.5120508917103601,
+      "ll": 0.9739374195646996,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.5009587465524511,
+      "ll": 0.9577569277591756,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.5010270820872339,
+      "ll": 0.9532652443147744,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      2,
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "7",
+      "grade": "Grade 7",
+      "maximum_recency": "<=21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "GEE"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8691049205651475,
+      "ll": 1.8813383096823195,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-30",
+    "race_id": "Race 3 - GEE - 2026-06-30",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.859128610748403,
+      "ll": 1.8423296719134246,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.8582821720002587,
+      "ll": 1.8399393276150005,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.8626716359387723,
+      "ll": 1.8597018968299732,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      7
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "tied",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Grade 5",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "GEE"
+    },
+    "market": {
+      "accuracy": 0.5,
+      "brier": 0.6854977708057364,
+      "ll": 1.4025033197154002,
+      "top_ties": 2
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 3 - GEE - 2026-07-07",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.7652296442830675,
+      "ll": 1.5683957012434762,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.7670474970623727,
+      "ll": 1.5756750282959886,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.7246066006149843,
+      "ll": 1.4828535966883913,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "M2/M3",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "False",
+      "venue": "GOUL"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8215658191345313,
+      "ll": 1.5796660350588536,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-03",
+    "race_id": "Race 3 - GOULBURN - 2026-07-03",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.7615319025759121,
+      "ll": 1.4507454293472195,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.7581122221674257,
+      "ll": 1.4403442753444629,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.7918651979796401,
+      "ll": 1.5143513147734793,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "7",
+      "grade": "Grade 7",
+      "maximum_recency": ">21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "HOR"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.2720974210953306,
+      "ll": 0.6148712803630924,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 3 - HOR - 2026-07-07",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.20691494017084527,
+      "ll": 0.512005957084217,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.20598644097591656,
+      "ll": 0.5101169121449386,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.2371606820818675,
+      "ll": 0.5603333772110399,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": "<.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "Maiden",
+      "maximum_recency": ">21",
+      "minimum_history": "<5",
+      "missing_base_input": "False",
+      "venue": "QOT"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.3833392058810093,
+      "ll": 0.8154701596103389,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 3 - LADBROKES-Q1-LAKESIDE - 2026-07-01",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.3839609687216113,
+      "ll": 0.8208318291015813,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.38073498747732426,
+      "ll": 0.8171644428511479,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.3834419734272776,
+      "ll": 0.8178365382142465,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": "<.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "Invitation",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "MT_G"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9161618627056786,
+      "ll": 1.8344139300972935,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-05",
+    "race_id": "Race 3 - MOUNT - 2026-07-05",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.9172620987750001,
+      "ll": 1.8386283673881145,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.922436318042771,
+      "ll": 1.847160923738668,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.9166694744763257,
+      "ll": 1.8363889563401297,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "7",
+      "grade": "Maiden",
+      "maximum_recency": ">21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "TRA"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8741423653354217,
+      "ll": 1.8487225843972395,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 3 - TRA - 2026-07-06",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.8540715120144926,
+      "ll": 1.7799075671115951,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.8546397290558189,
+      "ll": 1.784643210245653,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.8640946369137634,
+      "ll": 1.8139004311319078,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "7",
+      "grade": "Grade 7",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "WAR"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.28367708522029844,
+      "ll": 0.6471583596448313,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 3 - WAR - 2026-07-06",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.283105644575589,
+      "ll": 0.6380889694905083,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.2820293525727727,
+      "ll": 0.6356620564269618,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.28298208584082385,
+      "ll": 0.6420008330424725,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      7
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "7",
+      "grade": "Restricted",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "WRGL"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5979216130577248,
+      "ll": 1.1811493852628183,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-02",
+    "race_id": "Race 3 - WRGL - 2026-07-02",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.5218879427157905,
+      "ll": 1.0429421066714955,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.505973717423413,
+      "ll": 1.0174733840707202,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.5598329522890598,
+      "ll": 1.1107457694004064,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "N/P",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "AP K"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.696617118952584,
+      "ll": 1.2596292260135327,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 4 - AP_K - 2026-07-07",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.7780586319605124,
+      "ll": 1.390509399519641,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.766173878637205,
+      "ll": 1.369345375345205,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.7370308860416943,
+      "ll": 1.323640866261393,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": "<.02",
+      "distance": ">400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "Grade 6",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "BEN"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.0945771134007838,
+      "ll": 2.4075262196269445,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 4 - BEN - 2026-07-08",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 1.0870442821872253,
+      "ll": 2.416370670288547,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 1.083451725731711,
+      "ll": 2.4006245439822336,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.0907745534999118,
+      "ll": 2.4116992761785867,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "M5",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "CAPA"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5592139518198456,
+      "ll": 1.1719278426601476,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 4 - CAPALABA - 2026-06-28",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.4886915503413297,
+      "ll": 1.0262988189616011,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.4930892969834617,
+      "ll": 1.033521186311627,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.5231245167677894,
+      "ll": 1.0964213341241908,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": "<.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "7-8",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "5th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "DUBBO"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.1563236047891388,
+      "ll": 2.5755203746170103,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-04",
+    "race_id": "Race 4 - DUBBO - 2026-07-04",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 1.1565182895077997,
+      "ll": 2.5592335013999636,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 1.15260849341956,
+      "ll": 2.560888705768358,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.1564484661310008,
+      "ll": 2.5671679230574616,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": "<.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "Other",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "GAWL"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7850861377212414,
+      "ll": 1.4942831406808093,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-30",
+    "race_id": "Race 4 - GAWL - 2026-06-30",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.811340231004198,
+      "ll": 1.5508880705827275,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.8128463271892985,
+      "ll": 1.551106380139989,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.7982790740021886,
+      "ll": 1.5224666909709559,
+      "top_ties": 1
+    },
+    "runner_count": 5,
+    "unoccupied_boxes": [
+      3,
+      5,
+      7
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ".4-.6",
+      "field_size": "<=6",
+      "grade": "NG1-4",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "GOUL"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9803850455664929,
+      "ll": 1.8054443097109147,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-03",
+    "race_id": "Race 4 - GOULBURN - 2026-07-03",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.9672333428197013,
+      "ll": 1.6550142603576654,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.9717501579360524,
+      "ll": 1.6660141523337604,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.9724610013795396,
+      "ll": 1.7261345130383714,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "<=6",
+      "grade": "Free For All",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "QOT"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.37543094256240295,
+      "ll": 0.7185568960853136,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-27",
+    "race_id": "Race 4 - LADBROKES-Q1-LAKESIDE - 2026-06-27",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.36956186531106905,
+      "ll": 0.7049703031839999,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.36589493575411774,
+      "ll": 0.6992901202589441,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.3700307791604737,
+      "ll": 0.709682936539776,
+      "top_ties": 1
+    },
+    "runner_count": 5,
+    "unoccupied_boxes": [
+      3,
+      5,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "6th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "QOT"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.36479592344085016,
+      "ll": 0.7577733351185164,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-30",
+    "race_id": "Race 4 - LADBROKES-Q1-LAKESIDE - 2026-06-30",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.35255804896486054,
+      "ll": 0.7359063563221736,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.3453414632848682,
+      "ll": 0.7250028856152596,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.35834133956655323,
+      "ll": 0.7463208413751264,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ".4-.6",
+      "field_size": "<=6",
+      "grade": "Open",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "MURR"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.2924318591619095,
+      "ll": 0.5857935238179972,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 4 - MURRAY-BRIDGE-STRAIGHT - 2026-07-01",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.26284727303007516,
+      "ll": 0.537737854923128,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.2565471278747831,
+      "ll": 0.5300241383662576,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.2772733551258286,
+      "ll": 0.5610368323981036,
+      "top_ties": 1
+    },
+    "runner_count": 5,
+    "unoccupied_boxes": [
+      3,
+      5,
+      7
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "5th/6th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "NOR"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8399058716866523,
+      "ll": 1.7884613641481115,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 4 - NOR - 2026-06-29",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.8312247003734661,
+      "ll": 1.7632560636332084,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.8335136661659578,
+      "ll": 1.77020747347888,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.8352192349676988,
+      "ll": 1.7753281304907604,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "tied",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Grade 5",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "TRA"
+    },
+    "market": {
+      "accuracy": 0.5,
+      "brier": 0.6886571158694402,
+      "ll": 1.4050669638335391,
+      "top_ties": 2
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 4 - TRA - 2026-07-06",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.596146123720699,
+      "ll": 1.2143176371301214,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.5994835237374895,
+      "ll": 1.222412438158374,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.6428117623164821,
+      "ll": 1.3079072256101982,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "7-8",
+      "favourite_probability": ">=.6",
+      "field_size": "8",
+      "grade": "Grade 5",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "False",
+      "venue": "WAR"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.1402263939686081,
+      "ll": 0.41368629143503066,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 4 - WAR - 2026-07-06",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.0900504153964361,
+      "ll": 0.3184163813299926,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.09189309083400138,
+      "ll": 0.32211726984188127,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.11272915128132288,
+      "ll": 0.36310342035291127,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "<=6",
+      "grade": "Other",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "AP K"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.4543106265720348,
+      "ll": 0.8789093372669178,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 5 - AP_K - 2026-07-07",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.5114537302435374,
+      "ll": 0.9600068089984818,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.4996122174284017,
+      "ll": 0.9425255597147836,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.48234565935142054,
+      "ll": 0.918482918641996,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "4th/5th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "BH"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7766041781037372,
+      "ll": 1.6371616400293578,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 5 - BROKEN-HILL - 2026-06-28",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.8041517747181084,
+      "ll": 1.7233043701395694,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.8034886152920091,
+      "ll": 1.7213569483230917,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.7904166767778886,
+      "ll": 1.6797257633497424,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "7-8",
+      "favourite_probability": ".4-.6",
+      "field_size": "<=6",
+      "grade": "P5",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "CAPA"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.2587979759631573,
+      "ll": 0.5728481948300511,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 5 - CAPALABA - 2026-07-01",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.23659394891078742,
+      "ll": 0.5421971613450669,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.24342626512096904,
+      "ll": 0.5538319473238759,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.24741896292878704,
+      "ll": 0.557240350430469,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      4,
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "7",
+      "grade": "5th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "CASO"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8578361819760832,
+      "ll": 1.8264737228556445,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-25",
+    "race_id": "Race 5 - CASO - 2026-06-25",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.8802313538337858,
+      "ll": 1.8895100232478923,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.8805113962278946,
+      "ll": 1.8895505628252005,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.8664480795749959,
+      "ll": 1.85476588227433,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "DUBBO"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.1363441075692375,
+      "ll": 3.3827660084043187,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-27",
+    "race_id": "Race 5 - DUBBO - 2026-06-27",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 1.1470630105049817,
+      "ll": 3.44195669060273,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 1.1469077893707194,
+      "ll": 3.44969690422181,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.1414018984137673,
+      "ll": 3.4114375705734203,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ".4-.6",
+      "field_size": "<=6",
+      "grade": "NG1-4",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "DUBBO"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.0485519602464026,
+      "ll": 1.7306792327009228,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 5 - DUBBO - 2026-07-06",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 1.0872084048227026,
+      "ll": 1.7640386859381019,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 1.0884931911390696,
+      "ll": 1.7751224129176244,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.067767387372839,
+      "ll": 1.7467601138771371,
+      "top_ties": 1
+    },
+    "runner_count": 5,
+    "unoccupied_boxes": [
+      3,
+      6,
+      8
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "R/W",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "HOBT"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.1919034888509656,
+      "ll": 3.3971034115313543,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-30",
+    "race_id": "Race 5 - HOBT - 2026-06-30",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 1.2097673108907419,
+      "ll": 3.632226372766149,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 1.2082718422843266,
+      "ll": 3.615997891813661,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.201240371447004,
+      "ll": 3.514026818122539,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "7",
+      "grade": "Grade 5",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "HOR"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.0208985344883608,
+      "ll": 2.2588363317560245,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 5 - HOR - 2026-07-07",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 1.0588139453900955,
+      "ll": 2.2402262323069837,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 1.0552907154609665,
+      "ll": 2.235021961425248,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.037331237782293,
+      "ll": 2.2461600453356207,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "5th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "QOT"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9813638291269223,
+      "ll": 2.2840444081892004,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-27",
+    "race_id": "Race 5 - LADBROKES-Q1-LAKESIDE - 2026-06-27",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.9589244041147406,
+      "ll": 2.1880930909767833,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.9550035286692542,
+      "ll": 2.1735822587827376,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.9675656332882856,
+      "ll": 2.2317957640831483,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "MT_G"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.6606326870443119,
+      "ll": 1.1814461933592049,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 5 - MOUNT - 2026-06-28",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.5982658487453661,
+      "ll": 1.0563867346257394,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.6050707979282277,
+      "ll": 1.0680245008603249,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.6292669780465244,
+      "ll": 1.1171826377221026,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": "<.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "7",
+      "grade": "5th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "MT_G"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.638945229275869,
+      "ll": 1.273641279493376,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-05",
+    "race_id": "Race 5 - MOUNT - 2026-07-05",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.6154921442521551,
+      "ll": 1.2272107371435093,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.6190297230134402,
+      "ll": 1.2339171789147172,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.6271575120072185,
+      "ll": 1.250188036621164,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ".4-.6",
+      "field_size": "<=6",
+      "grade": "6th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "MURR"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.31341296850164224,
+      "ll": 0.6914596511914987,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 5 - MURR - 2026-06-26",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.26139584026948637,
+      "ll": 0.6062826471315127,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.2596056293175238,
+      "ll": 0.6039679885633,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.2866675928710959,
+      "ll": 0.6477414821086849,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "7-8",
+      "favourite_probability": ".4-.6",
+      "field_size": "<=6",
+      "grade": "5th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "MURR"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7477582231006421,
+      "ll": 1.2472548907050176,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 5 - MURRAY-BRIDGE-STRAIGHT - 2026-07-01",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.7014404013566109,
+      "ll": 1.1794873730714366,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.7000362260667123,
+      "ll": 1.1804468748730654,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.7242254274666776,
+      "ll": 1.2128076580377827,
+      "top_ties": 1
+    },
+    "runner_count": 5,
+    "unoccupied_boxes": [
+      1,
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "4th/5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "NOR"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7974383213849179,
+      "ll": 1.6190724349655345,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 5 - NOR - 2026-06-29",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.7271989205790941,
+      "ll": 1.457189993799192,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.7299472879543971,
+      "ll": 1.4643447071229554,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.7620805732441932,
+      "ll": 1.5358806303867236,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "M3",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "RICH"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5071245005804547,
+      "ll": 1.0368288683781,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-25",
+    "race_id": "Race 5 - RICHMOND-STRAIGHT - 2026-06-25",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.42660610961693424,
+      "ll": 0.9007805482210665,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.4275559485419606,
+      "ll": 0.903404187164125,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.4660886428635307,
+      "ll": 0.9667745326166292,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Grade 5",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "SAL"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9205843636246526,
+      "ll": 2.1501472700083326,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 5 - SAL - 2026-07-08",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.9382112298468485,
+      "ll": 2.177722714098997,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.9394494455729606,
+      "ll": 2.184272583545017,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.9269314435710401,
+      "ll": 2.1601065528248986,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Grade 5",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "False",
+      "venue": "WAR"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8888343676712753,
+      "ll": 2.0198732710368508,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 5 - WAR - 2026-06-29",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.8717753544533455,
+      "ll": 1.9723804507596494,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.8698208475317868,
+      "ll": 1.9652749532217242,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.8797550404896598,
+      "ll": 1.9947822114744054,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Restricted",
+      "maximum_recency": "<=21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "WAR"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9189343764895805,
+      "ll": 1.9638888236690937,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 5 - WAR - 2026-07-06",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.9210338346788813,
+      "ll": 1.9734956947562776,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.9200170197574513,
+      "ll": 1.9673636581786147,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.919618060241855,
+      "ll": 1.967959604454614,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "Grade 5",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "BAL"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7000033719400536,
+      "ll": 1.382004814334656,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-27",
+    "race_id": "Race 6 - BAL - 2026-06-27",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.6888808931290328,
+      "ll": 1.358579167813134,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.6898750732970316,
+      "ll": 1.3587256219213808,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.6942725922458169,
+      "ll": 1.3699145603565555,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      5,
+      7
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "4th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "BH"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.939201659056436,
+      "ll": 1.9757633127297345,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 6 - BROKEN-HILL - 2026-06-28",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.9431675991639182,
+      "ll": 1.9103066281605694,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.9389140114005808,
+      "ll": 1.896539214897559,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.939545836336943,
+      "ll": 1.9408470302317364,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "7-8",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "R/W",
+      "maximum_recency": "<=21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "CAPA"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.2174355516583596,
+      "ll": 0.5470482374559462,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-24",
+    "race_id": "Race 6 - CAPALABA - 2026-06-24",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.1612085015151471,
+      "ll": 0.4567942339179497,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.1652346484296316,
+      "ll": 0.46376817542350646,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.1869113476941488,
+      "ll": 0.49913870183107195,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "7",
+      "grade": "5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "False",
+      "venue": "CAPA"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.6925088742289033,
+      "ll": 1.292193442633073,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 6 - CAPALABA - 2026-06-28",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.6567302541840693,
+      "ll": 1.2135726313611348,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.650761870900844,
+      "ll": 1.2038986181831792,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.6714359352998822,
+      "ll": 1.249473593165914,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      8
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "7-8",
+      "favourite_probability": ".4-.6",
+      "field_size": "7",
+      "grade": "P5",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "CAPA"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.27353806451720736,
+      "ll": 0.6375323014434138,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 6 - CAPALABA - 2026-07-01",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.20953282019967198,
+      "ll": 0.5298428262016034,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.2149258448014144,
+      "ll": 0.5388388501925663,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.240184228301618,
+      "ll": 0.5817290651382897,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "tied",
+      "favourite_probability": "<.4",
+      "field_size": "7",
+      "grade": "5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "CAPA"
+    },
+    "market": {
+      "accuracy": 0.5,
+      "brier": 0.642273069169278,
+      "ll": 1.2284372145507139,
+      "top_ties": 2
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-05",
+    "race_id": "Race 6 - CAPALABA - 2026-07-05",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.5860593452974069,
+      "ll": 1.1109833924873904,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.5846565549769049,
+      "ll": 1.1089923476704513,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.6127804120108962,
+      "ll": 1.1668074683380094,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": "<.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ">=.6",
+      "field_size": "7",
+      "grade": "M5",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "CAPA"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.18897876500265312,
+      "ll": 0.48753204107359943,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 6 - CAPALABA - 2026-07-08",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.1969846106019908,
+      "ll": 0.5023509471514349,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.1980760623951938,
+      "ll": 0.5037541348865415,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.19284697472198514,
+      "ll": 0.49476169280647686,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "Other",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "GAWL"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7983651574774879,
+      "ll": 1.5877034202880942,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-30",
+    "race_id": "Race 6 - GAWL - 2026-06-30",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.7860671275309837,
+      "ll": 1.5558841162401762,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.7905514642000646,
+      "ll": 1.5685925668758216,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.7916779960334057,
+      "ll": 1.570920116210774,
+      "top_ties": 1
+    },
+    "runner_count": 5,
+    "unoccupied_boxes": [
+      3,
+      5,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Grade 5",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "GEE"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5843837886782212,
+      "ll": 1.2142012189516278,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-04",
+    "race_id": "Race 6 - GEE - 2026-07-04",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.6309236224464159,
+      "ll": 1.3035101409099548,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.6265770310288707,
+      "ll": 1.2944482272023674,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.6049792152368625,
+      "ll": 1.2552893248492667,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "7",
+      "grade": "5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "GOUL"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7389179035415958,
+      "ll": 1.4535130153334057,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-03",
+    "race_id": "Race 6 - GOULBURN - 2026-07-03",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.7497949180517604,
+      "ll": 1.4206186298291357,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.7485437372638815,
+      "ll": 1.4184721510444054,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.7415760448881529,
+      "ll": 1.4338696605293013,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Mixed",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "HEA"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.6508893836349315,
+      "ll": 1.275425782330025,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 6 - HEA - 2026-06-28",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.5903749789313576,
+      "ll": 1.1642874891784505,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.5918270901890814,
+      "ll": 1.1653425512109103,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.6202944048020801,
+      "ll": 1.2185180043076267,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "3rd/4th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "HOBT"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5799025537255067,
+      "ll": 1.0726603583206915,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 6 - HOBT - 2026-07-07",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.5657535031589036,
+      "ll": 0.9998575577387754,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.5594133517214601,
+      "ll": 0.992495767463611,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.5702234082448161,
+      "ll": 1.0326689784133662,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      5,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": "<.8",
+      "favourite_box": "7-8",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "Special Event",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "HOR"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.27768338510749,
+      "ll": 0.6558407545178444,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 6 - HOR - 2026-06-26",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.25236528204334163,
+      "ll": 0.6141919389919158,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.25725376317452403,
+      "ll": 0.6221498232433615,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.2641928112416961,
+      "ll": 0.6339126152306362,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "6th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "MURR"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7052134222674165,
+      "ll": 1.266352411135831,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 6 - MURRAY-BRIDGE-STRAIGHT - 2026-07-08",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.741384496502552,
+      "ll": 1.3451303541344364,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.7371675379116893,
+      "ll": 1.3394028512771632,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.7233494241519485,
+      "ll": 1.3052895250951055,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "RICH"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8391523798160766,
+      "ll": 1.6224464589857448,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-25",
+    "race_id": "Race 6 - RICHMOND-STRAIGHT - 2026-06-25",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.7947838956447121,
+      "ll": 1.5089447594026992,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.7961916810861086,
+      "ll": 1.5127378363744666,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.8172815734952138,
+      "ll": 1.564981756408173,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ".4-.6",
+      "field_size": "7",
+      "grade": "Grade 5",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "False",
+      "venue": "SAL"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.22074816752145696,
+      "ll": 0.5574996808223994,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-24",
+    "race_id": "Race 6 - SAL - 2026-06-24",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.20702481451285307,
+      "ll": 0.5313699319790219,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.20476331182925764,
+      "ll": 0.5278573924723458,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.21346116358696474,
+      "ll": 0.5438358133584968,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "5th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "TEM"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.1961453485371512,
+      "ll": 2.9658469325023975,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-24",
+    "race_id": "Race 6 - TEMORA - 2026-06-24",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 1.2077127574345492,
+      "ll": 3.083787335393342,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 1.2098888911931924,
+      "ll": 3.090378193533707,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.1995391429305478,
+      "ll": 3.0219576010445643,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "Grade 5",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "WAR"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9918256010630864,
+      "ll": 1.9496925888939554,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 6 - WAR - 2026-06-29",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.8885071794934887,
+      "ll": 1.6906918392705117,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.8896204497542264,
+      "ll": 1.6923828474782476,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.9408156521077465,
+      "ll": 1.8169863955890402,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Restricted",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "WAR"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5357727545009157,
+      "ll": 1.050595064755895,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 6 - WAR - 2026-07-06",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.5828135976077815,
+      "ll": 1.1141266741696236,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.5717763606466071,
+      "ll": 1.0955151570836648,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.5575955124417895,
+      "ll": 1.0802342969820646,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "Other",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "AP K"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8967820875818793,
+      "ll": 1.8236202577039522,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 7 - AP_K - 2026-07-07",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.8955315163316544,
+      "ll": 1.8125039348023162,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.8979867865046582,
+      "ll": 1.8224107202345787,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.8936670181077042,
+      "ll": 1.814713257103257,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Grade 5",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "BAL"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.6595126624116714,
+      "ll": 1.3792500888703676,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-27",
+    "race_id": "Race 7 - BAL - 2026-06-27",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.678242944187131,
+      "ll": 1.4091822019212326,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.6835375270201764,
+      "ll": 1.4215413826161782,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.6683946708973673,
+      "ll": 1.3932552472649697,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "2nd/3rd Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "BH"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8232748945693138,
+      "ll": 1.7765927246248114,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 7 - BROKEN-HILL - 2026-06-28",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.8591915665538766,
+      "ll": 1.9010123951645568,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.8585258021306742,
+      "ll": 1.8941133851534067,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.8411814151120822,
+      "ll": 1.837485798203734,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "4th/5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "CAPA"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8997168787468257,
+      "ll": 1.769704724565521,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-24",
+    "race_id": "Race 7 - CAPALABA - 2026-06-24",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.8984824856853664,
+      "ll": 1.730628694714003,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.8970557476941898,
+      "ll": 1.7304356140736672,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.8989495968348646,
+      "ll": 1.7487014094508946,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ".4-.6",
+      "field_size": "7",
+      "grade": "Free For All",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "CAPA"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.672327620248105,
+      "ll": 1.1050644199525872,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 7 - CAPALABA - 2026-06-28",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.865426176453042,
+      "ll": 1.3646955019570446,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.8710804101828298,
+      "ll": 1.376461235994997,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.7678208652124907,
+      "ll": 1.229922042393525,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "7-8",
+      "favourite_probability": ".4-.6",
+      "field_size": "7",
+      "grade": "5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "CAPA"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.175669437548082,
+      "ll": 2.244992215559678,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-05",
+    "race_id": "Race 7 - CAPALABA - 2026-07-05",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 1.2042119695581301,
+      "ll": 2.194775427430591,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 1.1973914631341829,
+      "ll": 2.1794361186241473,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.1899128642148913,
+      "ll": 2.2180955929740604,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ".4-.6",
+      "field_size": "7",
+      "grade": "5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "CAPA"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.38197802930800157,
+      "ll": 0.8243834485775786,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 7 - CAPALABA - 2026-07-08",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.39101733193067667,
+      "ll": 0.841647644002122,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.3888089114293757,
+      "ll": 0.8379043111557637,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.38400650569995365,
+      "ll": 0.8300976717619696,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": "<.02",
+      "distance": ">400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ">=.6",
+      "field_size": "<=6",
+      "grade": "5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "DUBBO"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.16595130500362373,
+      "ll": 0.4467868155809708,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-04",
+    "race_id": "Race 7 - DUBBO - 2026-07-04",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.18087962931899212,
+      "ll": 0.47368960216569206,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.17705520162385657,
+      "ll": 0.46666274883217246,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.17317427582022066,
+      "ll": 0.4598840493542216,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "7",
+      "grade": "5th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "DUBBO"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8689913205148512,
+      "ll": 1.6572244685147375,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 7 - DUBBO - 2026-07-06",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.8561452253541142,
+      "ll": 1.6081880336532428,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.8506404997767454,
+      "ll": 1.5993964099512274,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.861824981591516,
+      "ll": 1.631294920384034,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "7-8",
+      "favourite_probability": ">=.6",
+      "field_size": "<=6",
+      "grade": "NG1-4",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "GOUL"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.10602202109749174,
+      "ll": 0.3315759988064738,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-03",
+    "race_id": "Race 7 - GOULBURN - 2026-07-03",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.061217626369232656,
+      "ll": 0.240656299772126,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.06298622166698399,
+      "ll": 0.24440136984034277,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.08072505686248084,
+      "ll": 0.2824784585801386,
+      "top_ties": 1
+    },
+    "runner_count": 5,
+    "unoccupied_boxes": [
+      3,
+      5,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "5th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "GRDN"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5077240708029469,
+      "ll": 1.0863284230242045,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 7 - GRDN - 2026-06-26",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.432413091507725,
+      "ll": 0.9405380358703164,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.43007590888290376,
+      "ll": 0.9365485398281865,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.46893747742990977,
+      "ll": 1.0104757462137124,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "4th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "HOBT"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.3713519246179035,
+      "ll": 0.8224468676589688,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-30",
+    "race_id": "Race 7 - HOBT - 2026-06-30",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.3394197454038651,
+      "ll": 0.7661818871025314,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.33530156857870297,
+      "ll": 0.7589652739696859,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.35384229569185904,
+      "ll": 0.7921863154120067,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "7",
+      "grade": "5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "HOBT"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.45896749055612296,
+      "ll": 0.9533826523129146,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 7 - HOBT - 2026-07-07",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.4728934793521394,
+      "ll": 0.9807414316623593,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.46531116997149014,
+      "ll": 0.9672287539291468,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.46550034242324595,
+      "ll": 0.9664840617234938,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "5th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "QOT"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.37940056644962306,
+      "ll": 0.8303125697939574,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 7 - LADBROKES-Q1-LAKESIDE - 2026-06-26",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.3411913473423407,
+      "ll": 0.7647535914510885,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.3448037609425547,
+      "ll": 0.7705805641712142,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.3600539874525173,
+      "ll": 0.7970252004350383,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ".4-.6",
+      "field_size": "7",
+      "grade": "4th/5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "MURR"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.2649307777206797,
+      "ll": 2.6384429422470643,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 7 - MURR - 2026-06-26",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 1.2408071215071708,
+      "ll": 2.5520885748475974,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 1.23861733634598,
+      "ll": 2.5396152269687255,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.2529447152102278,
+      "ll": 2.5949239974774887,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      2
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ">=.6",
+      "field_size": "<=6",
+      "grade": "N/P",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "MURR"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.2084851821982716,
+      "ll": 0.508103518002186,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 7 - MURRAY-BRIDGE-STRAIGHT - 2026-07-01",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.1649602232904762,
+      "ll": 0.43593606114249445,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.16262073184043385,
+      "ll": 0.4323461270187364,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.185754912746748,
+      "ll": 0.47082805913337417,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "7",
+      "grade": "5th/6th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "NOR"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.6988705853357287,
+      "ll": 1.3207369982649528,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 7 - NOR - 2026-06-29",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.6973276279284336,
+      "ll": 1.3179850745710866,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.7010506185235641,
+      "ll": 1.3274186944006992,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.6961132196266074,
+      "ll": 1.3170590539335023,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "RICH"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.1169662059698582,
+      "ll": 3.028287498677457,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-25",
+    "race_id": "Race 7 - RICHMOND-STRAIGHT - 2026-06-25",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 1.1290134400260843,
+      "ll": 3.169928779792769,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 1.1312482231312042,
+      "ll": 3.1776871228582984,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.1231634613494017,
+      "ll": 3.0985230556481738,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "7",
+      "grade": "Grade 5",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "SAL"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5751089372722662,
+      "ll": 1.1815347142395347,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 7 - SAL - 2026-07-08",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.5145688852098179,
+      "ll": 1.0618014334078523,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.5214356628514668,
+      "ll": 1.0747890710584904,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.5428797177974141,
+      "ll": 1.1184102921862404,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Restricted",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "WAR"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.0409363269530922,
+      "ll": 2.6962958251926095,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 7 - WAR - 2026-06-29",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 1.0886239970777196,
+      "ll": 2.9934443975861447,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 1.090764534034214,
+      "ll": 3.0012529787646525,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.0656379809414218,
+      "ll": 2.8433866806221886,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ".4-.6",
+      "field_size": "7",
+      "grade": "Grade 5",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "WAR"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.4113925885893276,
+      "ll": 0.8319598312194453,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 7 - WAR - 2026-07-06",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.3782812098275081,
+      "ll": 0.7901399292247475,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.37896620580034274,
+      "ll": 0.7896792635950364,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.3939712129910648,
+      "ll": 0.8100702806734579,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      2
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "Other",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "AP K"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.868649769648053,
+      "ll": 1.7945588647078454,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 8 - AP_K - 2026-07-07",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.7969763345335008,
+      "ll": 1.6072029495926177,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.792386918870093,
+      "ll": 1.595586561241044,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.831063926760672,
+      "ll": 1.6963672795796148,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "7",
+      "grade": "NG1-4",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "BH"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.6484605635056211,
+      "ll": 1.190440258248817,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 8 - BROKEN-HILL - 2026-06-28",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.5061785365852383,
+      "ll": 0.9773024146289118,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.513289381442958,
+      "ll": 0.9879572661928104,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.5745258966169609,
+      "ll": 1.0788714787908391,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "M5",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "False",
+      "venue": "CAPA"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.2261302988363285,
+      "ll": 3.2832564536638724,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-24",
+    "race_id": "Race 8 - CAPALABA - 2026-06-24",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 1.1822782931708238,
+      "ll": 3.056479596590209,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 1.1804843432361718,
+      "ll": 3.05677385590105,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.203645755116231,
+      "ll": 3.1665054509859645,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "7-8",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "Open",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "CAPA"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.31790078130546373,
+      "ll": 0.7267591984792177,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 8 - CAPALABA - 2026-06-28",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.27520961918881565,
+      "ll": 0.6410178240368721,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.27709252153717157,
+      "ll": 0.6439242990886309,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.2941319960796468,
+      "ll": 0.6797858136777388,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "7-8",
+      "favourite_probability": ".4-.6",
+      "field_size": "7",
+      "grade": "R/W",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "False",
+      "venue": "CAPA"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.30577280086254516,
+      "ll": 0.6677483413113048,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 8 - CAPALABA - 2026-07-01",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.2687500288213289,
+      "ll": 0.591093255804529,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.27381621916222326,
+      "ll": 0.5990591015583371,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.28554802223712605,
+      "ll": 0.6266768514324084,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      8
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ">=.6",
+      "field_size": "<=6",
+      "grade": "5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "False",
+      "venue": "CAPA"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.20018008545298907,
+      "ll": 0.49625642665687625,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-05",
+    "race_id": "Race 8 - CAPALABA - 2026-07-05",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.10393604723465824,
+      "ll": 0.33328794253271044,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.10422865664347089,
+      "ll": 0.3337261042109488,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.14607598652152373,
+      "ll": 0.4081285629487681,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      2,
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "P5",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "False",
+      "venue": "CAPA"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.009695624692773,
+      "ll": 1.680005658945439,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 8 - CAPALABA - 2026-07-08",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 1.0654257236582552,
+      "ll": 1.6942368082951567,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 1.0749578763326006,
+      "ll": 1.713419650549075,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.037150567850147,
+      "ll": 1.6851510965747685,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "M2/M3",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "DUBBO"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.6005009383106444,
+      "ll": 1.0612516070746552,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-04",
+    "race_id": "Race 8 - DUBBO - 2026-07-04",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.7411976513899087,
+      "ll": 1.238616784852808,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.7352193633669275,
+      "ll": 1.2284593184839951,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.6674694281687582,
+      "ll": 1.1458255757627862,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      2,
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "Other",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "GAWL"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.4488834712774431,
+      "ll": 0.9304866645352141,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-30",
+    "race_id": "Race 8 - GAWL - 2026-06-30",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.3662764326254819,
+      "ll": 0.793959200856406,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.3679274539434382,
+      "ll": 0.7965579153047423,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.405930730802939,
+      "ll": 0.8592804163207189,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": "<.8",
+      "favourite_box": "7-8",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "Grade 5",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "GEE"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7216577435993312,
+      "ll": 1.2612659339678762,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-04",
+    "race_id": "Race 8 - GEE - 2026-07-04",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.84956333174721,
+      "ll": 1.4387244792154923,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.8356024247703966,
+      "ll": 1.4166795850451164,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.7845623767840834,
+      "ll": 1.3466336892592836,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Free For All",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "HOBT"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8606826991157148,
+      "ll": 1.8299799428256414,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 8 - HOBT - 2026-07-07",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.9451356554664683,
+      "ll": 2.0625526203257256,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.9462881441858997,
+      "ll": 2.067032016740403,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.9033956813747172,
+      "ll": 1.9436308081018316,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Group 2",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "HOR"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.6358751484785781,
+      "ll": 1.1448637732593638,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 8 - HOR - 2026-06-26",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.7929395470728742,
+      "ll": 1.4132200227377096,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.7959457119530688,
+      "ll": 1.4169301904423017,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.7148522158199488,
+      "ll": 1.274626298349394,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "4th/5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "MT_G"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9953591851210852,
+      "ll": 2.207402485501329,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 8 - MOUNT - 2026-06-28",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.9813296314562305,
+      "ll": 2.180522729909168,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.9847724314327992,
+      "ll": 2.197716757075684,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.9879847045567235,
+      "ll": 2.1932145486913726,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "4th/5th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "MT_G"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8180077612320868,
+      "ll": 1.6296501557162195,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-05",
+    "race_id": "Race 8 - MOUNT - 2026-07-05",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.7197318007271386,
+      "ll": 1.4065364067978001,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.7185724617146187,
+      "ll": 1.4068645351689817,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.7696992354427454,
+      "ll": 1.5158066594617832,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": "<.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "Other",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "MURR"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.6244560418113919,
+      "ll": 1.22472939422248,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 8 - MURRAY-BRIDGE-STRAIGHT - 2026-07-01",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.6251009359291155,
+      "ll": 1.2267928327431425,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.6207517367039469,
+      "ll": 1.2193282778630894,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.6246047852321567,
+      "ll": 1.2255266578811266,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": "<.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "7-8",
+      "favourite_probability": ".4-.6",
+      "field_size": "<=6",
+      "grade": "5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "MURR"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.6274574089519712,
+      "ll": 0.9913205387045309,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 8 - MURRAY-BRIDGE-STRAIGHT - 2026-07-08",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.6171156207695025,
+      "ll": 0.9720413652662985,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.6106743279816277,
+      "ll": 0.9667613445908305,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.6222876151628259,
+      "ll": 0.9816145755148314,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": "<.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ".4-.6",
+      "field_size": "7",
+      "grade": "4th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "RICH"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8177054706825968,
+      "ll": 1.3284350270566927,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-25",
+    "race_id": "Race 8 - RICHMOND-STRAIGHT - 2026-06-25",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.8227357740609805,
+      "ll": 1.3195239856934058,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.817894017113799,
+      "ll": 1.3096413699055287,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.8201512812022576,
+      "ll": 1.3234573550298898,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Grade 5",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "SAL"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7351036119987265,
+      "ll": 1.5441582716153777,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-24",
+    "race_id": "Race 8 - SAL - 2026-06-24",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.7356997372542489,
+      "ll": 1.5356674712421199,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.7290479018325817,
+      "ll": 1.5193655284767191,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.7346503883553034,
+      "ll": 1.5386312601254266,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": "<.4",
+      "field_size": "7",
+      "grade": "Grade 5",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "SAL"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7805515823420754,
+      "ll": 1.4868454747516093,
+      "top_ties": 1
+    },
+    "outer": "period2",
+    "race_date": "2026-07-01",
+    "race_id": "Race 8 - SAL - 2026-07-01",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.8566235251025783,
+      "ll": 1.616483070818807,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.8458260764286665,
+      "ll": 1.5940207543814715,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.8181528062838811,
+      "ll": 1.550366657870653,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "Grade 5",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "SAL"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.6360995763379784,
+      "ll": 1.2118465518613064,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-08",
+    "race_id": "Race 8 - SAL - 2026-07-08",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.5239098732918923,
+      "ll": 1.0147711053720923,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.5252128723857619,
+      "ll": 1.0143197612647639,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.5800218987390418,
+      "ll": 1.1108837953805366,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      5,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "7",
+      "grade": "4th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "TAREE"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.6239519357068057,
+      "ll": 1.3105039631848845,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-04",
+    "race_id": "Race 8 - TAREE - 2026-07-04",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.6623432665009445,
+      "ll": 1.3917260538359177,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.6559067659491189,
+      "ll": 1.3771067465804057,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.6425333804863371,
+      "ll": 1.3497806567820616,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      1
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Grade 5",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "TRA"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8030440285013051,
+      "ll": 1.6546298193070195,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 8 - TRA - 2026-06-29",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.7356559413776195,
+      "ll": 1.5149059935695426,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.7293413634163686,
+      "ll": 1.5017418724561244,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.7687218718138641,
+      "ll": 1.5822754487343311,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "<=6",
+      "grade": "Grade 5",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "TRA"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.40600475084629184,
+      "ll": 0.8447937006742879,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-06",
+    "race_id": "Race 8 - TRA - 2026-07-06",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.3452191572424763,
+      "ll": 0.7506455820510752,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.33687024232663265,
+      "ll": 0.7372596745997171,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.37382238929450784,
+      "ll": 0.7954002222639014,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      2,
+      4
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "Grade 5",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "WAR"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.7815823115977342,
+      "ll": 1.5273541622106492,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 8 - WAR - 2026-06-29",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.8470882859048584,
+      "ll": 1.617585988691116,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.8466831076732642,
+      "ll": 1.620540076283677,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.8118360624631945,
+      "ll": 1.5695709047260227,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ".4-.6",
+      "field_size": "<=6",
+      "grade": "N/P",
+      "maximum_recency": "<=21",
+      "minimum_history": "<5",
+      "missing_base_input": "True",
+      "venue": "AP K"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.9909550473095058,
+      "ll": 1.7146850613422728,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-07",
+    "race_id": "Race 9 - AP_K - 2026-07-07",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 1.0277905072396127,
+      "ll": 1.7467523563990486,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 1.019385399292881,
+      "ll": 1.7305408837556546,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.0091598195417486,
+      "ll": 1.729104752253464,
+      "top_ties": 1
+    },
+    "runner_count": 5,
+    "unoccupied_boxes": [
+      3,
+      5,
+      7
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ">=.6",
+      "field_size": "<=6",
+      "grade": "5th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "BH"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.0989778629095923,
+      "ll": 1.6793730840498702,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 9 - BROKEN-HILL - 2026-06-28",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 1.1917445257499397,
+      "ll": 1.7747959097370338,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 1.1856930842794118,
+      "ll": 1.7661767387324552,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.1451648092681461,
+      "ll": 1.7253153734003754,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      5,
+      8
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "3-6",
+      "favourite_probability": ".4-.6",
+      "field_size": "7",
+      "grade": "5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "CAPA"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.0601836702821985,
+      "ll": 2.045302665567326,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-28",
+    "race_id": "Race 9 - CAPALABA - 2026-06-28",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.9446679643107794,
+      "ll": 1.798294751083792,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.9457268572609668,
+      "ll": 1.8035673730782567,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.0026988754962691,
+      "ll": 1.9191777365419511,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      8
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "8",
+      "grade": "Grade 5",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "HEA"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.8957445116531098,
+      "ll": 2.009449587721115,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-03",
+    "race_id": "Race 9 - HEA - 2026-07-03",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.9045358493780197,
+      "ll": 2.0464086655487,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.9017189425313217,
+      "ll": 2.036299944044879,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.8991010777894993,
+      "ll": 2.025939849320168,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "7",
+      "grade": "Free For All",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "HEA"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.1857435964846268,
+      "ll": 2.4217972816880584,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-05",
+    "race_id": "Race 9 - HEA - 2026-07-05",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 1.1260159737831792,
+      "ll": 2.307818202319818,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 1.1315260609363846,
+      "ll": 2.328738004706853,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.155274270767025,
+      "ll": 2.362214706650038,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": ">=.8",
+      "favourite_box": "7-8",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "Other",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "HOBT"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 0.798385707136759,
+      "ll": 1.498003175489825,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-30",
+    "race_id": "Race 9 - HOBT - 2026-06-30",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.8536160325265728,
+      "ll": 1.5436267479811454,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.8529298270573488,
+      "ll": 1.5456865657937005,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.8246293282901256,
+      "ll": 1.5191351729772873,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": ">400",
+      "entropy": ">=.8",
+      "favourite_box": "tied",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "Restricted",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "HOR"
+    },
+    "market": {
+      "accuracy": 0.5,
+      "brier": 0.5910629379180645,
+      "ll": 1.0770339299713982,
+      "top_ties": 2
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 9 - HOR - 2026-06-26",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.6764259452404754,
+      "ll": 1.1784490541965242,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.6687708393701516,
+      "ll": 1.1647101936951711,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 0.6313568518609581,
+      "ll": 1.1244262956796556,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      4,
+      5
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "7-8",
+      "favourite_probability": ".4-.6",
+      "field_size": "7",
+      "grade": "5th Grade",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "QOT"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.3789965261290492,
+      "ll": 0.7795759767000072,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-26",
+    "race_id": "Race 9 - LADBROKES-Q1-LAKESIDE - 2026-06-26",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.32123659433236373,
+      "ll": 0.6851208090342891,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.3289160010555856,
+      "ll": 0.6961835390782602,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.3488667490169496,
+      "ll": 0.7304478922495318,
+      "top_ties": 1
+    },
+    "runner_count": 7,
+    "unoccupied_boxes": [
+      3
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": "<.4",
+      "field_size": "<=6",
+      "grade": "NG1-4",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "RICH"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.5241184567127976,
+      "ll": 0.9240864885658557,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-25",
+    "race_id": "Race 9 - RICHMOND-STRAIGHT - 2026-06-25",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 0.6034782900897048,
+      "ll": 1.018515925867369,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 0.5918055640238897,
+      "ll": 1.0013980284939676,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.5620398868866292,
+      "ll": 0.9694396961338567,
+      "top_ties": 1
+    },
+    "runner_count": 6,
+    "unoccupied_boxes": [
+      3,
+      6
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "7-8",
+      "favourite_probability": ">=.6",
+      "field_size": "<=6",
+      "grade": "5th Grade",
+      "maximum_recency": "<=21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "TAREE"
+    },
+    "market": {
+      "accuracy": 0.0,
+      "brier": 1.23188739119189,
+      "ll": 2.0958610600874894,
+      "top_ties": 1
+    },
+    "outer": "final_later_block",
+    "race_date": "2026-07-04",
+    "race_id": "Race 9 - TAREE - 2026-07-04",
+    "refit_base16": {
+      "accuracy": 0.0,
+      "brier": 1.3228239386745666,
+      "ll": 2.2455373252122213,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 0.0,
+      "brier": 1.310799376603732,
+      "ll": 2.218707155875445,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 0.0,
+      "brier": 1.2775431326580071,
+      "ll": 2.1693596792962544,
+      "top_ties": 1
+    },
+    "runner_count": 5,
+    "unoccupied_boxes": [
+      2,
+      5,
+      7
+    ]
+  },
+  {
+    "groups": {
+      "disagreement_TV": ">=.02",
+      "distance": "<=400",
+      "entropy": "<.8",
+      "favourite_box": "1-2",
+      "favourite_probability": ".4-.6",
+      "field_size": "8",
+      "grade": "Restricted",
+      "maximum_recency": ">21",
+      "minimum_history": ">=5",
+      "missing_base_input": "True",
+      "venue": "WAR"
+    },
+    "market": {
+      "accuracy": 1.0,
+      "brier": 0.4390381717004709,
+      "ll": 0.9094424055545499,
+      "top_ties": 1
+    },
+    "outer": "period1",
+    "race_date": "2026-06-29",
+    "race_id": "Race 9 - WAR - 2026-06-29",
+    "refit_base16": {
+      "accuracy": 1.0,
+      "brier": 0.4597275384450821,
+      "ll": 0.9279268463374816,
+      "top_ties": 1
+    },
+    "refit_box": {
+      "accuracy": 1.0,
+      "brier": 0.45070814109249113,
+      "ll": 0.9143422994861614,
+      "top_ties": 1
+    },
+    "refit_half": {
+      "accuracy": 1.0,
+      "brier": 0.44788436255534125,
+      "ll": 0.9169034791943074,
+      "top_ties": 1
+    },
+    "runner_count": 8,
+    "unoccupied_boxes": []
+  }
+]

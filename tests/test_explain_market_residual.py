@@ -50,5 +50,10 @@ class ExplanationTests(unittest.TestCase):
         self.assertEqual(meta['dates'],['a','b'])
         self.assertEqual(table[0]['races'],3)
         self.assertEqual(table[0]['dates'],2)
+        singleton, meta = bootstrap_tables(rows[:2], 200)
+        self.assertIsNone(singleton[0]['ll']['pointwise95'])
+        self.assertIsNone(singleton[0]['ll']['simultaneous95'])
+        self.assertEqual(singleton[0]['ll']['uncertainty_status'], 'insufficient_date_clusters')
+        self.assertEqual(meta['contrasts'], 0)
 
 if __name__=='__main__': unittest.main()

@@ -186,10 +186,14 @@ def bootstrap_tables(races, draws=3000):
                               'lodo_range': [min(lodo),max(lodo)] if lodo else None,
                               'bootstrap_nonempty': int(np.isfinite(bs).sum()),
                               'positive_races': int((diff > 1e-12).sum()), 'negative_races': int((diff < -1e-12).sum())}
-            family.append((record[metric], se, np.abs(bs-point)/se if se > 1e-15 else np.zeros(draws)))
+            if record['dates'] < 2:
+                record[metric].update(pointwise95=None, simultaneous95=None, uncertainty_status='insufficient_date_clusters')
+            else:
+                record[metric]['uncertainty_status'] = 'exploratory_date_cluster_bootstrap'
+                family.append((record[metric], se, np.abs(bs-point)/se if se > 1e-15 else np.zeros(draws)))
         table.append(record)
     # Common date draws preserve dependence across every reported proper-score contrast.
-    maximum = np.nanmax(np.array([item[2] for item in family]), axis=0)
+    maximum = np.nanmax(np.array([item[2] for item in family]), axis=0) if family else np.zeros(draws)
     critical = float(np.quantile(maximum, .95))
     for result, se, _ in family:
         result['simultaneous95'] = [result['improvement']-critical*se, result['improvement']+critical*se]

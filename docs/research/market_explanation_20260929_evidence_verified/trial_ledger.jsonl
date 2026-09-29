@@ -1,0 +1,4 @@
+{"code_sha256": "b4c8ca50694bdf5887884de68acc63a82fccb6bfad92d8a0ac36b5d98b3c9ac6", "event": "START", "fits": 0, "protocol_sha256": "31d14d0917481f8a5060b8b87f866ec3d6e43a7e124879393d2265ba35f2af17"}
+{"development_races": 331, "event": "ACCESS_SCOPE_PASSED", "protected_decodes": 0, "runners": 2360}
+{"event": "RETAINED_RECONSTRUCTION_PASSED", "fits": 0, "max_absolute_error": 2.220446049250313e-16, "races": 177, "runners": 1251, "unavailable_receipt": "refit_box"}
+{"event": "COMPLETE", "fits": 0, "model_comparators": ["refit_base16", "refit_half", "refit_box"], "subgroups": 78, "uncertainty_contrasts": 128}
