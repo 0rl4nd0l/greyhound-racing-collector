@@ -1,0 +1,118 @@
+{
+  "canonical_rows": 2360,
+  "database_opens": 0,
+  "decoded_target_labels": 0,
+  "exclusion_counts": {
+    "earlier_WIN_reconstruction_and_runner_identity_unproved": 291,
+    "explicit_scratching_and_market_status_absent": 331,
+    "extract_absent": 40,
+    "independent_availability_timestamp_absent": 331,
+    "no_complete_box_timing_pair_in_fixed_window": 40
+  },
+  "extract_rows": 4118,
+  "extract_rows_bound_to_canonical_WIN": 2059,
+  "fits": 0,
+  "inputs": {
+    "/home/l4nd0/greyhound-offline-prediction-20260924/docs/research/offline_20260924_access_incident.json": "724b4bf449aaa17f3f1419b579bf38ea4e836a776a6b1366339c44f821eb5f58",
+    "/home/l4nd0/greyhound-offline-systematic-output-20260924/foundation/dataset_assessment.json": "b0737c5b1fcf27ba34333ea824bbc363ab4d4a5c9986bc6b04b453ed81e16bea",
+    "/home/l4nd0/greyhound-offline-systematic-output-20260924/foundation/development.jsonl": "c58bd59bc0d52666d31812dccd60981de7f2f03b64862f98ddf9f88ef60cec46",
+    "/home/l4nd0/greyhound-offline-systematic-output-20260924/foundation/protected_records.json": "9fddce8fa70ea96c4d7a6c33ef61594ddeb47e254cd08bb87555b2d94fc4da88",
+    "/home/l4nd0/greyhound-retrospective-diagnostic-20260916/pre-outcome-manifest-v2.json": "7aee61b778fe70a1e50fafc795291b8c1c0c06742f5cf8615bc123225a65e5ad",
+    "/home/l4nd0/greyhound/artifacts/sportsbet_win_market_surface_audit_20260815_report_only/canonical_win_matrix.jsonl": "eb1783d4cc07e6980463a097c97fdac9f5370b08f493ca15addf768aa0b014b6",
+    "/home/l4nd0/greyhound/artifacts/sportsbet_win_market_surface_audit_20260815_report_only/canonical_win_sidecar.jsonl": "880ae93680e56991fa2c9eb316732cbc71bc7ff713525efcf83750ceace4493d",
+    "/home/l4nd0/greyhound_racing_collector/artifacts/august_untouched_cohort_20260813T181500Z_report_only/frozen_august_odds_cohort.jsonl": "e19a475487cad14eaee91c90a40bdfec7694f76a3aa74279d1254f4452e2673c",
+    "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-form-only-v1-acquisition-20260718/reports/agent_jobs/form_only_v1_acquisition_foundation_20260718/out_of_time_races.csv": "9ad6e0f2a89c2dac04f1c8f4be2dbea2a6ea7751fa3af486c490a71fb961c711",
+    "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/artifacts/prejump_market_structure_experiment_20260815_report_only/sportsbet_source_extract.jsonl": "5bd61de48887245e71c89e3af7722bebc2ddbe0ea127c5b41b46e13d02f1ccef"
+  },
+  "limitation": "Finite audit of the two evidence-linked retained surfaces; no claim that every local byte lacks other snapshots. Raw database reconstruction is not attempted because independent availability and scratching evidence are already absent.",
+  "performance_trials": 0,
+  "protected_target_rows_decoded": 0,
+  "provider_requests": 0,
+  "source_fields": {
+    "/home/l4nd0/greyhound/artifacts/sportsbet_win_market_surface_audit_20260815_report_only/canonical_win_sidecar.jsonl": [
+      "box_number",
+      "canonical_win_odds",
+      "capture_mode",
+      "capture_timestamp",
+      "classification",
+      "dog_name",
+      "matrix_row_index",
+      "matrix_row_sha256",
+      "paired_place_odds",
+      "paired_win_odds",
+      "race_date",
+      "race_id",
+      "race_qualified",
+      "raw_runner_text_sha256",
+      "reason",
+      "schema_version",
+      "sidecar_row_sha256",
+      "source",
+      "source_db_sha256",
+      "source_row_id",
+      "source_row_identity",
+      "source_table",
+      "source_url",
+      "stored_market_type",
+      "stored_odds_decimal"
+    ],
+    "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/artifacts/prejump_market_structure_experiment_20260815_report_only/sportsbet_source_extract.jsonl": [
+      "box_number",
+      "capture_mode",
+      "capture_timestamp",
+      "id",
+      "market_type",
+      "odds_decimal",
+      "odds_level",
+      "race_id",
+      "source",
+      "source_url",
+      "sportsbet_box_source"
+    ]
+  },
+  "stages": [
+    {
+      "dates": 27,
+      "races": 331,
+      "runners": 2360,
+      "stage": "admitted_development_population"
+    },
+    {
+      "dates": 27,
+      "races": 331,
+      "runners": 2360,
+      "stage": "canonical_single_complete_corrected_WIN_snapshot"
+    },
+    {
+      "dates": 26,
+      "races": 291,
+      "runners": 2059,
+      "stage": "fixed_window_extract_present"
+    },
+    {
+      "dates": 26,
+      "races": 291,
+      "runners": 2059,
+      "stage": "two_or_more_complete_box_snapshots_in_extract"
+    },
+    {
+      "dates": 26,
+      "races": 291,
+      "runners": 2059,
+      "stage": "timing_only_pair_in_union_not_qualified"
+    },
+    {
+      "dates": 0,
+      "races": 0,
+      "runners": 0,
+      "stage": "two_canonical_bound_WIN_snapshots"
+    },
+    {
+      "dates": 0,
+      "races": 0,
+      "runners": 0,
+      "stage": "qualified_movement_pair"
+    }
+  ],
+  "verdict": "INSUFFICIENT_QUALIFIED_DATA"
+}

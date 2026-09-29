@@ -1,0 +1,3290 @@
+[
+  {
+    "race_id": "Race 1 - BAL - 2026-07-18",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 1 - CAPALABA - 2026-08-02",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 1 - DARW - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 1 - DUBBO - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 1 - GRDN - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 1 - HEA - 2026-07-17",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 1 - LADBROKES-Q1-LAKESIDE - 2026-07-18",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 1 - LADBROKES-Q1-LAKESIDE - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 1 - MAND - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 1 - MEADOWS - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 1 - MEADOWS - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 1 - MOUNT - 2026-08-02",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 1 - NOWRA - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 1 - RICH - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 1 - RICH - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 1 - ROCKHAMPTON - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 1 - SAN - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 1 - SHEPPARTON - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 1 - TAREE - 2026-07-18",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 1 - TRA - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 1 - WRGL - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 10 - BAL - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 10 - BEN - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 10 - CANN - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 10 - GEE - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 10 - GOULBURN - 2026-07-17",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 10 - GRAFTON - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 10 - GRDN - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 10 - HEA - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 10 - LADBROKES-Q-STRAIGHT - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 10 - LADBROKES-Q1-LAKESIDE - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 10 - MEADOWS - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 10 - MEADOWS - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 10 - MOUNT - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 10 - NOWRA - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 10 - RICH - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 10 - RICH - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 10 - RICHMOND-STRAIGHT - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 10 - ROCKHAMPTON - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 10 - SAN - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 10 - TAREE - 2026-07-18",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 10 - TOWNSVILLE - 2026-07-17",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 10 - TRA - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 10 - WRGL - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 11 - AP_K - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 11 - BAL - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 11 - BAL - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 11 - BEN - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 11 - CANN - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 11 - CASO - 2026-07-17",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 11 - GEE - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 11 - GRAFTON - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 11 - GRDN - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 11 - GRDN - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 11 - GUNNEDAH - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 11 - LADBROKES-Q-STRAIGHT - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 11 - LADBROKES-Q1-LAKESIDE - 2026-07-17",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 11 - MAND - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 11 - MEADOWS - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 11 - MOUNT - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 11 - MURR - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 11 - RICH - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 11 - RICH - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 11 - TOWNSVILLE - 2026-07-17",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 11 - TRA - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 11 - WAR - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 12 - AP_K - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 12 - BAL - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 12 - GEE - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 12 - GRDN - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 12 - GRDN - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 12 - HEA - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 12 - LADBROKES-Q-STRAIGHT - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 12 - LADBROKES-Q1-LAKESIDE - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 12 - MAND - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 12 - MEADOWS - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 12 - RICH - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 12 - SAN - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 12 - TRA - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 13 - LADBROKES-Q1-LAKESIDE - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 13 - WAR - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 14 - BAL - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 14 - LADBROKES-Q1-LAKESIDE - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 2 - BEN - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 2 - CANN - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 2 - CANN - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 2 - CASO - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 2 - DARW - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 2 - DUBBO - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 2 - GRDN - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 2 - GRDN - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 2 - GUNNEDAH - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 2 - GUNNEDAH - 2026-07-18",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 2 - HEA - 2026-07-17",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 2 - HOBT - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 2 - LADBROKES-Q1-LAKESIDE - 2026-07-17",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 2 - LADBROKES-Q1-LAKESIDE - 2026-07-18",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 2 - LADBROKES-Q1-LAKESIDE - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 2 - MAND - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 2 - MEADOWS - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 2 - MURR - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 2 - RICH - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 2 - ROCKHAMPTON - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 2 - SAN - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 2 - SHEPPARTON - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 2 - TAREE - 2026-07-18",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 2 - TRA - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 3 - BAL - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 3 - BEN - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 3 - CANN - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 3 - CANN - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 3 - CAPALABA - 2026-08-02",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 3 - CASO - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 3 - DARW - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 3 - DUBBO - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 3 - GRDN - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 3 - GRDN - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 3 - GUNNEDAH - 2026-07-18",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 3 - HOBT - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 3 - LADBROKES-Q1-LAKESIDE - 2026-07-17",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 3 - LADBROKES-Q1-LAKESIDE - 2026-07-18",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 3 - LADBROKES-Q1-LAKESIDE - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 3 - MAND - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 3 - MOUNT - 2026-08-02",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 3 - NOWRA - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 3 - RICH - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 3 - ROCKHAMPTON - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 3 - SHEPPARTON - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 3 - TAREE - 2026-07-18",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 3 - TRA - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 4 - AP_K - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 4 - BAL - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 4 - BAL - 2026-07-18",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 4 - BAL - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 4 - CANN - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 4 - CASO - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 4 - DARW - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 4 - DUBBO - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 4 - GEE - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 4 - GRDN - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 4 - GUNNEDAH - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 4 - GUNNEDAH - 2026-07-18",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 4 - HEA - 2026-07-17",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 4 - HEA - 2026-08-02",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 4 - LADBROKES-Q1-LAKESIDE - 2026-07-17",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 4 - LADBROKES-Q1-LAKESIDE - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 4 - MEADOWS - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 4 - NOWRA - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 4 - RICH - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 4 - RICH - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 4 - SHEPPARTON - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 4 - TRA - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 4 - WAR - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 4 - WRGL - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 5 - BEN - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 5 - CANN - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 5 - CANN - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 5 - CASO - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 5 - DUBBO - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 5 - GEE - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 5 - GRDN - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 5 - GRDN - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 5 - HEA - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 5 - LADBROKES-Q1-LAKESIDE - 2026-07-17",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 5 - LADBROKES-Q1-LAKESIDE - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 5 - MAND - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 5 - MEADOWS - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 5 - NOWRA - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 5 - RICH - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 5 - RICH - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 5 - ROCKHAMPTON - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 5 - SAN - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 5 - SHEPPARTON - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 5 - TAREE - 2026-07-18",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 5 - TOWNSVILLE - 2026-07-17",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 5 - TRA - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 5 - WAR - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 5 - WPK - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 5 - WPK - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 5 - WRGL - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 6 - BAL - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 6 - BEN - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 6 - CANN - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 6 - CANN - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 6 - CASO - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 6 - DARW - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 6 - GOULBURN - 2026-07-17",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 6 - GRAFTON - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 6 - GRDN - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 6 - GRDN - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 6 - GUNNEDAH - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 6 - HEA - 2026-07-17",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 6 - HEA - 2026-08-02",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 6 - HOBT - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 6 - LADBROKES-Q1-LAKESIDE - 2026-07-17",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 6 - LADBROKES-Q1-LAKESIDE - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 6 - MAND - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 6 - MAND - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 6 - MEADOWS - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 6 - MEADOWS - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 6 - MOUNT - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 6 - NOWRA - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 6 - RICH - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 6 - RICH - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 6 - RICHMOND-STRAIGHT - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 6 - ROCKHAMPTON - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 6 - TAREE - 2026-07-18",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 6 - TOWNSVILLE - 2026-07-17",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 6 - TRA - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 6 - WAR - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 6 - WRGL - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 7 - BAL - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 7 - BEN - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 7 - CANN - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 7 - CANN - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 7 - CASO - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 7 - GEE - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 7 - GOULBURN - 2026-07-17",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 7 - GRAFTON - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 7 - GRDN - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 7 - LADBROKES-Q1-LAKESIDE - 2026-07-17",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 7 - LADBROKES-Q1-LAKESIDE - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 7 - MAND - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 7 - MOUNT - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 7 - MURR - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 7 - NOWRA - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 7 - RICH - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 7 - RICH - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 7 - RICHMOND-STRAIGHT - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 7 - ROCKHAMPTON - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 7 - TAREE - 2026-07-18",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 7 - TOWNSVILLE - 2026-07-17",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 7 - TRA - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 7 - WAR - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 7 - WPK - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 7 - WRGL - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 8 - BAL - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 8 - BEN - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 8 - CANN - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 8 - CANN - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 8 - CASO - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 8 - GEE - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 8 - GOULBURN - 2026-07-17",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 8 - GRAFTON - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 8 - GRDN - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 8 - GUNNEDAH - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 8 - HOBT - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 8 - MAND - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 8 - MAND - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 8 - MEADOWS - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 8 - MOUNT - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 8 - MURR - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 8 - NOWRA - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 8 - RICH - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 8 - RICH - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 8 - RICHMOND-STRAIGHT - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 8 - ROCKHAMPTON - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 8 - SAN - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 8 - TAREE - 2026-07-18",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 8 - TOWNSVILLE - 2026-07-17",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 8 - TRA - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 8 - WPK - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 8 - WRGL - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 9 - BAL - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 9 - BEN - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 9 - CANN - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 9 - CANN - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 9 - CASO - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 9 - DUBBO - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 9 - GEE - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 9 - GOULBURN - 2026-07-17",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 9 - GRAFTON - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 9 - GRDN - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 9 - GRDN - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 9 - HEA - 2026-08-02",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 9 - LADBROKES-Q1-LAKESIDE - 2026-07-17",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 9 - MAND - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 9 - MEADOWS - 2026-07-15",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 9 - MEADOWS - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 9 - MOUNT - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 9 - MURR - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 9 - RICH - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 9 - RICH - 2026-07-17",
+    "reason": "closed_114"
+  },
+  {
+    "race_id": "Race 9 - RICHMOND-STRAIGHT - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 9 - ROCKHAMPTON - 2026-07-15",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 9 - TAREE - 2026-07-18",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 9 - TOWNSVILLE - 2026-07-17",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 9 - WAR - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 9 - WPK - 2026-07-16",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 9 - WPK - 2026-08-01",
+    "reason": "outside_declared_development_interval"
+  },
+  {
+    "race_id": "Race 9 - WRGL - 2026-07-16",
+    "reason": "reserved_form_only_out_of_time"
+  },
+  {
+    "race_id": "Race 1 - AP_K - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 1 - AP_K - 2026-07-07",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - BEN - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - BEN - 2026-06-24",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - CAPALABA - 2026-06-24",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - CAPALABA - 2026-07-01",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - CASO - 2026-06-18",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 1 - CASO - 2026-06-30",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - DUBBO - 2026-06-27",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - GAWL - 2026-06-21",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - GAWL - 2026-06-30",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - GEE - 2026-06-13",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 1 - GEE - 2026-07-04",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - GEE - 2026-07-07",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 1 - GOULBURN - 2026-07-03",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - GRAFTON - 2026-06-14",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - GRAFTON - 2026-06-20",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - GRDN - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 1 - GUNNEDAH - 2026-07-09",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - HEA - 2026-06-16",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 1 - HEA - 2026-07-03",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - HOBT - 2026-06-16",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 1 - HOBT - 2026-06-30",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - HOBT - 2026-07-07",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - LADBROKES-Q1-LAKESIDE - 2026-06-13",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 1 - LADBROKES-Q1-LAKESIDE - 2026-06-27",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - LADBROKES-Q1-LAKESIDE - 2026-06-30",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 1 - LADBROKES-Q1-LAKESIDE - 2026-07-03",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 1 - LADBROKES-Q2-PARKLANDS - 2026-06-21",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - MEADOWS - 2026-06-27",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 1 - MOUNT - 2026-07-02",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - MOUNT - 2026-07-09",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - MURR - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 1 - MURRAY-BRIDGE-STRAIGHT - 2026-07-08",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - NOWRA - 2026-06-29",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 1 - RICHMOND-STRAIGHT - 2026-06-25",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - ROCKHAMPTON - 2026-06-10",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 1 - SAL - 2026-06-14",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - SAL - 2026-06-24",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - SAL - 2026-07-01",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - SAL - 2026-07-08",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - SAN - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 1 - SHEPPARTON - 2026-06-18",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 1 - SHEPPARTON - 2026-06-25",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - SHEPPARTON - 2026-07-02",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - TRA - 2026-06-29",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - WAR - 2026-06-15",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 1 - WPK - 2026-06-20",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - WRGL - 2026-06-20",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 1 - WRGL - 2026-07-02",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 1 - WRGL - 2026-07-09",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 10 - BEN - 2026-06-10",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 10 - CANN - 2026-06-13",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 10 - CAPALABA - 2026-06-21",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 10 - CAPALABA - 2026-06-28",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 10 - CAPALABA - 2026-07-05",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 10 - CASO - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 10 - GEE - 2026-06-13",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 10 - GRDN - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 10 - HEA - 2026-06-16",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 10 - HEA - 2026-07-03",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 10 - HOBT - 2026-07-07",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 10 - LADBROKES-Q1-LAKESIDE - 2026-06-13",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 10 - MAND - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 10 - MOUNT - 2026-06-21",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 10 - MOUNT - 2026-07-09",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 10 - NOWRA - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 10 - RICHMOND-STRAIGHT - 2026-07-02",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 10 - RICHMOND-STRAIGHT - 2026-07-09",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 10 - SHEPPARTON - 2026-06-15",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 10 - SHEPPARTON - 2026-06-29",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 10 - SHEPPARTON - 2026-07-06",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 10 - SHEPPARTON - 2026-07-09",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 10 - TAREE - 2026-06-13",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 10 - TAREE - 2026-06-20",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 10 - TOWNSVILLE - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 10 - TRA - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 10 - WAR - 2026-06-15",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 10 - WAR - 2026-06-29",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 11 - AP_K - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 11 - BEN - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 11 - CAPALABA - 2026-06-21",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 11 - CAPALABA - 2026-06-28",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 11 - CAPALABA - 2026-07-05",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 11 - CASO - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 11 - DUBBO - 2026-06-13",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 11 - GEE - 2026-06-13",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 11 - GUNNEDAH - 2026-06-10",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 11 - HEA - 2026-06-16",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 11 - HEA - 2026-07-03",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 11 - HOBT - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 11 - LADBROKES-Q1-LAKESIDE - 2026-06-10",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 11 - LADBROKES-Q1-LAKESIDE - 2026-06-13",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 11 - MOUNT - 2026-06-14",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 11 - MOUNT - 2026-06-21",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 11 - MOUNT - 2026-06-28",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 11 - RICHMOND-STRAIGHT - 2026-06-25",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 11 - SHEPPARTON - 2026-06-25",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 11 - SHEPPARTON - 2026-06-29",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 11 - SHEPPARTON - 2026-07-06",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 11 - SHEPPARTON - 2026-07-09",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 11 - TAREE - 2026-06-13",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 11 - TAREE - 2026-07-04",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 11 - TOWNSVILLE - 2026-06-19",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 11 - WRGL - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 12 - AP_K - 2026-06-18",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 12 - CAPALABA - 2026-06-21",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 12 - CAPALABA - 2026-06-28",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 12 - CASO - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 12 - DUBBO - 2026-06-13",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 12 - GEE - 2026-06-13",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 12 - HEA - 2026-06-28",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 12 - LADBROKES-Q1-LAKESIDE - 2026-06-10",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 12 - MOUNT - 2026-06-14",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 12 - MOUNT - 2026-06-28",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 12 - RICH - 2026-06-12",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 12 - RICHMOND-STRAIGHT - 2026-06-25",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 12 - RICHMOND-STRAIGHT - 2026-07-09",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 12 - SHEPPARTON - 2026-06-25",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 12 - SHEPPARTON - 2026-06-29",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 12 - SHEPPARTON - 2026-07-06",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 12 - SHEPPARTON - 2026-07-09",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 12 - TOWNSVILLE - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 12 - WAR - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 12 - WRGL - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 13 - LADBROKES-Q1-LAKESIDE - 2026-06-10",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 13 - SHEPPARTON - 2026-06-15",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 13 - SHEPPARTON - 2026-06-18",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 13 - SHEPPARTON - 2026-06-29",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 13 - SHEPPARTON - 2026-07-02",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 13 - SHEPPARTON - 2026-07-06",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 13 - WAR - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 14 - SHEPPARTON - 2026-06-15",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 14 - SHEPPARTON - 2026-06-18",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 14 - SHEPPARTON - 2026-07-02",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - AP_K - 2026-07-07",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - BAL - 2026-06-27",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - BEN - 2026-06-28",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - BEN - 2026-07-08",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 2 - CAPALABA - 2026-06-28",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - CASO - 2026-06-30",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - DUBBO - 2026-06-13",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - DUBBO - 2026-07-04",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - GEE - 2026-06-13",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - GEE - 2026-07-04",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - GOULBURN - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 2 - GOULBURN - 2026-07-03",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 2 - GRAFTON - 2026-06-20",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - GRAFTON - 2026-06-28",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - GRDN - 2026-06-19",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 2 - HEA - 2026-06-16",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 2 - HEA - 2026-06-19",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 2 - HEA - 2026-06-21",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - HEA - 2026-06-28",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - LADBROKES-Q-STRAIGHT - 2026-06-29",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 2 - LADBROKES-Q1-LAKESIDE - 2026-06-13",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - LADBROKES-Q1-LAKESIDE - 2026-06-20",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - LADBROKES-Q1-LAKESIDE - 2026-06-27",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - LADBROKES-Q1-LAKESIDE - 2026-06-30",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 2 - LADBROKES-Q1-LAKESIDE - 2026-07-03",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 2 - LADBROKES-Q1-LAKESIDE - 2026-07-08",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 2 - LADBROKES-Q2-PARKLANDS - 2026-07-04",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 2 - MAND - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 2 - MEADOWS - 2026-06-10",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 2 - MOUNT - 2026-06-28",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - MOUNT - 2026-07-05",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - MURRAY-BRIDGE-STRAIGHT - 2026-06-24",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - MURRAY-BRIDGE-STRAIGHT - 2026-07-08",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - NOWRA - 2026-06-29",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 2 - RICH - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 2 - ROCKHAMPTON - 2026-06-10",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 2 - SAL - 2026-06-17",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 2 - SAL - 2026-06-24",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 2 - SAL - 2026-07-01",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - SAL - 2026-07-08",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - SAN - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 2 - SHEPPARTON - 2026-06-15",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 2 - SHEPPARTON - 2026-06-25",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - SHEPPARTON - 2026-07-02",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - SHEPPARTON - 2026-07-06",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - TAREE - 2026-06-13",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - TAREE - 2026-06-20",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 2 - TAREE - 2026-07-04",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - TEMORA - 2026-06-24",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - TRA - 2026-06-29",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - TRA - 2026-07-06",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 2 - WAGGA - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 2 - WPK - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 2 - WRGL - 2026-07-02",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - AP_K - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - AP_K - 2026-06-16",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 3 - AP_K - 2026-07-07",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - BAL - 2026-06-10",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 3 - CAPALABA - 2026-06-14",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 3 - CAPALABA - 2026-06-17",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 3 - CAPALABA - 2026-07-01",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - CAPALABA - 2026-07-05",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - DUBBO - 2026-07-04",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 3 - GEE - 2026-06-13",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - GEE - 2026-07-04",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - GRDN - 2026-06-13",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - GRDN - 2026-07-03",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - HEA - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 3 - HEA - 2026-06-14",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 3 - HEA - 2026-06-21",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - HEA - 2026-06-28",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - HEA - 2026-07-03",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - HEA - 2026-07-05",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - HOBT - 2026-06-30",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - HOBT - 2026-07-07",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - LADBROKES-Q1-LAKESIDE - 2026-06-13",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - LADBROKES-Q1-LAKESIDE - 2026-06-20",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - LADBROKES-Q1-LAKESIDE - 2026-06-27",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 3 - LADBROKES-Q1-LAKESIDE - 2026-07-03",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - LADBROKES-Q1-LAKESIDE - 2026-07-07",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 3 - MAND - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - MAND - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 3 - MEADOWS - 2026-07-04",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 3 - MOUNT - 2026-06-28",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 3 - MURR - 2026-06-26",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - MURRAY-BRIDGE-STRAIGHT - 2026-06-17",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - MURRAY-BRIDGE-STRAIGHT - 2026-06-24",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - MURRAY-BRIDGE-STRAIGHT - 2026-07-01",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - NOR - 2026-06-29",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 3 - NOWRA - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 3 - ROCKHAMPTON - 2026-06-10",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 3 - SAL - 2026-06-24",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - SAL - 2026-07-01",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - SAL - 2026-07-08",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - SAN - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 3 - SAN - 2026-07-09",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - SHEPPARTON - 2026-06-15",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 3 - SHEPPARTON - 2026-06-25",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - SHEPPARTON - 2026-06-29",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - SHEPPARTON - 2026-07-02",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - TAREE - 2026-06-10",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 3 - TAREE - 2026-06-20",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 3 - TAREE - 2026-06-27",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - TAREE - 2026-07-04",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - TEMORA - 2026-06-24",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 3 - TOWNSVILLE - 2026-06-19",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 3 - TRA - 2026-06-15",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - TRA - 2026-06-29",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 3 - WAR - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 3 - WAR - 2026-06-29",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - WPK - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 3 - WPK - 2026-06-13",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 3 - WRGL - 2026-06-20",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - AP_K - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 4 - BAL - 2026-06-10",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 4 - BAL - 2026-06-27",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 4 - BROKEN-HILL - 2026-06-28",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - CAPALABA - 2026-06-21",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - CAPALABA - 2026-06-24",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 4 - CAPALABA - 2026-07-01",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - CAPALABA - 2026-07-05",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - CAPALABA - 2026-07-08",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 4 - CASO - 2026-06-25",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 4 - DUBBO - 2026-06-13",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - GEE - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 4 - GEE - 2026-06-13",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - GEE - 2026-06-30",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - GEE - 2026-07-04",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 4 - GOULBURN - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 4 - GOULBURN - 2026-06-19",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 4 - GRAFTON - 2026-07-09",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 4 - GRDN - 2026-06-13",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - GRDN - 2026-06-26",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - HEA - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 4 - HEA - 2026-06-14",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 4 - HEA - 2026-06-16",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 4 - HEA - 2026-06-21",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - HEA - 2026-06-28",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 4 - HEA - 2026-07-03",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - HOBT - 2026-06-30",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - HOBT - 2026-07-07",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 4 - HOR - 2026-06-26",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 4 - HOR - 2026-07-07",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - LADBROKES-Q1-LAKESIDE - 2026-06-13",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - LADBROKES-Q1-LAKESIDE - 2026-06-20",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - LADBROKES-Q1-LAKESIDE - 2026-07-03",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - MEADOWS - 2026-06-13",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - MOUNT - 2026-06-21",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - MOUNT - 2026-06-28",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 4 - MURR - 2026-06-26",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - MURR - 2026-07-03",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - NOR - 2026-06-15",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - SAL - 2026-06-24",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - SAL - 2026-07-08",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - SAN - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 4 - SHEPPARTON - 2026-06-15",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 4 - SHEPPARTON - 2026-06-18",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - SHEPPARTON - 2026-06-25",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - SHEPPARTON - 2026-06-29",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - SHEPPARTON - 2026-07-06",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - TAREE - 2026-06-20",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - TAREE - 2026-06-27",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - TAREE - 2026-07-04",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - TOWNSVILLE - 2026-06-19",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - TRA - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 4 - TRA - 2026-06-15",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - TRA - 2026-06-29",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 4 - WAR - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 4 - WAR - 2026-06-15",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - WAR - 2026-06-29",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - WPK - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - WPK - 2026-06-13",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - WRGL - 2026-06-20",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 4 - WRGL - 2026-07-09",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 5 - AP_K - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - BAL - 2026-06-10",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 5 - BAL - 2026-06-27",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 5 - CAPALABA - 2026-06-21",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - CAPALABA - 2026-06-24",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 5 - CAPALABA - 2026-06-28",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 5 - CAPALABA - 2026-07-05",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 5 - CASO - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - DUBBO - 2026-06-13",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - DUBBO - 2026-07-04",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - GEE - 2026-06-13",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - GEE - 2026-06-30",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - GEE - 2026-07-04",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 5 - GRAFTON - 2026-06-20",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - GRAFTON - 2026-07-09",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - GRDN - 2026-06-13",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - GRDN - 2026-06-26",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - GUNNEDAH - 2026-06-10",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - HEA - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 5 - HEA - 2026-06-19",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - HEA - 2026-06-21",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - HEA - 2026-06-28",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - HEA - 2026-07-03",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - HOBT - 2026-07-07",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - HOR - 2026-06-26",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - HOR - 2026-06-30",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - LADBROKES-Q1-LAKESIDE - 2026-06-13",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - LADBROKES-Q1-LAKESIDE - 2026-06-30",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - MOUNT - 2026-06-21",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - MURR - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 5 - MURRAY-BRIDGE-STRAIGHT - 2026-06-24",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - NOR - 2026-06-15",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 5 - NOWRA - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - RICH - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 5 - SAL - 2026-06-24",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - SAN - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - SHEPPARTON - 2026-06-25",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - SHEPPARTON - 2026-06-29",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - SHEPPARTON - 2026-07-06",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - SHEPPARTON - 2026-07-09",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - TAREE - 2026-06-13",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - TAREE - 2026-06-20",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - TAREE - 2026-06-27",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - TAREE - 2026-07-04",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - TEMORA - 2026-06-24",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 5 - TRA - 2026-06-15",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - TRA - 2026-06-29",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - WAGGA - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 5 - WAR - 2026-06-15",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - WPK - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - WPK - 2026-06-13",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - WRGL - 2026-06-20",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 5 - WRGL - 2026-07-09",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 6 - AP_K - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - AP_K - 2026-06-16",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 6 - AP_K - 2026-07-07",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - CAPALABA - 2026-06-17",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - CAPALABA - 2026-06-21",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - CASO - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - DUBBO - 2026-07-04",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 6 - DUBBO - 2026-07-06",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 6 - GEE - 2026-07-03",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - GRDN - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 6 - GRDN - 2026-06-13",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - GRDN - 2026-06-26",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - GRDN - 2026-07-03",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - GUNNEDAH - 2026-06-10",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - HEA - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 6 - HEA - 2026-06-14",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 6 - HEA - 2026-07-05",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - HOBT - 2026-06-30",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - LADBROKES-Q1-LAKESIDE - 2026-06-13",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - LADBROKES-Q1-LAKESIDE - 2026-06-16",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 6 - LADBROKES-Q1-LAKESIDE - 2026-06-26",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - LADBROKES-Q1-LAKESIDE - 2026-06-27",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 6 - LADBROKES-Q1-LAKESIDE - 2026-06-30",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - MAND - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - MEADOWS - 2026-06-13",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - MOUNT - 2026-06-21",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - MOUNT - 2026-06-28",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 6 - MOUNT - 2026-07-02",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - MOUNT - 2026-07-05",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 6 - MURR - 2026-06-26",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - MURRAY-BRIDGE-STRAIGHT - 2026-06-17",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 6 - MURRAY-BRIDGE-STRAIGHT - 2026-06-24",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 6 - MURRAY-BRIDGE-STRAIGHT - 2026-07-01",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 6 - NOWRA - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 6 - RICHMOND-STRAIGHT - 2026-06-18",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 6 - RICHMOND-STRAIGHT - 2026-07-09",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 6 - SAL - 2026-06-17",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - SAL - 2026-07-01",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - SAL - 2026-07-08",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - SAN - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 6 - SHEPPARTON - 2026-06-15",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 6 - SHEPPARTON - 2026-06-29",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - SHEPPARTON - 2026-07-02",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - TAREE - 2026-06-13",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - TAREE - 2026-06-20",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - TEMORA - 2026-06-17",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - TRA - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 6 - TRA - 2026-06-29",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 6 - WAR - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 6 - WAR - 2026-06-15",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - WPK - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - WPK - 2026-06-13",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 6 - WRGL - 2026-07-09",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 7 - AP_K - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 7 - BEN - 2026-06-10",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 7 - CANN - 2026-06-13",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 7 - CAPALABA - 2026-06-17",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 7 - CAPALABA - 2026-07-01",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 7 - CASO - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 7 - GAWL - 2026-06-30",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 7 - GEE - 2026-06-16",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 7 - GEE - 2026-07-03",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 7 - GRAFTON - 2026-06-16",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 7 - GUNNEDAH - 2026-06-10",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 7 - HEA - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 7 - HEA - 2026-06-19",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 7 - HEA - 2026-06-28",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 7 - HEA - 2026-07-03",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 7 - HEA - 2026-07-05",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 7 - HOBT - 2026-06-16",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 7 - LADBROKES-Q1-LAKESIDE - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 7 - LADBROKES-Q1-LAKESIDE - 2026-06-16",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 7 - LADBROKES-Q1-LAKESIDE - 2026-06-30",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 7 - LADBROKES-Q1-LAKESIDE - 2026-07-03",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 7 - MAND - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 7 - MAND - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 7 - MOUNT - 2026-06-14",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 7 - MOUNT - 2026-06-28",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 7 - MOUNT - 2026-07-02",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 7 - MOUNT - 2026-07-05",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 7 - MURRAY-BRIDGE-STRAIGHT - 2026-06-24",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 7 - MURRAY-BRIDGE-STRAIGHT - 2026-07-08",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 7 - NOWRA - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 7 - RICH - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 7 - RICHMOND-STRAIGHT - 2026-06-18",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 7 - RICHMOND-STRAIGHT - 2026-07-02",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 7 - SAL - 2026-06-17",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 7 - SAN - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 7 - SHEPPARTON - 2026-06-15",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 7 - SHEPPARTON - 2026-06-25",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 7 - SHEPPARTON - 2026-07-02",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 7 - TAREE - 2026-06-20",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 7 - TAREE - 2026-07-04",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 7 - TEMORA - 2026-06-24",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 7 - TOWNSVILLE - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 7 - TRA - 2026-06-15",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 7 - TRA - 2026-06-29",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 7 - WAGGA - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 7 - WAR - 2026-06-15",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 7 - WPK - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 7 - WRGL - 2026-06-25",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 8 - AP_K - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 8 - AP_K - 2026-06-16",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 8 - CANN - 2026-06-13",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 8 - CAPALABA - 2026-06-17",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 8 - CAPALABA - 2026-06-21",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 8 - CASO - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 8 - GOULBURN - 2026-07-03",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 8 - GRAFTON - 2026-06-16",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 8 - GRDN - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 8 - GRDN - 2026-06-26",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 8 - HEA - 2026-06-19",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 8 - HEA - 2026-06-28",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 8 - HEA - 2026-07-03",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 8 - HOBT - 2026-06-30",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 8 - LADBROKES-Q1-LAKESIDE - 2026-06-26",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 8 - MAND - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 8 - MAND - 2026-06-12",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 8 - MOUNT - 2026-06-21",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 8 - MOUNT - 2026-07-02",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 8 - MURRAY-BRIDGE-STRAIGHT - 2026-06-17",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 8 - MURRAY-BRIDGE-STRAIGHT - 2026-06-24",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 8 - NOR - 2026-06-29",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 8 - RICH - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 8 - RICHMOND-STRAIGHT - 2026-06-18",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 8 - RICHMOND-STRAIGHT - 2026-07-02",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 8 - SAN - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 8 - SHEPPARTON - 2026-06-15",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 8 - SHEPPARTON - 2026-06-25",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 8 - SHEPPARTON - 2026-06-29",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 8 - SHEPPARTON - 2026-07-02",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 8 - SHEPPARTON - 2026-07-06",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 8 - SHEPPARTON - 2026-07-09",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 8 - TAREE - 2026-06-20",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 8 - TEMORA - 2026-06-24",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 8 - WAR - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 8 - WAR - 2026-06-15",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 8 - WPK - 2026-06-11",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 9 - BEN - 2026-06-10",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 9 - BEN - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 9 - CAPALABA - 2026-06-21",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 9 - CAPALABA - 2026-06-24",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 9 - CAPALABA - 2026-07-01",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 9 - CAPALABA - 2026-07-05",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 9 - CASO - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 9 - GEE - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 9 - GEE - 2026-06-13",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 9 - GRDN - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 9 - HEA - 2026-06-14",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 9 - HEA - 2026-06-19",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 9 - HEA - 2026-06-21",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 9 - HOBT - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 9 - HOBT - 2026-07-07",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 9 - MEADOWS - 2026-06-13",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 9 - MOUNT - 2026-07-05",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 9 - MOUNT - 2026-07-09",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 9 - RICHMOND-STRAIGHT - 2026-06-18",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 9 - RICHMOND-STRAIGHT - 2026-07-02",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 9 - RICHMOND-STRAIGHT - 2026-07-09",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 9 - SAL - 2026-07-01",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 9 - SAN - 2026-06-11",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 9 - SHEPPARTON - 2026-06-15",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 9 - SHEPPARTON - 2026-06-25",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 9 - SHEPPARTON - 2026-06-29",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 9 - SHEPPARTON - 2026-07-06",
+    "reason": "incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 9 - SHEPPARTON - 2026-07-09",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 9 - TAREE - 2026-06-20",
+    "reason": "no_snapshot_in_T2_to_T10_window;incomplete_verified_pre_race_form"
+  },
+  {
+    "race_id": "Race 9 - TOWNSVILLE - 2026-06-19",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  },
+  {
+    "race_id": "Race 9 - WAGGA - 2026-06-12",
+    "reason": "no_snapshot_in_T2_to_T10_window"
+  }
+]
