@@ -666,7 +666,8 @@ def generate_package(*, source_root: Path, pinned_python: Path, evidence_root: P
                      live_authority: Path | None = None, enabled: bool = False,
                      journal_activation: Path | None = None,
                      retained_input_bindings: Path | None = None,
-                     forecast_display: Path | None = None) -> dict[str, Any]:
+                     forecast_display: Path | None = None,
+                     operational_inputs: Path | None = None) -> dict[str, Any]:
     """Validate every authority input, then write one finite generated package."""
     if not _COMMIT.fullmatch(source_commit) or not _COMMIT.fullmatch(source_tree):
         raise DeploymentRejected("source commit/tree identity is invalid")
@@ -734,6 +735,15 @@ def generate_package(*, source_root: Path, pinned_python: Path, evidence_root: P
             },
             "roots": {"source_root": str(source), "pinned_python": str(python), "evidence_root": str(evidence), "producer_root": str(producer), "canonical_db": str(database), "operations_root": str(operations)},
         }
+    if operational_inputs is not None:
+        from .operational_inputs import validate_config
+        if retained_input_bindings is not None:
+            raise DeploymentRejected("ambiguous retained input authority")
+        try:
+            binding["operational_inputs"] = validate_config(_strict_json(_retained_file_read(
+                _safe_existing(operational_inputs, directory=False), 65536)))
+        except (ValueError, TypeError) as exc:
+            raise DeploymentRejected("invalid operational input binding") from exc
     if retained_input_bindings is not None:
         from src.predictor.retained_inputs import validate_bindings
         try:
@@ -840,6 +850,7 @@ def _parser() -> argparse.ArgumentParser:
     generate.add_argument("--journal-activation", type=Path)
     generate.add_argument("--retained-input-bindings", type=Path)
     generate.add_argument("--forecast-display", type=Path)
+    generate.add_argument("--operational-inputs", type=Path)
     manual = commands.add_parser("generate-manual")
     for name in (
         "source-root", "pinned-python", "manual-root", "browser-profile-root",

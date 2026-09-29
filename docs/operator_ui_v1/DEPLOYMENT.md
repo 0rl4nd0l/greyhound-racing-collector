@@ -141,3 +141,15 @@ root, audit/job databases, prediction bundles, collector evidence, current
 index, protocol evidence, or canonical database. Preserve the rejected or
 rolled-back package and hashes as review evidence. Never remove evidence as a
 rollback shortcut.
+# Supervised operational inputs
+
+`generate --operational-inputs FILE` binds R3 to one explicitly authorized
+collector evidence directory and an operational retained-input store. FILE is
+an object with absolute canonical `evidence_root` and `retained_root` paths.
+Deploy before starting the supervised collector, so its R3 identity remains
+stable. The future evidence directory may be absent: R3 reports unavailable
+until the collector publishes a valid index. It never falls back to the legacy
+index, creates collector files, or starts collection. Manual jobs require a
+completed retained bundle, pin its manifest into job identity, and use the
+existing receipt, pre-jump, frozen-model and full retained-input validators.
+Study output roots must not be supplied as the operational retained store.

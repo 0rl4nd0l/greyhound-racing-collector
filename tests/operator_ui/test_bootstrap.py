@@ -408,6 +408,28 @@ def test_repository_admission_rejects_expired_index_before_allocating_job(
     assert list((operations / "artifacts/on_demand_prediction_runs").iterdir()) == []
 
 
+def test_repository_pending_operational_session_is_unavailable_without_fallback(tmp_path, monkeypatch):
+    repo, *_ = repository_binding_fixture(tmp_path, monkeypatch)
+    path=repo/'var/operator_ui/generated/repository-v1.binding.json'
+    binding=json.loads(path.read_bytes())
+    retained=tmp_path/'operational';retained.mkdir()
+    pending=tmp_path/'future-session/collector/evidence'
+    binding['operational_inputs']={'evidence_root':str(pending),'retained_root':str(retained)}
+    path.write_text(json.dumps(binding))
+    layout=bootstrap_module._repository_layout()
+    assert layout['paths']['current_index.json']==pending/'shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json'
+    adapter=bootstrap_module._configured_live(layout)
+    assert not pending.exists()
+    app=Flask(__name__)
+    layout['paths']['audit.sqlite3'].touch()
+    app.config.update(OPERATOR_UI_AUDIT_DB_PATH=str(layout['paths']['audit.sqlite3']), DATABASE_PATH=str(layout['paths']['canonical.sqlite3']))
+    services=bootstrap_module._build_r3_services(app,'repository-v1')
+    from src.operator_ui.r3_api import R3Rejected
+    with pytest.raises(R3Rejected):
+        services.observe_current_index()
+    assert not pending.exists()
+
+
 def test_repository_profile_schema_evidence_identities_pass_api_validation(tmp_path,monkeypatch):
     repository_binding_fixture(tmp_path,monkeypatch)
     layout=bootstrap_module._repository_layout()
