@@ -1097,6 +1097,7 @@ def test_prediction_lifetime_unknown_prevents_campaign_close(tmp_path):
     from race_collection.live_freshness_contract import create_once
     campaign = SimpleNamespace(root=tmp_path/'campaign')
     output = tmp_path/'package'
+    create_once(output/'plan.json', {})
     lifetime = output/'operational-workers/claim.json'
     create_once(campaign.root/'operational-predictions/dispatches/race.json',
         {'plan':str(output/'plan.json'),'lifecycle':str(lifetime)})
