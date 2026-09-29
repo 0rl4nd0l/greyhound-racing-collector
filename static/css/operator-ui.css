@@ -869,7 +869,9 @@ footer strong {
 #job-timeline li { margin-block:.5rem; overflow-wrap:anywhere; }
 #job-status:focus { outline:2px solid currentColor; outline-offset:.25rem; }
 @media (max-width: 600px) { #prediction-form { grid-template-columns:minmax(0,1fr); } }
-#manual-prediction:not(.capability-available) { display: none; }
+#manual-prediction { scroll-margin-top: 1rem; }
+.upcoming-race { padding: 1rem; margin-block: .75rem; border: 1px solid var(--border, #53616e); border-radius: .5rem; }
+.upcoming-race p { overflow-wrap: anywhere; }
 
 /* Keep retained forecast tables scrollable inside a narrow viewport. */
 .forecast-page { grid-template-columns: minmax(0, 1fr); }

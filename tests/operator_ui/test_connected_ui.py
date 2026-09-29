@@ -61,7 +61,7 @@ def test_prediction_intent_and_reconnect_are_durable_and_bounded():
     assert "modelCatalog" in source
     assert "prediction-retransmit" in source and "retransmitButton.type='button'" in source
     assert "retransmitButton.addEventListener('click'" in source
-    assert "onAuthorizationExhausted" in source and "form.hidden=!available" in source
+    assert "onAuthorizationExhausted" in source and "form.hidden=false" in source
     assert "predictionSection.hidden=false" in source and "predictionSection.removeAttribute('aria-hidden')" in source
 
 
