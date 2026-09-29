@@ -870,3 +870,8 @@ footer strong {
 #job-status:focus { outline:2px solid currentColor; outline-offset:.25rem; }
 @media (max-width: 600px) { #prediction-form { grid-template-columns:minmax(0,1fr); } }
 #manual-prediction:not(.capability-available) { display: none; }
+
+/* Keep retained forecast tables scrollable inside a narrow viewport. */
+.forecast-page { grid-template-columns: minmax(0, 1fr); }
+.forecast-page > * { min-width: 0; }
+.forecast-page details { overflow-wrap: anywhere; }
