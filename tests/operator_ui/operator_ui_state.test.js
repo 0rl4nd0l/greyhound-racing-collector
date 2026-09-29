@@ -181,6 +181,10 @@ test("job validator rejects every malformed disclosure-bearing class", () => {
   const event={event_id:"event-1",phase:"SUBMITTED",event_at:"2026-08-01T00:00:00Z",status:"SUBMITTED",reason:"accepted",event_hash:"a".repeat(64),facts:{}};
   const job={schema:"operator_ui_prediction_job_response_v1",job_id:"job_0123456789abcdef0123456789abcdef",phase:"SUBMITTED",terminal:false,race_id:"race-1",jump_timestamp:"2026-08-01T01:00:00Z",runner_set_sha256:"b".repeat(64),model_id:"model-1",resolved_model_identity:"model-1",config_id:"config-1",odds_source_id:"receipt",timeline:[event],result:null};
   assert.equal(jobEnvelope(job),true);
+  assert.equal(jobEnvelope({...job,race_id:'Race 7 - TWN - 2026-09-29'}),true);
+  assert.equal(jobEnvelope({...job,race_id:'Race\n7'}),false);
+  assert.equal(jobEnvelope({...job,race_id:'x'.repeat(257)}),false);
+  assert.equal(jobEnvelope({...job,race_id:'é'.repeat(129)}),false);
   const mutations=[
     value=>{value.extra=true;}, value=>{delete value.phase;}, value=>{value.job_id="bad";},
     value=>{value.phase="UNKNOWN";}, value=>{value.terminal=true;}, value=>{value.timeline={};},

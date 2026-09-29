@@ -45,6 +45,8 @@ def console():
                 state["posts"].append(json.loads(route.request.post_data))
                 assert route.request.headers["x-csrf-token"] == "fixture-token"
                 body, status = state.get("submission", (dict(schema="operator_ui_prediction_error_v1", classification="PENDING_RECEIPT"), 409))
+            elif '/prediction-jobs/' in path and 'reconnect' in state:
+                body = state['reconnect']
             else:
                 endpoint = path.removeprefix("/operator-ui/api/v1/")
                 if endpoint == "overview" and "overview_reply" in state:
@@ -84,11 +86,13 @@ def test_upcoming_selection_uses_existing_csrf_submission_and_reports_blocker(co
     assert state["posts"][0]["model_id"] == "latest-research"
 
 
-def test_verified_submission_response_renders_probabilities(console):
+@pytest.mark.parametrize('race_id', ['exact-race-1', 'Race 7 - TWN - 2026-09-29'])
+def test_verified_submission_response_renders_probabilities(console, race_id):
     page, state = console
+    state['races'][0]['race_id'] = race_id
     state["submission"] = (dict(
         schema="operator_ui_prediction_job_response_v1", job_id="job_" + "a" * 32,
-        phase="PREDICTION_READY", terminal=True, race_id="exact-race-1",
+        phase="PREDICTION_READY", terminal=True, race_id=race_id,
         jump_timestamp="2099-04-01T06:36:00Z", runner_set_sha256="c" * 64,
         model_id="latest-research", resolved_model_identity="market_form_residual_v1",
         config_id="manual-default", odds_source_id="receipt", timeline=[],
@@ -110,6 +114,20 @@ def test_race_that_has_jumped_cannot_be_submitted(console):
     page.get_by_role("button", name="Select Bulli R2").click()
     expect(page.locator("#prediction-readiness")).to_contain_text("scheduled jump has passed")
     expect(page.locator("#prediction-submit")).to_be_disabled()
+
+
+def test_saved_job_link_reopens_verified_forecast_without_submission(console):
+    page,state=console
+    state['reconnect']=dict(schema='operator_ui_prediction_job_response_v1',job_id='job_'+'a'*32,
+        phase='PREDICTION_READY',terminal=True,race_id='Race 7 - TWN - 2026-09-29',
+        jump_timestamp='2026-09-29T20:35:00+10:00',runner_set_sha256='c'*64,
+        model_id='latest-research',resolved_model_identity='market_form_residual_v1',config_id='manual-default',odds_source_id='receipt',timeline=[],
+        result=dict(schema='operator_ui_verified_prediction_result_v1',verification_status='VERIFIED',
+            probabilities=[dict(rank=1,runner_id='HUNTERSBOY',box=8,name='Hunters Boy',probability=0.527)],evidence={}))
+    page.goto('http://127.0.0.1:5055/operator-ui?job=job_'+'a'*32+'#manual-prediction')
+    expect(page.locator('#job-result')).to_contain_text('Hunters Boy')
+    expect(page.locator('#job-result')).to_contain_text('VERIFIED')
+    assert state['posts']==[]
     assert not state["posts"]
 
 
