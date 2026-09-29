@@ -1307,7 +1307,7 @@ class LiveEvidenceAdapters:
                     if payload is not peer_report or not yielded:
                         return None
                     lifecycle_env, lifecycle = self._read('odds_lifecycle', now)
-                    if (lifecycle_env.status != 'AVAILABLE/FRESH' or not lifecycle
+                    if (lifecycle_env.availability != 'present' or lifecycle_env.schema_integrity != 'valid' or not lifecycle
                             or lifecycle.get('invocation_id') != payload['timing']['service_invocation_id']
                             or lifecycle.get('child_pid') != owner['pid']
                             or type(lifecycle.get('wrapper_pid')) is not int or lifecycle['wrapper_pid'] <= 0
