@@ -1,0 +1,103 @@
+[
+  {
+    "evaluation_first_date": "2026-06-24",
+    "inner_splits": [
+      [
+        "2026-06-13",
+        "2026-06-14",
+        "2026-06-17"
+      ],
+      [
+        "2026-06-17",
+        "2026-06-18",
+        "2026-06-21"
+      ]
+    ],
+    "lambda": 0.25,
+    "outer": "period1",
+    "saved_full_log_loss": 1.543853446208185,
+    "trials": [
+      {
+        "lambda": 0.25,
+        "log_loss": 1.543368983905328,
+        "races": 101
+      },
+      {
+        "lambda": 1.0,
+        "log_loss": 1.5440636840102677,
+        "races": 101
+      }
+    ],
+    "validation_first_date": "2026-06-14",
+    "validation_last_date": "2026-06-21"
+  },
+  {
+    "evaluation_first_date": "2026-07-01",
+    "inner_splits": [
+      [
+        "2026-06-17",
+        "2026-06-18",
+        "2026-06-21"
+      ],
+      [
+        "2026-06-21",
+        "2026-06-24",
+        "2026-06-30"
+      ]
+    ],
+    "lambda": 0.25,
+    "outer": "period2",
+    "saved_full_log_loss": 1.467449041523229,
+    "trials": [
+      {
+        "lambda": 0.25,
+        "log_loss": 1.4685043910235427,
+        "races": 127
+      },
+      {
+        "lambda": 1.0,
+        "log_loss": 1.4714640369221321,
+        "races": 127
+      }
+    ],
+    "validation_first_date": "2026-06-18",
+    "validation_last_date": "2026-06-30"
+  },
+  {
+    "evaluation_first_date": "2026-07-03",
+    "inner_splits": [
+      [
+        "2026-06-17",
+        "2026-06-18",
+        "2026-06-21"
+      ],
+      [
+        "2026-06-21",
+        "2026-06-24",
+        "2026-06-30"
+      ],
+      [
+        "2026-06-30",
+        "2026-07-01",
+        "2026-07-02"
+      ]
+    ],
+    "lambda": 0.25,
+    "outer": "final_later_block",
+    "saved_full_log_loss": 1.4123658315033518,
+    "trials": [
+      {
+        "lambda": 0.25,
+        "log_loss": 1.4147737199322257,
+        "races": 143
+      },
+      {
+        "lambda": 1.0,
+        "log_loss": 1.418610925196073,
+        "races": 143
+      }
+    ],
+    "validation_first_date": "2026-06-18",
+    "validation_last_date": "2026-07-02"
+  }
+]

@@ -1,0 +1,40 @@
+{
+  "base_commit": "fc979e370cc518a14e029c37678a172ed7528ea6",
+  "baselines": [
+    "market",
+    "unchanged_full",
+    "fixed_half"
+  ],
+  "data_transform": "race-wide scalar; log(p_full/market) gauge cancels on normalization; no refit",
+  "descriptives": "period/date scores, leave-one-date-out, best/worst five race contributions, support bins [0,1/3),[1/3,2/3),[2/3,1]; no posthoc rule changes",
+  "input_pins": {
+    "/home/l4nd0/greyhound-offline-systematic-output-20260924/search_v1/final_later_block_inner_identities.json": "3c2258ca396ce4b2a72b0e086d07e00b103710420d393b6d53ca64678ba4f1b1",
+    "/home/l4nd0/greyhound-offline-systematic-output-20260924/search_v1/inner_predictions/final_later_block_0147.npz": "8640abe1a4c19078838567f266da89f6a255ba49ded838fb159b6ad17214aeb8",
+    "/home/l4nd0/greyhound-offline-systematic-output-20260924/search_v1/inner_predictions/period1_0001.npz": "67095f2aef9c43e9cb1399ecaf9f6b11d3df96d78ca2185d2dfff659a85a2254",
+    "/home/l4nd0/greyhound-offline-systematic-output-20260924/search_v1/inner_predictions/period2_0074.npz": "1726941e314d86f36e446f8ec2038c832237eea0b2f655bb509694520aa298eb",
+    "/home/l4nd0/greyhound-offline-systematic-output-20260924/search_v1/period1_inner_identities.json": "d437072307128233349ecc57c31c215bf24bb3e5acf85957498f57e688c8f9cf",
+    "/home/l4nd0/greyhound-offline-systematic-output-20260924/search_v1/period2_inner_identities.json": "5362c2ed74119828e9a33d830c551425e8cf9d31bfc56a7478683d3a92cbb1df",
+    "docs/research/offline_systematic_evidence/experiment_ledger.jsonl": "35720cc958303ad9961ae799cfeab2140a0c93e4909cf947c32c3ddfa7861c37"
+  },
+  "metrics": [
+    "race log loss",
+    "race summed Brier",
+    "fractional top pick secondary"
+  ],
+  "new_fits": 0,
+  "parameters": [
+    0.25,
+    1.0
+  ],
+  "population": "exact pinned 331 development races / 2360 runners; 177 evaluation races /1251 runners; existing reservation/incident gate before decoding",
+  "rule": "runner q = min(prior_start_count,5)/5 * mean(min(context_count,3)/3 for venue,distance,grade; unavailable context rate or count -> support0) * (1 - missing_base16_fraction); race S = arithmetic mean(q); alpha = S/(S+lambda); prediction proportional to market * (saved_full/market)**alpha",
+  "selection": "minimum earlier pooled OOF race log loss; exact tie prefer lambda1 (stronger shrinkage); existing OUTER inner splits; no outer feedback",
+  "stopping": "exactly two lambda evaluations per outer fold; no feature/parameter expansion after evaluation; negative result completed",
+  "uncertainty": {
+    "date_cluster_draws": 3000,
+    "family": "adaptive vs market/full/half x LL/Brier (6 contrasts); paired pointwise and simultaneous max-standardized intervals; exploratory only",
+    "paired": true,
+    "seed": 20260929
+  },
+  "version": "history_support_shrinkage_v1"
+}
