@@ -47,6 +47,9 @@ def console():
                 body, status = state.get("submission", (dict(schema="operator_ui_prediction_error_v1", classification="PENDING_RECEIPT"), 409))
             else:
                 endpoint = path.removeprefix("/operator-ui/api/v1/")
+                if endpoint == "overview" and "overview_reply" in state:
+                    body, status = state["overview_reply"]
+                    return route.fulfill(status=status, content_type="application/json", body=json.dumps(body))
                 classification = state["classification"] if endpoint == "races/upcoming" else "AVAILABLE/FRESH"
                 data = {"races": state["races"]} if endpoint == "races/upcoming" and classification == "AVAILABLE/FRESH" else {}
                 if endpoint == "models":
@@ -108,6 +111,42 @@ def test_race_that_has_jumped_cannot_be_submitted(console):
     expect(page.locator("#prediction-readiness")).to_contain_text("scheduled jump has passed")
     expect(page.locator("#prediction-submit")).to_be_disabled()
     assert not state["posts"]
+
+
+@pytest.mark.parametrize("kind", ["audit", "provider", "empty", "unregistered", "malformed"])
+def test_overview_distinguishes_api_errors_from_offline_and_preserves_evidence(console, kind):
+    from src.operator_ui.security import NON_OPERATIONAL_ERROR, PROVIDER_ERROR
+
+    page, state = console
+    payload = dict(schema="operator_ui_level_1_api_v1", api_version="v1", resource="overview",
+                   classification="UNAVAILABLE/DATA_MISSING", stale=False,
+                   server_observed_at="2099-04-01T06:30:00Z", evidence={"age_seconds": None})
+    if kind == "audit":
+        state["overview_reply"] = (NON_OPERATIONAL_ERROR, 503)
+        classification, message = "NON_OPERATIONAL/AUDIT_UNAVAILABLE", "could not confirm the access audit"
+    elif kind == "provider":
+        state["overview_reply"] = (PROVIDER_ERROR, 503)
+        classification, message = "NON_OPERATIONAL/PROVIDER_ERROR", "could not supply valid evidence"
+    elif kind == "malformed":
+        state["overview_reply"] = ({**NON_OPERATIONAL_ERROR, "data": {"unverified": "do not display"}}, 503)
+        classification, message = "INVALID/INTEGRITY_FAILED", "could not be validated"
+    else:
+        if kind == "unregistered":
+            payload["reason"] = "ADAPTER_NOT_REGISTERED"
+        state["overview_reply"] = (payload, 200)
+        classification = "UNAVAILABLE/DATA_MISSING"
+        message = "overview is not configured" if kind == "unregistered" else "No operational values disclosed"
+    page.goto("http://127.0.0.1:5055/operator-ui")
+    panel = page.locator('[data-resource="overview"]')
+    expect(panel.locator(".resource-state")).to_have_text(classification)
+    expect(panel).to_contain_text(message)
+    expect(panel).not_to_contain_text("NON_OPERATIONAL/OFFLINE")
+    expect(panel).not_to_contain_text("do not display")
+    if kind in ("empty", "unregistered"):
+        expect(panel.locator("summary")).to_contain_text("2099-04-01T06:30:00Z")
+    else:
+        expect(panel.locator("summary")).to_have_text("Source and freshness evidence unavailable")
+        expect(page.locator("#prediction-submit")).to_be_disabled()
 
 
 @pytest.mark.parametrize("classification,races,reason", [

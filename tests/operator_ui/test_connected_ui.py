@@ -108,3 +108,15 @@ def test_connected_route_source_has_no_direct_operational_access():
     source = ast.unparse(function).lower()
     for prohibited in ("sqlite", "subprocess", "open(", "systemctl", "database", "collector", "browser", "lock"):
         assert prohibited not in source
+
+
+def test_console_assets_change_url_with_the_installed_revision():
+    app = Flask(__name__, template_folder=str(ROOT / "templates"), static_folder=str(ROOT / "static"))
+    for revision in ("a" * 40, "b" * 40):
+        app.config["OPERATOR_UI_DEPLOYED_COMMIT"] = revision
+        with app.test_request_context():
+            console = render_template("operator_ui_connected.jinja", connected=True)
+            forecasts = render_template("operator_ui_forecasts.jinja")
+        for asset in ("operator-ui-state.js", "operator-ui-connected.js", "operator-ui.css"):
+            assert f"{asset}?v={revision}" in console
+        assert f"operator-ui-forecasts.js?v={revision}" in forecasts

@@ -16,7 +16,27 @@
   const classifications=new Set(["AVAILABLE/FRESH","STALE","UNAVAILABLE/DATA_MISSING","INVALID/INTEGRITY_FAILED","DIVERGENT","NON_OPERATIONAL/AUTHENTICATION_REQUIRED","NON_OPERATIONAL/AUTHORIZATION_DENIED","NON_OPERATIONAL/PROVIDER_ERROR","NON_OPERATIONAL/AUDIT_UNAVAILABLE"]);
   const phases=new Set(["SUBMITTED","VALIDATED","WAITING_FOR_CLAIM","CLAIMED","ATTEMPT_STARTED","RESPONSE_RECORDED","RECEIPT_VERIFIED","CONSUMED","SCORING","PRODUCER_COMPLETED","REAP_UNCONFIRMED","PREDICTION_READY","FAILED","REJECTED","EXPIRED","TIMED_OUT","CANCELLED"]);
   const terminalPhases=new Set(["PREDICTION_READY","FAILED","REJECTED","EXPIRED","TIMED_OUT","CANCELLED"]);
-  function resourceEnvelope(value,expected,detail=false){if(!plain(value)||value.schema!=="operator_ui_level_1_api_v1"||value.api_version!=="v1"||value.resource!==expected||!classifications.has(value.classification)||typeof value.stale!=="boolean"||!text(value.server_observed_at)||!plain(value.evidence))return false;const tail=Object.hasOwn(value,"data")?"data":Object.hasOwn(value,"reason")?"reason":null;if(!tail||!exact(value,["api_version","classification","evidence","resource","schema","server_observed_at","stale",tail]))return false;if(detail&&value.classification==="AVAILABLE/FRESH"&&!Object.hasOwn(value,"data"))return false;return tail!=="reason"||text(value.reason);}
+  function resourceEnvelope(value,expected,detail=false){
+    if(!plain(value)||value.schema!=="operator_ui_level_1_api_v1"||value.api_version!=="v1"||value.resource!==expected||!classifications.has(value.classification)||typeof value.stale!=="boolean"||!text(value.server_observed_at)||!plain(value.evidence))return false;
+    const tail=Object.hasOwn(value,"data")?"data":Object.hasOwn(value,"reason")?"reason":null;
+    if(!exact(value,["api_version","classification","evidence","resource","schema","server_observed_at","stale",...(tail?[tail]:[])]))return false;
+    if(value.classification==="AVAILABLE/FRESH"&&tail!=="data")return false;
+    if(tail==="data"&&!plain(value.data))return false;
+    return tail!=="reason"||text(value.reason);
+  }
+  function levelOneFailureEnvelope(value,status){
+    if(status!==503||!exact(value,["classification","error"]))return false;
+    return (value.classification==="NON_OPERATIONAL/AUDIT_UNAVAILABLE"&&value.error==="operational disclosure unavailable")||
+      (value.classification==="NON_OPERATIONAL/PROVIDER_ERROR"&&value.error==="operational provider unavailable");
+  }
+  function createRequestQueue(fetcher){
+    let pending=Promise.resolve();
+    return (...args)=>{
+      const result=pending.then(()=>fetcher(...args));
+      pending=result.then(()=>undefined,()=>undefined);
+      return result;
+    };
+  }
   function csrfEnvelope(value){return exact(value,["classification","csrf_token"])&&text(value.classification)&&text(value.csrf_token);}
   function capabilityEnvelope(value){return exact(value,["schema","authorized","runtime_configured","level"])&&value.schema==="operator_ui_r3_capability_v1"&&typeof value.authorized==="boolean"&&typeof value.runtime_configured==="boolean"&&value.level===2;}
   function errorEnvelope(value){return exact(value,["schema","classification"])&&value.schema==="operator_ui_prediction_error_v1"&&text(value.classification);}
@@ -135,7 +155,7 @@
       responseLost, retransmission, associateJob, stableRejection, clearTerminalJob,
       reconnect, stopReconnect, transportAttempts: () => attempts };
   }
-  return { createOperatorState, readAuthorityResponse, resourceEnvelope, csrfEnvelope,
+  return { createOperatorState, readAuthorityResponse, resourceEnvelope, levelOneFailureEnvelope, createRequestQueue, csrfEnvelope,
     capabilityEnvelope, errorEnvelope, timelineEvent, verifiedResult, jobEnvelope,
     INTENT_KEY, JOB_KEY };
 });

@@ -198,3 +198,52 @@ test("malformed 2xx loses authority before any consumer can observe it", async (
   await assert.rejects(()=>readAuthorityResponse(response,()=>order.push("loss"),value=>{order.push("validate");return jobEnvelope(value);}).then(()=>order.push("disclose")));
   assert.deepEqual(order,["validate","loss"]);
 });
+
+test("Level 1 service errors preserve their exact classification and still revoke capability", async () => {
+  const { levelOneFailureEnvelope } = require("../../static/js/operator-ui-state.js");
+  for (const [classification,error] of [
+    ["NON_OPERATIONAL/AUDIT_UNAVAILABLE","operational disclosure unavailable"],
+    ["NON_OPERATIONAL/PROVIDER_ERROR","operational provider unavailable"],
+  ]) {
+    const value={classification,error};
+    assert.equal(levelOneFailureEnvelope(value,503),true);
+    assert.equal(levelOneFailureEnvelope(value,200),false);
+    assert.equal(levelOneFailureEnvelope({...value,data:{}},503),false);
+    assert.equal(levelOneFailureEnvelope({...value,error:"unexpected"},503),false);
+    let losses=0;
+    const response={status:503,ok:false,headers:{get:()=>"application/json"},json:async()=>value};
+    assert.deepEqual(await readAuthorityResponse(response,()=>losses++,body=>levelOneFailureEnvelope(body,response.status)),value);
+    assert.equal(losses,1);
+  }
+});
+
+test("unavailable and stale Level 1 envelopes may omit undisclosed data", () => {
+  const base={schema:"operator_ui_level_1_api_v1",api_version:"v1",resource:"overview",classification:"UNAVAILABLE/DATA_MISSING",stale:false,server_observed_at:"2026-08-01T00:00:00Z",evidence:{source:"fixed"}};
+  assert.equal(resourceEnvelope(base,"overview"),true);
+  assert.equal(resourceEnvelope({...base,classification:"STALE",stale:true},"overview"),true);
+  assert.equal(resourceEnvelope({...base,classification:"AVAILABLE/FRESH"},"overview"),false);
+  assert.equal(resourceEnvelope({...base,data:{},reason:"ambiguous"},"overview"),false);
+  assert.equal(resourceEnvelope({...base,extra:true},"overview"),false);
+});
+
+test("request queue sends one API request at a time and recovers after transport failure", async () => {
+  const { createRequestQueue }=require("../../static/js/operator-ui-state.js");
+  const started=[],pending=[];
+  const request=createRequestQueue(path=>new Promise((resolve,reject)=>{started.push(path);pending.push({resolve,reject});}));
+  const first=request('overview');
+  const second=request('collector');
+  const third=request('models');
+  const rejected=assert.rejects(second,/offline/);
+  await Promise.resolve();
+  assert.deepEqual(started,['overview']);
+  pending.shift().resolve({status:503});
+  assert.deepEqual(await first,{status:503});
+  await Promise.resolve();
+  assert.deepEqual(started,['overview','collector']);
+  pending.shift().reject(new Error('offline'));
+  await rejected;
+  await Promise.resolve();
+  assert.deepEqual(started,['overview','collector','models']);
+  pending.shift().resolve({status:200});
+  assert.deepEqual(await third,{status:200});
+});
