@@ -129,3 +129,13 @@ def test_private_outcomes_cannot_be_projected_as_ready_forecast(config,tmp_path,
     monkeypatch.setattr(rf,'verify_indexed_prediction_bundle',lambda *args:bundle)
     with pytest.raises(ValueError,match='production_model_identity_mismatch'):
         rf.project_bundle(tmp_path,{}, {},config,NOW,{})
+
+
+def test_pinned_verification_reads_do_not_scan_unrelated_audits(tmp_path):
+    root=tmp_path/'production'; audit=root/'audit';audit.mkdir(parents=True)
+    value={'operation':'verify','job_operation':'operational_prediction','job_id':'job_authorized','proposed_event':{'facts':{'verification_status':'VERIFIED'}}}
+    raw=rf.canonical(value);path=audit/(hashlib.sha256(raw).hexdigest()+'.json');path.write_bytes(raw)
+    (audit/'unrelated.json').write_text('malformed unrelated record')
+    assert list(rf._verification_audits(root,[str(path)]))==['job_authorized']
+    with pytest.raises(ValueError,match='outside_authorized_root'):
+        rf._verification_audits(root,[str(tmp_path/'another-audit.json')])

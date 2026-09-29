@@ -109,8 +109,10 @@ def programme_status(config, now, observe=unit_state):
         return {'state': 'UNAVAILABLE', 'reason': 'Programme status or identity could not be verified.', 'collecting': None}
 
 
-def _verification_audits(root):
-    paths = list((root / 'audit').glob('*.json'))
+def _verification_audits(root, references=None):
+    paths = list((root / 'audit').glob('*.json')) if references is None else [Path(p) for p in references]
+    if any(p.parent != root / 'audit' for p in paths):
+        raise ValueError('verification_audit_outside_authorized_root')
     if len(paths) > 8192:
         raise ValueError('audit_inventory_bound')
     result = {}
@@ -191,6 +193,7 @@ def project_bundle(root, entry, audits, config, now, independent):
 
 def forecasts(config, now):
     independent = {}
+    verification_paths = {}
     for item in config['independent_audits']:
         audit = read(item['path'], item['sha256'])
         if audit['status'] != 'COMPLETED_CHAINS_VERIFIED':
@@ -198,6 +201,7 @@ def forecasts(config, now):
         for chain in audit['chains']:
             if chain['findings'] or not all(chain['checks'].values()):
                 raise ValueError('independent_audit_findings')
+            verification_paths[chain['job_id']] = chain['verification_audit_path']
             old = independent.get(chain['job_id'])
             if old is None or stamp(audit['recorded_at']) < stamp(old):
                 independent[chain['job_id']] = audit['recorded_at']
@@ -215,7 +219,10 @@ def forecasts(config, now):
                 source['reason'] = 'No retained forecasts yet.' if source['state'] == 'EMPTY' else 'Retained forecast index is unavailable.'
             else:
                 view = verify_prediction_bundle_index(root / 'bundles', return_verified_view=True)
-                audits = _verification_audits(root)
+                references = None
+                if label == 'operational' and all(job in verification_paths for job in config['operational_job_ids']):
+                    references = [verification_paths[job] for job in config['operational_job_ids']]
+                audits = _verification_audits(root, references)
                 selected = [e for e in view.entries if label != 'operational' or e['job_id'] in config['operational_job_ids']]
                 if label == 'operational':
                     for missing in set(config['operational_job_ids']) - {e['job_id'] for e in selected}:
