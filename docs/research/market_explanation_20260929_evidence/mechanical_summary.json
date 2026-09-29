@@ -1,0 +1,290 @@
+[
+  {
+    "coefficients": {
+      "final_later_block": 0.042518260310230094,
+      "period1": 0.03697202485252569,
+      "period2": 0.0435206757992852
+    },
+    "feature": "recent_avg_margin_5",
+    "mean_absolute_linear_contribution": 0.02505400620042578
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.047163887523919125,
+      "period1": 0.04634827201681313,
+      "period2": 0.054028410550642385
+    },
+    "feature": "win_rate_same_venue",
+    "mean_absolute_linear_contribution": 0.024904229384160675
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.02571820103712164,
+      "period1": 0.044753926230492146,
+      "period2": 0.025938036563673172
+    },
+    "feature": "starts_same_distance",
+    "mean_absolute_linear_contribution": 0.02254488934220602
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.04003910715486751,
+      "period1": 0.05032740460992563,
+      "period2": 0.03784825990158379
+    },
+    "feature": "starts_same_venue",
+    "mean_absolute_linear_contribution": 0.019887061144327176
+  },
+  {
+    "coefficients": {
+      "final_later_block": -0.02347014503174155,
+      "period1": -0.0358074760235195,
+      "period2": -0.018142780087000696
+    },
+    "feature": "missing::win_rate_same_distance",
+    "mean_absolute_linear_contribution": 0.01744426925261814
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.02988548708163089,
+      "period1": 0.02718449626803487,
+      "period2": 0.028090481043272116
+    },
+    "feature": "recent_win_rate_5",
+    "mean_absolute_linear_contribution": 0.016733928076200756
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.02988548708163089,
+      "period1": 0.02718449626803487,
+      "period2": 0.028090481043272116
+    },
+    "feature": "career_win_rate",
+    "mean_absolute_linear_contribution": 0.016733928076200756
+  },
+  {
+    "coefficients": {
+      "final_later_block": -0.017888711085639105,
+      "period1": -0.034426500173485156,
+      "period2": -0.022601232558031592
+    },
+    "feature": "recent_finish_best_5",
+    "mean_absolute_linear_contribution": 0.01659629635378416
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.034627006258122164,
+      "period1": 0.01928790226259143,
+      "period2": 0.028100981740637455
+    },
+    "feature": "win_rate_same_distance",
+    "mean_absolute_linear_contribution": 0.014637011196297092
+  },
+  {
+    "coefficients": {
+      "final_later_block": -0.027214075689933996,
+      "period1": -0.04380691325358044,
+      "period2": -0.03153694823209637
+    },
+    "feature": "missing::same_grade_win_rate",
+    "mean_absolute_linear_contribution": 0.010908155041442186
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.03317386064040675,
+      "period1": 0.01655133187181425,
+      "period2": 0.022237360601753454
+    },
+    "feature": "same_grade_win_rate",
+    "mean_absolute_linear_contribution": 0.010400380443888003
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.0022096014912110027,
+      "period1": 0.0389487708866208,
+      "period2": 0.0038192057026996767
+    },
+    "feature": "same_grade_start_count",
+    "mean_absolute_linear_contribution": 0.010065930106373081
+  },
+  {
+    "coefficients": {
+      "final_later_block": -0.01677272501867457,
+      "period1": -0.013908016242943608,
+      "period2": -0.01429475382907238
+    },
+    "feature": "days_since_last_start",
+    "mean_absolute_linear_contribution": 0.005422861908838326
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.009568693885075507,
+      "period1": 0.005973214405363991,
+      "period2": 0.025123877779900737
+    },
+    "feature": "prior_start_count",
+    "mean_absolute_linear_contribution": 0.0031133132876505405
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.007735651161506415,
+      "period1": 0.004072186551111916,
+      "period2": 0.011299128220143914
+    },
+    "feature": "missing::win_rate_same_venue",
+    "mean_absolute_linear_contribution": 0.0018899191868953372
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.0014876088973488602,
+      "period1": -0.001748214720387543,
+      "period2": 0.0008543946393217153
+    },
+    "feature": "recent_finish_mean_3",
+    "mean_absolute_linear_contribution": 0.001000536794047261
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.000985329254295339,
+      "period1": -0.00031998631804789935,
+      "period2": 0.004123201288930825
+    },
+    "feature": "career_avg_finish",
+    "mean_absolute_linear_contribution": 0.0005858364838247272
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.0005159369809068758,
+      "period1": 6.529044059879195e-05,
+      "period2": -0.0019895989865734535
+    },
+    "feature": "recent_place_rate_5",
+    "mean_absolute_linear_contribution": 0.0002609724816607063
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.0005159369809068758,
+      "period1": 6.529044059879195e-05,
+      "period2": -0.0019895989865734535
+    },
+    "feature": "career_place_rate",
+    "mean_absolute_linear_contribution": 0.0002609724816607063
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.0,
+      "period1": 0.0,
+      "period2": 0.0
+    },
+    "feature": "missing::prior_start_count",
+    "mean_absolute_linear_contribution": 0.0
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.0,
+      "period1": 0.0,
+      "period2": 0.0
+    },
+    "feature": "missing::days_since_last_start",
+    "mean_absolute_linear_contribution": 0.0
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.0,
+      "period1": 0.0,
+      "period2": 0.0
+    },
+    "feature": "missing::recent_finish_mean_3",
+    "mean_absolute_linear_contribution": 0.0
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.0,
+      "period1": 0.0,
+      "period2": 0.0
+    },
+    "feature": "missing::recent_finish_best_5",
+    "mean_absolute_linear_contribution": 0.0
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.0,
+      "period1": 0.0,
+      "period2": 0.0
+    },
+    "feature": "missing::recent_win_rate_5",
+    "mean_absolute_linear_contribution": 0.0
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.0,
+      "period1": 0.0,
+      "period2": 0.0
+    },
+    "feature": "missing::recent_place_rate_5",
+    "mean_absolute_linear_contribution": 0.0
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.0,
+      "period1": 0.0,
+      "period2": 0.0
+    },
+    "feature": "missing::recent_avg_margin_5",
+    "mean_absolute_linear_contribution": 0.0
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.0,
+      "period1": 0.0,
+      "period2": 0.0
+    },
+    "feature": "missing::career_win_rate",
+    "mean_absolute_linear_contribution": 0.0
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.0,
+      "period1": 0.0,
+      "period2": 0.0
+    },
+    "feature": "missing::career_place_rate",
+    "mean_absolute_linear_contribution": 0.0
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.0,
+      "period1": 0.0,
+      "period2": 0.0
+    },
+    "feature": "missing::career_avg_finish",
+    "mean_absolute_linear_contribution": 0.0
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.0,
+      "period1": 0.0,
+      "period2": 0.0
+    },
+    "feature": "missing::starts_same_venue",
+    "mean_absolute_linear_contribution": 0.0
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.0,
+      "period1": 0.0,
+      "period2": 0.0
+    },
+    "feature": "missing::starts_same_distance",
+    "mean_absolute_linear_contribution": 0.0
+  },
+  {
+    "coefficients": {
+      "final_later_block": 0.0,
+      "period1": 0.0,
+      "period2": 0.0
+    },
+    "feature": "missing::same_grade_start_count",
+    "mean_absolute_linear_contribution": 0.0
+  }
+]

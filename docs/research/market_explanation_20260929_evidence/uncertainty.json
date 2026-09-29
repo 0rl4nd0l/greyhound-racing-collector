@@ -1,0 +1,24 @@
+{
+  "contrasts": 162,
+  "critical": 3.6644053242595764,
+  "dates": [
+    "2026-06-24",
+    "2026-06-25",
+    "2026-06-26",
+    "2026-06-27",
+    "2026-06-28",
+    "2026-06-29",
+    "2026-06-30",
+    "2026-07-01",
+    "2026-07-02",
+    "2026-07-03",
+    "2026-07-04",
+    "2026-07-05",
+    "2026-07-06",
+    "2026-07-07",
+    "2026-07-08"
+  ],
+  "draws": 3000,
+  "limitation": "exploratory family adjustment, not correction for all earlier searches; sparse group bands unreliable",
+  "seed": 20260929
+}

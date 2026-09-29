@@ -1,0 +1,13 @@
+{
+  "dates": 15,
+  "grade_semantics": "literal source category; no universal ordering",
+  "max_reconstruction_error": 2.220446049250313e-16,
+  "missing_prediction_races": 0,
+  "new_fits": 0,
+  "new_variants": 0,
+  "protected_record_decodes": 0,
+  "races": 177,
+  "runners": 1251,
+  "scratch_status": "exact retained active roster; vacancy cause and scratch timing unknown",
+  "training_only_development_races": 154
+}
