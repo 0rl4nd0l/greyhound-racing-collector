@@ -10,7 +10,11 @@ from race_collection.live_phase_checkpoint import atomic_json
 
 
 class Campaign:
-    def __init__(self, path):
+    def __init__(self, path, *, engineering_authority=None):
+        if engineering_authority is not None and (
+                not isinstance(engineering_authority, str) or not engineering_authority.strip()):
+            raise ValueError('explicit_engineering_authority_required')
+        self.engineering_authority = engineering_authority
         self.root = Path(path).resolve()
         self.value = json.loads((self.root / 'authorization.json').read_bytes())
         if (self.value.get('schema_version') != 'collector_engineering_campaign_v1'
@@ -55,6 +59,7 @@ class Campaign:
             self.value = {**self.value, **{key: extra[key] for key in limits},
                           'extensions': [*self.value.get('extensions', []), extra]}
 
+        engineering_value = self.value
         programme = self.root / 'persistent-programme-authority.json'
         if programme.exists():
             extra = json.loads(programme.read_bytes())
@@ -101,8 +106,43 @@ class Campaign:
                               'programme_schedule_amendments': [*self.value.get('programme_schedule_amendments', []), row]}
         else:
             self.programme = None
+        self.study_programme = self.programme
+        if engineering_authority is not None:
+            # Explicitly selected in the approved plan, never inferred from a
+            # date or the existence of a programme. Retain the same root/locks.
+            self.value = {**engineering_value,
+                          'engineering_authority': engineering_authority,
+                          'study_authority_sha256': digest(self.value)}
+            self.programme = None
+
+    @staticmethod
+    def from_scope(value):
+        authority = value.get('engineering_authority')
+        if authority is None:
+            return Campaign(value['campaign_root'])
+        predictions = value.get('operational_predictions', {})
+        if (not predictions or predictions.get('result_access') is not False
+                or predictions.get('research_activation') is not False
+                or value.get('prediction_root') or value.get('frozen_comparison')):
+            raise ValueError('engineering_requires_separate_operational_predictions')
+        return Campaign(value['campaign_root'], engineering_authority=authority)
+
+    def programme_usage(self, value):
+        """Cumulative totals stay intact; explicitly charged engineering is separate."""
+        initial = self.programme['initial_counters']
+        return {
+            'capture_attempts': len(value['attempts']) - initial['capture_attempts']
+                - sum(bool(r.get('engineering_authority')) for r in value['attempts']),
+            'logical_requests': value['logical_requests'] - initial['logical_requests']
+                - value.get('preprogramme_engineering_requests', 0),
+            'live_seconds': sum(r['charged_seconds'] for r in value['launches'].values()
+                                if not r.get('engineering_authority')) - initial['live_seconds'],
+        }
 
     def check_programme_time(self):
+        if self.engineering_authority and self.study_programme:
+            if datetime.now(timezone.utc) >= datetime.fromisoformat(self.study_programme['starts_at']):
+                raise ValueError('engineering_window_overlaps_programme')
         if self.programme:
             now = datetime.now(timezone.utc)
             if not datetime.fromisoformat(self.programme['starts_at']) <= now < datetime.fromisoformat(self.programme['expires_at']):
@@ -129,6 +169,9 @@ class Campaign:
 
     def begin(self, launch, *, now, deadline):
         self.check_programme_time()
+        if (self.engineering_authority and self.study_programme
+                and deadline >= datetime.fromisoformat(self.study_programme['starts_at'])):
+            raise ValueError('engineering_window_overlaps_programme')
         with self.ledger() as value:
             if value.get('source_holds'):
                 raise ValueError('campaign_source_hold')
@@ -137,10 +180,12 @@ class Campaign:
             used = sum(r['charged_seconds'] for r in value['launches'].values())
             charge = (deadline - now).total_seconds()
             if (charge <= 0 or used + charge > self.value['max_live_seconds']
-                    or self.programme and used+charge-self.programme['initial_counters']['live_seconds']>580800):
+                    or self.programme and self.programme_usage(value)['live_seconds']+charge>580800):
                 raise ValueError('campaign_live_time_exhausted')
             value['launches'][launch] = dict(started_at=now.isoformat(),
                 deadline_epoch=deadline.timestamp(), charged_seconds=charge)
+            if self.engineering_authority and self.study_programme:
+                value['launches'][launch]['engineering_authority'] = self.engineering_authority
 
     def close(self, launch, *, now):
         # Only after verified restoration. Unclosed launches keep their full charge.
@@ -153,13 +198,15 @@ class Campaign:
     def available(self):
         with self.ledger() as value:
             return (len(value['attempts']) < self.value['max_capture_attempts'] and
-                    (not self.programme or len(value['attempts'])-self.programme['initial_counters']['capture_attempts']<1000))
+                    (not self.programme or self.programme_usage(value)['capture_attempts']<1000))
 
     def consume(self, claim, item):
         self.check_programme_time()
         with self.ledger() as value:
+            if value.get('source_holds'):
+                raise ValueError('campaign_source_hold')
             if (len(value['attempts']) >= self.value['max_capture_attempts']
-                    or self.programme and len(value['attempts'])-self.programme['initial_counters']['capture_attempts']>=1000):
+                    or self.programme and self.programme_usage(value)['capture_attempts']>=1000):
                 raise ValueError('campaign_capture_allowance_consumed')
             aliases = set(item.get('race_id_aliases', [item['race_id']])) | {item['race_id']}
             if any(r['window'] == item['capture_window_minutes'] and aliases.intersection(r['aliases'])
@@ -168,14 +215,18 @@ class Campaign:
             value['attempts'].append(dict(claim=str(claim), race_id=item['race_id'],
                 aliases=sorted(aliases), window=item['capture_window_minutes'], item=item,
                 consumed_at=datetime.now(timezone.utc).isoformat()))
+            if self.engineering_authority and self.study_programme:
+                value['attempts'][-1]['engineering_authority'] = self.engineering_authority
 
     def request(self, *, kind='prediction'):
         self.check_programme_time()
+        if self.engineering_authority and kind != 'prediction':
+            raise ValueError('engineering_results_forbidden')
         with self.ledger() as value:
             if value.get('source_holds'):
                 raise ValueError('campaign_source_hold')
             if (value['logical_requests'] >= self.value['max_logical_requests']
-                    or self.programme and value['logical_requests']-self.programme['initial_counters']['logical_requests']>=1304000):
+                    or self.programme and self.programme_usage(value)['logical_requests']>=1304000):
                 raise ValueError('campaign_request_cap_exhausted')
             if self.programme:
                 ceilings={'prediction':1280000,'results':24000}
@@ -184,6 +235,8 @@ class Campaign:
                 if usage[kind]>=ceilings[kind]:raise ValueError('programme_kind_request_cap_exhausted')
                 usage[kind]+=1
             value['logical_requests'] += 1
+            if self.engineering_authority and self.study_programme:
+                value['preprogramme_engineering_requests'] = value.get('preprogramme_engineering_requests', 0) + 1
 
     def hold_source(self, observation):
         """A denial or retry instruction survives package/process replacement.

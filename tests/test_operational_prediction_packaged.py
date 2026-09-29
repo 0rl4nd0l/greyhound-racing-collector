@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
     (False, "murray"), (True, "murray"), ("paired_missing", "murray"),
     (False, "sandown_park"), (False, "angle_park"), ("weather_guidance", "murray"),
     (False, "allocated_murray"),
+    (False, "preprogramme_murray"),
     (False, "maitland"), (False, "grafton"), (False, "launceston"),
 ])
 def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, landing_missing, venue_case):
@@ -129,9 +130,23 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
             prior_authorization_sha256=hashlib.sha256((campaign.root/'authorization.json').read_bytes()).hexdigest(),
             authority_reference='synthetic-explicit-user', rationale='sustained comparison', max_capture_attempts=64))
     package = tmp_path/'package'
+    authority = None
+    if venue_case == 'preprogramme_murray':
+        from race_collection.freshness_campaign import Campaign
+        campaign = Campaign(campaign.root)
+        create_once(campaign.root/'persistent-programme-authority.json', dict(
+            schema_version='collector_persistent_programme_v1', status='AUTHORIZED_PERSISTENT_PROGRAMME',
+            campaign_id='synthetic', programme_id='future-study', authority_reference='synthetic-study',
+            prior_effective_authorization_sha256=digest(campaign.value),
+            starts_at=(stamp+timedelta(days=2)).isoformat(), expires_at=(stamp+timedelta(days=126)).isoformat(),
+            max_capture_attempts=1064, max_logical_requests=1352000, max_live_seconds=591600,
+            initial_counters=dict(capture_attempts=0, logical_requests=0, live_seconds=0)))
+        authority = 'synthetic-separate-operational'
+        campaign = Campaign(campaign.root, engineering_authority=authority)
     prepare(output=package, start=stamp-timedelta(seconds=5), python=Path(sys.executable), db=db,
         lock=tmp_path/'collector.lock', reconciliation_roots={}, installed_dir=installed,
-        campaign_root=campaign.root, operational_predictions=True, observation_minutes=60)
+        campaign_root=campaign.root, operational_predictions=True, observation_minutes=60,
+        engineering_authority=authority)
     plan = json.loads((package/'plan.json').read_bytes())
     assert (datetime.fromisoformat(plan['ends_at']) - datetime.fromisoformat(plan['starts_at'])).total_seconds() == 3600
     assert plan['max_capture_attempts'] == (12 if landing_missing else 64)
@@ -151,6 +166,9 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
         'max_capture_attempts','max_logical_requests','source_identity_sha256','runtime_sha256',
         'campaign_root','campaign_authorization_sha256','operational_predictions')
     contract = {k:plan[k] for k in keys}
+    if authority is not None:
+        from scripts.run_freshness_rehearsal import execution_contract
+        contract = execution_contract(plan, {**accounting, 'source_date': stamp.date().isoformat()})
     contract.update(schema_version='freshness_rehearsal_contract_v1',source_date=stamp.date().isoformat(),reconciliation_sha256=digest(accounting))
     (package/'contract.json').write_text(json.dumps(contract))
     scope = FreshnessContract(contract)
@@ -217,6 +235,12 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     (tmp_path/'prediction.log').write_text(result.stdout+result.stderr)
     terminals = list((campaign.root/'operational-predictions/races').glob('*/terminal.json'))
     assert len(terminals) == 1, result.stderr
+    if authority is not None:
+        study = Campaign(campaign.root)
+        ledger = json.loads((campaign.root/'ledger.json').read_bytes())
+        assert study.programme_usage(ledger) == dict(capture_attempts=0, logical_requests=0, live_seconds=0)
+        assert ledger['logical_requests'] > 0 and len(ledger['attempts']) == 1
+        assert not (campaign.root/'slots').exists()
     terminal = json.loads(terminals[0].read_bytes())
     with sqlite3.connect(db) as history_conn:
         assert history_conn.execute('SELECT count(*) FROM live_odds').fetchone()[0] == initial_odds
