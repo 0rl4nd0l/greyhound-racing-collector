@@ -44,7 +44,7 @@ only aggregate diagnostic counts were emitted within the existing scope.
 
 **Yes, through earlier admitted cards, with a narrower interpretation than
 production DB replay.** Capture-time-qualified union of the 331 authorized cards
-adds 678 distinct starts for 360 runners across 159 races. All 331 races / 2,360
+adds 678 retained history rows across runner-targets for 360 runners across 159 races. All 331 races / 2,360
 runners qualify, with zero conflict exclusions. On the existing evaluation
 subset, 129/177 races and 311/1,251 runners gain 627 starts. Histories grow to at
 most 10 starts; no complete-career claim is possible.
@@ -114,7 +114,7 @@ variants were added.
 - Six new depth models with complete preprocessing, coefficients, exact
   training/evaluation membership and inputs, feature contract, environment,
   source identities, attempt/failure ledgers and whole-field forecasts.
-- Targeted tests and independent timing/leakage/fairness review; commands in
+- Sixteen targeted tests and [independent review](history_support_20260929_review.md); commands in
   the linked reports. Frozen protocol/source versions and intermediate attempts
   are preserved, including the resolved reconstruction-source pin mismatch.
 
