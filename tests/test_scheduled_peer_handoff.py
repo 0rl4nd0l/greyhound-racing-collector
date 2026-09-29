@@ -19,7 +19,7 @@ from tests.test_refresh_shared_sportsbet_snapshot import fixture, access
 ROOT = Path(__file__).resolve().parents[1]
 
 
-@pytest.mark.parametrize('yield_capture,cold_start', [(False,False),(True,False),(False,45),(False,90),('consumed',45)])
+@pytest.mark.parametrize('yield_capture,cold_start', [(False,False),(True,False),(False,45),(False,90),('consumed',45),('restarted',45)])
 def test_second_full_service_waits_for_actual_odds_child_then_completes(tmp_path, monkeypatch, yield_capture, cold_start):
     from scripts import prepare_freshness_rehearsal as packaging
     from scripts.check_freshness_service import service_command
@@ -261,10 +261,22 @@ print(json.dumps(observation))
             assert len(pending) == 1 and pending[0]['kind'] == 'capture'
             assert not list(AttemptAllowance(scope).claims())
             assert not Path(plan['lock_path']).exists()
-        gap=observe(True, peer_active=False, peer_failed=yield_capture)
+        if yield_capture == 'restarted':
+            # systemd may dispatch the next wrapper before the full child's
+            # next lock poll; the prior terminal report/lifecycle remain.
+            odds_invocation = '8'*32
+        gap=observe(True, peer_active=yield_capture == 'restarted', peer_failed=yield_capture)
         assert next(lane for lane in gap['lanes'] if lane['lane']=='FULL_DAEMON')['status']=='WAITING_FOR_PEER', gap
         assert next(lane for lane in gap['lanes'] if lane['lane']=='ODDS_ONLY')['status']==('WAITING_FOR_PEER' if yield_capture else 'RECEIPT_READY'), gap
         assert gap['collector_status']=='AVAILABLE/FRESH', gap
+        if yield_capture == 'restarted':
+            lifecycle_path = runtime/'service-lifecycles'/('3'*32+'.json')
+            raw_lifecycle = lifecycle_path.read_bytes()
+            for change in ({'children_reaped':False}, {'invocation_id':'9'*32}):
+                lifecycle_path.write_text(json.dumps({**json.loads(raw_lifecycle), **change}))
+                rejected = observe(True, peer_active=True)
+                assert next(l for l in rejected['lanes'] if l['lane']=='FULL_DAEMON')['status']=='DIVERGENT'
+            lifecycle_path.write_bytes(raw_lifecycle)
         if cold_start and not yield_capture:
             initial = runtime/'state.json'
             retained = initial.read_bytes()

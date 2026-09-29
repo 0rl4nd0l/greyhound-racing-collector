@@ -6,6 +6,7 @@ No model, corpus, outcome or prediction endpoints are constructed or read.
 import hashlib
 import json
 import re
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -42,6 +43,15 @@ def native_observation(*, now, paths, units, evidence_root, index_path, authorit
     manifest = output / "candidate-deployment-observation.json"
     atomic_json(manifest, deployment)
     paths = {**paths, "deployment_manifest": manifest}
+    # A later systemd activation may precede replacement of the completed
+    # handoff report. Bind that report to its own reaped wrapper/child receipt.
+    try:
+        peer = json.loads(Path(paths['odds_report']).read_bytes())
+        invocation = peer['timing']['service_invocation_id']
+        if isinstance(invocation, str) and re.fullmatch(r'[0-9a-f]{32}', invocation):
+            paths['odds_lifecycle'] = evidence_root / 'shadow_autopilot_daemon_runtime/service-lifecycles' / (invocation + '.json')
+    except (FileNotFoundError, KeyError, TypeError, ValueError):
+        pass
     sources = {}
     for key, path in paths.items():
         path = Path(path)
@@ -59,11 +69,13 @@ def native_observation(*, now, paths, units, evidence_root, index_path, authorit
                 "P-COLLECTOR-ODDS-DYNAMIC" if key.startswith("odds") else "P-COLLECTOR-FULL-DYNAMIC"
             )
         )
+        if key == 'odds_lifecycle':
+            policy = 'P-IMMUTABLE-HISTORICAL'
         # Let the native reader report absent adapter evidence as missing. An
         # empty schema with a declared timestamp fails configuration validation.
         time_field = (
             None
-            if missing or key == "full_state"
+            if missing or key in {"full_state", "odds_lifecycle"}
             else ("updated_at" if key == "odds_state" else "generated_at")
         )
         sources[key] = SourceConfig(

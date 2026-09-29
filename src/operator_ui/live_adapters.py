@@ -1301,8 +1301,25 @@ class LiveEvidenceAdapters:
             # Bind them by invocation identity rather than assuming equal PIDs.
             for payload, invocation in ((report, self._units.full_service_invocation_id),
                                         (peer_report, self._units.odds_service_invocation_id)):
-                if not isinstance(invocation, str) or re.fullmatch(r"[0-9a-f]{32}", invocation) is None or payload["timing"]["service_invocation_id"] != invocation:
+                if not isinstance(invocation, str) or re.fullmatch(r"[0-9a-f]{32}", invocation) is None:
                     return None
+                if payload['timing']['service_invocation_id'] != invocation:
+                    if payload is not peer_report or not yielded:
+                        return None
+                    lifecycle_env, lifecycle = self._read('odds_lifecycle', now)
+                    if (lifecycle_env.status != 'AVAILABLE/FRESH' or not lifecycle
+                            or lifecycle.get('invocation_id') != payload['timing']['service_invocation_id']
+                            or lifecycle.get('child_pid') != owner['pid']
+                            or type(lifecycle.get('wrapper_pid')) is not int or lifecycle['wrapper_pid'] <= 0
+                            or lifecycle.get('status') != 'COMPLETE'
+                            or lifecycle.get('children_reaped') is not True
+                            or lifecycle.get('interrupted') is not False or lifecycle.get('returncode') != 2):
+                        return None
+                    times = (lifecycle['process_start_lower_bound'],
+                             payload['timing']['process_started_monotonic'], lifecycle['completed_monotonic'])
+                    if (any(type(t) not in (int, float) or not math.isfinite(t) for t in times)
+                            or not 0 < times[0] <= times[1] <= times[2]):
+                        return None
             if yielded:
                 recipient = peer_report.get("deferred_lock_owner")
                 child_pid = report["timing"]["process_pid"]
