@@ -1,0 +1,45 @@
+{
+  "context_contrasts": [
+    "short minus market",
+    "richer minus market"
+  ],
+  "evaluation": "original177 races1251runners15dates, identical population for both methods; whole-race exclusion only when reconstruction conflicts",
+  "fits": 6,
+  "frozen_at_utc": "2026-09-29T08:48:04.017993+00:00",
+  "history_admission": "existing331race identity gate, prior card capture strictly before target card capture, historical dates before target, original T-60 verified cards only, canonical runner token equality, exact normalized same-day equality, conflicting same-day rows exclude whole field",
+  "input_pins": {
+    "/home/l4nd0/greyhound-history-support-20260929/scripts/build_form_only_v1_packet.py": "11b56970de0e53975a444d0ad066f7ea566ffc717757b074d5eb0d5f8865f086",
+    "/home/l4nd0/greyhound-history-support-20260929/scripts/offline_form_packet.py": "865f18598429a231ca515ec8cbf108312d6c2faa23e392608b398b98bbe28379",
+    "/home/l4nd0/greyhound-history-support-20260929/scripts/offline_systematic_search.py": "d95828aec1bbc1c22bac4d4b7be5429bc92560f0c59a854ce328b2cc1040cec1",
+    "/home/l4nd0/greyhound-history-support-20260929/scripts/reconstruct_asof_card_history.py": "6ca4fc8f78912e1bb1f2c6b2acbcf89af113978876fdd151ce31db981ac252b5",
+    "/home/l4nd0/greyhound-history-support-output-20260929/asof_history_v1/membership.json": "a04f6b507e1a73986d1840a3b0813773e70389927ebfc12b0196f264b720e905",
+    "/home/l4nd0/greyhound-history-support-output-20260929/asof_history_v1/paired_features.jsonl": "44e7a0f6013ae1acaa84d453a3c9460205f805740ab109af794a8dd6a9b5e63e",
+    "/home/l4nd0/greyhound-history-support-output-20260929/asof_history_v1/summary.json": "01adb9b584527c8e62c14f1256eaee47fac03f439984d9d5b130f784bf529e32"
+  },
+  "methods": [
+    "short",
+    "richer"
+  ],
+  "not_claimed": "complete career; stable provider history identity; production database replay",
+  "parameters": {
+    "cap": 0.35,
+    "features": "unchanged canonical16, original order",
+    "l2": 1.0,
+    "max_retained_starts": 20,
+    "strength": 1.0
+  },
+  "pre_execution_incident": "unqualified python alias absent; command exited127 before protocol creation or any data decoding; corrected to python3",
+  "preprocessing": "training-only medians, missing indicators, standardization, race centering; same methods and definitions; independently fit each method on same membership",
+  "primary_contrast": "richer minus short race-level log loss and whole-field Brier",
+  "question": "Does adding histories demonstrably available in earlier admitted cards improve the same canonical16 residual?",
+  "stopping": "exactly two fixed methods and six fits; no variant expansion based on results",
+  "training_rule": "all admitted dates strictly before original OUTER test_start",
+  "tuning": "none",
+  "uncertainty": {
+    "date_cluster_draws": 3000,
+    "influence": "leave each date out, remove best and worst five races; report all periods; no variant selection",
+    "pointwise": "percentile95",
+    "seed": 20260929
+  },
+  "version": "asof_retained_card_depth_comparison_v1"
+}

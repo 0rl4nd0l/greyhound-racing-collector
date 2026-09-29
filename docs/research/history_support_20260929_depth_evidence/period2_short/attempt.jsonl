@@ -1,0 +1,2 @@
+{"event":"START","method":"short","new_fit":true,"outer":"period2","previous_sha256":"0000000000000000000000000000000000000000000000000000000000000000","seed":20260924,"sequence":0,"sha256":"b2cdd1bc663c8f1c8307f7b408f783fe5cd96cb6b08add89819ae2b30e3b7332"}
+{"event":"COMPLETE","previous_sha256":"b2cdd1bc663c8f1c8307f7b408f783fe5cd96cb6b08add89819ae2b30e3b7332","receipt_sha256":"72eace4e83f88cd6393df38e6d244eda8685ed7ad4b2c2172eee90151eed5a50","seed":20260924,"sequence":1,"sha256":"f926aa05fb32e489b4055b706e5c3b978741cd392d154367a1bd990ef3c2e485"}

@@ -1,0 +1,420 @@
+{
+  "development_races": 331,
+  "new_fits": 0,
+  "operational_bundles": [
+    {
+      "availability": "retained_before_prediction_cutoff",
+      "canonical_rejections": {},
+      "contexts": {
+        "card": {
+          "all": {
+            "known_finishes": 20,
+            "runners_no_known_finish": 0,
+            "runners_no_matching_starts": 0,
+            "starts": 20
+          },
+          "distance_exact": {
+            "known_finishes": 7,
+            "runners_no_known_finish": 1,
+            "runners_no_matching_starts": 1,
+            "starts": 7
+          },
+          "distance_tolerance": {
+            "known_finishes": 19,
+            "runners_no_known_finish": 1,
+            "runners_no_matching_starts": 1,
+            "starts": 19
+          },
+          "grade": {
+            "known_finishes": 20,
+            "runners_no_known_finish": 0,
+            "runners_no_matching_starts": 0,
+            "starts": 20
+          },
+          "venue": {
+            "known_finishes": 0,
+            "runners_no_known_finish": 6,
+            "runners_no_matching_starts": 6,
+            "starts": 0
+          }
+        },
+        "merged": {
+          "all": {
+            "known_finishes": 21,
+            "runners_no_known_finish": 0,
+            "runners_no_matching_starts": 0,
+            "starts": 21
+          },
+          "distance_exact": {
+            "known_finishes": 7,
+            "runners_no_known_finish": 1,
+            "runners_no_matching_starts": 1,
+            "starts": 7
+          },
+          "distance_tolerance": {
+            "known_finishes": 20,
+            "runners_no_known_finish": 1,
+            "runners_no_matching_starts": 1,
+            "starts": 20
+          },
+          "grade": {
+            "known_finishes": 21,
+            "runners_no_known_finish": 0,
+            "runners_no_matching_starts": 0,
+            "starts": 21
+          },
+          "venue": {
+            "known_finishes": 0,
+            "runners_no_known_finish": 6,
+            "runners_no_matching_starts": 6,
+            "starts": 0
+          }
+        }
+      },
+      "counts": {
+        "canonical_card_accepted_rows": 20,
+        "card_rows": 20,
+        "card_unknown_finishes": 0,
+        "db_rows": 1,
+        "duplicate_rows_removed": 0,
+        "merged_rows": 21,
+        "merged_unknown_finishes": 0,
+        "possible_same_start_conflict_groups": 0,
+        "research_cap_would_remove_rows": 0,
+        "retained_db_rows": 1,
+        "runners": 6,
+        "runners_feature_changed_from_db": 1,
+        "runners_with_added_rows": 1,
+        "runners_with_db_rows": 1
+      },
+      "history_count_pairs": {
+        "1->1": 1,
+        "2->2": 1,
+        "3->3": 1,
+        "4->4": 1,
+        "5->5": 1,
+        "5->6": 1
+      },
+      "history_sha256": "0fef0d5aa78b555af0ef0c8e2744649ebf0c13c5cef85e7b36fbc64aef243149",
+      "manifest_sha256": "1a29572e76cb5f4092eb0b908616060ac6db934c55333fd8b6dff498c3983459",
+      "matched_runners": 6,
+      "race_id": "Race 2 - BULLI - 2026-09-29",
+      "retained_feature_replay": "EXACT",
+      "same_card_route_definition_changes": {
+        "career_avg_finish": 0,
+        "career_place_rate": 0,
+        "career_win_rate": 0,
+        "days_since_last_start": 0,
+        "prior_start_count": 0,
+        "recent_avg_margin_5": 0,
+        "recent_finish_best_5": 0,
+        "recent_finish_mean_3": 0,
+        "recent_place_rate_5": 0,
+        "recent_win_rate_5": 0,
+        "same_grade_start_count": 0,
+        "same_grade_win_rate": 0,
+        "starts_same_distance": 5,
+        "starts_same_venue": 0,
+        "win_rate_same_distance": 1,
+        "win_rate_same_venue": 6
+      },
+      "same_formula_db_feature_changes": {
+        "career_avg_finish": 1,
+        "career_place_rate": 1,
+        "career_win_rate": 0,
+        "days_since_last_start": 0,
+        "prior_start_count": 1,
+        "recent_avg_margin_5": 0,
+        "recent_finish_best_5": 0,
+        "recent_finish_mean_3": 0,
+        "recent_place_rate_5": 0,
+        "recent_win_rate_5": 0,
+        "same_grade_start_count": 1,
+        "same_grade_win_rate": 0,
+        "starts_same_distance": 1,
+        "starts_same_venue": 0,
+        "win_rate_same_distance": 0,
+        "win_rate_same_venue": 0
+      }
+    },
+    {
+      "availability": "retained_before_prediction_cutoff",
+      "canonical_rejections": {},
+      "contexts": {
+        "card": {
+          "all": {
+            "known_finishes": 36,
+            "runners_no_known_finish": 0,
+            "runners_no_matching_starts": 0,
+            "starts": 36
+          },
+          "distance_exact": {
+            "known_finishes": 7,
+            "runners_no_known_finish": 5,
+            "runners_no_matching_starts": 5,
+            "starts": 7
+          },
+          "distance_tolerance": {
+            "known_finishes": 23,
+            "runners_no_known_finish": 2,
+            "runners_no_matching_starts": 2,
+            "starts": 23
+          },
+          "grade": {
+            "known_finishes": 1,
+            "runners_no_known_finish": 7,
+            "runners_no_matching_starts": 7,
+            "starts": 1
+          },
+          "venue": {
+            "known_finishes": 10,
+            "runners_no_known_finish": 4,
+            "runners_no_matching_starts": 4,
+            "starts": 10
+          }
+        },
+        "merged": {
+          "all": {
+            "known_finishes": 40,
+            "runners_no_known_finish": 0,
+            "runners_no_matching_starts": 0,
+            "starts": 40
+          },
+          "distance_exact": {
+            "known_finishes": 9,
+            "runners_no_known_finish": 5,
+            "runners_no_matching_starts": 5,
+            "starts": 9
+          },
+          "distance_tolerance": {
+            "known_finishes": 25,
+            "runners_no_known_finish": 2,
+            "runners_no_matching_starts": 2,
+            "starts": 25
+          },
+          "grade": {
+            "known_finishes": 1,
+            "runners_no_known_finish": 7,
+            "runners_no_matching_starts": 7,
+            "starts": 1
+          },
+          "venue": {
+            "known_finishes": 12,
+            "runners_no_known_finish": 4,
+            "runners_no_matching_starts": 4,
+            "starts": 12
+          }
+        }
+      },
+      "counts": {
+        "canonical_card_accepted_rows": 36,
+        "card_rows": 36,
+        "card_unknown_finishes": 0,
+        "db_rows": 4,
+        "duplicate_rows_removed": 0,
+        "merged_rows": 40,
+        "merged_unknown_finishes": 0,
+        "possible_same_start_conflict_groups": 0,
+        "research_cap_would_remove_rows": 0,
+        "retained_db_rows": 4,
+        "runners": 8,
+        "runners_feature_changed_from_db": 1,
+        "runners_with_added_rows": 1,
+        "runners_with_db_rows": 1
+      },
+      "history_count_pairs": {
+        "3->3": 2,
+        "5->5": 5,
+        "5->9": 1
+      },
+      "history_sha256": "fc3cd3c3030fc6571f40fcd80a02b61c07f7fdc8e5c94f8b4c2a1015a1d65ced",
+      "manifest_sha256": "faa698403d35e88ddcc0d0535ac50868a0e7131dab0474c4818331d632b2aa1d",
+      "matched_runners": 8,
+      "race_id": "Race 7 - GEE - 2026-09-29",
+      "retained_feature_replay": "EXACT",
+      "same_card_route_definition_changes": {
+        "career_avg_finish": 0,
+        "career_place_rate": 0,
+        "career_win_rate": 0,
+        "days_since_last_start": 0,
+        "prior_start_count": 0,
+        "recent_avg_margin_5": 0,
+        "recent_finish_best_5": 0,
+        "recent_finish_mean_3": 0,
+        "recent_place_rate_5": 0,
+        "recent_win_rate_5": 0,
+        "same_grade_start_count": 5,
+        "same_grade_win_rate": 5,
+        "starts_same_distance": 5,
+        "starts_same_venue": 0,
+        "win_rate_same_distance": 6,
+        "win_rate_same_venue": 4
+      },
+      "same_formula_db_feature_changes": {
+        "career_avg_finish": 1,
+        "career_place_rate": 1,
+        "career_win_rate": 1,
+        "days_since_last_start": 0,
+        "prior_start_count": 1,
+        "recent_avg_margin_5": 0,
+        "recent_finish_best_5": 0,
+        "recent_finish_mean_3": 0,
+        "recent_place_rate_5": 0,
+        "recent_win_rate_5": 0,
+        "same_grade_start_count": 0,
+        "same_grade_win_rate": 0,
+        "starts_same_distance": 1,
+        "starts_same_venue": 1,
+        "win_rate_same_distance": 1,
+        "win_rate_same_venue": 1
+      }
+    },
+    {
+      "availability": "retained_before_prediction_cutoff",
+      "canonical_rejections": {},
+      "contexts": {
+        "card": {
+          "all": {
+            "known_finishes": 40,
+            "runners_no_known_finish": 0,
+            "runners_no_matching_starts": 0,
+            "starts": 40
+          },
+          "distance_exact": {
+            "known_finishes": 12,
+            "runners_no_known_finish": 2,
+            "runners_no_matching_starts": 2,
+            "starts": 12
+          },
+          "distance_tolerance": {
+            "known_finishes": 36,
+            "runners_no_known_finish": 0,
+            "runners_no_matching_starts": 0,
+            "starts": 36
+          },
+          "grade": {
+            "known_finishes": 1,
+            "runners_no_known_finish": 7,
+            "runners_no_matching_starts": 7,
+            "starts": 1
+          },
+          "venue": {
+            "known_finishes": 12,
+            "runners_no_known_finish": 2,
+            "runners_no_matching_starts": 2,
+            "starts": 12
+          }
+        },
+        "merged": {
+          "all": {
+            "known_finishes": 55,
+            "runners_no_known_finish": 0,
+            "runners_no_matching_starts": 0,
+            "starts": 57
+          },
+          "distance_exact": {
+            "known_finishes": 14,
+            "runners_no_known_finish": 2,
+            "runners_no_matching_starts": 2,
+            "starts": 14
+          },
+          "distance_tolerance": {
+            "known_finishes": 50,
+            "runners_no_known_finish": 0,
+            "runners_no_matching_starts": 0,
+            "starts": 50
+          },
+          "grade": {
+            "known_finishes": 2,
+            "runners_no_known_finish": 7,
+            "runners_no_matching_starts": 7,
+            "starts": 2
+          },
+          "venue": {
+            "known_finishes": 15,
+            "runners_no_known_finish": 2,
+            "runners_no_matching_starts": 2,
+            "starts": 15
+          }
+        }
+      },
+      "counts": {
+        "canonical_card_accepted_rows": 40,
+        "card_rows": 40,
+        "card_unknown_finishes": 0,
+        "db_rows": 17,
+        "duplicate_rows_removed": 0,
+        "merged_rows": 57,
+        "merged_unknown_finishes": 2,
+        "possible_same_start_conflict_groups": 0,
+        "research_cap_would_remove_rows": 0,
+        "retained_db_rows": 17,
+        "runners": 8,
+        "runners_feature_changed_from_db": 4,
+        "runners_with_added_rows": 4,
+        "runners_with_db_rows": 4
+      },
+      "history_count_pairs": {
+        "5->10": 1,
+        "5->12": 1,
+        "5->5": 4,
+        "5->7": 1,
+        "5->8": 1
+      },
+      "history_sha256": "72eeaa360ee74d53908d2fd028708cb0e5c1743f3adc55efe65ee18d4a7a8c00",
+      "manifest_sha256": "3aacf7081a9b69bd56357ed0c0196c03e114a909f22f7ae47256e0790de32f74",
+      "matched_runners": 8,
+      "race_id": "Race 6 - HOR - 2026-09-29",
+      "retained_feature_replay": "EXACT",
+      "same_card_route_definition_changes": {
+        "career_avg_finish": 0,
+        "career_place_rate": 0,
+        "career_win_rate": 0,
+        "days_since_last_start": 0,
+        "prior_start_count": 0,
+        "recent_avg_margin_5": 0,
+        "recent_finish_best_5": 0,
+        "recent_finish_mean_3": 0,
+        "recent_place_rate_5": 0,
+        "recent_win_rate_5": 0,
+        "same_grade_start_count": 0,
+        "same_grade_win_rate": 7,
+        "starts_same_distance": 8,
+        "starts_same_venue": 0,
+        "win_rate_same_distance": 6,
+        "win_rate_same_venue": 2
+      },
+      "same_formula_db_feature_changes": {
+        "career_avg_finish": 3,
+        "career_place_rate": 4,
+        "career_win_rate": 3,
+        "days_since_last_start": 0,
+        "prior_start_count": 4,
+        "recent_avg_margin_5": 0,
+        "recent_finish_best_5": 0,
+        "recent_finish_mean_3": 0,
+        "recent_place_rate_5": 0,
+        "recent_win_rate_5": 0,
+        "same_grade_start_count": 1,
+        "same_grade_win_rate": 0,
+        "starts_same_distance": 4,
+        "starts_same_venue": 3,
+        "win_rate_same_distance": 3,
+        "win_rate_same_venue": 2
+      }
+    }
+  ],
+  "reservation_input_hashes": {
+    "/home/l4nd0/greyhound-offline-prediction-20260924/docs/research/offline_20260924_access_incident.json": "724b4bf449aaa17f3f1419b579bf38ea4e836a776a6b1366339c44f821eb5f58",
+    "/home/l4nd0/greyhound-offline-systematic-output-20260924/foundation/dataset_assessment.json": "b0737c5b1fcf27ba34333ea824bbc363ab4d4a5c9986bc6b04b453ed81e16bea",
+    "/home/l4nd0/greyhound-offline-systematic-output-20260924/foundation/development.jsonl": "c58bd59bc0d52666d31812dccd60981de7f2f03b64862f98ddf9f88ef60cec46",
+    "/home/l4nd0/greyhound-offline-systematic-output-20260924/foundation/protected_records.json": "9fddce8fa70ea96c4d7a6c33ef61594ddeb47e254cd08bb87555b2d94fc4da88",
+    "/home/l4nd0/greyhound-retrospective-diagnostic-20260916/pre-outcome-manifest-v2.json": "7aee61b778fe70a1e50fafc795291b8c1c0c06742f5cf8615bc123225a65e5ad",
+    "/home/l4nd0/greyhound/artifacts/sportsbet_win_market_surface_audit_20260815_report_only/canonical_win_matrix.jsonl": "eb1783d4cc07e6980463a097c97fdac9f5370b08f493ca15addf768aa0b014b6",
+    "/home/l4nd0/greyhound/artifacts/sportsbet_win_market_surface_audit_20260815_report_only/canonical_win_sidecar.jsonl": "880ae93680e56991fa2c9eb316732cbc71bc7ff713525efcf83750ceace4493d",
+    "/home/l4nd0/greyhound_racing_collector/artifacts/august_untouched_cohort_20260813T181500Z_report_only/frozen_august_odds_cohort.jsonl": "e19a475487cad14eaee91c90a40bdfec7694f76a3aa74279d1254f4452e2673c",
+    "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-form-only-v1-acquisition-20260718/reports/agent_jobs/form_only_v1_acquisition_foundation_20260718/out_of_time_races.csv": "9ad6e0f2a89c2dac04f1c8f4be2dbea2a6ea7751fa3af486c490a71fb961c711"
+  },
+  "schema": "retained_history_depth_diagnostic_v1",
+  "target_results_accessed": 0
+}

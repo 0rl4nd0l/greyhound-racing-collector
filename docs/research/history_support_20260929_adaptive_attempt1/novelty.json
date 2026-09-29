@@ -1,0 +1,30 @@
+{
+  "distinction": "one outcome-free race-wide support multiplier applied after fitting; prior interactions change fitted inputs, missing indicators are learned coefficients, fixed half uses .5 for every race, prior rule gates select predictions rather than normalize a support-scaled whole field",
+  "exact_method_found_in_reviewed_ledger": false,
+  "prior_event_counts": {
+    "ALL_OUTER_PREDICTIONS_SEALED": 1,
+    "FIT_COMPLETE": 277,
+    "FIT_START": 277,
+    "GROUP_ELIMINATION": 3,
+    "OUTER_EVALUATION_COMPLETE": 1,
+    "OUTER_SELECTION_FROZEN": 3,
+    "PROGRAMME_COMPLETE": 1,
+    "PROGRAMME_START": 1,
+    "SELECTION_RULE_VALIDATION": 204,
+    "STAGE_START": 13,
+    "VALIDATION_TRIAL": 219
+  },
+  "prior_fixed_strengths": [
+    0.25,
+    0.5,
+    1
+  ],
+  "prior_questions": [
+    "",
+    "blend independently fitted OOF component probabilities; no in-sample stacking",
+    "coarse penalty and shrinkage on retained feature recipes",
+    "limited nonlinear response to market and screened form",
+    "market calibration without form",
+    "single group increment, removal or fixed mechanism combination"
+  ]
+}

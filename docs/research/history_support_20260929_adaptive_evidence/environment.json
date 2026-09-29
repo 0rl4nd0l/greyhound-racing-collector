@@ -1,0 +1,12 @@
+{
+  "executable": "/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-autonomous-accuracy-odds-v1-20260610/.venv/bin/python",
+  "executable_sha256": "8ade35c2e4123b4fb44dd3c7b00ff8f7cf980145b3035dee96761838209417f0",
+  "new_fits": 0,
+  "packages": {
+    "numpy": "1.26.4",
+    "scipy": "1.16.1"
+  },
+  "platform": "Linux-6.8.0-138-generic-x86_64-with-glibc2.35",
+  "preprocessing": "unchanged original outer receipts; inner decisions use retained OOF predictions, no missing original model reconstructed",
+  "python": "3.11.15 (main, Mar 24 2026, 22:50:29) [Clang 22.1.1 ]"
+}

@@ -1,0 +1,24 @@
+{
+  "greyhound-comparison-schedule.service": {
+    "unit_sha256": "f3a925f21943954fe8b2e910a62360017a691c3dbbb204897bb63358d2a74c55",
+    "working_directory": "/home/l4nd0/greyhound-persistent-release-handoff-1cd7ccff",
+    "files": {
+      "scripts/run_shadow_non_tgr_rf_evaluation.py": "afe229f290dd12100c7ad47bd9b091894d44aaf6405fb2716e2d4b814383ae92",
+      "scripts/run_feature_recovery_execution_v1.py": "0e21032359969cde58aa5419d11076184c3f21cba71ec6fd3051fcc3125b0fb0",
+      "scripts/build_form_only_v1_packet.py": "11b56970de0e53975a444d0ad066f7ea566ffc717757b074d5eb0d5f8865f086"
+    }
+  },
+  "shadow-autopilot.service": {
+    "unit_sha256": "b8b51c1053ef730832979cf4181cf56c986f4c8802ee52f95118691ce63d9a97",
+    "working_directory": "/home/l4nd0/greyhound-retention-lanes-repair-20260917/source",
+    "files": {
+      "scripts/run_shadow_non_tgr_rf_evaluation.py": "afe229f290dd12100c7ad47bd9b091894d44aaf6405fb2716e2d4b814383ae92",
+      "scripts/run_feature_recovery_execution_v1.py": "0e21032359969cde58aa5419d11076184c3f21cba71ec6fd3051fcc3125b0fb0",
+      "scripts/build_form_only_v1_packet.py": "11b56970de0e53975a444d0ad066f7ea566ffc717757b074d5eb0d5f8865f086"
+    }
+  },
+  "historical_operational_release": {
+    "path": "/home/l4nd0/greyhound-live-replacement-20260929/continuation-b/session-operational-20260929-b/source",
+    "meaning": "retained original forecast source, not assumed currently installed"
+  }
+}
