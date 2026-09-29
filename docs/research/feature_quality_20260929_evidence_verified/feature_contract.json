@@ -1,0 +1,32 @@
+{
+  "completeness": "unknown career coverage even if hashes and roster verify",
+  "context": "canonical venue, exact integer metres across venues, canonical grade label across jurisdictions; no ability equivalence",
+  "duplicates": "retain recent and retained columns; no implicit regularization change",
+  "finish": "recorded ordinal; dimensionless; smaller is better",
+  "history": "canonical accepted_history; strict earlier date; normalized dedup; cap20; newest first",
+  "legacy_to_development_names": {
+    "career_avg_finish": "retained_finish_mean",
+    "career_place_rate": "retained_top3_rate",
+    "career_win_rate": "retained_win_rate",
+    "days_since_last_start": "days_since_last_retained_start",
+    "prior_start_count": "retained_start_count",
+    "recent_avg_margin_5": "recent_recorded_margin_mean_5",
+    "recent_finish_best_5": "recent_finish_best_5",
+    "recent_finish_mean_3": "recent_finish_mean_3",
+    "recent_place_rate_5": "recent_top3_rate_5",
+    "recent_win_rate_5": "recent_win_rate_5",
+    "same_grade_start_count": "retained_same_grade_label_start_count",
+    "same_grade_win_rate": "retained_same_grade_label_win_rate",
+    "starts_same_distance": "retained_exact_distance_start_count",
+    "starts_same_venue": "retained_same_venue_start_count",
+    "win_rate_same_distance": "retained_exact_distance_win_rate",
+    "win_rate_same_venue": "retained_same_venue_win_rate"
+  },
+  "margin": "numeric source MGN; units and winner/loser reference not independently established; recorded mean without sign conversion",
+  "preprocessing": "training medians (all missing ->0), indicators, training standardization, within-race centering; legacy linear residual .35 tanh cap",
+  "rates": "wins / observed numeric finishes; top3 means finish<=3, not bookmaker PLACE",
+  "recent": "first 3 or 5 retained starts, not last N calendar days",
+  "unknown_context": "null count/rate if target or any retained context is unclassifiable",
+  "version": "retained_card_form_v2",
+  "zero": "no matches in inspected classifiable retained starts, or no recorded wins/top3 in known denominator"
+}
