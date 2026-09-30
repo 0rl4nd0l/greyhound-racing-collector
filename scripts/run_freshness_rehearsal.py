@@ -896,6 +896,8 @@ def execution_contract(plan, accounting):
     }
     if plan.get("campaign_root"):
         contract.update({key: plan[key] for key in ("campaign_root", "campaign_authorization_sha256")})
+    if plan.get('development_authority') is not None:
+        contract['development_authority'] = plan['development_authority']
     if plan.get('engineering_authority') is not None:
         contract['engineering_authority'] = plan['engineering_authority']
     contract.update(

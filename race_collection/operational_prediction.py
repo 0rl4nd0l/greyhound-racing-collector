@@ -176,7 +176,8 @@ def operational_root(plan, campaign):
     root = plan.get('prediction_root')
     if root is None:
         return campaign.root / 'operational-predictions'
-    if not campaign.programme or root != campaign.programme.get('prediction_root'):
+    approved = campaign.development if getattr(campaign, 'development', None) else campaign.programme
+    if not approved or root != approved.get('prediction_root'):
         raise ValueError('prediction_root_not_in_approved_programme')
     path = Path(root)
     if not path.is_absolute() or path.resolve() != path:
