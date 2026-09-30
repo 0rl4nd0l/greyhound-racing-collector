@@ -19,6 +19,24 @@ from race_collection.synchronous_manual_capture import (
 )
 
 
+def _resumed_odds_state(state, checkpoint_path, *, identity, run_id, output):
+    """Authenticate a transient same-cycle state before publishing its resume."""
+    if (not isinstance(state, dict)
+        or state.get("schema_version") != "shadow_autopilot_odds_capture_only_state_v1"
+        or state.get("run_id") != run_id or state.get("output_dir") != str(output)
+        or state.get("status") not in {"RUNNING", "SKIPPED_LOCK_HELD", "SKIPPED_FULL_DAEMON_LOCK_HANDOFF"}):
+        return False
+    if not checkpoint_path.exists():
+        return False
+    retained = json.loads(checkpoint_path.read_bytes())
+    expected = {"schema_version": "collector_live_phase_checkpoint_v1", "status": "RUNNING",
+                "identity": identity, "cycle_id": run_id, "output_dir": str(output)}
+    if any(retained.get(key) != value for key, value in expected.items()):
+        return False
+    validated = PhaseCheckpoint(checkpoint_path, identity=identity, cycle_id=run_id, output_dir=output)
+    return all(validated.value.get(key) == value for key, value in expected.items())
+
+
 def run_live_collection_cycle(args, *, odds_only: bool):
     cycle_started = getattr(args, "live_started_monotonic", time.monotonic())
     from scripts import shadow_autopilot_daemon as daemon
@@ -277,14 +295,19 @@ def run_live_collection_cycle(args, *, odds_only: bool):
     def publish_native_report(report):
         name = 'odds_capture_only_daemon_report.json' if odds_only else 'daemon_run_report.json'
         with native_publication_lock(evidence, exclusive=True):
+            current_state = daemon.load_json(state_path)
+            resumed_state = (odds_only and resumable and resumable.get("status") == "RUNNING"
+                and report.get("status") in {"RUNNING", "SKIPPED_LOCK_HELD", "SKIPPED_FULL_DAEMON_LOCK_HANDOFF"}
+                and completed_report is None and _resumed_odds_state(current_state, checkpoint_path,
+                    identity=identity, run_id=run_id, output=output))
             atomic_json(output / name, report)
             # A cold lane has no completed state to retain. Publish its actual
             # initial lifecycle alongside the report, including active, deferred
             # and failed states. The reader still validates the service, peer,
             # lock, deadlines and terminal verdict; this is not a ready receipt.
-            # Existing state (including unreadable state) is never replaced here.
-            if initial_state_missing and completed_report is None:
-                current_state = daemon.load_json(state_path)
+            # A resumed cycle also replaces its authenticated transient state;
+            # completed, foreign and unreadable state remains retained.
+            if (initial_state_missing or resumed_state) and completed_report is None:
                 if state_path.exists() and (
                     not isinstance(current_state, dict)
                     or current_state.get("run_id") != report["run_id"]

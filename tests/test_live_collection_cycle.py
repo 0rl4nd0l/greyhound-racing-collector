@@ -233,7 +233,7 @@ def test_native_entrypoint_accounts_for_nonzero_overhead(
         for refresh_seconds in (60, 66)
         for resume in (False, "before_capture", "after_capture")
     ]
-    + [(True, 60, "handoff")],
+    + [(True, 60, "handoff"), (True, 60, "corrupt_resume")],
 )
 def test_native_entrypoint_phases_release_lock_and_fail_closed(
     tmp_path, monkeypatch, odds_only, refresh_seconds, resume
@@ -310,6 +310,11 @@ def test_native_entrypoint_phases_release_lock_and_fail_closed(
 
     def command(*, name, command, output_dir, **kwargs):
         assert lock.exists()
+        if odds_only and resume == "before_capture" and commands:
+            saved = json.loads(state.read_bytes())
+            current = json.loads((evidence / f"shadow_autopilot_daemonization_v1_{args.run_id}" / "odds_capture_only_daemon_report.json").read_bytes())
+            for key in ("status", "runtime_action", "final_status", "run_id", "output_dir"):
+                assert saved[key] == current[key], (key, saved[key], current[key])
         with pytest.raises(daemon.LockBusy):
             daemon.acquire_lock(
                 lock_path=lock, run_id="overlap", stale_after_seconds=9999, output_dir=output_dir
@@ -411,7 +416,7 @@ def test_native_entrypoint_phases_release_lock_and_fail_closed(
             pass
 
         def interrupt_completed_boundary(**kwargs):
-            boundary = ["refresh"] if resume == "before_capture" else ["refresh", "capture"]
+            boundary = ["refresh"] if resume in {"before_capture", "corrupt_resume"} else ["refresh", "capture"]
             if kwargs["run_id"] == args.run_id and commands == boundary:
                 raise Interrupted
             return acquire(**kwargs)
@@ -423,9 +428,22 @@ def test_native_entrypoint_phases_release_lock_and_fail_closed(
             run(args)
         assert not lock.exists()
         monkeypatch.setattr(daemon, "acquire_lock_with_odds_capture_retry", acquire)
+        if odds_only and resume == "before_capture":
+            saved = json.loads(state.read_bytes())
+            saved.update(status="SKIPPED_LOCK_HELD", final_status="SKIPPED_LOCK_HELD",
+                         runtime_action="DEFERRED_LOCK_HELD")
+            state.write_text(json.dumps(saved))
+        if resume == "corrupt_resume":
+            retained = json.loads(state.with_name("odds.live-phase-checkpoint.json").read_bytes())
+            cycle.Path(retained["phases"][0]["result_path"]).write_text('{"status":"FAIL"}')
     result = run(args)
     assert not lock.exists()
     assert not (tmp_path / "never-opened.db").exists()
+    if resume == "corrupt_resume":
+        assert result["runtime_action"] == "LIVE_COLLECTION_BLOCKED"
+        saved_report = json.loads((evidence / f"shadow_autopilot_daemonization_v1_{args.run_id}" / "odds_capture_only_daemon_report.json").read_bytes())
+        assert saved_report["runtime_action"] == "LIVE_COLLECTION_BLOCKED"
+        return
     if refresh_seconds > 65:
         assert result["runtime_action"] == "LIVE_PHASE_BUDGET_EXCEEDED"
         assert commands == ["refresh"]
@@ -662,3 +680,29 @@ def test_phase_timeout_reaps_descendants_before_releasing_control(tmp_path):
     running = json.loads((tmp_path / "logs/phase_timeout.running.json").read_text())
     assert result["timed_out"] is True
     assert not daemon.process_group_has_running_members(running["pid"])
+
+@pytest.mark.parametrize('change', ['none','foreign_run','foreign_output','completed_state','corrupt_state','missing_checkpoint','completed_checkpoint','changed_identity','changed_cycle','changed_output','interrupted_phase','changed_phase'])
+def test_resumed_odds_state_requires_retained_running_checkpoint(tmp_path,change):
+    from race_collection.live_phase_checkpoint import PhaseCheckpoint
+    output=tmp_path/'cycle';output.mkdir();path=tmp_path/'checkpoint.json'
+    checkpoint=PhaseCheckpoint(path,identity='identity',cycle_id='cycle',output_dir=output)
+    phase=output/'phase.json';phase.write_text('{"status":"PASS"}')
+    import hashlib
+    checkpoint.value['phases']=[{'status':'COMPLETE','result_path':str(phase),'result_sha256':hashlib.sha256(phase.read_bytes()).hexdigest(),'budget_exceeded':False}]
+    state={'schema_version':'shadow_autopilot_odds_capture_only_state_v1','run_id':'cycle','output_dir':str(output),'status':'SKIPPED_LOCK_HELD'}
+    if change=='foreign_run':state['run_id']='foreign'
+    elif change=='foreign_output':state['output_dir']=str(tmp_path/'foreign')
+    elif change=='completed_state':state['status']='READY'
+    elif change=='corrupt_state':state=None
+    elif change=='completed_checkpoint':checkpoint.value['status']='COMPLETE'
+    elif change=='changed_identity':checkpoint.value['identity']='other'
+    elif change=='changed_cycle':checkpoint.value['cycle_id']='other'
+    elif change=='changed_output':checkpoint.value['output_dir']=str(tmp_path/'other')
+    elif change=='interrupted_phase':checkpoint.value['phases'][0]['status']='STARTED'
+    elif change=='changed_phase':phase.write_text('{"status":"FAIL"}')
+    if change!='missing_checkpoint':path.write_text(json.dumps(checkpoint.value))
+    raw=path.read_bytes() if path.exists() else None
+    if change in {'interrupted_phase','changed_phase'}:
+        with pytest.raises(ValueError):cycle._resumed_odds_state(state,path,identity='identity',run_id='cycle',output=output)
+    else:assert cycle._resumed_odds_state(state,path,identity='identity',run_id='cycle',output=output)==(change=='none')
+    assert (path.read_bytes() if path.exists() else None)==raw
