@@ -47,6 +47,7 @@ from utils.csv_metadata import (
     build_safe_target_metadata_payload,
     canonical_thedogs_meeting_card_url,
     canonical_thedogs_race_identity,
+    canonical_thedogs_venue_identity,
     existing_prejump_sidecar_contract_status,
     normalize_verified_thedogs_export_content,
     normalize_target_distance,
@@ -1111,18 +1112,7 @@ class UpcomingRaceBrowser:
         identity = canonical_thedogs_race_identity(race_url)
         if identity is None:
             return None
-        venue_slug = identity["venue_slug"]
-        venue_code = self.venue_map.get(venue_slug.lower())
-        if not venue_code and _normalize_venue is not None:
-            for candidate in (venue_slug, venue_slug.replace("-", " ")):
-                try:
-                    normalized = _normalize_venue(candidate)
-                except Exception:
-                    continue
-                if normalized and normalized != "UNKNOWN":
-                    venue_code = normalized
-                    break
-        venue_code = venue_code or venue_slug.upper()
+        venue_code = canonical_thedogs_venue_identity(identity["venue_slug"])
         return (
             identity["canonical_url"],
             identity["race_date"],
@@ -1252,21 +1242,8 @@ class UpcomingRaceBrowser:
         return {}
 
     def _canonical_hint_venue(self, value):
-        raw = str(value or "").strip()
-        if not raw:
-            return None
-        mapped = self.venue_map.get(raw.lower())
-        if mapped:
-            return mapped
-        if _normalize_venue is not None:
-            for candidate in (raw, raw.replace("-", " "), raw.replace("_", " ")):
-                try:
-                    normalized = _normalize_venue(candidate)
-                except Exception:
-                    continue
-                if normalized and normalized != "UNKNOWN":
-                    return normalized
-        return raw.upper()
+        # Grade proofs use exact source identities, not historical feature aliases.
+        return canonical_thedogs_venue_identity(value)
 
     def _extract_safe_target_grade_from_hint(self, race_info_hint, race_url):
         """Admit only a recognized grade bound to the exact meeting-card race."""

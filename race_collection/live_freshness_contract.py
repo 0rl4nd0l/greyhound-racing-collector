@@ -103,7 +103,10 @@ class FreshnessContract:
             raise ValueError("invalid_scope_duration")
         duration = (self.end - self.start).total_seconds()
         operational = bool(value.get("campaign_root") and value.get("operational_predictions"))
+        pilot = value.get("development_authority") is not None
         valid_duration = (300 <= duration <= 5400 and duration % 60 == 0) if operational else duration == 5400
+        if pilot:
+            valid_duration = operational and duration == 6600
         if (
             self.start.utcoffset() is None
             or self.end.utcoffset() is None
@@ -120,16 +123,20 @@ class FreshnessContract:
         if (
             local_start.date().isoformat() != value["source_date"]
             or local_end.date() != local_start.date()
-            or value["cleanup_seconds"] != (1860 if value.get("campaign_root") else 1200)
+            or value["cleanup_seconds"] != (600 if pilot else 1860 if value.get("campaign_root") else 1200)
             or local_end + timedelta(seconds=value["cleanup_seconds"]) > cutoff
         ):
             raise ValueError("one_date_scope_required")
         self.campaign = None
         if value.get("campaign_root"):
             from race_collection.freshness_campaign import Campaign
-            self.campaign = Campaign.from_scope(value) if value.get('engineering_authority') is not None else Campaign(value['campaign_root'])
+            self.campaign = Campaign.from_scope(value)
             if digest(self.campaign.value) != value["campaign_authorization_sha256"]:
                 raise ValueError("campaign_authorization_changed")
+        if pilot and (local_start.date().isoformat() not in self.campaign.development['dates']
+                or local_start.strftime('%H:%M:%S.%f') != '12:40:00.000000'
+                or local_end.strftime('%H:%M:%S.%f') != '14:30:00.000000'):
+            raise ValueError('development_scope_window_changed')
         if (value["max_capture_attempts"] != (self.campaign.value['max_capture_attempts'] if self.campaign else 1)
                 or not 0 < value["max_logical_requests"] <= (self.campaign.value['max_logical_requests'] if self.campaign else 24000)):
             raise ValueError("invalid_scope_allowance")
