@@ -11,7 +11,7 @@
       const body=new URLSearchParams(new FormData(form));body.set('csrf_token',token);
       const response=await fetch('/operator-ui/login',{method:'POST',credentials:'same-origin',cache:'no-store',body});
       const value=await response.json();
-      if(response.ok&&value.classification==='NON_OPERATIONAL/AUTHENTICATED')location.assign('/operator-ui/forecasts');
+      if(response.ok&&value.classification==='NON_OPERATIONAL/AUTHENTICATED')location.assign('/operator-ui');
       else status.textContent=response.status===401?'Username or password was not accepted.':response.status===400?'Secure session unavailable. Open this page through the existing private connection or localhost, then try again.':'Login unavailable. Please try again later.';
     } catch(error){status.textContent='Cannot reach the login service.';}
     finally {button.disabled=false;}

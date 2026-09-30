@@ -21,6 +21,7 @@ def console():
     with app.test_request_context():
         html = render_template("operator_ui_connected.jinja", connected=True)
         landing = render_template("operator_ui_forecasts.jinja")
+        sign_in = render_template("operator_ui_sign_in.jinja")
     race = dict(race_id="exact-race-1", route_id="race-route-1", venue="Bulli",
                 racing_date="2099-04-01", race_number=2, jump_utc="2099-04-01T06:36:00Z",
                 runner_set_sha256="c" * 64, runners=[dict(box=1, name="Fixture runner")])
@@ -37,13 +38,18 @@ def console():
                 return route.fulfill(path=str(file), content_type="text/javascript" if file.suffix == ".js" else "text/css")
             if path in ("/operator-ui", "/operator-ui/forecasts"):
                 return route.fulfill(body=html if path == "/operator-ui" else landing, content_type="text/html")
+            if path == "/operator-ui/sign-in":
+                return route.fulfill(body=sign_in, content_type="text/html")
             if path == "/operator-ui/login":
-                body = dict(classification="CSRF_TOKEN", csrf_token="fixture-token")
+                body = (dict(classification="NON_OPERATIONAL/AUTHENTICATED") if route.request.method == "POST"
+                        else dict(classification="CSRF_TOKEN", csrf_token="fixture-token"))
             elif path.endswith("r3-capability"):
-                body = dict(schema="operator_ui_r3_capability_v1", authorized=True, runtime_configured=True, level=2)
+                body = dict(schema="operator_ui_r3_capability_v1", authorized=state.get("authorized", True), runtime_configured=True, level=2)
             elif path.endswith("prediction-jobs"):
                 state["posts"].append(json.loads(route.request.post_data))
                 assert route.request.headers["x-csrf-token"] == "fixture-token"
+                if state.get("lost_response"):
+                    return route.abort()
                 body, status = state.get("submission", (dict(schema="operator_ui_prediction_error_v1", classification="PENDING_RECEIPT"), 409))
             elif '/prediction-jobs/' in path and 'reconnect' in state:
                 body = state['reconnect']
@@ -71,6 +77,77 @@ def test_landing_links_to_upcoming_and_run_prediction(console):
     page.goto("http://127.0.0.1:5055/operator-ui/forecasts")
     expect(page.get_by_role("link", name="Upcoming races", exact=True)).to_have_attribute("href", "/operator-ui#upcoming-races")
     expect(page.get_by_role("link", name="Run prediction", exact=True)).to_have_attribute("href", "/operator-ui#manual-prediction")
+
+
+def test_landing_lists_every_race_by_jump_and_predicts_selected_race_in_one_click(console):
+    page, state = console
+    first = state["races"][0]
+    state["races"] = [
+        {**first, "race_id": "race-later", "venue": "Horsham", "race_number": 6,
+         "jump_utc": "2099-04-01T06:51:00Z"},
+        first,
+        {**first, "race_id": "race-middle", "venue": "Geelong", "race_number": 7,
+         "jump_utc": "2099-04-01T06:39:00Z"},
+    ]
+    page.goto("http://127.0.0.1:5055/operator-ui")
+    expect(page.locator("main .workflow-section").first).to_have_attribute("id", "upcoming-races")
+    expect(page.locator(".upcoming-race h3")).to_have_text(["Bulli R2", "Geelong R7", "Horsham R6"])
+    page.get_by_role("button", name="Predict Geelong R7", exact=True).click()
+    expect(page.locator("#job-status")).to_contain_text("PENDING_RECEIPT")
+    assert len(state["posts"]) == 1
+    assert state["posts"][0]["race_id"] == "race-middle"
+    assert state["posts"][0]["model_id"] == "latest-research"
+    assert state["posts"][0]["odds_source_id"] == "receipt"
+
+
+def test_native_sign_in_lands_on_upcoming_races(console):
+    page, state = console
+    page.goto("http://127.0.0.1:5055/operator-ui/sign-in")
+    page.locator('[name="username"]').fill("fixture-operator")
+    page.locator('[name="password"]').fill("fixture-password")
+    page.get_by_role("button", name="Sign in", exact=True).click()
+    expect(page).to_have_url("http://127.0.0.1:5055/operator-ui")
+    expect(page.get_by_role("button", name="Predict Bulli R2", exact=True)).to_be_enabled()
+    assert state["posts"] == []
+
+
+def test_direct_predict_locks_all_races_when_response_is_lost(console):
+    page, state = console
+    state["lost_response"] = True
+    state["races"].append({**state["races"][0], "race_id": "race-two", "race_number": 3})
+    page.goto("http://127.0.0.1:5055/operator-ui")
+    button = page.get_by_role("button", name="Predict Bulli R2", exact=True)
+    expect(button).to_be_enabled()
+    button.evaluate("button => { button.click(); button.click(); }")
+    expect(page.locator("#job-status")).to_contain_text("persisted selection is locked")
+    expect(page.get_by_role("button", name="Predict Bulli R3", exact=True)).to_be_disabled()
+    assert len(state["posts"]) == 1
+    page.reload()
+    expect(page.get_by_role("button", name="Predict Bulli R2", exact=True)).to_be_disabled()
+    expect(page.locator(".race-readiness").first).to_contain_text("earlier submission is unresolved")
+    assert len(state["posts"]) == 1
+
+
+@pytest.mark.parametrize("blocked", ["unauthorized", "jumped", "expired"])
+def test_direct_predict_respects_access_jump_and_age(console, blocked):
+    page, state = console
+    if blocked == "unauthorized":
+        state["authorized"] = False
+    if blocked == "jumped":
+        state["races"][0]["jump_utc"] = "2000-04-01T06:36:00Z"
+    if blocked == "expired":
+        page.clock.install()
+    page.goto("http://127.0.0.1:5055/operator-ui")
+    button = page.get_by_role("button", name="Predict Bulli R2", exact=True)
+    if blocked == "expired":
+        expect(button).to_be_enabled()
+        page.clock.fast_forward(301000)
+        expect(button).to_have_count(0)
+        expect(page.locator("#prediction-readiness")).to_contain_text("too old")
+    else:
+        expect(button).to_be_disabled()
+        expect(page.locator(".race-readiness")).to_contain_text("access is unavailable" if blocked == "unauthorized" else "jump has passed")
+    assert state["posts"] == []
 
 
 def test_upcoming_selection_uses_existing_csrf_submission_and_reports_blocker(console):

@@ -877,3 +877,11 @@ footer strong {
 .forecast-page { grid-template-columns: minmax(0, 1fr); }
 .forecast-page > * { min-width: 0; }
 .forecast-page details { overflow-wrap: anywhere; }
+
+.race-actions { display:flex; flex-wrap:wrap; gap:.75rem; }
+.race-actions button:disabled { opacity:.55; cursor:not-allowed; }
+.race-readiness, .race-list-summary { color:var(--text-muted, #adb9c8); }
+
+.race-dashboard .hero { padding:1.25rem; gap:1rem; }
+.race-dashboard .hero h2 { font-size:1.5rem; }
+.race-dashboard .hero .lede { font-size:.95rem; }

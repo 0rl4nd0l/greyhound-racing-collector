@@ -24,7 +24,8 @@ def test_connected_client_uses_only_fixed_get_api_and_bounded_returned_ids():
     assert "method:'POST'" in source and "X-CSRF-Token" in source
     state_source = (ROOT / "static/js/operator-ui-state.js").read_text(encoding="utf-8")
     assert "setTimeout" in state_source and "EventSource" not in source + state_source
-    for prohibited in ("URLSearchParams", "FormData", "XMLHttpRequest", "WebSocket"):
+    # URLSearchParams reads the bounded saved-job link; it never supplies an API URL.
+    for prohibited in ("FormData", "XMLHttpRequest", "WebSocket"):
         assert prohibited not in source
 
 
@@ -117,6 +118,8 @@ def test_console_assets_change_url_with_the_installed_revision():
         with app.test_request_context():
             console = render_template("operator_ui_connected.jinja", connected=True)
             forecasts = render_template("operator_ui_forecasts.jinja")
+            sign_in = render_template("operator_ui_sign_in.jinja")
         for asset in ("operator-ui-state.js", "operator-ui-connected.js", "operator-ui.css"):
             assert f"{asset}?v={revision}" in console
         assert f"operator-ui-forecasts.js?v={revision}" in forecasts
+        assert f"operator-ui-sign-in.js?v={revision}" in sign_in
