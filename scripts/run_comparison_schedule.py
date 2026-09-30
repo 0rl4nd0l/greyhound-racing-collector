@@ -50,7 +50,7 @@ def load_config(path):
 
 
 def programme_source_usage(value, baseline_count, programme_start):
-    """Keep every operation charged except explicitly separate pre-study leases."""
+    """Keep global consumption; exclude only authenticated separate allocations."""
     count = len(value.get('operations', []))
     used = count - baseline_count
     allocations = value.get('diagnostic_authorizations', [])
@@ -69,7 +69,8 @@ def programme_source_usage(value, baseline_count, programme_start):
                        for row in value['operations'][start:end])):
             raise ValueError('invalid_preprogramme_source_accounting')
         used -= max(0, end-max(start, baseline_count))
-    return used
+    from race_collection.development_source_authority import development_source_usage
+    return used - development_source_usage(value, baseline_count)
 
 
 def renew_source(cfg, slot, *, now):

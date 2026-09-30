@@ -136,7 +136,8 @@ class SportsbetAccess:
 
     def authorize_diagnostic(self, *, reference, expected_sha256, expires_at,
                              max_operations, rationale, engineering_quiet_seconds=None,
-                             engineering_authority=None):
+                             engineering_authority=None, development_authority=None,
+                             development_slot=None):
         """Explicit prospective user authority; never automatic denial recovery."""
         with self.locked():
             value = self.read()
@@ -191,6 +192,23 @@ class SportsbetAccess:
                 row['cooldown_revision'] = cooldown_revision
             if engineering_authority is not None:
                 row['engineering_authority'] = engineering_authority
+            if development_authority is not None:
+                from race_collection.development_source_authority import (
+                    ALLOCATION, development_source_usage, validate_development_lease)
+                row.update(development_authority=development_authority,
+                           development_authority_sha256=development_authority['sha256'],
+                           development_allocation_id=ALLOCATION, development_slot=development_slot)
+                validate_development_lease(row)
+                if any(a.get('development_slot') == development_slot
+                       for a in value.get('diagnostic_authorizations', [])):
+                    raise ValueError('development_slot_consumed')
+                development_source_usage(value, 0)
+                prior = {a['development_authority_sha256'] for a in value.get('diagnostic_authorizations', [])
+                         if 'development_authority' in a}
+                if prior and prior != {development_authority['sha256']}:
+                    raise ValueError('development_authority_changed')
+            elif development_slot is not None:
+                raise ValueError('development_authority_required')
             value.setdefault('diagnostic_authorizations', []).append(row)
             value['diagnostic_authority'] = row
             value.setdefault('operating_policy', dict(reference=reference,
@@ -200,6 +218,9 @@ class SportsbetAccess:
 
     def _check_diagnostic(self, value):
         diagnostic = value.get('diagnostic_authority')
+        if (os.environ.get('GREYHOUND_DEVELOPMENT_AUTHORITY_SHA256')
+                and (not diagnostic or 'development_authority' not in diagnostic)):
+            raise SportsbetAccessBlocked('sportsbet_development_allocation_not_current')
         if diagnostic is not None:
             # Only the retained explicit, finite allocation may supersede the
             # default lifetime ceiling. A malformed or detached row fails closed.
@@ -221,6 +242,11 @@ class SportsbetAccess:
                 valid = False
             if not valid:
                 raise SportsbetAccessBlocked('sportsbet_diagnostic_authority_invalid')
+            if 'development_authority' in diagnostic:
+                from race_collection.development_source_authority import development_source_usage
+                development_source_usage(value, 0)
+                if os.environ.get('GREYHOUND_DEVELOPMENT_AUTHORITY_SHA256') != diagnostic['development_authority_sha256']:
+                    raise SportsbetAccessBlocked('sportsbet_development_owner_required')
         if diagnostic is not None and (
                 self.clock() >= diagnostic['expires_at']
                 or len(value.get('operations', [])) - diagnostic['operation_start'] >= diagnostic['max_operations']):
@@ -315,6 +341,10 @@ class SportsbetAccess:
                     raise SportsbetAccessBlocked("sportsbet_operating_policy_stop")
                 record = {"at": now, "kind": kind, "operation_id": operation_id,
                           **operation_owner()}
+                diagnostic = value.get('diagnostic_authority', {})
+                if 'development_authority' in diagnostic:
+                    record.update(development_authority_sha256=diagnostic['development_authority_sha256'],
+                                  development_slot=diagnostic['development_slot'])
                 operations.append(record)
             if recovery:
                 value["recovery_attempts"] += 1
