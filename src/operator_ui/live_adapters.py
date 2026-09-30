@@ -1266,6 +1266,7 @@ class LiveEvidenceAdapters:
                 and peer_report.get("runtime_action") == "DEFERRED_FULL_LOCK_HANDOFF"
                 and peer_report.get("live_freshness_profile") == "bounded80-v1"
             )
+            completed = peer.get("status") == "RECEIPT_READY"
             if not yielded and (peer_env.status != "AVAILABLE/FRESH"
                     or peer.get("status") not in {"ACTIVE", "RECEIPT_READY"}):
                 return None
@@ -1304,7 +1305,7 @@ class LiveEvidenceAdapters:
                 if not isinstance(invocation, str) or re.fullmatch(r"[0-9a-f]{32}", invocation) is None:
                     return None
                 if payload['timing']['service_invocation_id'] != invocation:
-                    if payload is not peer_report or not yielded:
+                    if payload is not peer_report or not (yielded or completed):
                         return None
                     lifecycle_env, lifecycle = self._read('odds_lifecycle', now)
                     if (lifecycle_env.availability != 'present' or lifecycle_env.schema_integrity != 'valid' or not lifecycle
@@ -1313,7 +1314,8 @@ class LiveEvidenceAdapters:
                             or type(lifecycle.get('wrapper_pid')) is not int or lifecycle['wrapper_pid'] <= 0
                             or lifecycle.get('status') != 'COMPLETE'
                             or lifecycle.get('children_reaped') is not True
-                            or lifecycle.get('interrupted') is not False or lifecycle.get('returncode') != 2):
+                            or lifecycle.get('interrupted') is not False
+                            or lifecycle.get('returncode') != (2 if yielded else 0)):
                         return None
                     times = (lifecycle['process_start_lower_bound'],
                              payload['timing']['process_started_monotonic'], lifecycle['completed_monotonic'])
@@ -1340,9 +1342,9 @@ class LiveEvidenceAdapters:
                     or dict(upcoming.evidence.evidence_identity or ()).get("run_id") != peer["run_id"]):
                     return None
             deadline = _time(report["generated_at"]) + timedelta(seconds=maximum)
-            if yielded:
-                # A completed odds refresh can yield its pending capture to the
-                # full waiter. Permit only the next poll plus the existing
+            if yielded or completed:
+                # A completed odds refresh releases the lock to the full
+                # waiter. Permit only the next poll plus the existing
                 # ten-second process-overhead allowance, never the whole retry
                 # period after release. This does not assert lock ownership.
                 deadline = min(deadline, _time(peer_report["generated_at"])

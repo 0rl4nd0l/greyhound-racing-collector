@@ -194,3 +194,45 @@ def test_released_odds_handoff_before_full_poll_is_bounded_and_authenticated(tmp
     assert (result.evidence.status == 'AVAILABLE/FRESH') == (change == 'none'), result
     if change == 'none':
         assert [lane['status'] for lane in result.data['lanes']] == ['WAITING_FOR_PEER','WAITING_FOR_PEER']
+
+
+@pytest.mark.parametrize('change', ['none', 'missing_receipt', 'wrong_invocation', 'wrong_child',
+                                   'unreaped', 'failed', 'interrupted', 'bad_order', 'expired', 'wrong_index'])
+def test_completed_peer_new_invocation_requires_reaped_receipt_and_short_handoff(tmp_path, monkeypatch, change):
+    from types import SimpleNamespace
+    from race_collection.synchronous_manual_capture import VerifiedCurrentRaceIndex
+    from src.operator_ui import live_adapters
+    values = waiting_values(tmp_path)
+    peer, state = values['odds_report'], values['odds_state']
+    peer.pop('lock'); peer.pop('lock_path')
+    peer['timing']['process_started_monotonic'] = 101.0
+    peer.update(status='READY', final_status='ODDS_CAPTURE_ONLY_READY', runtime_action='LIVE_COLLECTION_COMPLETE',
+        generated_at=(NOW-timedelta(seconds=16 if change == 'expired' else 2)).isoformat(),
+        autopilot_output_dir='artifacts/autopilot-9', odds_capture_refresh_report=values['odds_refresh'])
+    state.update(status='READY', final_status='ODDS_CAPTURE_ONLY_READY', runtime_action='LIVE_COLLECTION_COMPLETE',
+        updated_at=peer['generated_at'], autopilot_output_dir=peer['autopilot_output_dir'], odds_capture_refresh_status='SUCCESS')
+    view = VerifiedCurrentRaceIndex('collector_current_race_index_v2',
+        'wrong' if change == 'wrong_index' else 'fixture_odds_capture',
+        (NOW-timedelta(seconds=70)).isoformat(), '1'*64, b'packet', (), 'refresh.json', '2'*64, '3'*64, '4'*64, '5'*64)
+    monkeypatch.setattr(live_adapters, 'bounded_current_race_index', lambda **kwargs: view)
+    adapter = make_live(tmp_path/'observer', values, include_models=False,
+        full_status=('activating', 'start', 3000), odds_status=('activating', 'start', 4000),
+        upcoming_races=live_adapters.UpcomingRaceSource(tmp_path/'index.json', tmp_path))
+    adapter._units = replace(adapter._units, full_service_invocation_id='a'*32, odds_service_invocation_id='c'*32)
+    lifecycle = dict(invocation_id='b'*32, child_pid=2222, wrapper_pid=2000, status='COMPLETE',
+        children_reaped=True, interrupted=False, returncode=0, process_start_lower_bound=100.0, completed_monotonic=102.0)
+    if change == 'wrong_invocation': lifecycle['invocation_id'] = 'd'*32
+    elif change == 'wrong_child': lifecycle['child_pid'] = 9999
+    elif change == 'unreaped': lifecycle['children_reaped'] = False
+    elif change == 'failed': lifecycle['returncode'] = 2
+    elif change == 'interrupted': lifecycle['interrupted'] = True
+    elif change == 'bad_order': lifecycle['completed_monotonic'] = 100.5
+    native_read = adapter._read
+    def read(key, at):
+        if key == 'odds_lifecycle':
+            return SimpleNamespace(availability='missing' if change == 'missing_receipt' else 'present',
+                                   schema_integrity='valid'), lifecycle
+        return native_read(key, at)
+    monkeypatch.setattr(adapter, '_read', read)
+    result = adapter.collector(NOW)
+    assert (result.data['lanes'][0]['status'] == 'WAITING_FOR_PEER') == (change == 'none'), result
