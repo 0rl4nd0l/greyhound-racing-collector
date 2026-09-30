@@ -285,3 +285,40 @@ def test_cli_reports_existing_collector_contention_without_failure_alert(monkeyp
     monkeypatch.setattr(sys,'argv',['results','cycle','--config','unused','--config-sha256','unused'])
     assert command.main()==0
     assert json.loads(capsys.readouterr().out)=={'status':'RESULT_COLLECTOR_BUSY'}
+
+
+@pytest.mark.parametrize('variable',['SYNTHETIC_DEVELOPMENT_CLOCK','FRESHNESS_FABRICATED_SOURCE','GREYHOUND_SHARED_SNAPSHOT_FIXTURE'])
+def test_real_result_configuration_rejects_fixture_environment_before_authority_read(tmp_path,monkeypatch,variable):
+    from race_collection.development_pilot_results import inspect_queue
+    from race_collection.development_examples import DevelopmentRejected
+    path=tmp_path/'real-shaped.json';pin=put(path,{'status':'AUTHORIZED'})
+    monkeypatch.setenv(variable,'/synthetic/fixture')
+    with pytest.raises(DevelopmentRejected,match='RESULT_FIXTURE_ENVIRONMENT_FORBIDDEN'):
+        inspect_queue(path,pin)
+
+
+def test_study_restoration_hold_blocks_results_despite_healthy_result_queue(tmp_path):
+    from race_collection.development_pilot_results import _study_priority
+    from race_collection.development_examples import DevelopmentRejected
+    from race_collection.development_pilot import reference
+    now=datetime.fromisoformat('2026-10-03T13:40:00+10:00')
+    study=tmp_path/'study';result=tmp_path/'study-results'
+    healthy={'status':'NO_SLOT_DUE','at':now.isoformat()}
+    put(study/'health.json',healthy)
+    put(study/'canary.json',{'status':'CANARY_STRUCTURALLY_VERIFIED','plan_sha256':'a'*64,
+        'verified_predictions':1,'closed_results':1})
+    put(result/'health.json',{'status':'CYCLE_COMPLETE','at':now.isoformat(),'counts':{},'oldest_due':None})
+    authority=tmp_path/'result-authority.json';put(authority,{'runtime':{'state_root':str(result)}})
+    binding=tmp_path/'result-binding.json';ref=reference(authority)
+    put(binding,{'authority':ref['path'],'authority_sha256':ref['sha256']})
+    schedule=tmp_path/'schedule.json';put(schedule,{'slots':['2026-10-02T13:00:00+10:00'],
+        'session_minutes':90,'state_root':str(study),'comparison_plan_sha256':'a'*64,'result_binding':str(binding)})
+    cfg={'status':'AUTHORIZED','study_schedule':reference(schedule)}
+    _study_priority(cfg,now)
+    (study/'health.json').write_bytes(canonical({**healthy,'status':'RESTORATION_HELD'}))
+    with pytest.raises(DevelopmentRejected,match='RESULT_STUDY_RECOVERY_OR_RETENTION_PRIORITY'):
+        _study_priority(cfg,now)
+    (study/'health.json').write_bytes(canonical(healthy))
+    (study/'canary.json').unlink()
+    with pytest.raises(DevelopmentRejected,match='RESULT_STUDY_RECOVERY_OR_RETENTION_PRIORITY'):
+        _study_priority(cfg,now)

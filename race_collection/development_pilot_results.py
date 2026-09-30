@@ -32,6 +32,9 @@ MAX_BODY = 1024 * 1024
 def _load(path, pin):
     cfg = read({'path': str(Path(path).absolute()), 'sha256': pin})
     synthetic = cfg.get('status') == 'SYNTHETIC_FIXTURE'
+    if not synthetic and any(os.environ.get(name) for name in (
+            'SYNTHETIC_DEVELOPMENT_CLOCK','FRESHNESS_FABRICATED_SOURCE','GREYHOUND_SHARED_SNAPSHOT_FIXTURE')):
+        raise DevelopmentRejected('RESULT_FIXTURE_ENVIRONMENT_FORBIDDEN')
     if (cfg.get('schema_version') != 'development_pilot_runtime_v1'
             or cfg.get('status') not in {'AUTHORIZED', 'SYNTHETIC_FIXTURE'}
             or not cfg.get('authority_reference')
@@ -190,18 +193,14 @@ def _study_priority(cfg, now):
         end = start + timedelta(minutes=schedule['session_minutes'])
         if start - timedelta(minutes=10) <= now <= end + timedelta(minutes=5):
             raise DevelopmentRejected('RESULT_STUDY_PRIORITY')
-    # Only scheduling/count metadata is opened, never a study job or label DB.
-    binding = _metadata(Path(schedule['result_binding']))
-    authority = read({'path':binding['authority'], 'sha256':binding['authority_sha256']})
-    health_path = Path(authority['runtime']['state_root'])/'health.json'
-    if not health_path.exists():
-        raise DevelopmentRejected('RESULT_STUDY_HEALTH_MISSING')
-    health = _metadata(health_path)
-    if (health.get('status') not in {'CYCLE_COMPLETE','COLLECTOR_LOCK_BUSY','CAMPAIGN_OWNER_BUSY'}
-            or now-stamp(health['at']) > timedelta(minutes=45)
-            or health.get('oldest_due') and stamp(health['oldest_due']) <= now
-            or health.get('counts',{}).get('RUNNING',0)):
-        raise DevelopmentRejected('RESULT_STUDY_RETENTION_PRIORITY')
+    # Capture and result acquisition share the same outcome-blind recovery,
+    # first-session gate and result-backlog priority criteria.
+    from race_collection.development_pilot import require_study_health
+    try:
+        require_study_health(cfg,now)
+    except (OSError,ValueError,KeyError,TypeError):
+        raise DevelopmentRejected('RESULT_STUDY_RECOVERY_OR_RETENTION_PRIORITY') from None
+
 
 
 @contextmanager
