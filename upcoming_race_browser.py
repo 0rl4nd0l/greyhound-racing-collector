@@ -106,6 +106,10 @@ class UpcomingRaceBrowser:
         # Venue mapping
         # NOTE: Keep this minimal and always fall back to config.venue_mapping.normalize_venue
         self.venue_map = {
+            # Source race identity must distinguish layouts even though the
+            # frozen historical feature mapping pools them under QOT.
+            "ladbrokes-q1-lakeside": "LADBROKES-Q1-LAKESIDE",
+            "ladbrokes-q2-parklands": "LADBROKES-Q2-PARKLANDS",
             "angle-park": "AP_K",
             "sandown": "SAN",
             "warrnambool": "WAR",
