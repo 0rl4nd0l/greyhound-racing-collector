@@ -1153,3 +1153,23 @@ def test_csv_provenance_writer_records_safe_target_metadata(tmp_path):
     assert sidecar["target_grade"] == "Grade 5"
     assert sidecar["target_grade_source"] == "canonical_pre_race_page"
     assert sidecar["metadata_is_leakage_safe"] is True
+
+
+def test_discovery_preserves_distinct_q_layout_source_identity(monkeypatch, tmp_path):
+    """A discovered Q1 race must agree with its accepted pre-race sidecar."""
+    from utils.csv_metadata import canonical_thedogs_venue_identity
+    from config.venue_mapping import normalize_venue
+    monkeypatch.chdir(tmp_path)
+    browser = _browser(monkeypatch)
+    found = {}
+    for slug in ('ladbrokes-q1-lakeside', 'ladbrokes-q2-parklands', 'ladbrokes-q-straight'):
+        url = f'/racing/{slug}/2026-09-30/5/observed-race'
+        link = BeautifulSoup(f'<a href="{url}">R5 4:30 PM</a>', 'html.parser').find('a')
+        race = browser.extract_race_info_from_link(link, url, '2026-09-30')
+        assert race['race_number'] == '5'
+        assert canonical_thedogs_venue_identity(race['venue']) == canonical_thedogs_venue_identity(slug)
+        found[slug] = race['venue']
+    assert len(set(found.values())) == 3
+    # The frozen model's legacy pooled feature mapping is unchanged.
+    assert normalize_venue('LADBROKES-Q1-LAKESIDE') == 'QOT'
+    assert normalize_venue('LADBROKES-Q2-PARKLANDS') == 'QOT'
