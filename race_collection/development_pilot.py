@@ -245,6 +245,8 @@ class Collector:
             contract=execution_contract(self.plan,accounting)
             put(session/'package/contract.json',contract)
             self.scope=FreshnessContract(contract)
+            from race_collection.live_execution import configure_profile_execution
+            configure_profile_execution(session/'package/contract.json')
             AttemptAllowance(self.scope).initialize(accounting)
             campaign=Campaign.from_scope(contract)
             campaign.begin(self.plan['rehearsal_id'],now=utc_now(),deadline=start+timedelta(seconds=7200))
@@ -323,7 +325,7 @@ class Collector:
         directory=Path(match[0]['csv_path']).parent.resolve()
         directory.relative_to(evidence)
         if len(list(directory.glob('*.csv')))!=1:raise ValueError('selected_input_directory_not_single_race')
-        plan=build_capture_plan([directory],current_time=utc_now())
+        plan=build_capture_plan([directory],current_time=utc_now().astimezone(ZONE))
         native=plan['races']
         if len(native)!=1 or native[0].get('status')!='READY_TO_CAPTURE' or native[0].get('capture_window_minutes')!=10:
             raise ValueError('selected_t10_window_not_qualified')
