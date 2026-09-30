@@ -653,7 +653,8 @@ def _request_race(
         or canonical_thedogs_venue_identity(venue) != url_venue
         or (
             venue != url_venue
-            and (VENUE_MAPPING.get(venue) != venue or configured_venue_identity(venue) != url_venue)
+            and ((url_venue not in {"Q1", "Q2"} and VENUE_MAPPING.get(venue) != venue)
+                 or configured_venue_identity(venue) != url_venue)
         )
         or stable_race_id(projection) != race_id
         or race_id not in stable_race_id_variants(projection)
