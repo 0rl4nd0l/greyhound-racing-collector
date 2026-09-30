@@ -262,7 +262,7 @@ class Collector:
             '--run-id',run_id,'--evidence-root',p['evidence_root'],'--collector-lock-path',p['lock_path'],
             '--current-race-index-state-path',str(Path(p['evidence_root'])/'shadow_autopilot_daemon_runtime/odds_capture_state.json'),
             '--db',p['db_path'],'--skip-shadow-run','--require-safe-refresh-metadata',
-            '--refresh-command-mode','python','--current-time',utc_now().isoformat(),
+            '--refresh-command-mode','python','--current-time',utc_now().astimezone(ZONE).isoformat(),
             '--collection-phase',kind,'--step-timeout-seconds','90',
             '--live-freshness-profile','bounded80-v1','--live-freshness-contract',str(Path(self.config['state_root'])/'sessions'/self.scope.value['source_date']/'package/contract.json')]
         if kind=='refresh':
