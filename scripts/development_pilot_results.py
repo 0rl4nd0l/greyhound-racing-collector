@@ -21,6 +21,12 @@ def main():
     except DevelopmentRejected as error:
         print(json.dumps({'status':'REJECTED','reason':str(error)}))
         return 2
+    except RuntimeError as error:
+        from race_collection.synchronous_manual_capture import CollectorBusy
+        if not isinstance(error,CollectorBusy):
+            raise
+        print(json.dumps({'status':'RESULT_COLLECTOR_BUSY'}))
+        return 0
     print(json.dumps(result,sort_keys=True))
     return 0
 

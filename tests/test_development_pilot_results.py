@@ -273,3 +273,15 @@ def test_parent_traversal_nomination_is_quarantined_before_packet_or_result_acce
     result=run_cycle(pilot.config,pilot.pin,now=pilot.jump+timedelta(minutes=30),session=session)
     assert result['status']=='NOMINATION_REJECTED' and result['reason']=='RESULT_EXAMPLE_OUTSIDE_PILOT'
     assert not session.calls
+
+
+def test_cli_reports_existing_collector_contention_without_failure_alert(monkeypatch,capsys):
+    import sys
+    import scripts.development_pilot_results as command
+    from race_collection.synchronous_manual_capture import CollectorBusy
+    def existing_owner(*args):
+        raise CollectorBusy({'pid':123,'run_id':'synthetic-existing-owner'})
+    monkeypatch.setattr(command,'run_cycle',existing_owner)
+    monkeypatch.setattr(sys,'argv',['results','cycle','--config','unused','--config-sha256','unused'])
+    assert command.main()==0
+    assert json.loads(capsys.readouterr().out)=={'status':'RESULT_COLLECTOR_BUSY'}
