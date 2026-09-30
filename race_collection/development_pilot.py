@@ -292,8 +292,21 @@ class Collector:
                 output_dir=session/name,timeout_seconds=90 if kind=='refresh' else 155,
                 cwd=Path(self.plan['source_root']),wait_for_descendants=True)
             self.children_reaped=True
-            if result['status']!='PASS':raise ValueError('development_'+kind+'_failed')
-        return result
+            try:
+                report=json.loads((session/name/'logs'/(name+'.stdout.txt')).read_bytes())
+            except (OSError,ValueError):
+                report={'status':'FAIL','reason':'phase_output_missing'}
+            report['step']=result
+            if kind=='capture':
+                from race_collection.operational_prediction import classify_unready_capture
+                unready=classify_unready_capture(item['reservation_path'],report,Path(self.plan['evidence_root']),Path(self.plan['source_root']))
+                if unready:report['operational_capture_outcome']=unready
+                AttemptAllowance(self.scope).finish(item['reservation_path'],report)
+            if result['status']!='PASS' or report.get('status')!='PASS':
+                raise ValueError('development_'+kind+'_failed')
+            if kind=='capture' and report.get('autonomous_live_odds_capture_status',{}).get('status')!='AUTONOMOUS_LIVE_ODDS_CAPTURE_APPENDED':
+                raise ValueError('development_capture_unqualified')
+        return report
 
     def refresh(self,session,name):
         return self.phase(session,'refresh',name)

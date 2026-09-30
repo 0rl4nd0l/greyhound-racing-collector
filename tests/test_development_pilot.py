@@ -45,8 +45,9 @@ def setup(tmp_path,monkeypatch):
 
 def population(session,allocation_sha,count=7):
     day=session.name
+    local=lambda hhmm:datetime.fromisoformat(day+'T'+hhmm).replace(tzinfo=pilot.ZONE).isoformat()
     rows=[{'race_id':f'Race {i+1} - SYN - {day}','race_key':f'{day}|SYN|{i+1}',
-           'jump_at':f'{day}T13:{10+i*5:02d}:00+10:00','url':f'https://synthetic.invalid/fabricated/{i+1}',
+           'jump_at':local(f'13:{10+i*5:02d}:00'),'url':f'https://synthetic.invalid/fabricated/{i+1}',
            'source_native_race_id':str(i+1),'runners':[{'box':1,'display_name':'Synthetic A','identity':'SYNTHETICA','source_native_runner_id':'100'}]}
           for i in range(count)]
     # Canonical identity helper is authoritative, including its actual separators.
@@ -54,11 +55,11 @@ def population(session,allocation_sha,count=7):
     intended,selected=select(rows,day)
     value={'schema_version':'development_population_freeze_v1','synthetic':False,'local_date':day,
         'allocation_sha256':allocation_sha,'selection_policy':SELECTION_POLICY,
-        'frozen_at':day+'T12:50:00+10:00','source_observed_at':day+'T12:49:00+10:00',
+        'frozen_at':local('12:50:00'),'source_observed_at':local('12:49:00'),
         'observed_races':rows,'intended':intended,'selected_race_ids':selected}
     put(session/'population.json',value)
     put(session/'population.json.completion.json',{'status':'POPULATION_FROZEN',
-        'population_sha256':pilot.reference(session/'population.json')['sha256'],'completed_at':day+'T12:50:01+10:00'})
+        'population_sha256':pilot.reference(session/'population.json')['sha256'],'completed_at':local('12:50:01')})
     return rows
 
 
@@ -218,3 +219,57 @@ def test_signal_during_capture_aborts_remaining_selected_races(tmp_path,monkeypa
     assert result['status']=='ABORTED'
     assert len([x for x in adapter.calls if isinstance(x,tuple)])==1
     assert adapter.calls[-1]=='close'
+
+
+def test_actual_native_planner_receives_melbourne_time_from_utc_clock(tmp_path,monkeypatch):
+    from tests.test_live_capture_binding import reserved_alias_plan
+    from scripts.autonomous_live_odds_capture import sidecar_path_for
+    from race_collection.synchronous_manual_capture import runner_set_sha256
+    allowance,claim,plan,_ = reserved_alias_plan(tmp_path)
+    scope=allowance.scope
+    native=plan['races'][0]
+    evidence=Path(scope.value['evidence_root']);evidence.mkdir(parents=True,exist_ok=True)
+    original=Path(native['csv_path'])
+    target=evidence/'workers/0'/original.name;target.parent.mkdir(parents=True)
+    target.write_bytes(original.read_bytes())
+    target.with_name(target.name+'.metadata.json').write_bytes(sidecar_path_for(original).read_bytes())
+    race_id=json.loads(claim.read_bytes())['item']['race_id']
+    runners=[{'box':r['box_number'],'display_name':r['dog_name'],'identity':r['identity'],'source_native_runner_id':str(r['box_number'])}
+             for r in native['expected_runners']]
+    selected={'race_id':race_id,'url':native['thedogs_source_url'],'jump_at':native['jump_datetime'],
+              'source_native_race_id':'synthetic-9','runners':runners}
+    row={'race_id':race_id,'race_id_aliases':[race_id,native['race_id']],'race_url':selected['url'],
+         'jump_datetime':selected['jump_at'],'source_native_race_id':'synthetic-9','runners':runners,
+         'runner_set_sha256':'a'*64}
+    put(evidence/'refresh.json',{'sidecar_metadata_coverage':{'races':[{'race_url':selected['url'],'csv_path':str(target)}]}})
+    view=SimpleNamespace(races=[row],source_refresh_report_path='refresh.json',packet_sha256='b'*64)
+    import race_collection.synchronous_manual_capture as captures
+    monkeypatch.setattr(captures,'bounded_current_race_index',lambda **kwargs:view)
+    stamp=datetime.fromisoformat('2026-06-10T04:40:05+00:00')
+    monkeypatch.setattr(pilot,'utc_now',lambda:stamp)
+    collector=pilot.Collector({'state_root':str(tmp_path),'pilot_campaign_authority':{'sha256':'c'*64}})
+    collector.plan={'evidence_root':str(evidence),'source_root':str(tmp_path),'python':'/synthetic/python','db_path':'/synthetic/db',
+                    'lock_path':'/synthetic/lock'}
+    collector.scope=SimpleNamespace(value={'source_date':'2026-06-10'})
+    task=collector.task(selected)
+    assert task['capture_window_minutes']==10
+    command=collector.command('refresh','synthetic')
+    assert command[command.index('--current-time')+1].endswith('+10:00')
+
+
+def test_twenty_four_capture_cap_and_four_date_time_charges_are_separate(tmp_path,monkeypatch):
+    campaign,_,_,config,clock=setup(tmp_path,monkeypatch)
+    for day in DATES:
+        clock[0]=datetime.fromisoformat(day+'T12:40:00').replace(tzinfo=pilot.ZONE)
+        campaign.begin(day,now=clock[0],deadline=clock[0]+timedelta(seconds=7200))
+        rows=population(Path(config['state_root'])/'sessions'/day,'1'*64)
+        clock[0]=clock[0].replace(hour=13)
+        for n,row in enumerate(rows[:6]):campaign.consume('/synthetic/'+day+'/'+str(n),item_for(row))
+        clock[0]=clock[0].replace(hour=14,minute=40)
+        campaign.close(day,now=clock[0])
+    usage=campaign.development_usage(json.loads((campaign.root/'ledger.json').read_bytes()))
+    assert usage['capture_attempts']==24 and usage['live_seconds']==28800
+    clock[0]=clock[0].replace(hour=13)
+    assert not campaign.available()
+    with pytest.raises(ValueError,match='time_exhausted|slot_consumed'):
+        campaign.begin('replenishment',now=clock[0],deadline=clock[0]+timedelta(minutes=1))

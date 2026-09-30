@@ -22,9 +22,9 @@ if clock:
         @classmethod
         def now(cls,tz=None):
             current=read_clock()
-            return current.astimezone(tz) if tz else current.astimezone().replace(tzinfo=None)
+            return cls.fromisoformat((current.astimezone(tz) if tz else current.astimezone().replace(tzinfo=None)).isoformat())
         @classmethod
-        def utcnow(cls):return read_clock().astimezone(datetime.timezone.utc).replace(tzinfo=None)
+        def utcnow(cls):return cls.fromisoformat(read_clock().astimezone(datetime.timezone.utc).replace(tzinfo=None).isoformat())
     datetime.datetime=SyntheticDateTime
     time.time=lambda:read_clock().timestamp()
 if os.environ.get('FRESHNESS_FABRICATED_SOURCE'):
