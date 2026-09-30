@@ -238,7 +238,7 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
             raise ValueError("operational_predictions_require_existing_campaign")
         from race_collection.operational_prediction import prepare_retention
         plan["operational_predictions"] = {
-            "authorization": "user:collection-to-prediction-20260924",
+            "authorization": (campaign.development["authority_reference"] if development_authority else "user:collection-to-prediction-20260924"),
             "retention_config_sha256": prepare_retention(output, source, python),
             "operation": "operational_prediction",
             "history_db_path": str(history_db),

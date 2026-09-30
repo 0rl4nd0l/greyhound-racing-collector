@@ -59,6 +59,8 @@ def selected_population(session, allocation_sha256):
 
 def load_config(path, expected):
     value = read({'path':str(Path(path).absolute()), 'sha256':expected})
+    if any(os.environ.get(name) for name in ('SYNTHETIC_DEVELOPMENT_CLOCK','FRESHNESS_FABRICATED_SOURCE','GREYHOUND_SHARED_SNAPSHOT_FIXTURE')):
+        raise ValueError('fixture_environment_forbidden_for_authorized_runtime')
     authority = load_development_authority(value['pilot_campaign_authority'])
     allocation = read(value['allocation'])
     if (value.get('schema_version') != 'development_pilot_runtime_v1'

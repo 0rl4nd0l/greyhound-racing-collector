@@ -245,7 +245,7 @@ def test_actual_native_planner_receives_melbourne_time_from_utc_clock(tmp_path,m
     view=SimpleNamespace(races=[row],source_refresh_report_path='refresh.json',packet_sha256='b'*64)
     import race_collection.synchronous_manual_capture as captures
     monkeypatch.setattr(captures,'bounded_current_race_index',lambda **kwargs:view)
-    stamp=datetime.fromisoformat('2026-06-10T04:40:05+00:00')
+    stamp=(datetime.fromisoformat(native['jump_datetime'])-timedelta(minutes=10)+timedelta(seconds=5)).astimezone(timezone.utc)
     monkeypatch.setattr(pilot,'utc_now',lambda:stamp)
     collector=pilot.Collector({'state_root':str(tmp_path),'pilot_campaign_authority':{'sha256':'c'*64}})
     collector.plan={'evidence_root':str(evidence),'source_root':str(tmp_path),'python':'/synthetic/python','db_path':'/synthetic/db',
@@ -273,3 +273,10 @@ def test_twenty_four_capture_cap_and_four_date_time_charges_are_separate(tmp_pat
     assert not campaign.available()
     with pytest.raises(ValueError,match='time_exhausted|slot_consumed'):
         campaign.begin('replenishment',now=clock[0],deadline=clock[0]+timedelta(minutes=1))
+
+
+def test_authorized_cli_configuration_rejects_fixture_environment_before_authority_read(tmp_path,monkeypatch):
+    p=tmp_path/'real-shaped.json';put(p,{'status':'AUTHORIZED'})
+    monkeypatch.setenv('SYNTHETIC_DEVELOPMENT_CLOCK','/synthetic/clock')
+    with pytest.raises(ValueError,match='fixture_environment_forbidden'):
+        pilot.load_config(p,pilot.reference(p)['sha256'])
