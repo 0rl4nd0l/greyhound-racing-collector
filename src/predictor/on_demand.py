@@ -394,7 +394,7 @@ def validate_prediction_result_v2(value: Any) -> dict[str, Any]:
         or sealed_venue != url_venue
         or (
             race["venue"] != url_venue
-            and (VENUE_MAPPING.get(race["venue"]) != race["venue"]
+            and ((url_venue not in {"Q1", "Q2"} and VENUE_MAPPING.get(race["venue"]) != race["venue"])
                  or configured_venue_identity(race["venue"]) != url_venue)
         )
         or race["race_id"] != stable_race_id(race_projection)

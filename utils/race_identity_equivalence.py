@@ -39,6 +39,11 @@ def configured_venue_identity(value: Any) -> str | None:
     raw = value.strip().upper()
     if not raw or re.fullmatch(VENUE_CODE_PATTERN, raw) is None:
         return None
+    # Source layouts are distinct even though the frozen historical feature
+    # map deliberately pools their venue labels under QOT.
+    source_layout = canonical_thedogs_venue_identity(raw)
+    if source_layout in {"Q1", "Q2"}:
+        return source_layout
     candidates = {
         raw,
         raw.replace("-", " "),
