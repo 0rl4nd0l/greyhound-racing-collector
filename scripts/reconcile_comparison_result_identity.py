@@ -107,7 +107,9 @@ def evidence_rows(job, bundle, body, url, captured, now, *, deadline):
     rows = deadline.call(ingest.parse_thedogs_result_html_runner_rows, text)
     expected = {r['box_number']: r['dog_name'] for r in participants}
     require(len({r['box_number'] for r in rows}) == len(rows))
-    require({r['box_number']: r['dog_name'] for r in rows if r['box_number'] in expected} == expected)
+    require({r['box_number']: ingest._result_identity_name(r['dog_name'])
+             for r in rows if r['box_number'] in expected}
+            == {box: ingest._result_identity_name(name) for box, name in expected.items()})
     selected = deadline.call(ingest.TheDogsResultFetcher(None)._result_from_html, candidate, url, text)
     require(selected is not None and selected.source == 'thedogs_official' and selected.status == 'resulted')
     require(deadline.call(comparison_runner_identity_error, candidate, selected) is None)
