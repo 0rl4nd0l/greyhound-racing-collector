@@ -17,6 +17,7 @@ def programme(cfg, result_health, *, now):
     samples = unavailable = 0
     timer_gaps = 0
     latest = None
+    latest_at = datetime.min.replace(tzinfo=timezone.utc)
     packages = []
     continuations = []
     for claim in sorted((root/'slots').glob('*')):
@@ -45,7 +46,11 @@ def programme(cfg, result_health, *, now):
                               for r in value.get('timer_accounting', {}).get('odds_calendar_slots', []))
             samples += value.get('sample_count', 0)
             unavailable += value.get('unavailable_samples_including_warmup', 0)
-            latest = {k: value.get(k) for k in ('last_sample_at', 'source_age_seconds', 'index_status', 'maximum_conservative_source_age')}
+            sampled_at = value.get('last_sample_at')
+            sampled_at = datetime.fromisoformat(sampled_at) if sampled_at else datetime.min.replace(tzinfo=timezone.utc)
+            if latest is None or sampled_at > latest_at:
+                latest = {k: value.get(k) for k in ('last_sample_at', 'source_age_seconds', 'index_status', 'maximum_conservative_source_age')}
+                latest_at = sampled_at
     next_slot = next((s for i,s in enumerate(cfg['slots'], 1)
                       if not (root/'slots'/f'{i:03d}').exists() and datetime.fromisoformat(s)>now), None)
     predictions = Counter()

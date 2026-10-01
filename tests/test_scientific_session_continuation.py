@@ -88,6 +88,20 @@ def test_status_includes_continuation_opportunities_and_preserves_failed_slot(tm
     assert value['input_freshness']['source_age_seconds']==41
 
 
+def test_later_regular_slot_supersedes_continuation_freshness(tmp_path):
+    from scripts.comparison_status import programme
+    cfg,results,root,parent=fixture(tmp_path)
+    cfg.update(state_root=str(root),source_commit='b'*40)
+    put(parent/'package/measurement.json',{'sample_count':3,'windows':{'eligible_observed_windows':[{},{}]},
+        'last_sample_at':'2026-10-01T15:04:00+10:00','index_status':'AVAILABLE/FRESH','source_age_seconds':41})
+    put(root/'slots/002/synthetic-002/progress.json',{'sample_count':2,'windows':{'eligible_observed_windows':[{}]},
+        'last_sample_at':'2026-10-02T13:12:00+10:00','index_status':'AVAILABLE/FRESH','source_age_seconds':12})
+    value=programme(cfg,{},now=datetime(2026,10,2,4,tzinfo=timezone.utc))
+    assert value['input_freshness']['last_sample_at']=='2026-10-02T13:12:00+10:00'
+    assert value['input_freshness']['source_age_seconds']==12
+    assert value['observed_opportunities']==3 and value['observation_samples']==5
+
+
 @pytest.mark.parametrize('damage',['missing_authority','authority_changed','unfinished','missing_measurement','missing_restore','open_lease','over_budget','negative_charge','nan_charge','different_source_lease','no_closed_result'])
 def test_continuation_never_bypasses_missing_proof(tmp_path,damage):
     cfg,results,root,parent=fixture(tmp_path)
