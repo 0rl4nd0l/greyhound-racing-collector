@@ -151,7 +151,7 @@ def verify_canary(cfg, result_cfg, root, now):
     import sqlite3
     if cfg.get('incident_acceptance'):
         from race_collection.incident_acceptance import verified_incident_acceptance
-        evidence = verified_incident_acceptance(cfg, cfg['incident_acceptance'], now)
+        evidence = verified_incident_acceptance(cfg, cfg['incident_acceptance'], now, seal=True)
         if evidence is not None:
             receipt = root/'canary.json'
             if not receipt.exists():
@@ -249,9 +249,18 @@ def tick(config_path):
                 if code or not (package/'restored.json').exists():
                     return {'status':'RESTORATION_HELD','outcomes_released':False}
             create_once(claim/'terminal.json',{'status':'INTERRUPTED_CONSUMED','at':now.isoformat()})
+        incident_ready = None
+        if cfg.get('incident_acceptance'):
+            # Continue sealing fresh structural proofs before the private result
+            # deadline, even after a canary exists. Later ticks validate only a
+            # sealed proof and the native result closure, never expired reads.
+            # An admission-only pause must not discard this finite opportunity.
+            incident_ready = verify_canary(cfg, None, root, now)
         if (root/'PAUSE_ADMISSIONS').exists(): return {'status':'ADMISSIONS_PAUSED'}
         if now >= stamp(plan['ends_at']): return {'status':'ADMISSION_ENDPOINT_REACHED'}
-        if cfg.get('first_session_continuation') and not (root/'canary.json').exists():
+        if incident_ready is False:
+            return {'status':'CANARY_NOT_VERIFIED'}
+        elif cfg.get('first_session_continuation') and not (root/'canary.json').exists():
             from race_collection.scientific_session_recovery import completed_continuation
             if cfg.get('incident_acceptance') or completed_continuation(cfg,root) is not None:
                 from src.predictor.comparison_result_runtime import load_runtime
