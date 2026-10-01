@@ -928,6 +928,12 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
         timing, "discovery", browser.get_upcoming_races, days_ahead=discovery_days_ahead
     )
     discovery_finished = time.monotonic()
+    discovery_failures = list(getattr(browser, 'discovery_failures', []))
+    unusable_discovered_count = len(races) if discovery_failures else 0
+    if discovery_failures:
+        # Cached/partial discovery must not be published as a fresh observation.
+        # Preserve failure metadata; do not add a retry or acquire selected races.
+        races = []
     excluded_race_ids = load_excluded_race_ids(
         values=list(args.exclude_race_id or []),
         file_path=args.exclude_race_ids_file,
@@ -1104,6 +1110,12 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
         if report["refresh_elapsed_seconds"] > budget:
             report["status"] = "REFRESH_BUDGET_EXCEEDED"
             report["reason"] = "completed_source_acquisition_exceeded_budget"
+    if discovery_failures:
+        report.update(status='DISCOVERY_FAILED', reason='discovery_source_unavailable',
+                      discovery_failures=discovery_failures,
+                      discovered_but_unusable_count=unusable_discovered_count)
+        report['next_preferred_window'] = {'status': 'DISCOVERY_FAILED',
+            'reason': 'discovery_source_unavailable', 'recommended_rerun_after_local': None}
     return report
 
 

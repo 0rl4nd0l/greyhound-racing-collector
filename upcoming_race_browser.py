@@ -341,6 +341,7 @@ class UpcomingRaceBrowser:
     def get_upcoming_races(self, days_ahead=0):
         """Get upcoming races for the next specified days"""
         races = []
+        self.discovery_failures = []
         today = datetime.now().date()
 
         print(f"🔍 Fetching upcoming races for the next {days_ahead} days...")
@@ -3368,6 +3369,9 @@ class UpcomingRaceBrowser:
                 response = self.session.get(date_url, timeout=10)
 
                 if response.status_code != 200:
+                    self.__dict__.setdefault('discovery_failures', []).append({
+                        'source_url': date_url, 'source_date': date_str,
+                        'http_status': response.status_code, 'error_type': 'HTTPStatusError'})
                     print(f"   ⚠️ Failed to access racing page: {response.status_code}")
                     return races
 
@@ -3501,6 +3505,9 @@ class UpcomingRaceBrowser:
             )
 
         except Exception as e:
+            self.__dict__.setdefault('discovery_failures', []).append({
+                'source_url': f'{self.base_url}/racing/{date_str}', 'source_date': date_str,
+                'error_type': type(e).__name__})
             print(f"   ❌ Error scraping live races: {e}")
 
         return races
