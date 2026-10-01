@@ -1363,10 +1363,13 @@ def test_fetch_odds_for_target_race_uses_read_only_integrator(monkeypatch, tmp_p
     assert not db_path.exists()
 
 
-@pytest.mark.parametrize("venue", ["SAN", "SANDOWN"])
+@pytest.mark.parametrize("venue,label", [
+    ("SAN", "Sandown Park"), ("SANDOWN", "Sandown Park"),
+    ("GOSF", "Gosford"), ("GOSFORD", "Gosford"),
+])
 @pytest.mark.parametrize("include_target", [True, False])
-def test_fetch_sandown_park_selects_only_exact_landing_race(
-    monkeypatch, tmp_path, venue, include_target
+def test_fetch_selects_only_exact_landing_race(
+    monkeypatch, tmp_path, venue, label, include_target
 ):
     import sportsbet_odds_integrator as odds_module
     import json
@@ -1377,12 +1380,12 @@ def test_fetch_sandown_park_selects_only_exact_landing_race(
     # Synthetic destinations are never requested; the provider's observed
     # display label is the regression input, not a guessed live race URL.
     links = [
-        _FakeAnchor("R3 Sandown Park", "https://fixture.invalid/greyhound-racing/wrong-race"),
+        _FakeAnchor(f"R3 {label}", "https://fixture.invalid/greyhound-racing/wrong-race"),
         _FakeAnchor("R2 Horsham", "https://fixture.invalid/greyhound-racing/wrong-venue"),
     ]
     target_url = "https://fixture.invalid/greyhound-racing/exact-target"
     if include_target:
-        links.append(_FakeAnchor("R2 Sandown Park", target_url))
+        links.append(_FakeAnchor(f"R2 {label}", target_url))
     driver = _FakeDriver(landing_anchors=links)
     driver.sportsbet_navigation_remaining = lambda: 1
     driver.sportsbet_inspect_response_shapes = lambda: None
@@ -1437,7 +1440,7 @@ def test_fetch_sandown_park_selects_only_exact_landing_race(
     assert selection["race_number_matches"] == (2 if include_target else 1)
     assert selection["exact_matches"] == int(include_target)
     assert "fixture.invalid" not in json.dumps(report)
-    assert "Sandown" not in json.dumps(report)
+    assert label not in json.dumps(report)
 
 
 def test_dom_fallback_page_scraping_requires_opt_in_and_is_limited(tmp_path, monkeypatch):

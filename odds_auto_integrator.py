@@ -30,6 +30,7 @@ VENUE_NAME_HINTS = {
     "MAND": "Mandurah",
     "HOBT": "Hobart",
     "GRDN": "The Gardens",
+    "GOSF": "Gosford",
     "CASO": "Casino",
     "NOWRA": "Nowra",
     "SHEP": "Shepparton",
