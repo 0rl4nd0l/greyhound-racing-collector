@@ -88,8 +88,12 @@ class SystemdControl:
         return True
 
 
-def restore(output, plan, control, *, clock=time.monotonic, sleep=time.sleep):
+def restore(output, plan, control, *, clock=time.monotonic, sleep=time.sleep, r3_replacement=None):
     backup = json.loads((output / "restoration.json").read_bytes())
+    replacement = None
+    if r3_replacement is not None:
+        from race_collection.restoration_ack import verify_r3_replacement
+        replacement = verify_r3_replacement(r3_replacement, output, plan, backup, control)
     for timer in TIMERS:
         control.command("stop", timer)
     deadline = clock() + plan["cleanup_seconds"]
@@ -191,13 +195,16 @@ def restore(output, plan, control, *, clock=time.monotonic, sleep=time.sleep):
         if control.command("is-enabled", timer).strip() != expected_enabled:
             raise ValueError("restored_timer_enablement_mismatch")
     if control.show("greyhound-operator-ui-r3.service")["MainPID"] != backup["r3_pid"]:
-        raise ValueError("r3_process_changed")
+        if r3_replacement is None:
+            raise ValueError("r3_process_changed")
+        replacement = verify_r3_replacement(r3_replacement, output, plan, backup, control)
     atomic_json(
         output / "restored.json",
         {"status": "RESTORED_COLLECTOR_TRIGGERS_HELD" if triggers_held else "RESTORED",
          "at": now().isoformat(), "hashes": backup["hashes"],
          "sportsbet_hold": source_hold, "baseline_source_coordination_unverified": legacy_unverified,
-         "paused_timers": list(TIMERS) if triggers_held else []},
+         "paused_timers": list(TIMERS) if triggers_held else [],
+         **({'r3_replacement_acknowledgement': replacement} if replacement else {})},
     )
 
 
@@ -1081,7 +1088,14 @@ def main():
     parser.add_argument("--plan-sha256", required=True)
     parser.add_argument("--approval-id", required=True)
     parser.add_argument("--restore-only", action="store_true")
+    parser.add_argument("--r3-restoration-ack", type=Path)
+    parser.add_argument("--r3-restoration-ack-sha256")
     args = parser.parse_args()
+    replacement = None
+    if args.r3_restoration_ack or args.r3_restoration_ack_sha256:
+        if not args.restore_only or not (args.r3_restoration_ack and args.r3_restoration_ack_sha256):
+            parser.error('R3 acknowledgement requires restoration only and exact digest')
+        replacement = (args.r3_restoration_ack, args.r3_restoration_ack_sha256, args.approval_id)
     if args.restore_only:
         plan = json.loads(args.plan.read_bytes())
         if digest(plan) != args.plan_sha256:
@@ -1092,7 +1106,7 @@ def main():
             campaign = Campaign.from_scope(plan)
             with (campaign.root / "owner.lock").open("a") as owner:
                 fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                restore(args.plan.parent, plan, SystemdControl())
+                restore(args.plan.parent, plan, SystemdControl(), r3_replacement=replacement)
                 with campaign.ledger() as ledger:
                     begun = plan["rehearsal_id"] in ledger["launches"]
                 if begun:
@@ -1100,7 +1114,7 @@ def main():
                     require_completed_lifetimes(args.plan.parent, campaign)
                     campaign.close(plan["rehearsal_id"], now=now())
         else:
-            restore(args.plan.parent, plan, SystemdControl())
+            restore(args.plan.parent, plan, SystemdControl(), r3_replacement=replacement)
     else:
         plan = json.loads(args.plan.read_bytes())
         if ROOT.resolve() != Path(plan["source_root"]).resolve():
