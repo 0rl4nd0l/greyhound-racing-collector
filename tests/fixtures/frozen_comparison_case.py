@@ -112,7 +112,7 @@ def use_v2(case, *, status="SYNTHETIC_REHEARSAL_ONLY"):
     return case
 
 
-def execute(case, *, comparison=True, output_name="predictions"):
+def execute(case, *, comparison=True, output_name="predictions", job_store_path=None):
     from src.operator_ui.job_store import JobInput, JobStore, OperationalIndexProvenance, Phase, resolve_audit_confirmation
     from src.operator_ui.prediction_worker import WorkerConfig, ServerChoice, run_once
     from src.operator_ui.r3_api import finalize_producer_bundle
@@ -131,7 +131,7 @@ def execute(case, *, comparison=True, output_name="predictions"):
     worker=WorkerConfig(Path(sys.executable),ROOT,{"latest-research":choice},case["db"],output,(case["evidence"],),case["protocol"].root,case["index"],case["evidence"],5,45,90,2,
         retained_input_bindings={case["race_id"]:{"path":str(case["retained_root"]),"manifest_sha256":case["retained"]["manifest_sha256"]}},
         comparison_plan=case["comparison"] if comparison else None,comparison_plan_sha256=sha256_file(case["comparison"]) if comparison else None)
-    authority=object();store=JobStore(root/(output_name+"-jobs.db"),separate_from=(case["db"],),verifier_authority=authority)
+    authority=object();store=JobStore(job_store_path or root/(output_name+"-jobs.db"),separate_from=(case["db"],),verifier_authority=authority)
     def confirm(intent):
         raw=canonical_bytes(intent); h=hashlib.sha256(raw).hexdigest();path=root/"audit"/(h+".json");path.parent.mkdir(exist_ok=True)
         if not path.exists():path.write_bytes(raw)

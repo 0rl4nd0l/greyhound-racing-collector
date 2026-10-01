@@ -68,13 +68,25 @@ def verified_incident_acceptance(study_cfg, reference, now):
         reader = build_verified_bundle_reader(bundles, store)
         results = ComparisonResultSource(Path(result_authority['result_database']))
         verified = closed = 0
+        identities = set()
+        job_ids = set()
         with sqlite3.connect((Path(result_cfg['state_root'])/'queue.sqlite3').as_uri()+'?mode=ro', uri=True) as queue:
             for admission in (Path(plan['programme_root'])/binding['plan_sha256']/'attempts').glob('*/admission.json'):
+                admitted = read(admission)
+                race_id = admitted['race']['race_id']
+                job_id = admitted['job_id']
+                if (admission.parent.name != hashlib.sha256(race_id.encode()).hexdigest()
+                        or race_id in identities or job_id in job_ids):
+                    return None
+                identities.add(race_id)
+                job_ids.add(job_id)
                 value = verify_comparison(bundles, admission, expected_plan_sha256=binding['plan_sha256'])
                 if not value.get('engineering_evidence') or value['future_race_evidence']:
                     continue
                 verified += 1
-                job = jobs[read(admission)['job_id']]
+                job = jobs[job_id]
+                if job.input.race_id != race_id:
+                    return None
                 if (queue.execute("SELECT 1 FROM jobs WHERE job=? AND state='CLOSED'",(job.job_id,)).fetchone()
                         and results.read(job, reader(job), now=now)['state'] == 'RESULT_AVAILABLE'):
                     closed += 1

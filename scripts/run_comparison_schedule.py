@@ -160,6 +160,7 @@ def verify_canary(cfg, result_cfg, root, now):
                     'verified_predictions':evidence['verified_predictions'], 'closed_results':evidence['closed_results'],
                     'incident_acceptance':evidence, 'outcomes_released':False})
             return True
+        return False
     first=root/'slots/001'
     terminal=first/'terminal.json'
     continuation=None
