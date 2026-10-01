@@ -5,7 +5,7 @@ import pytest
 import requests
 
 
-@pytest.mark.parametrize('response_kind',['connection','403','429','empty'])
+@pytest.mark.parametrize('response_kind',['connection','connection_response','403','429','empty'])
 def test_discovery_error_is_not_success_or_an_automatic_retry(tmp_path,monkeypatch,response_kind):
     from upcoming_race_browser import UpcomingRaceBrowser
     from scripts import refresh_prejump_upcoming as refresh
@@ -15,6 +15,11 @@ def test_discovery_error_is_not_success_or_an_automatic_retry(tmp_path,monkeypat
     def get(url,**kwargs):
         calls.append(url)
         if response_kind=='connection':raise requests.ConnectionError('SYNTHETIC')
+        if response_kind=='connection_response':
+            response=requests.Response()
+            response.status_code=429
+            response.headers={'Retry-After':'60'}
+            raise requests.ConnectionError('SYNTHETIC',response=response)
         return SimpleNamespace(status_code=200 if response_kind=='empty' else int(response_kind),
                                content=b'<html></html>',close=lambda:None)
     browser.session=SimpleNamespace(get=get)
@@ -37,6 +42,9 @@ def test_discovery_error_is_not_success_or_an_automatic_retry(tmp_path,monkeypat
         assert report['next_preferred_window']['status']=='DISCOVERY_FAILED'
         assert report['next_preferred_window']['recommended_rerun_after_local'] is None
         failure=report['discovery_failures'][0]
-        assert failure['error_type']==('ConnectionError' if response_kind=='connection' else 'HTTPStatusError')
+        assert failure['error_type']==('ConnectionError' if response_kind.startswith('connection') else 'HTTPStatusError')
         if response_kind=='connection':assert 'http_status' not in failure
+        elif response_kind=='connection_response':
+            assert failure['http_status']==429
+            assert failure['source_retry_headers']=={'retry-after':'60'}
         else:assert failure['http_status']==int(response_kind)

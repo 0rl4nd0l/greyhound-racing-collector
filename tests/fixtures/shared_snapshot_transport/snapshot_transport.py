@@ -19,6 +19,9 @@ def install():
             os.write(fd, (json.dumps({"pid": os.getpid(), "path": url.path, "host": url.netloc}) + "\n").encode())
         finally:
             os.close(fd)
+        if row.get("error_type"):
+            assert row["error_type"] in {"ConnectionError", "Timeout", "ConnectTimeout", "ReadTimeout", "SSLError"}
+            raise getattr(requests.exceptions, row["error_type"])("synthetic transport failure")
         response = requests.Response()
         response.status_code = row.get("status", 200)
         response.url, response.request = request.url, request

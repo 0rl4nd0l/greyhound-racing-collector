@@ -1,6 +1,7 @@
 import hashlib
 import json
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -30,6 +31,75 @@ def outage(tmp_path, *, status=502, run_id="20990101T120000+0000_odds_capture"):
                       {"success": False, "result": {"error": "No CSV download link found",
                                                       "source_failure_category": "observed_export_absent"}}]})
     return output, plan, run_id, root, refresh
+
+
+def discovery_outage(tmp_path, *, error="ConnectionError", after_capture=False, run_id="fixture_odds_capture"):
+    output, plan, rid, root, refresh = outage(tmp_path, run_id=run_id)
+    if after_capture:
+        from race_collection.live_phase_checkpoint import PhaseCheckpoint
+        checkpoint = PhaseCheckpoint(root / "later-checkpoint.json", identity="synthetic", cycle_id=rid, output_dir=root)
+        # Keep the captured receipt/consumption opaque and immutable while a
+        # later refresh fails; phase completion is native, not a hand-made hash.
+        (root / "phase-0-result.json").unlink()
+        for kind in (("capture",) if after_capture == "capture_only" else ("refresh", "capture")):
+            checkpoint.begin(kind, {"reservation_path": "consumed"} if kind == "capture" else {}, "2099-01-01T12:00:00+00:00")
+            checkpoint.complete({"status": "PASS", "collection_phase": kind,
+                                 "autonomous_live_odds_capture_status": {"status": "AUTONOMOUS_LIVE_ODDS_CAPTURE_APPENDED"} if kind == "capture" else {}}, elapsed=1, overrun=False)
+        checkpoint.begin("refresh", {}, "2099-01-01T12:02:00+00:00")
+        checkpoint.complete({"status": "FAIL", "collection_phase": "refresh", "final_verdict": "COLLECTION_PHASE_BLOCKED"}, elapsed=10, overrun=False)
+        run.atomic_json(root / "phase-checkpoint.json", checkpoint.value)
+        phase_number = len(checkpoint.value["phases"]) - 1
+        refresh = refresh.parent.with_name(refresh.parent.name.replace("_phase_0", f"_phase_{phase_number}")) / refresh.name
+    run.atomic_json(refresh, {"status": "DISCOVERY_FAILED", "reason": "discovery_source_unavailable",
+        "accepted_csv_count": 0, "sidecar_count": 0, "selected_count": 0,
+        "current_index_race_count": 0, "downloads": [],
+        "discovery_failures": [{"source_url": "https://www.thedogs.com.au/racing/2099-01-01",
+                                "source_date": "2099-01-01", "error_type": error}]})
+    return output, plan, rid, root, refresh
+
+
+@pytest.mark.parametrize("error", ["ConnectionError", "Timeout", "ConnectTimeout", "ReadTimeout"])
+@pytest.mark.parametrize("after_capture", [False, True, "capture_only"])
+def test_typed_discovery_failure_waits_for_normal_timer_without_reconsuming(tmp_path, error, after_capture):
+    output, plan, rid, root, refresh = discovery_outage(tmp_path, error=error, after_capture=after_capture)
+    before = {p: p.read_bytes() for p in root.glob("phase-*-result.json")}
+    assert run.record_refresh_outage(output, plan, rid, set())
+    record = json.loads((output / "refresh-deferrals" / (rid + ".json")).read_bytes())
+    assert record["discovery_error_types"] == [error]
+    assert record["request_retries_added"] == 0
+    assert record["failed_phase_number"] == (1 if after_capture == "capture_only" else 2 if after_capture else 0)
+    assert all(p.read_bytes() == raw for p, raw in before.items())
+    assert json.loads(refresh.read_bytes())["status"] == "DISCOVERY_FAILED"
+
+
+@pytest.mark.parametrize("change", ["SSLError", "ProxyError", "ValueError", "http", "retry", "reset", "headers", "accepted", "downloads", "selected", "prior_failed", "prior_hash", "budget", "source_stop"])
+def test_discovery_failure_never_defers_denial_guidance_or_damaged_prior_phase(tmp_path, change):
+    output, plan, rid, root, refresh = discovery_outage(tmp_path, after_capture=True)
+    report = json.loads(refresh.read_bytes())
+    failure = report["discovery_failures"][0]
+    if change.endswith("Error"): failure["error_type"] = change
+    elif change == "http": failure["http_status"] = 429
+    elif change == "retry": failure["source_retry_after"] = "60"
+    elif change == "reset": failure["source_rate_limit_reset"] = "60"
+    elif change == "headers": failure["source_retry_headers"] = {"retry-after": "60"}
+    elif change == "accepted": report["accepted_csv_count"] = 1
+    elif change == "downloads": report["downloads"] = [{"success": True}]
+    elif change == "selected": report["selected_count"] = 1
+    elif change in {"prior_failed", "prior_hash", "budget"}:
+        checkpoint = json.loads((root / "phase-checkpoint.json").read_bytes())
+        prior = root / "phase-1-result.json"
+        if change == "budget": checkpoint["phases"][1]["budget_exceeded"] = True
+        else:
+            run.atomic_json(prior, {"status": "FAIL", "collection_phase": "capture"})
+            if change == "prior_failed": checkpoint["phases"][1]["result_sha256"] = hashlib.sha256(prior.read_bytes()).hexdigest()
+        run.atomic_json(root / "phase-checkpoint.json", checkpoint)
+    elif change == "source_stop":
+        value = json.loads(Path(plan["sportsbet_access_state"]).read_bytes())
+        value["phase"] = "STOP"
+        run.atomic_json(Path(plan["sportsbet_access_state"]), value)
+    run.atomic_json(refresh, report)
+    assert not run.record_refresh_outage(output, plan, rid, set())
+    assert not (output / "refresh-deferrals").exists()
 
 
 def test_two_failed_cycles_are_retained_without_request_or_success(tmp_path):
@@ -81,11 +151,12 @@ def test_nontransient_or_untrusted_failure_never_defers(tmp_path, change):
     assert not (output / "refresh-deferrals").exists()
 
 
+@pytest.mark.parametrize("discovery", [False, True])
 @pytest.mark.parametrize("minute", [2, 25])
 @pytest.mark.parametrize("terminal_present", [False, True])
 @pytest.mark.parametrize("age,status,continued", [(114, "CAPTURE_FAILED", True), (270, "CAPTURE_FAILED", False), (114, "INTEGRITY_FAILED", False), (114, "ACTIVE", True)])
-def test_actual_observer_keeps_failed_lane_visible_and_requires_fresh_index(tmp_path, monkeypatch, age, status, continued, minute, terminal_present):
-    output, plan, rid, root, refresh = outage(tmp_path)
+def test_actual_observer_keeps_failed_lane_visible_and_requires_fresh_index(tmp_path, monkeypatch, age, status, continued, minute, terminal_present, discovery):
+    output, plan, rid, root, refresh = discovery_outage(tmp_path, after_capture=True) if discovery else outage(tmp_path)
     start = datetime(2099, 1, 1, tzinfo=timezone.utc)
     plan.update(starts_at=start.isoformat(), ends_at=(start + timedelta(hours=1)).isoformat(),
         first_index_deadline_seconds=180, readiness_warmup_seconds=1200, sample_period_seconds=0)

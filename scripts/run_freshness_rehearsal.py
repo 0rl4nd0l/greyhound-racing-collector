@@ -491,7 +491,7 @@ def verify_claim_receipt(claim, handoff, evidence, source_root):
 
 
 def record_refresh_outage(output, plan, run_id, failures):
-    """Allow two scheduled 5xx refresh misses; never retry requests or accept data.
+    """Allow two typed scheduled refresh misses; never retry requests or accept data.
 
     The native failed state remains visible. Observation may continue only while
     its independently read, previously published index stays fresh.

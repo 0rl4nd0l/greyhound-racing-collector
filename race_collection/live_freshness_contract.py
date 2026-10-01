@@ -32,36 +32,63 @@ def classify_refresh_outage(evidence, run_id):
     try:
         checkpoint = json.loads((root / "phase-checkpoint.json").read_bytes())
         phases = checkpoint["phases"]
-        if (checkpoint["cycle_id"] != run_id or len(phases) != 1
-                or phases[0]["kind"] != "refresh" or phases[0]["status"] != "COMPLETE"
-                or phases[0]["budget_exceeded"]):
+        if checkpoint["cycle_id"] != run_id or not phases or phases[-1]["kind"] != "refresh":
             return None
-        raw = (root / "phase-0-result.json").read_bytes()
-        if hashlib.sha256(raw).hexdigest() != phases[0]["result_sha256"]:
-            return None
-        result = json.loads(raw)
+        # A resumed cycle may already have sealed successful captures. Verify
+        # each preceding phase; classification never reopens those attempts.
+        for number, phase in enumerate(phases):
+            if (phase.get("number", number) != number or phase["status"] != "COMPLETE"
+                    or phase["budget_exceeded"] or phase["kind"] not in {"refresh", "capture"}):
+                return None
+            raw = (root / f"phase-{number}-result.json").read_bytes()
+            if hashlib.sha256(raw).hexdigest() != phase["result_sha256"]:
+                return None
+            result = json.loads(raw)
+            if number < len(phases) - 1 and (
+                    result.get("status") != "PASS" or result.get("collection_phase") != phase["kind"]):
+                return None
         if result.get("collection_phase") != "refresh" or result.get("final_verdict") != "COLLECTION_PHASE_BLOCKED":
             return None
         name = "odds_capture_refresh_report.json" if run_id.endswith("_odds_capture") else "refresh_prejump_report.json"
-        refresh_raw = (evidence / ("shadow_autopilot_v1_" + run_id + "_phase_0") / name).read_bytes()
+        refresh_raw = (evidence / ("shadow_autopilot_v1_" + run_id + f"_phase_{number}") / name).read_bytes()
         refresh = json.loads(refresh_raw)
-        if (refresh.get("status") != "METADATA_COVERAGE_INCOMPLETE"
+        errors = []
+        statuses = []
+        if refresh.get("status") == "DISCOVERY_FAILED":
+            if (refresh.get("reason") != "discovery_source_unavailable"
+                    or any(refresh.get(key) != 0 for key in
+                           ("accepted_csv_count", "sidecar_count", "selected_count", "current_index_race_count"))
+                    or refresh.get("downloads") != []):
+                return None
+            failures = refresh.get("discovery_failures")
+            if not isinstance(failures, list) or not failures:
+                return None
+            for failure in failures:
+                # Exact typed transport evidence only. Any HTTP response,
+                # retry guidance, TLS/proxy error or unknown field stays held.
+                if (not isinstance(failure, dict) or set(failure) != {"source_url", "source_date", "error_type"}
+                        or failure["error_type"] not in {"ConnectionError", "Timeout", "ConnectTimeout", "ReadTimeout"}
+                        or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(failure["source_date"]))
+                        or failure["source_url"] != "https://www.thedogs.com.au/racing/" + failure["source_date"]):
+                    return None
+                errors.append(failure["error_type"])
+        elif (refresh.get("status") != "METADATA_COVERAGE_INCOMPLETE"
                 or refresh.get("reason") != "no_selected_race_csv_sidecars"
                 or refresh.get("accepted_csv_count") != 0 or refresh.get("sidecar_count") != 0):
             return None
-        statuses = []
-        for download in refresh["downloads"]:
-            item = download["result"]
-            if download.get("success") or item.get("success"):
-                return None
-            if item.get("source_retry_after") or item.get("source_rate_limit_reset"):
-                return None
-            status = item.get("source_http_status")
-            if type(status) is int and status in {502, 503, 504}:
-                statuses.append(status)
-            elif status is not None or item.get("source_failure_category") != "observed_export_absent":
-                return None
-        if not statuses:
+        else:
+            for download in refresh["downloads"]:
+                item = download["result"]
+                if download.get("success") or item.get("success"):
+                    return None
+                if item.get("source_retry_after") or item.get("source_rate_limit_reset"):
+                    return None
+                status = item.get("source_http_status")
+                if type(status) is int and status in {502, 503, 504}:
+                    statuses.append(status)
+                elif status is not None or item.get("source_failure_category") != "observed_export_absent":
+                    return None
+        if not statuses and not errors:
             return None
     except (OSError, ValueError, KeyError, TypeError):
         return None
@@ -71,6 +98,7 @@ def classify_refresh_outage(evidence, run_id):
         "phase_result_sha256": hashlib.sha256(raw).hexdigest(),
         "upstream_statuses": statuses, "request_retries_added": 0,
         "maximum_failed_cycles": 2,
+        **({"discovery_error_types": errors, "failed_phase_number": number} if errors else {}),
     }
 
 

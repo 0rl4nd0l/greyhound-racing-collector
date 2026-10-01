@@ -3505,9 +3505,19 @@ class UpcomingRaceBrowser:
             )
 
         except Exception as e:
-            self.__dict__.setdefault('discovery_failures', []).append({
+            failure = {
                 'source_url': f'{self.base_url}/racing/{date_str}', 'source_date': date_str,
-                'error_type': type(e).__name__})
+                'error_type': type(e).__name__}
+            # A transport exception can carry a response. Retain its status
+            # and retry guidance so it cannot become a response-free outage.
+            error_response = getattr(e, 'response', None)
+            if error_response is not None:
+                failure['http_status'] = error_response.status_code
+                failure['source_retry_headers'] = source_retry_headers(error_response.headers)
+            elif getattr(e, 'source_http_status', None) is not None:
+                failure['http_status'] = e.source_http_status
+                failure['source_retry_headers'] = getattr(e, 'source_retry_headers', {})
+            self.__dict__.setdefault('discovery_failures', []).append(failure)
             print(f"   ❌ Error scraping live races: {e}")
 
         return races
