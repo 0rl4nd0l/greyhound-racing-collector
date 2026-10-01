@@ -26,6 +26,7 @@ import sys
 import time
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Optional
 from urllib.parse import urljoin, urlparse
@@ -289,6 +290,35 @@ def _clean_official_runner_name(value: str) -> Optional[str]:
     text = re.sub(r"\s+\d{1,2}\.\d{2}\s+T:\s+.*$", "", text)
     text = re.sub(r"\s+T:\s+.*$", "", text)
     return text or None
+
+
+class _OfficialRunnerNameText(HTMLParser):
+    """Exclude the source's separate time badge, never a name suffix."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.time_spans = 0
+        self.parts = []
+
+    def handle_starttag(self, tag, attrs):
+        classes = (dict(attrs).get("class") or "").split()
+        if tag == "span" and (self.time_spans or "race-runners__name__time" in classes):
+            self.time_spans += 1
+
+    def handle_endtag(self, tag):
+        if tag == "span" and self.time_spans:
+            self.time_spans -= 1
+
+    def handle_data(self, data):
+        if not self.time_spans:
+            self.parts.append(data)
+
+
+def _official_runner_name_from_html(markup: str) -> Optional[str]:
+    parser = _OfficialRunnerNameText()
+    parser.feed(markup)
+    parser.close()
+    return _clean_official_runner_name(" ".join(parser.parts))
 
 
 def _result_identity_name(value: object) -> str:
@@ -559,7 +589,7 @@ def parse_thedogs_result_html_runner_rows(markup: str) -> List[dict]:
                 continue
 
             dog_name = (
-                _clean_official_runner_name(name_cell.get_text(" ", strip=True))
+                _official_runner_name_from_html(str(name_cell))
                 if name_cell is not None
                 else None
             )
@@ -604,7 +634,7 @@ def parse_thedogs_result_html_runner_rows(markup: str) -> List[dict]:
                 continue
             name_match = name_pattern.search(row_markup)
             dog_name = (
-                _clean_official_runner_name(rendered_text_from_html(name_match.group("value")))
+                _official_runner_name_from_html(name_match.group("value"))
                 if name_match
                 else None
             )

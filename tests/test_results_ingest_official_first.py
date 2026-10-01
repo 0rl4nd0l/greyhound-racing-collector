@@ -6,6 +6,8 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import pytest
+
 
 def _load_ingest_module():
     path = Path(__file__).resolve().parents[1] / "scripts" / "ingest_results_for_date.py"
@@ -156,6 +158,41 @@ def test_parse_thedogs_result_html_runner_rows_include_official_names():
             "dog_name": "Reserve Runner",
             "status": "SCR",
         },
+    ]
+
+
+@pytest.mark.parametrize("without_bs4", [False, True])
+def test_official_runner_identity_excludes_only_structured_time_metadata(monkeypatch, without_bs4):
+    module = _load_ingest_module()
+    if without_bs4:
+        monkeypatch.setitem(sys.modules, "bs4", None)
+    markup = """
+    <table class="race-runners race-runners--result">
+      <tr class="race-runner">
+        <td class="race-runners__finish-position">1st</td>
+        <td class="race-runners__box"><sprite-svg name="rug_2"></sprite-svg></td>
+        <td class="race-runners__name"><a href="/dogs/111/alpha-nbt">Alpha NBT</a>
+          <span class="race-runners__name__time">NBT</span></td>
+      </tr>
+      <tr class="race-runner">
+        <td class="race-runners__finish-position">2nd</td>
+        <td class="race-runners__box"><sprite-svg name="rug_4"></sprite-svg></td>
+        <td class="race-runners__name"><a href="/dogs/222/beta">Beta</a>
+          <span class="extra race-runners__name__time"><span>NBT</span></span></td>
+      </tr>
+      <tr class="race-runner">
+        <td class="race-runners__finish-position">SCR</td>
+        <td class="race-runners__box"><sprite-svg name="rug_9"></sprite-svg></td>
+        <td class="race-runners__name"><a>Changed Runner NBT</a>
+          <span class="race-runners__name__time-other">Unknown</span></td>
+      </tr>
+    </table>
+    """
+    rows = module.parse_thedogs_result_html_runner_rows(markup)
+    assert rows == [
+        {"box_number": 2, "finish_position": 1, "dog_name": "Alpha NBT", "status": None},
+        {"box_number": 4, "finish_position": 2, "dog_name": "Beta", "status": None},
+        {"box_number": 9, "finish_position": None, "dog_name": "Changed Runner NBT Unknown", "status": "SCR"},
     ]
 
 
