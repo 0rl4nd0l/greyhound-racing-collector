@@ -60,7 +60,20 @@ def _reconcile_closed_queue(db, now, final):
     db.commit()
 
 
-def _closure(binding_path, root, db, now):
+def _closure(binding_path, root, db, now, cfg):
+    # The previous child may have outlived a killed queue worker. Never seal
+    # while its native owner/collector lock still permits result writes.
+    with (Path(cfg['campaign_root']) / 'owner.lock').open('a') as owner:
+        try:
+            fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return status(root, db, now, 'CLOSURE_WRITER_BUSY')
+        if Path(cfg['lock_path']).exists():
+            return status(root, db, now, 'CLOSURE_WRITER_BUSY')
+        return _seal_closure(binding_path, root, db, now)
+
+
+def _seal_closure(binding_path, root, db, now):
     from scripts.seal_comparison_result_closure import seal
     final = root / 'closure'
     if final.exists():
@@ -94,6 +107,11 @@ def cycle(binding_path):
     with (root / 'worker.lock').open('a') as mutex:
         fcntl.flock(mutex, fcntl.LOCK_EX | fcntl.LOCK_NB)
         with database(root) as db:
+            def deadline_closure():
+                current = datetime.now(timezone.utc)
+                if current >= stamp(cfg['expires_at']):
+                    return _closure(binding_path, root, db, current, cfg)
+
             identity = hashlib.sha256(canonical_bytes(binding)).hexdigest()
             prior = db.execute('SELECT binding FROM identity').fetchall()
             if prior and [r[0] for r in prior] != [identity]:
@@ -104,9 +122,10 @@ def cycle(binding_path):
                 from scripts.autonomous_official_result_capture import ensure_official_result_evidence_tables
                 with sqlite3.connect(result_db) as results:
                     ensure_official_result_evidence_tables(results)
-            if now >= stamp(cfg['expires_at']):
-                return _closure(binding_path, root, db, now)
+            if (closed := deadline_closure()) is not None:
+                return closed
             storage_check(root, cfg)
+            if (closed := deadline_closure()) is not None: return closed
             from src.operator_ui.job_store import JobStore, Phase
             from src.operator_ui.r3_api import build_verified_bundle_reader
             from src.predictor.comparison_results import ComparisonResultSource
@@ -115,13 +134,18 @@ def cycle(binding_path):
                 if db.execute('SELECT count(*) FROM jobs').fetchone()[0] or any(claims.glob('*/admission.json')):
                     return status(root,db,now,'JOB_STORE_MISSING')
                 return status(root,db,now,'CYCLE_COMPLETE')
+            if (closed := deadline_closure()) is not None: return closed
             store = JobStore(Path(cfg['job_store']), readonly=True)
+            if (closed := deadline_closure()) is not None: return closed
             bundles = Path(cfg['prediction_bundles'])
             read_bundle = build_verified_bundle_reader(bundles, store)
+            if (closed := deadline_closure()) is not None: return closed
             jobs = {j.job_id: j for j in store.recorded_jobs()}
+            if (closed := deadline_closure()) is not None: return closed
             claims = Path(plan['programme_root']) / binding['plan_sha256'] / 'attempts'
             # Discover only immutable admitted jobs; no broad target-result scan.
             for admission_path in sorted(claims.glob('*/admission.json')):
+                if (closed := deadline_closure()) is not None: return closed
                 if time.monotonic()-started>300: return status(root,db,now,'CYCLE_BUDGET')
                 admission = json.loads(admission_path.read_bytes())
                 job = jobs.get(admission['job_id'])
@@ -129,15 +153,19 @@ def cycle(binding_path):
                     continue  # prediction failures retain their original denominator
                 race = job.input.race_id
                 if db.execute('SELECT 1 FROM jobs WHERE race=?', (race,)).fetchone(): continue
+                now = datetime.now(timezone.utc)
+                if (closed := deadline_closure()) is not None: return closed
                 if now < stamp(job.input.jump_timestamp) + timedelta(minutes=15): continue
                 try:
                     authorize_job(job, binding, plan, now=now, prediction_bundles=bundles)
                 except (ValueError, KeyError, OSError):
+                    if (closed := deadline_closure()) is not None: return closed
                     # Unique rejected claim, no repeated per-cycle event flood.
                     db.execute('INSERT OR IGNORE INTO jobs VALUES(?,?,?,?,?,0)',
                                (race, job.job_id, job.input.jump_timestamp, 'QUARANTINED', None))
                     event(db, now, race, 'MEMBERSHIP_REJECTED')
                     continue
+                if (closed := deadline_closure()) is not None: return closed
                 if db.execute('SELECT count(*) FROM jobs').fetchone()[0] >= cfg['max_races']:
                     return status(root, db, now, 'RACE_BUDGET_EXHAUSTED')
                 db.execute('INSERT INTO jobs VALUES(?,?,?,?,?,0)',
@@ -145,18 +173,27 @@ def cycle(binding_path):
                 event(db, now, race, 'DISCOVERED')
             # A killed process never returns its consumed attempt. Validate retained
             # DB evidence first; otherwise keep backoff and original private log.
+            now = datetime.now(timezone.utc)
+            if (closed := deadline_closure()) is not None: return closed
             db.execute("UPDATE jobs SET state='PENDING' WHERE state='RUNNING'"); db.commit()
             rows = db.execute("SELECT * FROM jobs WHERE state='PENDING' AND due<=? ORDER BY due,race LIMIT ?",
                               (now.isoformat(), cfg['races_per_cycle'])).fetchall()
             for row in rows:
+                if (closed := deadline_closure()) is not None: return closed
                 if time.monotonic()-started>300: return status(root,db,now,'CYCLE_BUDGET')
                 job = jobs.get(row['job'])
                 if job is None:
                     db.execute("UPDATE jobs SET state='QUARANTINED' WHERE race=?", (row['race'],))
                     event(db, now, row['race'], 'JOB_MISSING'); continue
+                now = datetime.now(timezone.utc)
+                if (closed := deadline_closure()) is not None: return closed
                 authorize_job(job, binding, plan, now=now, prediction_bundles=bundles)
+                if (closed := deadline_closure()) is not None: return closed
                 bundle = read_bundle(job)
+                now = datetime.now(timezone.utc)
+                if (closed := deadline_closure()) is not None: return closed
                 evidence = ComparisonResultSource(result_db).read(job, bundle, now=now)
+                if (closed := deadline_closure()) is not None: return closed
                 if evidence['state'] == 'RESULT_AVAILABLE':
                     db.execute("UPDATE jobs SET state='CLOSED' WHERE race=?", (row['race'],))
                     event(db, now, row['race'], 'CLOSED_FROM_RETAINED_EVIDENCE'); continue
@@ -181,6 +218,8 @@ def cycle(binding_path):
                     except BlockingIOError: return status(root,db,now,'CAMPAIGN_OWNER_BUSY')
                 if Path(cfg['lock_path']).exists():
                     return status(root, db, now, 'COLLECTOR_LOCK_BUSY')
+                now = datetime.now(timezone.utc)
+                if (closed := deadline_closure()) is not None: return closed
                 output = root / 'attempts' / ('autonomous_official_result_capture_' + uuid.uuid4().hex)
                 output.parent.mkdir(exist_ok=True)
                 attempts = row['attempts'] + 1
@@ -194,6 +233,7 @@ def cycle(binding_path):
                     '--race-id', row['race'], '--output-dir', str(output), '--evidence-root', str(root/'attempts'), '--execute-db-ingest']
                 # No outcome-bearing child output reaches journal or agent.
                 with output.with_suffix('.log').open('xb') as log:
+                    if (closed := deadline_closure()) is not None: return closed
                     child = subprocess.Popen(command, cwd=ROOT, stdout=log, stderr=log)
                     try:
                         code = child.wait(timeout=40)
@@ -207,9 +247,9 @@ def cycle(binding_path):
                 charged = db.execute('SELECT attempts FROM jobs WHERE race=?',(row['race'],)).fetchone()[0]
                 if charged == row['attempts']:
                     db.execute('UPDATE jobs SET due=? WHERE race=?',((after+timedelta(minutes=20)).isoformat(),row['race']))
-                if after >= stamp(cfg['expires_at']):
-                    return status(root, db, after, 'CLOSURE_DUE')
+                if (closed := deadline_closure()) is not None: return closed
                 evidence = ComparisonResultSource(result_db).read(job, bundle, now=after)
+                if (closed := deadline_closure()) is not None: return closed
                 state = 'CLOSED' if evidence['state'] == 'RESULT_AVAILABLE' else (
                         'QUARANTINED' if evidence['state'] == 'RESULT_REJECTED' else 'PENDING')
                 transport_status = output / 'transport-status.json'
@@ -230,6 +270,7 @@ def cycle(binding_path):
                         state = 'QUARANTINED'
                 db.execute('UPDATE jobs SET state=? WHERE race=?', (state, row['race']))
                 event(db, after, row['race'], state if not code else 'COLLECTOR_FAILURE', output)
+            if (closed := deadline_closure()) is not None: return closed
             return status(root, db, datetime.now(timezone.utc), 'CYCLE_COMPLETE')
 
 

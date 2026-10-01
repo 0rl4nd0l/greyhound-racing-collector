@@ -100,6 +100,15 @@ class Transport:
         self.race = candidate.race_id
         self.allowed = {candidate.canonical_thedogs_url + '?trial=false'}
 
+    def check_deadline(self):
+        current = datetime.now(timezone.utc)
+        if current >= stamp(self.cfg['expires_at']):
+            disposition = self.output / 'transport-status.json'
+            if not disposition.exists() or json.loads(disposition.read_bytes())['status'] != 'SOURCE_HOLD':
+                atomic_json(disposition, {'status': 'DEADLINE_EXPIRED'})
+            raise ValueError('RESULT_DEADLINE_EXPIRED')
+        return current
+
     def get(self, session, url, **kwargs):
         now = datetime.now(timezone.utc)
         load_runtime(self.binding, now=now)
@@ -120,6 +129,7 @@ class Transport:
                 raise ValueError('result_queue_attempt_required')
             if db.execute('SELECT count(*) FROM requests WHERE race=?', (self.race,)).fetchone()[0] >= self.cfg['max_attempts_per_race']:
                 raise ValueError('RESULT_RACE_REQUEST_BUDGET')
+            self.check_deadline()
             self.campaign.request(kind='results')  # shared holds/counters; never reset or bypass
             db.execute('UPDATE jobs SET attempts=attempts+1 WHERE race=?', (self.race,))
             db.execute('INSERT INTO requests(at,race,artifact) VALUES(?,?,?)',
@@ -127,6 +137,7 @@ class Transport:
         atomic_json(artifact.with_suffix('.request.json'), {'at': now.isoformat(), 'url': url})
         # requests.Session default adapter has zero retries. Redirects are evidence,
         # not permission to fetch an unadmitted page or discover other races.
+        self.check_deadline()
         response = session.get(url, headers={**kwargs.get('headers', {}), 'Accept-Encoding': 'identity'},
                                timeout=(5, 20), allow_redirects=False, stream=True)
         try:
@@ -155,8 +166,14 @@ class Transport:
                 raise ValueError('RESULT_SOURCE_ENVELOPE')
             # Detect denial HTML too; a 200 challenge is not a pending result.
             from scripts.ingest_results_for_date import response_is_forbidden, title_from_html, rendered_text_from_html
+            self.check_deadline()
             text = body.decode('utf-8', errors='strict')
-            if response_is_forbidden(response.status_code, title_from_html(text), rendered_text_from_html(text)):
+            self.check_deadline()
+            title = title_from_html(text)
+            self.check_deadline()
+            rendered = rendered_text_from_html(text)
+            self.check_deadline()
+            if response_is_forbidden(response.status_code, title, rendered):
                 self.campaign.hold_source({**observation, 'reason': 'html_denial'})
                 atomic_json(self.output / 'transport-status.json', {'status': 'SOURCE_HOLD'})
                 raise ValueError('RESULT_SOURCE_HOLD')
@@ -165,10 +182,19 @@ class Transport:
             response.close()
 
 
+def check_active_deadline():
+    """Recheck the current private collector authority at a processing boundary."""
+    guard = ACTIVE.get()
+    return guard.check_deadline() if guard is not None else None
+
+
 @contextmanager
 def collector_guard(binding, *, output, job_store, bundles, result_database):
     os.umask(0o077)
     _, authority, cfg = load_runtime(binding, now=datetime.now(timezone.utc))
+    # load_runtime permits equality for opaque closure, not active collection.
+    if datetime.now(timezone.utc) >= stamp(cfg['expires_at']):
+        raise ValueError('RESULT_DEADLINE_EXPIRED')
     if (Path(cfg['job_store']) != job_store.absolute() or Path(cfg['prediction_bundles']) != bundles.absolute()
             or Path(authority['result_database']) != result_database.absolute()):
         raise ValueError('result_runtime_path_mismatch')
@@ -184,6 +210,7 @@ def collector_guard(binding, *, output, job_store, bundles, result_database):
                     output_dir=output, phase='comparison_result_retention')
         token = ACTIVE.set(Transport(binding, cfg, root, output, campaign))
         try:
+            check_active_deadline()
             yield
         finally:
             ACTIVE.reset(token)

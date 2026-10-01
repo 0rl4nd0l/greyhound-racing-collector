@@ -31,12 +31,20 @@ def r3_prediction_candidates(*, job_store_path: Path, prediction_bundles: Path,
     comparison_plan=None
     if comparison_result_binding is not None:
         from src.predictor.comparison_result_scope import result_scope
+        from src.predictor.comparison_result_runtime import check_active_deadline
+        current_time = check_active_deadline() or current_time
         comparison_plan=result_scope(comparison_result_binding,now=current_time,prediction_bundles=prediction_bundles,result_database=result_database)
     try:
+        if comparison_result_binding is not None:
+            current_time = check_active_deadline() or current_time
         store = JobStore(job_store_path, separate_from=(result_database,), readonly=True)
+        if comparison_result_binding is not None:
+            check_active_deadline()
         jobs = store.recorded_jobs()
     except (OSError, ValueError, JobStoreError) as exc:
         return [], [{"reason": "R3_JOB_STORE_UNAVAILABLE", "detail": str(exc)}], report
+    if comparison_result_binding is not None:
+        check_active_deadline()
     read_bundle = build_verified_bundle_reader(prediction_bundles, store)
     candidates, skipped = [], []
     selected_ids = set(race_ids)
@@ -50,6 +58,7 @@ def r3_prediction_candidates(*, job_store_path: Path, prediction_bundles: Path,
         try:
             if comparison_result_binding is not None:
                 from src.predictor.comparison_result_scope import authorize_job
+                current_time = check_active_deadline() or current_time
                 authorize_job(job,comparison_result_binding,comparison_plan,now=current_time,prediction_bundles=prediction_bundles)
             jump = datetime.fromisoformat(job.input.jump_timestamp.replace("Z", "+00:00"))
             if jump >= current_time:
@@ -57,7 +66,11 @@ def r3_prediction_candidates(*, job_store_path: Path, prediction_bundles: Path,
             elif datetime.fromisoformat(job.phase_at.replace("Z", "+00:00")) > current_time:
                 reason = "R3_READY_TIMESTAMP_IN_FUTURE"
             else:
+                if comparison_result_binding is not None:
+                    current_time = check_active_deadline() or current_time
                 bundle = read_bundle(job)
+                if comparison_result_binding is not None:
+                    check_active_deadline()
                 if _verified_result(job, bundle, list(store.events(job.job_id))) is None:
                     raise ValueError("R3_PREDICTION_VERIFICATION_FAILED")
                 race = bundle.result["race"]
@@ -73,7 +86,11 @@ def r3_prediction_candidates(*, job_store_path: Path, prediction_bundles: Path,
                     raise ValueError("R3_PREDICTION_TIMESTAMP_INVALID")
                 from src.predictor.comparison_results import ComparisonResultSource
                 source_class = ComparisonResultSource if comparison_result_binding is not None else OfficialResultSource
+                if comparison_result_binding is not None:
+                    current_time = check_active_deadline() or current_time
                 existing = source_class(result_database).read(job, bundle, now=current_time)
+                if comparison_result_binding is not None:
+                    check_active_deadline()
                 if existing["state"] == "RESULT_AVAILABLE":
                     reason = "R3_RESULT_ALREADY_AVAILABLE"
                 elif existing["state"] == "RESULT_REJECTED" or existing.get("reason") in {"RESULT_SOURCE_BUSY", "RESULT_SOURCE_CHANGED", "RESULT_SOURCE_UNSAFE"}:

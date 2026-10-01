@@ -1369,6 +1369,8 @@ def run_shadow_run_official_dry_run(
                 )
                 try:
                     official = thedogs.fetch(candidate)
+                    from src.predictor.comparison_result_runtime import check_active_deadline
+                    check_active_deadline()
                     attempts.append(official)
                     selected = official
                     validation_error = ingest.result_validation_error(candidate, selected)
@@ -1431,6 +1433,7 @@ def run_shadow_run_official_dry_run(
                         active_row=None,
                     )
                     continue
+                check_active_deadline()
                 ingested_row = ingest.write_result(
                     conn,
                     candidate,
@@ -3110,6 +3113,8 @@ def append_official_result_evidence_to_db(
     execute: bool,
     allow_dead_heats: bool = False,
 ) -> dict[str, Any]:
+    from src.predictor.comparison_result_runtime import check_active_deadline
+    check_active_deadline()
     validation = validate_official_result_evidence_rows(artifact_rows, allow_dead_heats=allow_dead_heats)
     status = {
         **evidence_db_ingest_not_executed(),
@@ -3148,14 +3153,17 @@ def append_official_result_evidence_to_db(
         }
         return status
 
+    check_active_deadline()
     with sqlite3.connect(db_path) as conn:
         ensure_official_result_evidence_tables(conn)
+        check_active_deadline()
         inserted_races, inserted_runners = insert_official_result_evidence_rows(
             conn,
             race_rows=validation["race_rows"],
             runner_rows=validation["runner_rows"],
             output_dir=output_dir,
         )
+        check_active_deadline()
         conn.commit()
     status["inserted_race_rows"] = inserted_races
     status["inserted_runner_rows"] = inserted_runners
@@ -3399,9 +3407,12 @@ def _main(argv: Sequence[str] | None = None) -> int:
             backlog_shadow_run_limit=args.backlog_shadow_run_limit,
             backlog_lookback_days=args.backlog_lookback_days,
         )
+        from src.predictor.comparison_result_runtime import check_active_deadline
+        check_active_deadline()
         write_json(ingest_report_path, ingest_report)
         write_text(output_dir / "official_result_ingest.stdout.txt", "")
         write_text(output_dir / "official_result_ingest.stderr.txt", "")
+        check_active_deadline()
         artifact_rows = build_artifact_rows(ingest_report, generated_at=generated_at)
     else:
         command = ingest_dry_run_command(
@@ -3425,8 +3436,12 @@ def _main(argv: Sequence[str] | None = None) -> int:
         write_text(output_dir / "official_result_ingest.stderr.txt", result.stderr or "")
         ingest_report = load_json(ingest_report_path)
         artifact_rows = build_artifact_rows(ingest_report, generated_at=generated_at)
+    from src.predictor.comparison_result_runtime import check_active_deadline
+    check_active_deadline()
     write_jsonl(output_dir / "official_result_races.jsonl", artifact_rows["race_rows"])
+    check_active_deadline()
     write_jsonl(output_dir / "official_result_runners.jsonl", artifact_rows["runner_rows"])
+    check_active_deadline()
     write_jsonl(output_dir / "official_result_quarantine.jsonl", artifact_rows["quarantine_rows"])
     if args.comparison_result_binding is not None:
         from src.predictor.comparison_result_runtime import load_runtime
@@ -3454,6 +3469,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
             execute=args.execute_db_ingest,
             allow_dead_heats=args.comparison_result_binding is not None,
         )
+    check_active_deadline()
     report = build_capture_report(
         generated_at=generated_at,
         dry_run_command=command,

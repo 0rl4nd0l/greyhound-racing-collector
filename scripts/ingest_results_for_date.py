@@ -1169,15 +1169,21 @@ class TheDogsResultFetcher:
                     timeout=20,
                     allow_redirects=True,
                 )
+                from src.predictor.comparison_result_runtime import check_active_deadline
+                check_active_deadline()
                 markup = getattr(response, "text", "") or ""
+                check_active_deadline()
                 text = rendered_text_from_html(markup)
+                check_active_deadline()
                 status_code = getattr(response, "status_code", None)
                 attempted_row = {
                     "url": url,
                     "final_url": getattr(response, "url", url),
                     "status_code": status_code,
                 }
-                if response_is_forbidden(status_code, title_from_html(markup), text):
+                title = title_from_html(markup)
+                check_active_deadline()
+                if response_is_forbidden(status_code, title, text):
                     last_error = "thedogs_403_forbidden"
                     attempted_row["error"] = last_error
                     attempted_urls.append(attempted_row)
@@ -1188,7 +1194,9 @@ class TheDogsResultFetcher:
                     attempted_urls.append(attempted_row)
                     continue
 
+                check_active_deadline()
                 result = self._result_from_html(candidate, getattr(response, "url", url), markup)
+                check_active_deadline()
                 if result:
                     attempted_row["result"] = result.status
                     attempted_urls.append(attempted_row)
