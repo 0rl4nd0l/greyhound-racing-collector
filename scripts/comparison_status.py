@@ -17,10 +17,23 @@ def programme(cfg, result_health, *, now):
     samples = unavailable = 0
     timer_gaps = 0
     latest = None
+    packages = []
+    continuations = []
     for claim in sorted((root/'slots').glob('*')):
         terminal = claim/'terminal.json'
         slot_counts[read(terminal)['status'] if terminal.exists() else 'IN_PROGRESS'] += 1
-        package = claim/(cfg['programme_id']+'-'+claim.name)
+        packages.append(claim/(cfg['programme_id']+'-'+claim.name))
+    if cfg.get('first_session_continuation'):
+        from race_collection.scientific_session_recovery import checked
+        authority = checked(cfg['first_session_continuation'])
+        checked(authority['continuation_plan'])
+        package = Path(authority['continuation_plan']['path']).parent
+        terminal = package.parent/'terminal.json'
+        state = read(terminal)['status'] if terminal.exists() else ('IN_PROGRESS' if (package/'started.json').exists() else 'PREPARED')
+        continuations.append({'original_slot': authority['original_slot'], 'status': state,
+                              'starts_at': authority['starts_at'], 'ends_at': authority['ends_at']})
+        packages.append(package)
+    for package in packages:
         measurement = package/'measurement.json'
         progress = package/'progress.json'
         path = measurement if measurement.exists() else progress
@@ -43,6 +56,7 @@ def programme(cfg, result_health, *, now):
     due = (result_health or {}).get('oldest_due')
     result = {'next_session': next_slot, 'installed_release': cfg['source_commit'],
         'sessions': dict(slot_counts), 'first_session_gate_verified': (root/'canary.json').exists(),
+        'continuations': continuations,
         'observed_opportunities': windows['eligible_observed_windows'],
         'attempted_captures': windows['attempted_windows'], 'missed_observed_windows': windows['missed_observed_windows'],
         'verified_predictions': predictions['PREDICTION_READY'], 'prediction_status_counts': dict(predictions),
@@ -67,6 +81,7 @@ def render(value):
     return '\n'.join([
         f"{value['status']} | Next session: {local} | Release: {p.get('installed_release', 'unknown')}",
         'Workers: '+json.dumps(value.get('worker_status', {}), sort_keys=True)+' | Units: '+json.dumps(value.get('units', {}), sort_keys=True),
+        'Continuations: '+json.dumps(p.get('continuations', []), sort_keys=True),
         f"Inputs: {fresh.get('index_status')} | Last source age: {fresh.get('source_age_seconds')}s | Unverified minute intervals: {p.get('unverified_timer_intervals', 0)} | Unavailable samples: {p.get('unavailable_observation_samples', 0)}/{p.get('observation_samples', 0)}",
         f"Opportunities/windows: {p.get('observed_opportunities', 0)} | Capture attempts: {p.get('attempted_captures', 0)} | Verified predictions: {p.get('verified_predictions', 0)}",
         f"Outstanding results: {p.get('outstanding_results', 0)} | Oldest since jump: {p.get('oldest_outstanding_seconds')}s | First-session gate: {p.get('first_session_gate_verified')}",

@@ -127,14 +127,19 @@ def verify_canary(cfg, result_cfg, root, now):
     import sqlite3
     first=root/'slots/001'
     terminal=first/'terminal.json'
+    continuation=None
     if not terminal.exists() or json.loads(terminal.read_bytes()).get('status')!='COMPLETED':
-        return False
+        from race_collection.scientific_session_recovery import completed_continuation
+        continuation=completed_continuation(cfg,root)
+        if continuation is None:return False
     first_plan=first/(cfg['programme_id']+'-001')/'plan.json'
+    admitted_plans={str(first_plan)}
+    if continuation:admitted_plans.add(continuation['plan'])
     prediction_root=Path(cfg['prediction_root'])
     verified=[]
     for path in (prediction_root/'dispatches').glob('*.json'):
         dispatch=json.loads(path.read_bytes())
-        if dispatch.get('plan')!=str(first_plan):continue
+        if dispatch.get('plan') not in admitted_plans:continue
         key=hashlib.sha256(dispatch['race_id'].encode()).hexdigest()
         terminal_path=prediction_root/'races'/key/'terminal.json'
         if terminal_path.exists():
@@ -150,7 +155,8 @@ def verify_canary(cfg, result_cfg, root, now):
     if not receipt.exists():
         create_once(receipt,{'status':'CANARY_STRUCTURALLY_VERIFIED','at':now.isoformat(),
             'first_slot':cfg['slots'][0],'verified_predictions':len(verified),'closed_results':closed,
-            'plan_sha256':cfg['comparison_plan_sha256'],'outcomes_released':False})
+            'plan_sha256':cfg['comparison_plan_sha256'],'outcomes_released':False,
+            **({'continuation':continuation} if continuation else {})})
     return True
 
 
@@ -159,7 +165,12 @@ def prepare_session(cfg, package, slot):
     roots=json.loads(checked(Path(cfg['reconciliation_roots']),cfg['reconciliation_roots_sha256']))
     # Each prior owned immutable package joins the next reconciliation inventory.
     # No old receipt or shared campaign root inventory is edited.
-    for plan_path in sorted(Path(cfg['state_root']).glob('slots/*/*/plan.json')):
+    prior_plans=set(Path(cfg['state_root']).glob('slots/*/*/plan.json'))
+    if cfg.get('first_session_continuation'):
+        ref=cfg['first_session_continuation'];authority=json.loads(checked(Path(ref['path']),ref['sha256']))
+        ref=authority['continuation_plan'];checked(Path(ref['path']),ref['sha256'])
+        prior_plans.add(Path(ref['path']))
+    for plan_path in sorted(prior_plans):
         prior=json.loads(plan_path.read_bytes())
         for key in ('scheduled_progress','scheduled_reports','phase_checkpoints'):
             roots[key]=sorted(set(roots[key]+[prior['evidence_root']]))
@@ -197,6 +208,13 @@ def tick(config_path):
             create_once(claim/'terminal.json',{'status':'INTERRUPTED_CONSUMED','at':now.isoformat()})
         if (root/'PAUSE_ADMISSIONS').exists(): return {'status':'ADMISSIONS_PAUSED'}
         if now >= stamp(plan['ends_at']): return {'status':'ADMISSION_ENDPOINT_REACHED'}
+        if cfg.get('first_session_continuation') and not (root/'canary.json').exists():
+            from race_collection.scientific_session_recovery import completed_continuation
+            if completed_continuation(cfg,root) is not None:
+                from src.predictor.comparison_result_runtime import load_runtime
+                binding=json.loads(Path(cfg['result_binding']).read_bytes())
+                _,_,result_cfg=load_runtime(binding,now=now)
+                verify_canary(cfg,result_cfg,root,now)
         for index, text in enumerate(cfg['slots']):
             slot = stamp(text)
             if now < slot-timedelta(minutes=10): continue
