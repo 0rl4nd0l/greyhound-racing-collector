@@ -460,6 +460,14 @@ class AttemptAllowance:
         create_once(self.claim.with_suffix(".terminal.json"), {"result": result})
 
 
+class RequestGuardStopped(ValueError):
+    """An acquisition guard stopped the call before it could yield usable input."""
+
+    def __init__(self, message, *, stop_reason):
+        super().__init__(message)
+        self.stop_reason = stop_reason
+
+
 def install_request_guard(scope):
     """Account all requests.Session calls, including auxiliary clients and retries.
 
@@ -510,13 +518,13 @@ def install_request_guard(scope):
             count = json.loads(path.read_bytes())["started"] if path.exists() else 0
             if count >= scope.value["max_logical_requests"]:
                 scope.stop("REQUEST_CAP_EXHAUSTED")
-                raise ValueError("request_cap_exhausted")
+                raise RequestGuardStopped("request_cap_exhausted", stop_reason="REQUEST_CAP_EXHAUSTED")
             if scope.campaign:
                 try:
                     scope.campaign.request()
-                except ValueError:
+                except ValueError as error:
                     scope.stop("CAMPAIGN_REQUEST_CAP_EXHAUSTED")
-                    raise
+                    raise RequestGuardStopped(str(error), stop_reason="CAMPAIGN_REQUEST_CAP_EXHAUSTED") from error
             network[category] += 1
             network["by_host"][host] = network["by_host"].get(host, 0) + 1
             atomic_json(network_path, network)

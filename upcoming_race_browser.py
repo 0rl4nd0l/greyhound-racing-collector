@@ -21,6 +21,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urljoin, urlsplit
 
 import requests
+from race_collection.live_freshness_contract import RequestGuardStopped
 try:
     import bs4
 except Exception as _bs4_import_error:
@@ -3350,6 +3351,10 @@ class UpcomingRaceBrowser:
             print(f"     ⚠️ No race time found on page")
             return None
 
+        except RequestGuardStopped:
+            # Exhausted acquisition authority is not a page with an absent time.
+            # Let the date-level handler invalidate the entire fresh discovery.
+            raise
         except Exception as e:
             print(f"     ❌ Error scraping race time: {e}")
             return None
@@ -3483,6 +3488,8 @@ class UpcomingRaceBrowser:
                             race_info["race_time_source"] = "canonical_race_url"
                             race_info["race_time_mapping_status"] = "missing_race_time"
                         venue_races.append(race_info)
+                    except RequestGuardStopped:
+                        raise
                     except Exception as e:
                         print(f"     ⚠️ Error processing race link for {venue}: {e}")
                 return venue_races
@@ -3508,6 +3515,8 @@ class UpcomingRaceBrowser:
             failure = {
                 'source_url': f'{self.base_url}/racing/{date_str}', 'source_date': date_str,
                 'error_type': type(e).__name__}
+            if isinstance(e, RequestGuardStopped):
+                failure['stop_reason'] = e.stop_reason
             # A transport exception can carry a response. Retain its status
             # and retry guidance so it cannot become a response-free outage.
             error_response = getattr(e, 'response', None)
