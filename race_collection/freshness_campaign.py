@@ -11,9 +11,12 @@ from race_collection.live_phase_checkpoint import atomic_json
 
 
 class Campaign:
-    def __init__(self, path, *, engineering_authority=None, development_authority=None):
-        if engineering_authority is not None and development_authority is not None:
+    def __init__(self, path, *, engineering_authority=None, development_authority=None,
+                 incident_authority=None, incident_slot=None):
+        if sum(v is not None for v in (engineering_authority,development_authority,incident_authority)) > 1:
             raise ValueError("conflicting_campaign_profiles")
+        if (incident_authority is None) != (incident_slot is None):
+            raise ValueError('incident_authority_and_slot_required')
         if engineering_authority is not None and (
                 not isinstance(engineering_authority, str) or not engineering_authority.strip()):
             raise ValueError('explicit_engineering_authority_required')
@@ -137,9 +140,28 @@ class Campaign:
                           'engineering_authority': engineering_authority,
                           'study_authority_sha256': digest(self.value)}
             self.programme = None
+        self.incident_authority = incident_authority
+        self.incident_slot = incident_slot
+        self.incident = None
+        if incident_authority is not None:
+            from race_collection.incident_engineering import load_incident_authority, incident_slot as select_slot
+            self.incident = load_incident_authority(incident_authority)
+            select_slot(self.incident,incident_slot)
+            if self.incident['campaign_id'] != self.value['campaign_id']:
+                raise ValueError('incident_campaign_binding_changed')
+            self.value = {**self.value,'max_capture_attempts':24,'max_logical_requests':16000,
+                          'max_live_seconds':7260,'incident_authority':incident_authority,'incident_slot':incident_slot}
+            self.programme = None
 
     @staticmethod
     def from_scope(value):
+        if value.get('incident_authority') is None and value.get('incident_slot') is not None:
+            raise ValueError('incident_authority_and_slot_required')
+        if value.get('incident_authority') is not None:
+            if value.get('engineering_authority') is not None or value.get('development_authority') is not None:
+                raise ValueError('conflicting_campaign_profiles')
+            return Campaign(value['campaign_root'],incident_authority=value['incident_authority'],
+                            incident_slot=value.get('incident_slot'))
         if value.get('development_authority') is not None:
             predictions = value.get('operational_predictions', {})
             if (value.get('engineering_authority') is not None or value.get('frozen_comparison')
@@ -160,14 +182,38 @@ class Campaign:
         """Cumulative totals stay intact; explicitly charged engineering is separate."""
         initial = self.programme['initial_counters']
         pilot = self.development_usage(value)
+        incident = self.incident_usage(value)
         return {
             'capture_attempts': len(value['attempts']) - initial['capture_attempts']
-                - sum(bool(r.get('engineering_authority')) for r in value['attempts']) - pilot['capture_attempts'],
+                - sum(bool(r.get('engineering_authority')) for r in value['attempts']) - pilot['capture_attempts'] - incident['capture_attempts'],
             'logical_requests': value['logical_requests'] - initial['logical_requests']
-                - value.get('preprogramme_engineering_requests', 0) - pilot['logical_requests'],
+                - value.get('preprogramme_engineering_requests', 0) - pilot['logical_requests'] - incident['logical_requests'],
             'live_seconds': sum(r['charged_seconds'] for r in value['launches'].values()
-                                if not r.get('engineering_authority')) - initial['live_seconds'] - pilot['live_seconds'],
+                                if not r.get('engineering_authority')) - initial['live_seconds'] - pilot['live_seconds'] - incident['live_seconds'],
         }
+
+    def incident_usage(self, value, *, selected=False):
+        from race_collection.incident_engineering import incident_usage
+        return incident_usage(value,self.value['campaign_id'],
+            authority_sha256=self.incident_authority['sha256'] if selected else None,
+            slot=self.incident_slot if selected else None)
+
+    def incident_tags(self):
+        return dict(incident_authority=self.incident_authority,
+                    incident_authority_sha256=self.incident_authority['sha256'],
+                    incident_id=self.incident['incident_id'],incident_slot=self.incident_slot)
+
+    def incident_window(self, now=None, *, kind='prediction', preflight=False):
+        from race_collection.incident_engineering import incident_slot, stamp
+        current=now or datetime.now(timezone.utc)
+        slot=incident_slot(self.incident,self.incident_slot)
+        if kind not in {'prediction','results'}:
+            raise ValueError('unknown_incident_request_kind')
+        start=stamp(self.incident['issued_at'] if preflight else slot['starts_at'])
+        end=stamp(slot['ends_at'] if kind=='prediction' else self.incident['result_deadline'])
+        if not start <= current < end:
+            raise ValueError('incident_window_closed')
+        return slot
 
     def development_usage(self, value, day=None):
         rows = [*value['attempts'], *value['launches'].values()]
@@ -232,6 +278,8 @@ class Campaign:
         return day
 
     def check_programme_time(self):
+        if self.incident:
+            self.incident_window(preflight=True)
         if self.development:
             self.development_day()
         if self.engineering_authority and self.study_programme:
@@ -270,13 +318,22 @@ class Campaign:
         if (self.engineering_authority and self.study_programme
                 and deadline >= datetime.fromisoformat(self.study_programme['starts_at'])):
             raise ValueError('engineering_window_overlaps_programme')
+        if self.incident:
+            from race_collection.incident_engineering import stamp
+            slot=self.incident_window(now)
+            if deadline > stamp(slot['cleanup_by']):
+                raise ValueError('incident_cleanup_deadline_exceeded')
         with self.ledger() as value:
             if value.get('source_holds'):
                 raise ValueError('campaign_source_hold')
             if launch in value['launches'] or any(not r.get('closed_at') for r in value['launches'].values()):
                 raise ValueError('campaign_owner_or_launch_already_exists')
-            used = (self.development_usage(value)['live_seconds'] if self.development else
-                    sum(r['charged_seconds'] for r in value['launches'].values()) - self.development_usage(value)['live_seconds'])
+            if self.incident and any(r.get('incident_authority_sha256')==self.incident_authority['sha256']
+                    and r.get('incident_slot')==self.incident_slot for r in value['launches'].values()):
+                raise ValueError('incident_slot_consumed')
+            used = (self.incident_usage(value,selected=True)['live_seconds'] if self.incident else
+                    self.development_usage(value)['live_seconds'] if self.development else
+                    sum(r['charged_seconds'] for r in value['launches'].values()) - self.development_usage(value)['live_seconds'] - self.incident_usage(value)['live_seconds'])
             charge = (deadline - now).total_seconds()
             if (charge <= 0 or used + charge > self.value['max_live_seconds']
                     or self.programme and self.programme_usage(value)['live_seconds']+charge>580800):
@@ -288,6 +345,8 @@ class Campaign:
                 deadline_epoch=deadline.timestamp(), charged_seconds=charge)
             if self.development:
                 value['launches'][launch].update(self.development_tags(day))
+            if self.incident:
+                value['launches'][launch].update(self.incident_tags())
             if self.engineering_authority and self.study_programme:
                 value['launches'][launch]['engineering_authority'] = self.engineering_authority
 
@@ -301,14 +360,25 @@ class Campaign:
 
     def available(self):
         with self.ledger() as value:
+            if self.incident:
+                self.incident_window()
+                return self.incident_usage(value,selected=True)['capture_attempts'] < 24
             if self.development:
                 return (self.development_usage(value)['capture_attempts'] < 24
                         and self.development_usage(value, self.development_day())['capture_attempts'] < 6)
-            return (len(value['attempts']) - self.development_usage(value)['capture_attempts'] < self.value['max_capture_attempts'] and
+            return (len(value['attempts']) - self.development_usage(value)['capture_attempts'] - self.incident_usage(value)['capture_attempts'] < self.value['max_capture_attempts'] and
                     (not self.programme or self.programme_usage(value)['capture_attempts']<1000))
 
     def consume(self, claim, item):
         self.check_programme_time()
+        if self.incident:
+            self.incident_window()
+            from race_collection.incident_engineering import checked
+            study=checked(self.incident['study_plan'])
+            claims=Path(study['programme_root'])/self.incident['study_plan']['sha256']/'attempts'
+            identities=set(item.get('race_id_aliases',[]))|{item['race_id']}
+            if any((claims/hashlib.sha256(identity.encode()).hexdigest()/'admission.json').exists() for identity in identities):
+                raise ValueError('incident_study_identity_already_admitted')
         if self.development:
             day = self.require_development_member(item)
         with self.ledger() as value:
@@ -317,7 +387,9 @@ class Campaign:
             if self.development and (self.development_usage(value)['capture_attempts'] >= 24
                     or self.development_usage(value, day)['capture_attempts'] >= 6):
                 raise ValueError('development_capture_allowance_consumed')
-            if (not self.development and len(value['attempts']) - self.development_usage(value)['capture_attempts'] >= self.value['max_capture_attempts']
+            if self.incident and self.incident_usage(value,selected=True)['capture_attempts']>=24:
+                raise ValueError('incident_capture_allowance_consumed')
+            if (not self.development and not self.incident and len(value['attempts']) - self.development_usage(value)['capture_attempts'] - self.incident_usage(value)['capture_attempts'] >= self.value['max_capture_attempts']
                     or self.programme and self.programme_usage(value)['capture_attempts']>=1000):
                 raise ValueError('campaign_capture_allowance_consumed')
             aliases = set(item.get('race_id_aliases', [item['race_id']])) | {item['race_id']}
@@ -329,6 +401,8 @@ class Campaign:
                 consumed_at=datetime.now(timezone.utc).isoformat()))
             if self.development:
                 value['attempts'][-1].update(self.development_tags(day))
+            if self.incident:
+                value['attempts'][-1].update(self.incident_tags())
             if self.engineering_authority and self.study_programme:
                 value['attempts'][-1]['engineering_authority'] = self.engineering_authority
 
@@ -348,6 +422,19 @@ class Campaign:
             value['logical_requests'] += 1
 
     def request(self, *, kind='prediction'):
+        if self.incident:
+            self.incident_window(kind=kind)
+            with self.ledger() as value:
+                if value.get('source_holds'):
+                    raise ValueError('campaign_source_hold')
+                if self.incident_usage(value,selected=True)[kind] >= (16000 if kind=='prediction' else 72):
+                    raise ValueError('incident_request_cap_exhausted')
+                key=self.incident_authority['sha256']+':'+self.incident_slot
+                usage=value.setdefault('incident_request_usage',{}).setdefault(key,
+                    {**self.incident_tags(),'counts':{'prediction':0,'results':0}})
+                usage['counts'][kind]+=1
+                value['logical_requests']+=1
+            return
         if self.development:
             return self.development_request(kind)
         self.check_programme_time()
@@ -356,7 +443,7 @@ class Campaign:
         with self.ledger() as value:
             if value.get('source_holds'):
                 raise ValueError('campaign_source_hold')
-            if (value['logical_requests'] - self.development_usage(value)['logical_requests'] >= self.value['max_logical_requests']
+            if (value['logical_requests'] - self.development_usage(value)['logical_requests'] - self.incident_usage(value)['logical_requests'] >= self.value['max_logical_requests']
                     or self.programme and self.programme_usage(value)['logical_requests']>=1304000):
                 raise ValueError('campaign_request_cap_exhausted')
             if self.programme:
