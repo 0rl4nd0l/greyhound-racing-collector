@@ -67,6 +67,28 @@ NO_WRITE_GUARANTEES = {
 }
 
 
+def comparison_runner_identity_error(candidate, result):
+    """Match the frozen field; extra rows require explicit nonstarter proof."""
+    error = 'comparison_official_runner_identity_mismatch'
+    expected = {int(r['box_number']): ingest._result_identity_name(r['dog_name'])
+                for r in candidate.participants}
+    actual = {int(box): ingest._result_identity_name(name)
+              for box, name in (result.dog_names_by_box or {}).items()}
+    if (not result.runner_identity_rows_complete or not expected or not all(expected.values())
+            or result.reserve_box_remappings or result.rejected_reserve_box_remappings
+            or {box: name for box, name in actual.items() if box in expected} != expected):
+        return error
+    extras = set(actual) - set(expected)
+    extra_statuses = {int(box): status for box, status in (result.terminal_status_by_box or {}).items()
+                      if int(box) not in expected}
+    if (set(extra_statuses) != extras
+            or any(status not in {'SCR', 'L/SCR', 'LSCR'} for status in extra_statuses.values())
+            or extras.intersection(result.positions_by_box)
+            or any(not actual[box] for box in extras)):
+        return error
+    return None
+
+
 def now_id(now: datetime | None = None) -> str:
     return (now or datetime.now().astimezone()).strftime("%Y%m%dT%H%M%S%z")
 
@@ -1375,12 +1397,9 @@ def run_shadow_run_official_dry_run(
                     selected = official
                     validation_error = ingest.result_validation_error(candidate, selected)
                     if comparison_result_binding is not None and selected.positions_by_box:
-                        expected_names = {int(r['box_number']): ingest._result_identity_name(r['dog_name'])
-                                          for r in candidate.participants}
-                        actual_names = {int(box): ingest._result_identity_name(name)
-                                        for box, name in (selected.dog_names_by_box or {}).items()}
-                        if actual_names != expected_names or selected.reserve_box_remappings:
-                            validation_error = 'comparison_official_runner_identity_mismatch'
+                        identity_error = comparison_runner_identity_error(candidate, selected)
+                        if identity_error:
+                            validation_error = identity_error
                     comparison_tie = (comparison_result_binding is not None
                         and validation_error in {None,"duplicate_first_place_results"}
                         and set(selected.positions_by_box)=={r["box_number"] for r in candidate.participants}

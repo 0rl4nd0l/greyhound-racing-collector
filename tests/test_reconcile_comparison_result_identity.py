@@ -77,6 +77,15 @@ def case(tmp_path, monkeypatch):
         'outcomes_released': False, 'preserve_attempts': True}
     authority_path = tmp_path/'reconciliation-authority.json'
     put(authority_path, authority)
+    # The production reconciler uses the actual clock in addition to an injected
+    # admission time. Keep these invented historical fixtures calendar-independent.
+    from scripts import reconcile_comparison_result_identity as reconciliation
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            value = captured+timedelta(minutes=1)
+            return value.astimezone(tz) if tz else value.replace(tzinfo=None)
+    monkeypatch.setattr(reconciliation, 'datetime', Clock)
     return dict(path=authority_path, authority=authority, runtime=runtime, root=root,
         now=captured+timedelta(minutes=1), job=job, bundle=bundle)
 
@@ -274,3 +283,42 @@ def test_exported_entrypoint_denies_network_and_emits_only_structural_status(cas
     for family in (socket.AF_INET, socket.AF_INET6):
         with pytest.raises(PermissionError):
             socket.socket(family)
+
+
+@pytest.mark.parametrize('status', ['SCR', 'L/SCR', 'LSCR'])
+def test_explicit_extra_nonstarter_preserves_frozen_field_and_consumption(case, status):
+    body = Path(case['authority']['body']['path'])
+    extra = ('<tr class="race-runner"><td class="race-runners__finish-position">'+status+'</td>'
+             '<td class="race-runners__box"><sprite-svg name="rug_8"></sprite-svg></td>'
+             '<td class="race-runners__name"><a>Invented Nonstarter</a></td></tr>')
+    body.write_text(body.read_text().replace('</table>', extra+'</table>'))
+    case['authority']['body'] = ref(body)
+    response_path = Path(case['authority']['response']['path'])
+    response = json.loads(response_path.read_bytes())
+    response.update(sha256=ref(body)['sha256'], bytes=body.stat().st_size)
+    case['authority']['response'] = put(response_path, response)
+    result = run(case)
+    assert result['status'] == 'CLOSED_FROM_RETAINED_IDENTITY_RECONCILIATION'
+    assert result['provider_requests'] == 0
+    with sqlite3.connect(case['root']/'queue.sqlite3') as db:
+        assert db.execute('SELECT state,attempts FROM jobs').fetchone() == ('CLOSED', 1)
+        assert db.execute('SELECT count(*) FROM requests').fetchone()[0] == 1
+        assert [r[0] for r in db.execute('SELECT status FROM events ORDER BY id')] == [
+            'COLLECTOR_FAILURE', 'CLOSED_FROM_RETAINED_IDENTITY_RECONCILIATION']
+
+
+@pytest.mark.parametrize('status', ['DNF', 'FELL', 'DISQ', '', '4th'])
+def test_extra_runner_without_explicit_nonstarter_proof_stays_quarantined(case, status):
+    body = Path(case['authority']['body']['path'])
+    extra = ('<tr class="race-runner"><td class="race-runners__finish-position">'+status+'</td>'
+             '<td class="race-runners__box"><sprite-svg name="rug_8"></sprite-svg></td>'
+             '<td class="race-runners__name"><a>Invented Extra Runner</a></td></tr>')
+    body.write_text(body.read_text().replace('</table>', extra+'</table>'))
+    case['authority']['body'] = ref(body)
+    response_path = Path(case['authority']['response']['path'])
+    response = json.loads(response_path.read_bytes())
+    response.update(sha256=ref(body)['sha256'], bytes=body.stat().st_size)
+    case['authority']['response'] = put(response_path, response)
+    with pytest.raises(ValueError):
+        run(case)
+    assert_quarantined(case)

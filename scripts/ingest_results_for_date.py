@@ -859,6 +859,7 @@ class SourceResult:
     reserve_box_remappings: Optional[List[dict]] = None
     ignored_terminal_status_rows: Optional[List[dict]] = None
     rejected_reserve_box_remappings: Optional[List[dict]] = None
+    runner_identity_rows_complete: bool = False
 
     @property
     def winner_box(self) -> Optional[int]:
@@ -1100,7 +1101,28 @@ class TheDogsResultFetcher:
         source_url: str,
         markup: str,
     ) -> Optional[SourceResult]:
+        from src.predictor.comparison_result_runtime import check_active_deadline
+        check_active_deadline()
         runner_rows = parse_thedogs_result_html_runner_rows(markup)
+        check_active_deadline()
+        # Dictionary projections can hide duplicate, unnamed or skipped rows.
+        # A comparison may exclude explicit nonstarters only after every source
+        # runner row has a unique box and a usable identity.
+        try:
+            check_active_deadline()
+            from bs4 import BeautifulSoup
+            source_row_count = len(BeautifulSoup(markup or "", "html.parser").select(
+                "table.race-runners--result tr.race-runner"))
+            identity_rows_complete = (
+                bool(runner_rows) and source_row_count == len(runner_rows)
+                and len({r['box_number'] for r in runner_rows}) == len(runner_rows)
+                and all(_result_identity_name(r.get('dog_name')) for r in runner_rows))
+            check_active_deadline()
+        except Exception:
+            # Expiry is never a parser fallback or an incomplete-data success.
+            check_active_deadline()
+            identity_rows_complete = False
+        check_active_deadline()
         reserve_remap = remap_promoted_reserve_runner_rows(
             runner_rows,
             candidate.participants,
@@ -1139,6 +1161,7 @@ class TheDogsResultFetcher:
                 reserve_box_remappings=reserve_remap["remappings"],
                 ignored_terminal_status_rows=reserve_remap["ignored_terminal_status_rows"],
                 rejected_reserve_box_remappings=reserve_remap["rejected_remappings"],
+                runner_identity_rows_complete=identity_rows_complete,
             )
         if thedogs_result_rows_present(markup):
             return SourceResult(
