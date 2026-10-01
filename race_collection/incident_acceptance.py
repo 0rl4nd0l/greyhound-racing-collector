@@ -39,6 +39,7 @@ def verified_incident_acceptance(study_cfg, reference, now):
                 or prepared['commit'] != cfg['source_commit']
                 or prepared['incident_authority'] != cfg['incident_authority']
                 or prepared['incident_slot'] != cfg['incident_slot']
+                or prepared['frozen_comparison'] != {'path':cfg['comparison_plan'], 'sha256':cfg['comparison_plan_sha256']}
                 or prepared['starts_at'] != slot['starts_at'] or prepared['ends_at'] != slot['ends_at']
                 or measured['status'] != 'REHEARSAL_MEASURED_NOT_RELEASED'
                 or measured['completed_cycles']['full'] < 3 or measured['completed_cycles']['odds'] < 6
