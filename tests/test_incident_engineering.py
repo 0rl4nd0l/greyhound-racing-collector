@@ -6,6 +6,21 @@ from pathlib import Path
 import pytest
 
 
+def test_legacy_incident_adjustment_is_not_new_engineering_consumption():
+    from race_collection.incident_engineering import incident_usage
+    ledger = {'launches': {'prior': {'incident_adjustment_reference':'retained-approved-adjustment',
+                                   'charged_seconds':10800}}, 'attempts':[]}
+    assert incident_usage(ledger, 'SYNTHETIC') == dict(capture_attempts=0, live_seconds=0,
+        prediction=0, results=0, logical_requests=0)
+
+
+@pytest.mark.parametrize('tag', ['incident_authority','incident_authority_sha256','incident_id','incident_slot'])
+def test_partial_incident_consumption_tags_still_fail_closed(tag):
+    from race_collection.incident_engineering import incident_usage
+    with pytest.raises((ValueError, KeyError, TypeError)):
+        incident_usage({'launches':{'new':{tag:'unbound','charged_seconds':1}}}, 'SYNTHETIC')
+
+
 def put(path, value):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, sort_keys=True))

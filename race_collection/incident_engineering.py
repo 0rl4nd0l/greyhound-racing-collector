@@ -128,7 +128,9 @@ def incident_usage(value, campaign_id, *, authority_sha256=None, slot=None):
         return ((authority_sha256 is None or ref['sha256']==authority_sha256)
                 and (slot is None or row['incident_slot']==slot))
     def tagged(row):
-        return any(k.startswith('incident_') for k in row)
+        # Historical incident_adjustment_reference is unrelated, already charged
+        # consumption. Only this profile's explicit authority tags select it.
+        return bool({'incident_authority','incident_authority_sha256','incident_id','incident_slot'} & row.keys())
     for row in value.get('attempts',[]):
         if tagged(row) and validate(row): totals['capture_attempts'] += 1
     for row in value.get('launches',{}).values():
@@ -184,6 +186,7 @@ def incident_source_usage(value, baseline_count):
                     or not row['authorized_at']<=op['at']<row['expires_at']):
                 raise ValueError('invalid_incident_source_accounting')
             recognized.add(i)
-    if any(any(k.startswith('incident_') for k in row) and i not in recognized for i,row in enumerate(operations)):
+    if any({'incident_authority','incident_authority_sha256','incident_id','incident_slot','incident_kind'} & row.keys()
+           and i not in recognized for i,row in enumerate(operations)):
         raise ValueError('invalid_incident_source_accounting')
     return sum(i>=baseline_count for i in recognized)
