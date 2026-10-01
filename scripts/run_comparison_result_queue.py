@@ -205,14 +205,23 @@ def cycle(binding_path):
                     event(db, now, row['race'], 'ATTEMPTS_EXHAUSTED'); continue
                 # Check shared holds/lock before consuming a queue attempt. The
                 # child independently acquires both locks and rechecks at request.
-                from utils.sportsbet_access import SportsbetAccess
-                if SportsbetAccess(cfg['source_state']).blocks_restoration():
+                from utils.sportsbet_access import SportsbetAccess, SportsbetAccessBlocked
+                # Classify one validated snapshot. An active operation is
+                # contention, while restrictions and invalid state remain holds.
+                try:
+                    source = SportsbetAccess(cfg['source_state']).read()
+                except SportsbetAccessBlocked:
+                    return status(root,db,now,'SHARED_SOURCE_HOLD')
+                if (source['access_basis']['status'] != 'permitted'
+                        or source['phase'] != 'OPEN' or source['not_before'] > now.timestamp()):
                     return status(root,db,now,'SHARED_SOURCE_HOLD')
                 from race_collection.freshness_campaign import Campaign
                 with Campaign(cfg['campaign_root'], **{key: cfg[key] for key in
                         ('incident_authority', 'incident_slot') if key in cfg}).ledger() as ledger:
                     if ledger.get('source_holds'):
                         return status(root, db, now, 'SOURCE_HOLD')
+                if source['active'] is not None:
+                    return status(root, db, now, 'SOURCE_OPERATION_BUSY')
                 with (Path(cfg['campaign_root'])/'owner.lock').open('a') as owner:
                     try: fcntl.flock(owner,fcntl.LOCK_EX|fcntl.LOCK_NB)
                     except BlockingIOError: return status(root,db,now,'CAMPAIGN_OWNER_BUSY')
@@ -282,7 +291,7 @@ def main():
     try:
         value = cycle(args.binding)
         print(json.dumps(value))
-        return 0 if value['status'] in ('CYCLE_COMPLETE', 'CLOSURE_SEALED','COLLECTOR_LOCK_BUSY','CAMPAIGN_OWNER_BUSY') else 2
+        return 0 if value['status'] in ('CYCLE_COMPLETE', 'CLOSURE_SEALED','COLLECTOR_LOCK_BUSY','CAMPAIGN_OWNER_BUSY','SOURCE_OPERATION_BUSY') else 2
     except Exception as exc:
         # Even exception messages can contain provider data. Only class is public.
         value={'status': 'RESULT_WORKER_FAILED', 'failure_class': type(exc).__name__,

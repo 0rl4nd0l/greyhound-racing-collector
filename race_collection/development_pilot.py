@@ -172,7 +172,7 @@ def require_study_health(config, now):
         result_health=json.loads((Path(authority['runtime']['state_root'])/'health.json').read_bytes())
     if (schedule_health.get('status') not in {'NO_SLOT_DUE','SESSION_COMPLETED'}
             or not 0 <= (now-stamp(schedule_health['at'])).total_seconds() <= 2700
-            or result_health.get('status') not in {'CYCLE_COMPLETE','COLLECTOR_LOCK_BUSY','CAMPAIGN_OWNER_BUSY'}
+            or result_health.get('status') not in {'CYCLE_COMPLETE','COLLECTOR_LOCK_BUSY','CAMPAIGN_OWNER_BUSY','SOURCE_OPERATION_BUSY'}
             or not 0 <= (now-stamp(result_health['at'])).total_seconds() <= 2700
             or result_health.get('counts',{}).get('RUNNING',0)
             or result_health.get('oldest_due') and stamp(result_health['oldest_due'])<=now):

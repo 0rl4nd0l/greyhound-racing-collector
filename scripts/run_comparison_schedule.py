@@ -294,7 +294,7 @@ def tick(config_path):
                 result_health=json.loads(result_health_path.read_bytes())
                 if not verify_canary(cfg,result_cfg,root,now):
                     return {'status':'CANARY_NOT_VERIFIED'}
-                if (now-stamp(result_health['at']) > timedelta(minutes=45) or result_health['status'] not in {'CYCLE_COMPLETE','COLLECTOR_LOCK_BUSY','CAMPAIGN_OWNER_BUSY'}
+                if (now-stamp(result_health['at']) > timedelta(minutes=45) or result_health['status'] not in {'CYCLE_COMPLETE','COLLECTOR_LOCK_BUSY','CAMPAIGN_OWNER_BUSY','SOURCE_OPERATION_BUSY'}
                         or result_health.get('oldest_due') and now-stamp(result_health['oldest_due']) > timedelta(days=1)):
                     return {'status':'RESULT_RETENTION_HOLD'}
             atomic_json(root/'health.json',{'status':'SESSION_RUNNING','at':now.isoformat(),'slot':text,'outcomes_released':False})
