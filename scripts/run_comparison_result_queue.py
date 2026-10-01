@@ -172,7 +172,8 @@ def cycle(binding_path):
                 if SportsbetAccess(cfg['source_state']).blocks_restoration():
                     return status(root,db,now,'SHARED_SOURCE_HOLD')
                 from race_collection.freshness_campaign import Campaign
-                with Campaign(cfg['campaign_root']).ledger() as ledger:
+                with Campaign(cfg['campaign_root'], **{key: cfg[key] for key in
+                        ('incident_authority', 'incident_slot') if key in cfg}).ledger() as ledger:
                     if ledger.get('source_holds'):
                         return status(root, db, now, 'SOURCE_HOLD')
                 with (Path(cfg['campaign_root'])/'owner.lock').open('a') as owner:

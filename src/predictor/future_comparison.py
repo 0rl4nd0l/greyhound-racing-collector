@@ -40,7 +40,7 @@ def put(path, value):
 def load_plan(path, expected):
     raw = checked(path, expected); plan = json.loads(raw)
     if plan["schema_version"] not in {PLAN_SCHEMA, "frozen_four_way_comparison_plan_v2"}: raise ValueError("comparison_plan_schema")
-    if plan["status"] not in {"AUTHORIZED", "SYNTHETIC_REHEARSAL_ONLY"}:
+    if plan["status"] not in {"AUTHORIZED", "AUTHORIZED_ENGINEERING", "SYNTHETIC_REHEARSAL_ONLY"}:
         raise ValueError("comparison_not_activated")
     if not plan["authority_reference"] or plan["decision_seconds_before_jump"] != 120 or plan["quote_lead_seconds"] != [120,600]:
         raise ValueError("comparison_policy_changed")
@@ -58,6 +58,9 @@ def load_plan(path, expected):
                 or plan.get("fixed_closure_days")!=14
                 or plan.get("missing_result_policy")!="bounded_paired_losses_v1"):
             raise ValueError("comparison_v2_policy_unbound")
+    if plan['status'] == 'AUTHORIZED_ENGINEERING':
+        from race_collection.incident_comparison import validate_incident_plan
+        validate_incident_plan(plan)
     return plan, raw
 
 
@@ -65,6 +68,8 @@ def observe_worker_job(job, config, now):
     """Consume research admission before worker preflight; production is separate."""
     try:
         plan,_=load_plan(config.comparison_plan,config.comparison_plan_sha256)
+        from race_collection.incident_comparison import assert_incident_race_allowed
+        assert_incident_race_allowed(plan, job.input.race_id)
         jump=stamp(job.input.jump_timestamp)
         if not stamp(plan["starts_at"])<=jump<stamp(plan["ends_at"]) or now<stamp(plan["activated_at"]) or now>=jump-timedelta(seconds=120):
             return None
@@ -123,6 +128,8 @@ class Comparison:
             "retained_input_manifest_sha256":retained_digest}
         try:
             self.plan, raw=load_plan(Path(plan_path),plan_sha256)
+            from race_collection.incident_comparison import assert_incident_race_allowed
+            assert_incident_race_allowed(self.plan, state['race']['race_id'])
             write_exact_bytes(self.root/"plan.json",raw)
             programme=Path(self.plan["programme_root"])
             if not programme.is_absolute(): raise ValueError("comparison_programme_root_not_absolute")
@@ -394,8 +401,12 @@ def verify_comparison(root, admission_path, *, expected_plan_sha256=None):
                 replay=predict(json.loads(raw),json.loads(contents["comparison/features.json"]),market)
             if any(abs(a-b)>1e-12 for a,b in zip(actual,replay)):
                 raise ValueError("comparison_replay_changed")
+    if plan['status'] == 'AUTHORIZED_ENGINEERING':
+        from race_collection.incident_comparison import validate_incident_plan
+        validate_incident_plan(plan)
     eligible=(completion["status"]=="COMPLETE_BEFORE_CUTOFF" and stamp(completion["published_complete_at"])<stamp(admission["decision_at"])
         and all(r["status"]=="SEALED" for r in records.values()) and summary["feature_failure"] is None)
     return {"schema_version":"verified_four_way_comparison_v1","evidence_class":plan["status"],
         "eligible_common_race":eligible,"future_race_evidence":eligible and plan["status"]=="AUTHORIZED",
+        "engineering_evidence":eligible and plan['status']=='AUTHORIZED_ENGINEERING',
         "records":records,"completion":completion}

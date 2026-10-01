@@ -159,6 +159,21 @@ class FreshnessContract:
         self.session = self.root / (
             "rehearsal-" + hashlib.sha256(value["rehearsal_id"].encode()).hexdigest()
         )
+        if value.get('incident_authority') is not None:
+            from race_collection.incident_engineering import incident_slot
+            from src.predictor.future_comparison import load_plan
+            binding = value['frozen_comparison']
+            comparison, _ = load_plan(Path(binding['path']), binding['sha256'])
+            if (comparison['status'] != 'AUTHORIZED_ENGINEERING'
+                    or any(comparison.get(key) != value[key] for key in ('incident_authority', 'incident_slot'))):
+                raise ValueError('incident_comparison_scope_mismatch')
+            slot = incident_slot(self.campaign.incident, value['incident_slot'])
+            if (self.start != datetime.fromisoformat(slot['starts_at'])
+                    or self.end != datetime.fromisoformat(slot['ends_at'])
+                    or self.end + timedelta(seconds=value['cleanup_seconds']) > datetime.fromisoformat(slot['cleanup_by'])):
+                raise ValueError('incident_scope_window_changed')
+            os.environ['GREYHOUND_INCIDENT_AUTHORITY_SHA256'] = value['incident_authority']['sha256']
+            os.environ['GREYHOUND_INCIDENT_SLOT'] = value['incident_slot']
 
     @classmethod
     def load(cls, path):

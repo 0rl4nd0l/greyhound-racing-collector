@@ -36,8 +36,11 @@ def prepared(tmp_path, monkeypatch):
     root = tmp_path / 'campaign'
     root.mkdir()
     (root / 'ledger.json').write_text('{"attempts": []}')
-    campaign = SimpleNamespace(root=root, value={'max_capture_attempts': 64, 'max_logical_requests': 48000})
-    monkeypatch.setattr('race_collection.freshness_campaign.Campaign', lambda _: campaign)
+    campaign = SimpleNamespace(root=root, development=None, programme=None,
+        value={'max_capture_attempts': 64, 'max_logical_requests': 48000})
+    factory = lambda _, **kwargs: campaign
+    factory.from_scope = lambda value: campaign
+    monkeypatch.setattr('race_collection.freshness_campaign.Campaign', factory)
     monkeypatch.setitem(sys.modules, 'sportsbet_odds_integrator', SimpleNamespace(
         SportsbetOddsIntegrator=lambda path, **kw: Path(path).touch()))
     monkeypatch.setattr('race_collection.operational_prediction.prepare_retention', lambda *a: 'a'*64)

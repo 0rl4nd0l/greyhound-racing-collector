@@ -25,18 +25,34 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def load_config(path):
     cfg = json.loads(path.read_bytes())
-    if cfg.get('status') != 'AUTHORIZED_PERSISTENT_SCHEDULE' or not cfg.get('authority_reference'):
+    incident = cfg.get('status') == 'AUTHORIZED_INCIDENT_SCHEDULE'
+    if cfg.get('status') not in {'AUTHORIZED_PERSISTENT_SCHEDULE', 'AUTHORIZED_INCIDENT_SCHEDULE'} or not cfg.get('authority_reference'):
         raise ValueError('schedule_not_authorized')
     plan, _ = load_plan(Path(cfg['comparison_plan']), cfg['comparison_plan_sha256'])
-    if plan['status'] != 'AUTHORIZED': raise ValueError('study_not_authorized')
+    if plan['status'] != ('AUTHORIZED_ENGINEERING' if incident else 'AUTHORIZED'):
+        raise ValueError('study_not_authorized')
     slots = [stamp(s) for s in cfg['slots']]
     if (not 1 <= len(slots) <= 80 or slots != sorted(set(slots))
             or any(not stamp(plan['starts_at']) <= s < stamp(plan['ends_at']) for s in slots)
-            or any((b-a).total_seconds() < 23*3600 for a,b in zip(slots,slots[1:]))
+            or (not incident and any((b-a).total_seconds() < 23*3600 for a,b in zip(slots,slots[1:])))
             or cfg['session_minutes'] != 90 or cfg['grace_seconds'] != 300
             or cfg['source_operations_per_session'] != 192
             or cfg['max_source_operations'] != len(slots)*192):
         raise ValueError('invalid_fixed_schedule')
+    if incident:
+        from race_collection.incident_comparison import validate_incident_plan
+        authority = validate_incident_plan(plan)
+        slot = next(row for row in authority['slots'] if row['id'] == plan['incident_slot'])
+        if (any(cfg.get(key) != plan[key] for key in ('incident_authority', 'incident_slot'))
+                or cfg['slots'] != [slot['starts_at']]
+                or cfg['authority_reference'] != authority['authority_reference']
+                or Path(cfg['state_root']) != Path(authority['state_root']) / 'windows' / slot['id']
+                or cfg['prediction_root'] != authority['prediction_root']):
+            raise ValueError('incident_schedule_mismatch')
+        result_binding = json.loads(Path(cfg['result_binding']).read_bytes())
+        if (result_binding['plan'] != cfg['comparison_plan']
+                or result_binding['plan_sha256'] != cfg['comparison_plan_sha256']):
+            raise ValueError('incident_schedule_result_binding_mismatch')
     current = subprocess.check_output(['git','rev-parse','HEAD'], cwd=ROOT, text=True).strip()
     dirty = subprocess.check_output(['git','status','--porcelain','--untracked-files=no'], cwd=ROOT, text=True)
     if current != cfg['source_commit'] or dirty:
@@ -70,15 +86,18 @@ def programme_source_usage(value, baseline_count, programme_start):
             raise ValueError('invalid_preprogramme_source_accounting')
         used -= max(0, end-max(start, baseline_count))
     from race_collection.development_source_authority import development_source_usage
-    return used - development_source_usage(value, baseline_count)
+    from race_collection.incident_engineering import incident_source_usage
+    return used - development_source_usage(value, baseline_count) - incident_source_usage(value, baseline_count)
 
 
 def renew_source(cfg, slot, *, now):
     """Only an approved finite programme may renew an expired OPEN lease."""
     from race_collection.freshness_campaign import Campaign
     from utils.sportsbet_access import SportsbetAccess
-    campaign = Campaign(cfg['campaign_root'])
-    if digest(campaign.programme) != cfg['programme_authority_sha256']:
+    incident = cfg.get('incident_authority') is not None
+    campaign = Campaign(cfg['campaign_root'], **{key: cfg[key] for key in
+        ('incident_authority', 'incident_slot') if key in cfg})
+    if digest(campaign.study_programme if incident else campaign.programme) != cfg['programme_authority_sha256']:
         raise ValueError('programme_authority_changed')
     with (campaign.root/'owner.lock').open('a') as owner:
         fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -95,17 +114,22 @@ def renew_source(cfg, slot, *, now):
                 or digest(value['access_basis']) != baseline['access_basis_sha256']
                 or digest(value.get('operating_policy')) != baseline['operating_policy_sha256']):
             raise ValueError('source_requires_explicit_disposition')
-        used = programme_source_usage(value, baseline['operation_count'], stamp(campaign.programme['starts_at']))
+        if incident:
+            slot = cfg['incident_slot']
+        used = (0 if incident else programme_source_usage(value, baseline['operation_count'], stamp(campaign.programme['starts_at'])))
         if not 0 <= used <= cfg['max_source_operations'] - 192:
             raise ValueError('programme_source_budget_exhausted')
         previous = [a for a in value.get('diagnostic_authorizations', [])
                     if a['reference'].startswith(cfg['authority_reference'] + ':slot:')]
-        if len(previous) >= len(cfg['slots']) or any(a['reference'].endswith(':slot:'+slot) for a in previous):
+        if (not incident and len(previous) >= len(cfg['slots'])) or any(a['reference'].endswith(':slot:'+slot) for a in previous):
             raise ValueError('source_slot_already_consumed')
         prior = hashlib.sha256(access.path.read_bytes()).hexdigest()
+        end = (stamp(next(row for row in campaign.incident['slots'] if row['id'] == slot)['ends_at'])
+               if incident else now+timedelta(hours=3))
         access.authorize_diagnostic(reference=cfg['authority_reference']+':slot:'+slot,
-            expected_sha256=prior, expires_at=(now+timedelta(hours=3)).timestamp(),
-            max_operations=192, rationale='Approved finite persistent programme; OPEN-only slot lease')
+            expected_sha256=prior, expires_at=end.timestamp(),
+            max_operations=192, rationale='Approved finite native collection; OPEN-only slot lease',
+            **({'incident_authority': cfg['incident_authority'], 'incident_slot': slot} if incident else {}))
         return {'before_sha256': prior, 'after_sha256': hashlib.sha256(access.path.read_bytes()).hexdigest(),
                 'slot': slot, 'operation_start': len(value.get('operations', []))}
 
@@ -125,6 +149,17 @@ def child(command, log):
 
 def verify_canary(cfg, result_cfg, root, now):
     import sqlite3
+    if cfg.get('incident_acceptance'):
+        from race_collection.incident_acceptance import verified_incident_acceptance
+        evidence = verified_incident_acceptance(cfg, cfg['incident_acceptance'], now)
+        if evidence is not None:
+            receipt = root/'canary.json'
+            if not receipt.exists():
+                create_once(receipt, {'status':'CANARY_STRUCTURALLY_VERIFIED', 'at':now.isoformat(),
+                    'first_slot':cfg['slots'][0], 'plan_sha256':cfg['comparison_plan_sha256'],
+                    'verified_predictions':evidence['verified_predictions'], 'closed_results':evidence['closed_results'],
+                    'incident_acceptance':evidence, 'outcomes_released':False})
+            return True
     first=root/'slots/001'
     terminal=first/'terminal.json'
     continuation=None
@@ -185,7 +220,8 @@ def prepare_session(cfg, package, slot):
         db=Path(cfg['history_database']),lock=Path(cfg['lock_path']),reconciliation_roots=roots,
         installed_dir=Path(cfg['installed_dir']),campaign_root=Path(cfg['campaign_root']),
         operational_predictions=True,observation_minutes=90,comparison_plan=Path(cfg['comparison_plan']),
-        prediction_root=Path(cfg['prediction_root']))
+        prediction_root=Path(cfg['prediction_root']),
+        **{key: cfg[key] for key in ('incident_authority', 'incident_slot') if key in cfg})
 
 
 def tick(config_path):
@@ -216,7 +252,7 @@ def tick(config_path):
         if now >= stamp(plan['ends_at']): return {'status':'ADMISSION_ENDPOINT_REACHED'}
         if cfg.get('first_session_continuation') and not (root/'canary.json').exists():
             from race_collection.scientific_session_recovery import completed_continuation
-            if completed_continuation(cfg,root) is not None:
+            if cfg.get('incident_acceptance') or completed_continuation(cfg,root) is not None:
                 from src.predictor.comparison_result_runtime import load_runtime
                 binding=json.loads(Path(cfg['result_binding']).read_bytes())
                 _,_,result_cfg=load_runtime(binding,now=now)

@@ -12,12 +12,22 @@ from src.predictor.future_comparison import checked,load_plan,stamp,verify_compa
 def result_scope(binding, *, now, prediction_bundles, result_database):
     plan,raw=load_plan(Path(binding['plan']),binding['plan_sha256'])
     authority=json.loads(checked(Path(binding['authority']),binding['authority_sha256']))
-    if (plan['status']!='AUTHORIZED' or authority.get('status')!='AUTHORIZED_MACHINE_RESULT_RETENTION'
+    from race_collection.incident_comparison import result_deadline, validate_incident_plan
+    engineering = plan['status'] == 'AUTHORIZED_ENGINEERING'
+    if engineering:
+        incident = validate_incident_plan(plan)
+        if (authority.get('incident_authority') != plan['incident_authority']
+                or authority.get('incident_slot') != plan['incident_slot']
+                or authority.get('status') != 'AUTHORIZED_ENGINEERING_MACHINE_RESULT_RETENTION'
+                or Path(authority['result_database']).parent != Path(incident['result_root']) / plan['incident_slot']):
+            raise ValueError('incident_result_authority_mismatch')
+    if (plan['status'] not in {'AUTHORIZED', 'AUTHORIZED_ENGINEERING'}
+            or (not engineering and authority.get('status')!='AUTHORIZED_MACHINE_RESULT_RETENTION')
             or authority.get('plan_sha256')!=binding['plan_sha256'] or not authority.get('owner')
             or Path(authority.get('result_database','/UNBOUND')).absolute()!=result_database.absolute()
             or not authority.get('authority_reference') or not authority.get('source_budget_reference') or authority.get('human_outcome_access') is not False
             or not stamp(authority['issued_at'])<=stamp(plan['activated_at'])<=now
-            or now>stamp(plan['ends_at'])+timedelta(days=14)
+            or now>result_deadline(plan)
             or str(prediction_bundles.resolve()) not in [str(Path(p).resolve()) for p in plan['prediction_output_roots']]):
         raise ValueError('comparison_result_scope_not_authorized')
     return plan
@@ -35,5 +45,6 @@ def authorize_job(job, binding, plan, *, now, prediction_bundles):
     if admission['job_id']!=job.job_id or admission['race']['race_id']!=job.input.race_id:
         raise ValueError('comparison_result_job_not_admitted')
     verified=verify_comparison(prediction_bundles,claim/'admission.json',expected_plan_sha256=binding['plan_sha256'])
-    if not verified['future_race_evidence']:
+    key = 'engineering_evidence' if plan['status'] == 'AUTHORIZED_ENGINEERING' else 'future_race_evidence'
+    if not verified.get(key):
         raise ValueError('comparison_result_not_common_sealed')

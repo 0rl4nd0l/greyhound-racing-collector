@@ -26,7 +26,7 @@ def utc_now():
     return datetime.now(timezone.utc)
 
 
-def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False, observation_minutes=90, start_after_minutes=None, comparison_plan=None, prediction_root=None, engineering_authority=None, development_authority=None, reduced_request_cap=None):
+def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False, observation_minutes=90, start_after_minutes=None, comparison_plan=None, prediction_root=None, engineering_authority=None, development_authority=None, reduced_request_cap=None, incident_authority=None, incident_slot=None):
     if engineering_authority is not None and (
             not operational_predictions or campaign_root is None
             or comparison_plan is not None or prediction_root is not None):
@@ -34,6 +34,11 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
     if development_authority is not None and (engineering_authority is not None
             or not operational_predictions or campaign_root is None or comparison_plan is not None):
         raise ValueError('development_requires_separate_operational_predictions')
+    if incident_authority is not None and (engineering_authority is not None or development_authority is not None
+            or not operational_predictions or campaign_root is None or comparison_plan is None or prediction_root is None):
+        raise ValueError("incident_requires_native_comparison_path")
+    incident_args = ({"incident_authority": incident_authority, "incident_slot": incident_slot}
+                     if incident_authority is not None else {})
     comparison_binding = None
     if comparison_plan is not None:
         if not operational_predictions:
@@ -41,7 +46,11 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         from src.predictor.future_comparison import load_plan
         comparison_plan = comparison_plan.resolve(strict=True)
         comparison_sha = hashlib.sha256(comparison_plan.read_bytes()).hexdigest()
-        load_plan(comparison_plan, comparison_sha)
+        comparison_value, _ = load_plan(comparison_plan, comparison_sha)
+        if incident_authority is not None and (
+                comparison_value['status'] != 'AUTHORIZED_ENGINEERING'
+                or any(comparison_value.get(key) != item for key, item in incident_args.items())):
+            raise ValueError('incident_comparison_scope_mismatch')
         comparison_binding = {"path": str(comparison_plan), "sha256": comparison_sha}
     operational = bool(campaign_root and operational_predictions)
     if (type(observation_minutes) is not int
@@ -63,8 +72,8 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
             raise ValueError("operational_predictions_require_existing_campaign")
         if prediction_root is not None:
             from race_collection.freshness_campaign import Campaign
-            campaign = Campaign(campaign_root, development_authority=development_authority)
-            approved = campaign.development or campaign.programme
+            campaign = Campaign(campaign_root, development_authority=development_authority, **incident_args)
+            approved = getattr(campaign, "incident", None) or campaign.development or campaign.programme
             if (not approved or str(prediction_root) != approved.get('prediction_root')
                     or not prediction_root.is_absolute() or prediction_root.resolve() != prediction_root):
                 raise ValueError('prediction_root_not_in_approved_programme')
@@ -175,10 +184,11 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
     if campaign_root is not None:
         from race_collection.freshness_campaign import Campaign
         campaign = (Campaign(campaign_root, engineering_authority=engineering_authority)
-                    if engineering_authority is not None else Campaign(campaign_root, development_authority=development_authority))
+                    if engineering_authority is not None else Campaign(campaign_root, development_authority=development_authority, **incident_args))
     from utils.sportsbet_access import state_path
 
     plan = {
+        **incident_args,
         **({'development_authority': development_authority} if development_authority is not None else {}),
         **({'engineering_authority': engineering_authority} if engineering_authority is not None else {}),
         **({"prediction_root": str(prediction_root)} if prediction_root is not None else {}),
@@ -243,7 +253,7 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
             "operation": "operational_prediction",
             "history_db_path": str(history_db),
             "capture_db_path": str(db),
-            "max_jobs": (6 if development_authority else campaign.value['max_capture_attempts'] - len(json.loads((campaign.root / "ledger.json").read_bytes())["attempts"])),
+            "max_jobs": (24 if incident_authority else 6 if development_authority else campaign.value['max_capture_attempts'] - len(json.loads((campaign.root / "ledger.json").read_bytes())["attempts"])),
             "result_access": False, "research_activation": False,
         }
         if comparison_binding is not None:
@@ -264,6 +274,11 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         if (campaign.study_programme and end + timedelta(seconds=plan['cleanup_seconds'])
                 >= datetime.fromisoformat(campaign.study_programme['starts_at'])):
             raise ValueError('engineering_window_overlaps_programme')
+    if incident_authority is not None:
+        slot = next(row for row in campaign.incident["slots"] if row["id"] == incident_slot)
+        if (start != datetime.fromisoformat(slot["starts_at"]) or end != datetime.fromisoformat(slot["ends_at"])
+                or end + timedelta(seconds=plan["cleanup_seconds"]) != datetime.fromisoformat(slot["cleanup_by"])):
+            raise ValueError("incident_scope_window_changed")
     from zoneinfo import ZoneInfo
     zone = ZoneInfo('Australia/Melbourne')
     if start.astimezone(zone).date() != (end + timedelta(seconds=plan['cleanup_seconds'])).astimezone(zone).date():

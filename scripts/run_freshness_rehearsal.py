@@ -907,6 +907,8 @@ def execution_contract(plan, accounting):
         contract['development_authority'] = plan['development_authority']
     if plan.get('engineering_authority') is not None:
         contract['engineering_authority'] = plan['engineering_authority']
+    if plan.get('incident_authority') is not None:
+        contract.update({key: plan[key] for key in ('incident_authority', 'incident_slot', 'frozen_comparison')})
     contract.update(
         schema_version="freshness_rehearsal_contract_v1",
         source_date=accounting["source_date"],

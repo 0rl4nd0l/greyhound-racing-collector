@@ -14,6 +14,8 @@ def make_incident(tmp_path, *, study_plan=None, study_allocation=None, weekend_a
     study=study_plan or put(tmp_path/'study.json', {'status':'AUTHORIZED','programme_root':str(tmp_path/'study-members'),
         'candidate_registry':registry,'prediction_output_roots':[str(tmp_path/'study-predictions')]})
     allocation=study_allocation or put(tmp_path/'allocation.json', {'status':'AUTHORIZED_EXCLUSIVE_ALLOCATION'})
+    study_results=put(tmp_path/'study-result-authority.json', {'status':'AUTHORIZED_MACHINE_RESULT_RETENTION',
+        'plan_sha256':study['sha256'], 'result_database':str(tmp_path/'study-results/official.sqlite3')})
     weekend=weekend_allocation or put(tmp_path/'weekend.json', {'status':'AUTHORIZED','state_root':str(tmp_path/'weekend-state')})
     pilot=weekend_authority or put(tmp_path/'weekend-authority.json',{'allocation_sha256':weekend['sha256'],
         'state_root':str(tmp_path/'weekend-state'),'prediction_root':str(tmp_path/'weekend-predictions')})
@@ -26,7 +28,7 @@ def make_incident(tmp_path, *, study_plan=None, study_allocation=None, weekend_a
         'result_deadline':'2026-10-02T12:00:00+10:00','max_capture_attempts_per_window':24,
         'max_prediction_logical_requests_per_window':16000,'max_source_operations_per_window':192,
         'max_result_requests_per_window':72,'max_result_operations_per_window':72,
-        'study_plan':study,'study_allocation':allocation,'weekend_allocation':weekend,'weekend_authority':pilot,'candidate_registry':registry,
+        'study_plan':study,'study_result_authority':study_results,'study_allocation':allocation,'weekend_allocation':weekend,'weekend_authority':pilot,'candidate_registry':registry,
         'state_root':str(tmp_path/'incident-state'),'prediction_root':str(tmp_path/'incident-predictions'),
         'result_root':str(tmp_path/'incident-results'),'engineering_only':True,'study_enrolment':False,
         'performance_evaluation':False,'human_outcome_access':False,

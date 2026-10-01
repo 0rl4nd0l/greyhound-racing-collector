@@ -1330,10 +1330,12 @@ def require_forward_baseline_binding(
         raise ValueError("forward_baseline_config requires forward_corpus_root")
 
 
-def sportsbet_service_conditions(repo_path, python_path):
+def sportsbet_service_conditions(repo_path, python_path, live_contract=None):
     from utils.sportsbet_access import state_path
 
     return [
+        *(['Environment=' + systemd_exec_argument('GREYHOUND_LIVE_FRESHNESS_CONTRACT=' + str(live_contract))]
+          if live_contract is not None else []),
         "Environment=" + systemd_exec_argument("GREYHOUND_SPORTSBET_ACCESS_STATE=" + str(state_path())),
         "ExecCondition=" + systemd_exec_argument(str(python_path)) + " "
         + systemd_exec_argument(str(Path(repo_path) / "scripts/check_sportsbet_access.py")),
@@ -1436,7 +1438,7 @@ def service_file_text(
             "Type=oneshot",
             f"WorkingDirectory={repo_path}",
             "Environment=PYTHONUNBUFFERED=1",
-            *sportsbet_service_conditions(repo_path, python_path),
+            *sportsbet_service_conditions(repo_path, python_path, live_freshness_contract),
             "Environment=GREYHOUND_ALLOW_TGR=0",
             *(
                 [
@@ -1570,7 +1572,7 @@ def odds_capture_service_file_text(
             "Type=oneshot",
             f"WorkingDirectory={repo_path}",
             "Environment=PYTHONUNBUFFERED=1",
-            *sportsbet_service_conditions(repo_path, python_path),
+            *sportsbet_service_conditions(repo_path, python_path, live_freshness_contract),
             "Environment=GREYHOUND_ALLOW_TGR=0",
             *(
                 [

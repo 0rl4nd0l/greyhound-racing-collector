@@ -137,7 +137,8 @@ class SportsbetAccess:
     def authorize_diagnostic(self, *, reference, expected_sha256, expires_at,
                              max_operations, rationale, engineering_quiet_seconds=None,
                              engineering_authority=None, development_authority=None,
-                             development_slot=None):
+                             development_slot=None, incident_authority=None,
+                             incident_slot=None, incident_kind='prediction'):
         """Explicit prospective user authority; never automatic denial recovery."""
         with self.locked():
             value = self.read()
@@ -209,6 +210,21 @@ class SportsbetAccess:
                     raise ValueError('development_authority_changed')
             elif development_slot is not None:
                 raise ValueError('development_authority_required')
+            if incident_authority is not None:
+                from race_collection.incident_engineering import validate_incident_lease, incident_source_usage
+                row.update(incident_authority=incident_authority,
+                    incident_authority_sha256=incident_authority['sha256'],
+                    incident_slot=incident_slot, incident_kind=incident_kind)
+                from race_collection.incident_engineering import load_incident_authority
+                row['incident_id'] = load_incident_authority(incident_authority)['incident_id']
+                validate_incident_lease(row)
+                if any(a.get('incident_authority_sha256') == incident_authority['sha256']
+                        and a.get('incident_slot') == incident_slot and a.get('incident_kind') == incident_kind
+                        for a in value.get('diagnostic_authorizations', [])):
+                    raise ValueError('incident_source_slot_consumed')
+                incident_source_usage(value, 0)
+            elif incident_slot is not None:
+                raise ValueError('incident_authority_required')
             value.setdefault('diagnostic_authorizations', []).append(row)
             value['diagnostic_authority'] = row
             value.setdefault('operating_policy', dict(reference=reference,
@@ -218,6 +234,9 @@ class SportsbetAccess:
 
     def _check_diagnostic(self, value):
         diagnostic = value.get('diagnostic_authority')
+        if (os.environ.get('GREYHOUND_INCIDENT_AUTHORITY_SHA256')
+                and (not diagnostic or 'incident_authority' not in diagnostic)):
+            raise SportsbetAccessBlocked('sportsbet_incident_allocation_not_current')
         if (os.environ.get('GREYHOUND_DEVELOPMENT_AUTHORITY_SHA256')
                 and (not diagnostic or 'development_authority' not in diagnostic)):
             raise SportsbetAccessBlocked('sportsbet_development_allocation_not_current')
@@ -247,6 +266,12 @@ class SportsbetAccess:
                 development_source_usage(value, 0)
                 if os.environ.get('GREYHOUND_DEVELOPMENT_AUTHORITY_SHA256') != diagnostic['development_authority_sha256']:
                     raise SportsbetAccessBlocked('sportsbet_development_owner_required')
+            if 'incident_authority' in diagnostic:
+                from race_collection.incident_engineering import incident_source_usage
+                incident_source_usage(value, 0)
+                if (os.environ.get('GREYHOUND_INCIDENT_AUTHORITY_SHA256') != diagnostic['incident_authority_sha256']
+                        or os.environ.get('GREYHOUND_INCIDENT_SLOT') != diagnostic['incident_slot']):
+                    raise SportsbetAccessBlocked('sportsbet_incident_owner_required')
         if diagnostic is not None and (
                 self.clock() >= diagnostic['expires_at']
                 or len(value.get('operations', [])) - diagnostic['operation_start'] >= diagnostic['max_operations']):
@@ -345,6 +370,9 @@ class SportsbetAccess:
                 if 'development_authority' in diagnostic:
                     record.update(development_authority_sha256=diagnostic['development_authority_sha256'],
                                   development_slot=diagnostic['development_slot'])
+                if 'incident_authority' in diagnostic:
+                    record.update({key: diagnostic[key] for key in
+                        ('incident_authority_sha256', 'incident_slot', 'incident_kind')})
                 operations.append(record)
             if recovery:
                 value["recovery_attempts"] += 1

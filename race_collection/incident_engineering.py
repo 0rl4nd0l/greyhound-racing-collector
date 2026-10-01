@@ -71,11 +71,14 @@ def load_incident_authority(ref):
                 raise ValueError()
             previous = closed
         study = checked(value['study_plan'])
+        study_results = checked(value['study_result_authority'])
         allocation = checked(value['study_allocation'])
         weekend = checked(value['weekend_allocation'])
         pilot = checked(value['weekend_authority'])
         checked(value['candidate_registry'])
         if (study.get('status') != 'AUTHORIZED'
+                or study_results.get('status') != 'AUTHORIZED_MACHINE_RESULT_RETENTION'
+                or study_results.get('plan_sha256') != value['study_plan']['sha256']
                 or allocation.get('status') != 'AUTHORIZED_EXCLUSIVE_ALLOCATION'
                 or weekend.get('status') != 'AUTHORIZED'
                 or pilot.get('allocation_sha256') != value['weekend_allocation']['sha256']
@@ -83,6 +86,7 @@ def load_incident_authority(ref):
             raise ValueError()
         roots = [Path(value[k]) for k in ('state_root','prediction_root','result_root')]
         protected = [Path(study['programme_root']),
+                     Path(study_results['result_database']).parent,
                      *[Path(p) for p in study['prediction_output_roots']]]
         protected.extend(Path(weekend[k]) for k in ('state_root','prediction_root','result_root') if weekend.get(k))
         protected.extend(Path(pilot[k]) for k in ('state_root','prediction_root','result_root') if pilot.get(k))

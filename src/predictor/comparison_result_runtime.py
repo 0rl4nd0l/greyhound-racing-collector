@@ -31,7 +31,18 @@ def load_runtime(binding, *, now, allow_closure=False):
     plan, _ = load_plan(Path(binding['plan']), binding['plan_sha256'])
     authority = json.loads(checked(Path(binding['authority']), binding['authority_sha256']))
     cfg = authority['runtime']
-    deadline = stamp(plan['ends_at']) + timedelta(days=14)
+    from race_collection.incident_comparison import result_deadline
+    deadline = result_deadline(plan)
+    if plan['status'] == 'AUTHORIZED_ENGINEERING':
+        from race_collection.incident_comparison import validate_incident_plan
+        incident = validate_incident_plan(plan)
+        if (any(cfg.get(key) != plan[key] for key in ('incident_authority', 'incident_slot'))
+                or cfg['max_races'] != 24 or cfg['max_requests'] != 72
+                or cfg['max_attempts_per_race'] != 3
+                or Path(cfg['state_root']) != Path(incident['result_root']) / plan['incident_slot']
+                or Path(cfg['prediction_bundles']) != Path(incident['prediction_root']) / 'bundles'
+                or Path(cfg['job_store']) != Path(incident['prediction_root']) / 'jobs.sqlite3'):
+            raise ValueError('incident_result_runtime_mismatch')
     # Closure has no acquisition or target decoding. It remains owed after expiry.
     scope_now = min(now, deadline) if allow_closure else now
     result_scope(binding, now=scope_now, prediction_bundles=Path(cfg['prediction_bundles']),
@@ -164,7 +175,8 @@ def collector_guard(binding, *, output, job_store, bundles, result_database):
     root = Path(cfg['state_root']); root.mkdir(parents=True, exist_ok=True, mode=0o700)
     if output.resolve().parent != root / 'attempts':
         raise ValueError('result_attempt_not_private')
-    campaign = Campaign(cfg['campaign_root'])
+    campaign = Campaign(cfg['campaign_root'], **{key: cfg[key] for key in
+        ('incident_authority', 'incident_slot') if key in cfg})
     with (campaign.root / 'owner.lock').open('a') as owner:
         fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
         # Existing owner blocks before any transport. No stale-lock deletion.

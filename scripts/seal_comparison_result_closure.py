@@ -13,8 +13,15 @@ def seal(binding_path, output, *, now=None):
     now=now or datetime.now(timezone.utc);os.umask(0o077)
     binding=json.loads(binding_path.read_bytes());plan,_=load_plan(Path(binding['plan']),binding['plan_sha256'])
     authority=json.loads(checked(Path(binding['authority']),binding['authority_sha256']))
-    cutoff=stamp(plan['ends_at'])+timedelta(days=14)
-    if (plan['status']!='AUTHORIZED' or authority.get('status')!='AUTHORIZED_MACHINE_RESULT_RETENTION'
+    from race_collection.incident_comparison import result_deadline
+    from src.predictor.comparison_result_scope import result_scope
+    cutoff=result_deadline(plan)
+    if plan['status'] == 'AUTHORIZED_ENGINEERING':
+        result_scope(binding, now=min(now, cutoff),
+            prediction_bundles=Path(plan['prediction_output_roots'][0]),
+            result_database=Path(authority['result_database']))
+    if (plan['status'] not in {'AUTHORIZED', 'AUTHORIZED_ENGINEERING'}
+            or (plan['status'] == 'AUTHORIZED' and authority.get('status') != 'AUTHORIZED_MACHINE_RESULT_RETENTION')
             or authority.get('plan_sha256')!=binding['plan_sha256'] or not authority.get('owner')
             or not authority.get('authority_reference') or authority.get('human_outcome_access') is not False
             or now<cutoff):raise ValueError('closure_not_authorized_or_not_due')
