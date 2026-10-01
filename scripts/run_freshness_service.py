@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Bound the actual service process and naturally reap all owned descendants."""
 import ctypes
-import json
 import os
 from pathlib import Path
 import signal
@@ -20,10 +19,17 @@ def main():
     command = [sys.executable, str(ROOT / "scripts/shadow_autopilot_daemon.py"), *arguments]
     if "--verify-live-runtime" in arguments:
         os.execv(sys.executable, command)
+    contract = Path(arguments[arguments.index("--live-freshness-contract") + 1])
+    from race_collection.live_freshness_contract import FreshnessContract
+
+    # ExecCondition runs in a separate process. Validate and bind this wrapper's
+    # owner before its gate; children inherit only that authenticated binding.
+    for key in ("GREYHOUND_INCIDENT_AUTHORITY_SHA256", "GREYHOUND_INCIDENT_SLOT"):
+        os.environ.pop(key, None)
+    scope = FreshnessContract.load(contract)
     from utils.sportsbet_access import SportsbetAccess
     # The daemon acquires the collector lock before requesting source ownership.
     SportsbetAccess().check_admission(allow_active=True)
-    contract = Path(arguments[arguments.index("--live-freshness-contract") + 1])
     from race_collection.live_execution import configure_profile_execution
 
     configure_profile_execution(contract)
@@ -33,7 +39,7 @@ def main():
     if len(invocation) != 32 or any(c not in "0123456789abcdef" for c in invocation):
         raise ValueError("invalid_service_invocation")
     os.environ["GREYHOUND_SERVICE_INVOCATION"] = invocation
-    value = json.loads(contract.read_bytes())
+    value = scope.value
     output = (
         Path(value["evidence_root"])
         / "shadow_autopilot_daemon_runtime/service-lifecycles"
@@ -57,9 +63,7 @@ def main():
 
     def interrupted(signum, frame):
         record["interrupted"] = True
-        from race_collection.live_freshness_contract import FreshnessContract
-
-        FreshnessContract(value).stop("SERVICE_INTERRUPTED")
+        scope.stop("SERVICE_INTERRUPTED")
         if child is not None and child.poll() is None:
             child.send_signal(signal.SIGINT)
 
