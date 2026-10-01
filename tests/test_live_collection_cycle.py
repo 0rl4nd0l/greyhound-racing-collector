@@ -111,7 +111,7 @@ def test_native_entrypoint_accounts_for_nonzero_overhead(
                 assert payload["final_status" if odds_only else "final_verdict"] == (
                     "ODDS_CAPTURE_ONLY_RUNNING" if odds_only else "DAEMON_RUNNING"
                 )
-            if finalization_pending[0]:
+            if finalization_pending[0] and payload["runtime_action"] == "LIVE_TIMING_VALIDATION_PENDING":
                 finalization_pending[0] = False
                 advance(finalization)
             writes.append(dict(payload))
