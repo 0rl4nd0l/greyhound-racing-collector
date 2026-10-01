@@ -102,6 +102,37 @@ def test_later_regular_slot_supersedes_continuation_freshness(tmp_path):
     assert value['observed_opportunities']==3 and value['observation_samples']==5
 
 
+@pytest.mark.parametrize('damage',['none','missing_resolution','omitted_charge','open_prior','changed_ack'])
+def test_resolved_prior_continuation_remains_in_cumulative_gate(tmp_path,damage):
+    cfg,results,root,parent=fixture(tmp_path)
+    authority=json.loads((parent/'authority.json').read_bytes())
+    plan=json.loads((parent/'package/plan.json').read_bytes())
+    previous=root/'continuations/001/000';previous_plan=put(previous/'earlier/plan.json',{**plan,'rehearsal_id':'earlier'})
+    previous_authority=put(previous/'authority.json',{**authority,'continuation_plan':previous_plan})
+    terminal=put(previous/'terminal.json',{'status':'RESTORATION_HELD','plan_sha256':previous_plan['sha256'],
+        'authority_sha256':previous_authority['sha256']})
+    ack=put(previous/'ack.json',{'plan_sha256':previous_plan['sha256'],'collection_resume_allowed':False})
+    restored=put(previous/'earlier/restored.json',{'status':'RESTORED_COLLECTOR_TRIGGERS_HELD','sportsbet_hold':False,
+        'r3_replacement_acknowledgement':{'sha256':ack['sha256']}})
+    put(previous/'earlier/failure.json',{'reason':'installed_r3_changed'})
+    resolution=put(previous/'resolution.json',{'status':'RESTORATION_COMPLETED_AFTER_EXPLICIT_UI_REPLACEMENT',
+        'original_terminal_sha256':terminal['sha256'],'restored_sha256':restored['sha256'],
+        'plan_sha256':previous_plan['sha256'],'ack_sha256':ack['sha256'],'collection_resumed':False,'outcomes_released':False})
+    authority['prior_continuations']=[{'authority':previous_authority,'plan':previous_plan,'terminal':terminal,
+        'r3_ack':ack,'restored':restored,'resolution':resolution}]
+    authority['original_charged_seconds']=3121;authority['prior_charged_seconds']=3421
+    if damage=='omitted_charge':authority['prior_charged_seconds']=3121
+    cfg['first_session_continuation']=put(parent/'authority.json',authority)
+    put(parent/'terminal.json',{'status':'COMPLETED','returncode':0,'authority_sha256':digest(authority),
+        'plan_sha256':digest(plan),'outcomes_released':False})
+    path=Path(cfg['campaign_root'])/'ledger.json';ledger=json.loads(path.read_bytes())
+    ledger['launches']['earlier']={'charged_seconds':300,'closed_at':None if damage=='open_prior' else '2026-10-01T14:25:00+10:00'}
+    put(path,ledger)
+    if damage=='missing_resolution':Path(resolution['path']).unlink()
+    if damage=='changed_ack':Path(ack['path']).write_text('{}')
+    assert verify_canary(cfg,results,root,datetime(2026,10,1,6,tzinfo=timezone.utc)) is (damage=='none')
+
+
 @pytest.mark.parametrize('damage',['missing_authority','authority_changed','unfinished','missing_measurement','missing_restore','open_lease','over_budget','negative_charge','nan_charge','different_source_lease','no_closed_result'])
 def test_continuation_never_bypasses_missing_proof(tmp_path,damage):
     cfg,results,root,parent=fixture(tmp_path)

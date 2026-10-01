@@ -134,7 +134,11 @@ def verify_canary(cfg, result_cfg, root, now):
         if continuation is None:return False
     first_plan=first/(cfg['programme_id']+'-001')/'plan.json'
     admitted_plans={str(first_plan)}
-    if continuation:admitted_plans.add(continuation['plan'])
+    if continuation:
+        admitted_plans.add(continuation['plan'])
+        from race_collection.scientific_session_recovery import checked as checked_ref, prior_continuation_plans
+        authority=checked_ref(cfg['first_session_continuation'])
+        admitted_plans.update(ref['path'] for ref,_ in prior_continuation_plans(authority))
     prediction_root=Path(cfg['prediction_root'])
     verified=[]
     for path in (prediction_root/'dispatches').glob('*.json'):
@@ -170,6 +174,8 @@ def prepare_session(cfg, package, slot):
         ref=cfg['first_session_continuation'];authority=json.loads(checked(Path(ref['path']),ref['sha256']))
         ref=authority['continuation_plan'];checked(Path(ref['path']),ref['sha256'])
         prior_plans.add(Path(ref['path']))
+        from race_collection.scientific_session_recovery import prior_continuation_plans
+        prior_plans.update(Path(ref['path']) for ref,_ in prior_continuation_plans(authority))
     for plan_path in sorted(prior_plans):
         prior=json.loads(plan_path.read_bytes())
         for key in ('scheduled_progress','scheduled_reports','phase_checkpoints'):

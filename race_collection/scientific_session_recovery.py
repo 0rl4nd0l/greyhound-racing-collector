@@ -19,6 +19,38 @@ def checked(ref):
         raise ValueError('continuation_evidence_changed')
     return json.loads(raw)
 
+
+def prior_continuation_plans(authority):
+    """Retain the explicitly resolved UI-restart failure in the same allowance."""
+    records = authority.get('prior_continuations', [])
+    require(len(records) <= 1)
+    plans = []
+    for record in records:
+        previous = checked(record['authority'])
+        plan = checked(record['plan'])
+        terminal = checked(record['terminal'])
+        restored = checked(record['restored'])
+        resolution = checked(record['resolution'])
+        ack = checked(record['r3_ack'])
+        require(previous['continuation_plan'] == record['plan'])
+        for name in ('original_plan', 'comparison_plan_sha256', 'campaign_root', 'prediction_root', 'source_lease_sha256'):
+            require(previous[name] == authority[name])
+        require(plan['commit'] == previous['source_commit'])
+        require(terminal['status'] == 'RESTORATION_HELD' and terminal['plan_sha256'] == record['plan']['sha256'])
+        require(terminal['authority_sha256'] == record['authority']['sha256'])
+        require(restored['status'] in {'RESTORED', 'RESTORED_COLLECTOR_TRIGGERS_HELD'} and restored['sportsbet_hold'] is False)
+        require(resolution['status'] == 'RESTORATION_COMPLETED_AFTER_EXPLICIT_UI_REPLACEMENT')
+        require(resolution['original_terminal_sha256'] == record['terminal']['sha256'])
+        require(resolution['restored_sha256'] == record['restored']['sha256'])
+        require(resolution['plan_sha256'] == record['plan']['sha256'])
+        require(resolution['ack_sha256'] == record['r3_ack']['sha256'])
+        require(resolution['collection_resumed'] is False and resolution['outcomes_released'] is False)
+        require(restored['r3_replacement_acknowledgement']['sha256'] == record['r3_ack']['sha256'])
+        require(ack['plan_sha256'] == record['plan']['sha256'] and ack['collection_resume_allowed'] is False)
+        require(read(Path(record['plan']['path']).parent/'failure.json')['reason'] == 'installed_r3_changed')
+        plans.append((record['plan'], plan))
+    return plans
+
 def completed_continuation(cfg, root):
     """Return authenticated continuation metadata, or None while held/incomplete."""
     try:
@@ -84,9 +116,13 @@ def completed_continuation(cfg, root):
         launches = read(Path(cfg['campaign_root']) / 'ledger.json')['launches']
         old = launches[evidence['original_plan']['rehearsal_id']]
         new = launches[plan['rehearsal_id']]
-        require(all(math.isfinite(item['charged_seconds']) and item['charged_seconds'] >= 0 for item in (old, new)))
-        require(old['closed_at'] and new['closed_at'] and (old['charged_seconds'] == authority['prior_charged_seconds']))
-        require(old['charged_seconds'] + new['charged_seconds'] <= 7260)
+        prior = prior_continuation_plans(authority)
+        previous = [old] + [launches[p['rehearsal_id']] for _, p in prior]
+        require(len({evidence['original_plan']['rehearsal_id'], plan['rehearsal_id'], *(p['rehearsal_id'] for _, p in prior)}) == 2 + len(prior))
+        require(all(math.isfinite(item['charged_seconds']) and item['charged_seconds'] >= 0 and item['closed_at'] for item in [*previous, new]))
+        require(old['charged_seconds'] == authority.get('original_charged_seconds', authority['prior_charged_seconds']))
+        require(sum(item['charged_seconds'] for item in previous) == authority['prior_charged_seconds'])
+        require(authority['prior_charged_seconds'] + new['charged_seconds'] <= 7260)
         return {'plan': str(package / 'plan.json'), 'authority_sha256': ref['sha256'], 'terminal_sha256': hashlib.sha256((package.parent / 'terminal.json').read_bytes()).hexdigest(), 'original_terminal_sha256': authority['original_terminal']['sha256'], 'original_failure_preserved': True}
     except (KeyError, ValueError, TypeError, OSError):
         return None

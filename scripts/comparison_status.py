@@ -27,6 +27,13 @@ def programme(cfg, result_health, *, now):
     if cfg.get('first_session_continuation'):
         from race_collection.scientific_session_recovery import checked
         authority = checked(cfg['first_session_continuation'])
+        from race_collection.scientific_session_recovery import prior_continuation_plans
+        for ref, _ in prior_continuation_plans(authority):
+            previous = Path(ref['path']).parent
+            packages.append(previous)
+            continuations.append({'original_slot': authority['original_slot'],
+                'status': read(previous.parent/'terminal.json')['status'],
+                'restoration_resolution': 'RESTORATION_COMPLETED_AFTER_EXPLICIT_UI_REPLACEMENT'})
         checked(authority['continuation_plan'])
         package = Path(authority['continuation_plan']['path']).parent
         terminal = package.parent/'terminal.json'
