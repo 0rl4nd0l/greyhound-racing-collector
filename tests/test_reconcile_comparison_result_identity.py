@@ -81,8 +81,15 @@ def case(tmp_path, monkeypatch):
         now=captured+timedelta(minutes=1), job=job, bundle=bundle)
 
 
-def test_retained_identity_reconciliation_closes_without_consuming_or_refetching(case):
+@pytest.mark.parametrize('with_date_header', [False, True])
+def test_retained_identity_reconciliation_closes_without_consuming_or_refetching(case, with_date_header):
     from scripts.reconcile_comparison_result_identity import reconcile
+    if with_date_header:
+        path = Path(case['authority']['response']['path'])
+        response = json.loads(path.read_bytes())
+        response['retry_headers'] = {'date':'Thu, 01 Oct 2026 05:20:04 GMT'}
+        case['authority']['response'] = put(path, response)
+        put(case['path'], case['authority'])
     root = case['root']; original_report = Path(case['authority']['failed_report']['path']).read_bytes()
     ledger = Path(case['runtime']['campaign_root'])/'ledger.json'; before_ledger = ledger.read_bytes()
     result = reconcile(case['path'], ref(case['path'])['sha256'], 'SYNTHETIC_RECONCILIATION', now=case['now'])
@@ -104,6 +111,17 @@ def run(case):
     from scripts.reconcile_comparison_result_identity import reconcile
     put(case['path'], case['authority'])
     return reconcile(case['path'], ref(case['path'])['sha256'], 'SYNTHETIC_RECONCILIATION', now=case['now'])
+
+
+@pytest.mark.parametrize('guidance', ['retry-after', 'ratelimit-reset', 'x-ratelimit-reset'])
+def test_date_header_never_hides_provider_retry_guidance(case, guidance):
+    path = Path(case['authority']['response']['path'])
+    response = json.loads(path.read_bytes())
+    response['retry_headers'] = {'date':'Thu, 01 Oct 2026 05:20:04 GMT', guidance:'600'}
+    case['authority']['response'] = put(path, response)
+    with pytest.raises(ValueError):
+        run(case)
+    assert_quarantined(case)
 
 
 def assert_quarantined(case):

@@ -152,7 +152,8 @@ def _locked(authority, authority_ref, binding, plan, cfg, result_db, root, outpu
         require(request['at'] == matching[0]['at'] == response['observed_at'])
         url = bundle.result['race']['url']+'?trial=false'
         require(request['url'] == response['final_url'] == url)
-        require(response['status'] == 200 and response['host'] == 'www.thedogs.com.au' and not response['retry_headers'])
+        require(response['status'] == 200 and response['host'] == 'www.thedogs.com.au'
+                and set(response['retry_headers']) <= {'date'})
         require(response['content_type'].lower().startswith('text/html'))
         report = json.loads(checked(authority['failed_report']))
         require(report['candidate_count'] == 1 and not report['ingested'] and len(report['failed']) == 1)
