@@ -221,6 +221,10 @@ def tick(config_path):
                 binding=json.loads(Path(cfg['result_binding']).read_bytes())
                 _,_,result_cfg=load_runtime(binding,now=now)
                 verify_canary(cfg,result_cfg,root,now)
+            if not (root/'canary.json').exists():
+                # A failed predecessor is not permission to consume tomorrow's
+                # admission while its explicit recovery proof remains incomplete.
+                return {'status':'CANARY_NOT_VERIFIED'}
         for index, text in enumerate(cfg['slots']):
             slot = stamp(text)
             if now < slot-timedelta(minutes=10): continue

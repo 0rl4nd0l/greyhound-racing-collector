@@ -75,6 +75,20 @@ def test_regular_tick_accepts_completed_continuation_without_new_admission(tmp_p
     assert (root/'canary.json').exists()
 
 
+def test_failed_continuation_blocks_before_consuming_next_fixed_slot(tmp_path,monkeypatch):
+    from scripts import run_comparison_schedule as schedule
+    from types import SimpleNamespace
+    cfg,results,root,parent=fixture(tmp_path)
+    cfg['state_root']=str(root)
+    cfg['slots'].append('2026-10-02T13:00:00+10:00')
+    (parent/'terminal.json').unlink()
+    monkeypatch.setattr(schedule,'load_config',lambda _: (cfg,{'ends_at':'2099-01-01T00:00:00+00:00'}))
+    monkeypatch.setattr(schedule,'datetime',SimpleNamespace(now=lambda tz:datetime(2026,10,2,2,50,tzinfo=timezone.utc)))
+    monkeypatch.setattr(schedule,'renew_source',lambda *args,**kwargs:pytest.fail('must not allocate source'))
+    assert schedule.tick(tmp_path/'invented-config.json')=={'status':'CANARY_NOT_VERIFIED'}
+    assert not (root/'slots/002').exists()
+
+
 def test_status_includes_continuation_opportunities_and_preserves_failed_slot(tmp_path):
     from scripts.comparison_status import programme
     cfg,results,root,parent=fixture(tmp_path)
