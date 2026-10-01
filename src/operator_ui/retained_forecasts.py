@@ -54,7 +54,7 @@ def stamp(value):
 def validate_config(value):
     if set(value) != {'schema', 'roots', 'model_sha256', 'model_manifest_sha256', 'config_sha256', 'schedule', 'schedule_sha256', 'independent_audits', 'operational_job_ids'} or value['schema'] != SCHEMA:
         raise ValueError('invalid_forecast_display_config')
-    if set(value['roots']) != {'operational', 'programme'}:
+    if set(value['roots']) not in ({'operational', 'programme'}, {'operational', 'programme', 'engineering'}):
         raise ValueError('invalid_forecast_roots')
     for path in [*value['roots'].values(), value['schedule']]:
         if not isinstance(path, str) or not Path(path).is_absolute() or Path(path).resolve() != Path(path):

@@ -139,3 +139,87 @@ def test_pinned_verification_reads_do_not_scan_unrelated_audits(tmp_path):
     assert list(rf._verification_audits(root,[str(path)]))==['job_authorized']
     with pytest.raises(ValueError,match='outside_authorized_root'):
         rf._verification_audits(root,[str(tmp_path/'another-audit.json')])
+
+
+def test_engineering_root_is_additive_and_keeps_existing_sources(config, tmp_path):
+    engineering = tmp_path / 'engineering'
+    engineering.mkdir()
+    config['roots']['engineering'] = str(engineering)
+    app = configured_app(tmp_path)
+    rf.install_forecast_display(app, config)
+    client = app.test_client()
+    assert client.get('/operator-ui/api/v1/predictions/retained').status_code == 401
+    assert login(client).status_code == 200
+    response = client.get('/operator-ui/api/v1/predictions/retained')
+    assert response.status_code == 200
+    assert [(source['source'], source['state']) for source in response.json['sources']] == [
+        ('operational', 'UNAVAILABLE'), ('programme', 'EMPTY'), ('engineering', 'EMPTY')]
+    assert config['operational_job_ids'] == ['job_expected']
+
+
+@pytest.mark.parametrize('roots', [
+    ['operational'], ['programme'], ['engineering'], ['operational', 'engineering'],
+    ['programme', 'engineering'], ['operational', 'programme', 'private_results'],
+    ['operational', 'programme', 'engineering', 'private_results'],
+])
+def test_forecast_roots_require_original_pair_and_reject_unknown_sources(config, roots):
+    config['roots'] = {name: config['roots']['operational'] for name in roots}
+    with pytest.raises(ValueError, match='invalid_forecast_roots'):
+        rf.validate_config(config)
+
+
+def test_engineering_inventory_preserves_operational_allowlist_and_never_reads_private_results(
+        config, tmp_path, monkeypatch):
+    import os
+    from tests.test_prediction_bundle_sealed import blocked_result, make_bundle
+    from src.predictor.on_demand import publish_prediction_bundle_index_entry
+
+    engineering = tmp_path / 'engineering'
+    config['roots']['engineering'] = str(engineering)
+    protected = []
+    for label in ('operational', 'engineering'):
+        root = Path(config['roots'][label])
+        result = blocked_result()
+        result['job_id'] = 'job_' + ('1' if label == 'operational' else '2') * 32
+        _, entry = make_bundle(root / 'bundles', result)
+        publish_prediction_bundle_index_entry(root / 'bundles', entry)
+        # These fixture-only files are outside the production bundle inventory.
+        for name in ('private-results/outcomes.json', 'comparison/challengers.json'):
+            path = root / name
+            put(path, {'private': 'must never be read or disclosed'})
+            protected.append(path)
+
+    attempts = []
+    original_open, original_path_open = os.open, Path.open
+
+    def guard(path):
+        if not isinstance(path, int) and Path(path) in protected:
+            attempts.append(str(path))
+            raise AssertionError('Private result or challenger access')
+
+    def guarded_open(path, *args, **kwargs):
+        guard(path)
+        return original_open(path, *args, **kwargs)
+
+    def guarded_path_open(path, *args, **kwargs):
+        guard(path)
+        return original_path_open(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, 'open', guarded_open)
+    monkeypatch.setattr(Path, 'open', guarded_path_open)
+    app = configured_app(tmp_path)
+    rf.install_forecast_display(app, config)
+    client = app.test_client()
+    assert login(client).status_code == 200
+    response = client.get('/operator-ui/api/v1/predictions/retained')
+    assert response.status_code == 200
+    sources = {source['source']: source for source in response.json['sources']}
+    assert sources['operational']['errors'] == [{
+        'prediction_id': 'job_expected', 'reason': 'Expected retained forecast is missing.'}]
+    assert sources['engineering']['state'] == 'PARTIAL_ERROR'
+    assert sources['engineering']['forecasts'] == []
+    assert sources['engineering']['errors'] == [{
+        'prediction_id': entry['prediction_id'],
+        'reason': 'Prediction failed or was blocked; no probabilities disclosed.'}]
+    assert 'must never be read or disclosed' not in response.get_data(as_text=True)
+    assert attempts == []

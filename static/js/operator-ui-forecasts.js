@@ -28,7 +28,7 @@
       if(data.programme.reason)programme.append(node('p',data.programme.reason));
       if(data.programme.health_status)programme.append(node('p',`Last programme status: ${data.programme.health_status} · ${time(data.programme.observed_at)}`));
       const rendered=node('div');
-      for(const source of data.sources){const section=node('section');section.append(node('h2',source.source==='operational'?'Operational forecasts':'October programme forecasts'),node('p',source.state));if(source.reason)section.append(node('p',source.reason));for(const value of source.forecasts)section.append(forecast(value));for(const error of source.errors)section.append(node('p',`${error.prediction_id}: ${error.reason}`));rendered.append(section);}
+      for(const source of data.sources){const section=node('section');section.append(node('h2',source.source==='operational'?'Operational forecasts':source.source==='engineering'?'Engineering rehearsals':'October programme forecasts'),node('p',source.state));if(source.reason)section.append(node('p',source.reason));for(const value of source.forecasts)section.append(forecast(value));for(const error of source.errors)section.append(node('p',`${error.prediction_id}: ${error.reason}`));rendered.append(section);}
       sources.replaceChildren(...rendered.children);
       const fresh=await fetch('/operator-ui/api/v1/collector',{credentials:'same-origin',cache:'no-store'});
       if(!fresh.ok)throw new Error('Collector evidence unavailable');const value=await fresh.json();
