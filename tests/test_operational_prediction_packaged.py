@@ -21,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
     (False, "allocated_murray"),
     (False, "preprogramme_murray"),
     (False, "maitland"), (False, "grafton"), (False, "launceston"),
+    (False, "grade_context_missing"),
 ])
 def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, landing_missing, venue_case):
     from scripts.prepare_freshness_rehearsal import prepare, UNITS
@@ -41,6 +42,14 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
             rationale="Exercise exported collector and prediction above the legacy ceiling")
     monkeypatch.setenv("GREYHOUND_SPORTSBET_ACCESS_STATE", str(gate))
     stamp, browser = fixture_data(tmp_path, "canonical_alias")
+    if venue_case == "grade_context_missing":
+        def remove_schema(value):
+            if isinstance(value, dict):
+                value.pop('target_grade_context_schema', None)
+                for nested in value.values(): remove_schema(nested)
+            elif isinstance(value, list):
+                for nested in value: remove_schema(nested)
+        remove_schema(browser)
     if venue_case == "sandown_park":
         browser = json.loads(json.dumps(browser).replace("murray-bridge-straight", "sandown")
             .replace("MURRAY-BRIDGE-STRAIGHT", "SANDOWN").replace("Murray Bridge Straight", "Sandown Park")
@@ -87,6 +96,10 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     for key, value in payload['responses'].items():
         key = key.replace('/sale/', '/' + venue_slug + '/').replace('/1/invented', f'/{race_number}/fabricated')
         body = value['body'].replace('/sale/', '/' + venue_slug + '/').replace('/1/invented', f'/{race_number}/fabricated')
+        if venue_case == 'grade_context_missing':
+            body = body.replace('Grade 5', 'N/P').replace(
+                '<div class="race-header__info__grade">N/P 400m</div>',
+                '<div class="race-header__info__grade">400m</div><h1>N/P</h1>')
         body = body.replace('Race 1', f'Race {race_number}').replace('>R1<', f'>R{race_number}<')
         body = re.sub(r'(<formatted-time[^>]*>).*?(</formatted-time>)', r'\g<1>'+jump_dt.strftime('%H:%M')+r'\g<2>', body)
         if 'NextEvents' in key:
@@ -146,8 +159,11 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     prepare(output=package, start=stamp-timedelta(seconds=5), python=Path(sys.executable), db=db,
         lock=tmp_path/'collector.lock', reconciliation_roots={}, installed_dir=installed,
         campaign_root=campaign.root, operational_predictions=True, observation_minutes=60,
-        engineering_authority=authority)
+        engineering_authority=authority,
+        reduced_request_cap=6000 if venue_case == 'grade_context_missing' else None)
     plan = json.loads((package/'plan.json').read_bytes())
+    if venue_case == 'grade_context_missing':
+        assert plan['max_logical_requests'] == 6000
     assert (datetime.fromisoformat(plan['ends_at']) - datetime.fromisoformat(plan['starts_at'])).total_seconds() == 3600
     assert plan['max_capture_attempts'] == (12 if landing_missing else 64)
     from race_collection.synchronous_manual_capture import _atomic_replace_canonical
@@ -244,6 +260,24 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     terminal = json.loads(terminals[0].read_bytes())
     with sqlite3.connect(db) as history_conn:
         assert history_conn.execute('SELECT count(*) FROM live_odds').fetchone()[0] == initial_odds
+    if venue_case == 'grade_context_missing':
+        assert terminal['status'] == 'REJECTED'
+        assert terminal['preserved_rejection'] == 'TARGET_GRADE_CONTEXT_UNAVAILABLE'
+        assert result.returncode == 3
+        lifetime = json.loads(next((package/'operational-workers').glob('*.json')).read_bytes())
+        assert lifetime['children_reaped'] and lifetime['returncode'] == 3
+        from race_collection.operational_prediction import Supervisor
+        import io
+        from types import SimpleNamespace
+        supervisor = Supervisor(package, {}, None)
+        supervisor.child = SimpleNamespace(poll=lambda: result.returncode, returncode=result.returncode)
+        supervisor.log = io.StringIO()
+        supervisor.tick()
+        assert supervisor.child is None and not (scope.session/'STOP.json').exists()
+        before = terminals[0].read_bytes()
+        repeated = subprocess.run([sys.executable,'-B','-m','race_collection.operational_prediction',str(package/'plan.json'),str(claims[0])], cwd=cwd,env=env,capture_output=True,text=True,timeout=20)
+        assert repeated.returncode != 0 and terminals[0].read_bytes() == before
+        return
     assert terminal['status'] == 'PREDICTION_READY', terminal
     if venue_case in {'sandown_park', 'angle_park'}:
         venue_code = 'SAN' if venue_case == 'sandown_park' else 'AP_K'

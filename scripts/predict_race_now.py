@@ -1174,6 +1174,8 @@ def _run_prediction(
         except PredictionBlocked:
             raise
         except Exception as exc:
+            if isinstance(exc, CaptureHandoffError) and str(exc) == "sidecar_target_grade_context_schema_missing":
+                raise PredictionBlocked("TARGET_GRADE_CONTEXT_UNAVAILABLE") from exc
             raise PredictionBlocked(
                 "RESIDUAL_SCORER_FAILED", error=type(exc).__name__
             ) from exc

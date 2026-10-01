@@ -116,7 +116,7 @@ class Supervisor:
             result = self.child.returncode
             self.log.close()
             self.child = None
-            if result != 0:
+            if result not in (0, 3):
                 raise ValueError("operational_prediction_failed_preserved_consumption")
         if not self.plan.get("operational_predictions") or (self.scope.end-now()).total_seconds() < 200:
             return
@@ -167,7 +167,7 @@ class Supervisor:
             result = self.child.wait(timeout=240)
             self.log.close()
             self.child = None
-            if result != 0:
+            if result not in (0, 3):
                 raise ValueError("operational_prediction_failed_preserved_consumption")
 
 
@@ -413,6 +413,12 @@ def run(plan_path: Path, claim_path: Path):
                       index_to_verification_seconds=(now()-observed).total_seconds())
         if job.phase is not Phase.PREDICTION_READY:
             timing["reason"] = job.reason
+        if job.phase is Phase.REJECTED:
+            events = list(store.events(job.job_id))
+            if events and events[-1].get("facts", {}).get("verification_status") == "REJECTED":
+                blocker = events[-1]["facts"].get("blocker", {})
+                if blocker == {"code": "TARGET_GRADE_CONTEXT_UNAVAILABLE", "stage": "SCORING"}:
+                    timing["preserved_rejection"] = "TARGET_GRADE_CONTEXT_UNAVAILABLE"
     except Exception as exc:
         timing.update(status="FAILED", stage=stage, reason=failure_reason(exc))
     finally:
@@ -429,5 +435,7 @@ if __name__ == "__main__":
     if sys.argv[1] == "--worker":
         result = run(Path(sys.argv[2]), Path(sys.argv[3]))
         print(json.dumps({k: result[k] for k in ("status", "total_seconds")}))
-        raise SystemExit(0 if result["status"] == "PREDICTION_READY" else 2)
+        # Exit 3 is a verified, sealed per-race exclusion, never a successful forecast.
+        raise SystemExit(0 if result["status"] == "PREDICTION_READY" else
+                         3 if result.get("preserved_rejection") == "TARGET_GRADE_CONTEXT_UNAVAILABLE" else 2)
     raise SystemExit(bounded_run(Path(sys.argv[1]), Path(sys.argv[2])))

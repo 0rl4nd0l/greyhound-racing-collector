@@ -1637,6 +1637,20 @@ def test_receipt_only_mode_does_not_scan_legacy_evidence(tmp_path: Path):
     assert captured.value.code == "RECEIPT_UNAVAILABLE"
 
 
+def test_missing_exact_grade_proof_is_a_specific_persisted_rejection(tmp_path):
+    deps = dependencies()
+    def fail(**kwargs):
+        raise predict_now.CaptureHandoffError('sidecar_target_grade_context_schema_missing')
+    deps.score_residual = fail
+    with pytest.raises(PredictionBlocked) as captured:
+        run_prediction(args(tmp_path), deps)
+    assert captured.value.code == 'TARGET_GRADE_CONTEXT_UNAVAILABLE'
+    index = json.loads((tmp_path/'bundles/prediction_bundle_index_v1.json').read_bytes())
+    result = json.loads((tmp_path/'bundles'/index['entries'][0]['directory']/'result.json').read_bytes())
+    assert result['status'] == 'PREDICTION_BLOCKED'
+    assert result['blocker'] == {'code': 'TARGET_GRADE_CONTEXT_UNAVAILABLE'}
+
+
 @pytest.mark.parametrize(
     ("boundary", "code"),
     [("features", "FEATURE_SEAL_FAILED"), ("scorer", "RESIDUAL_SCORER_FAILED")],

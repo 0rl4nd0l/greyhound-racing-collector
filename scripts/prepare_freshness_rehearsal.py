@@ -26,7 +26,7 @@ def utc_now():
     return datetime.now(timezone.utc)
 
 
-def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False, observation_minutes=90, start_after_minutes=None, comparison_plan=None, prediction_root=None, engineering_authority=None, development_authority=None):
+def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False, observation_minutes=90, start_after_minutes=None, comparison_plan=None, prediction_root=None, engineering_authority=None, development_authority=None, reduced_request_cap=None):
     if engineering_authority is not None and (
             not operational_predictions or campaign_root is None
             or comparison_plan is not None or prediction_root is not None):
@@ -248,6 +248,10 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         }
         if comparison_binding is not None:
             plan["frozen_comparison"] = comparison_binding
+    if reduced_request_cap is not None:
+        if type(reduced_request_cap) is not int or not 0 < reduced_request_cap <= plan['max_logical_requests']:
+            raise ValueError('invalid_reduced_request_cap')
+        plan['max_logical_requests'] = reduced_request_cap
     # Select relative windows only after expensive export/runtime/retention work.
     # Seal once using the same canonical encoding the launch preflight verifies.
     if start_after_minutes is not None:
