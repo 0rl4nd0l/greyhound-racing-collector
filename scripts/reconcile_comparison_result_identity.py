@@ -26,6 +26,7 @@ from src.predictor.on_demand import canonical_bytes
 
 ROOT = Path(__file__).resolve().parents[1]
 STATUS = 'CLOSED_FROM_RETAINED_IDENTITY_RECONCILIATION'
+NONFINISH_STATUS = 'KNOWN_NON_FINISH_FROM_RETAINED_IDENTITY_RECONCILIATION'
 
 
 def require(condition):
@@ -68,7 +69,8 @@ class RetainedDeadline:
         return value
 
 
-def observed_queue_commit(root, original_job, original_event, output):
+def observed_queue_commit(root, original_job, original_event, output, *,
+                          expected_state='CLOSED', expected_status=STATUS):
     """Classify an interrupted commit from queue metadata only, never outcomes."""
     try:
         with closing(sqlite3.connect((root/'queue.sqlite3').as_uri()+'?mode=ro', uri=True, timeout=2)) as db:
@@ -79,8 +81,8 @@ def observed_queue_commit(root, original_job, original_event, output):
                                (original_job['race'],)).fetchone()
             if job is None or event is None:
                 return None
-            if (dict(job) == {**original_job, 'state': 'CLOSED'}
-                    and dict(event) == {'status': STATUS, 'artifact': str(output)}):
+            if (dict(job) == {**original_job, 'state': expected_state}
+                    and dict(event) == {'status': expected_status, 'artifact': str(output)}):
                 return True
             if dict(job) == original_job and dict(event) == original_event:
                 return False
@@ -89,13 +91,16 @@ def observed_queue_commit(root, original_job, original_event, output):
     return None
 
 
-def evidence_rows(job, bundle, body, url, captured, now, *, deadline):
+def evidence_rows(job, bundle, body, url, captured, now, *, deadline, prediction_bundles=None):
     """Keep values inside native machine validators; return no public outcomes."""
     from scripts import ingest_results_for_date as ingest
     from scripts.autonomous_official_result_capture import build_artifact_rows, comparison_runner_identity_error
     deadline.check_deadline()
     race = bundle.result['race']
-    participants = [{'box_number': r['box'], 'dog_name': r['name']} for r in job.input.ordered_runners]
+    from src.predictor.comparison_runner_identity import frozen_result_participants
+    participants = (frozen_result_participants(job, bundle, prediction_bundles)
+                    if prediction_bundles is not None else
+                    [{'box_number': r['box'], 'dog_name': r['name']} for r in job.input.ordered_runners])
     candidate = ingest.RaceCandidate(job.input.race_id, race['venue'], race['race_number'], race['race_date'],
         None, job.input.jump_timestamp, None, Path('/unused-sealed-r3-inputs'), participants,
         'JUMPED_AWAITING_RESULT', participant_source='verified_r3_prediction',
@@ -107,13 +112,10 @@ def evidence_rows(job, bundle, body, url, captured, now, *, deadline):
     rows = deadline.call(ingest.parse_thedogs_result_html_runner_rows, text)
     expected = {r['box_number']: r['dog_name'] for r in participants}
     require(len({r['box_number'] for r in rows}) == len(rows))
-    require({r['box_number']: ingest._result_identity_name(r['dog_name'])
-             for r in rows if r['box_number'] in expected}
-            == {box: ingest._result_identity_name(name) for box, name in expected.items()})
     selected = deadline.call(ingest.TheDogsResultFetcher(None)._result_from_html, candidate, url, text)
     require(selected is not None and selected.source == 'thedogs_official' and selected.status == 'resulted')
     require(deadline.call(comparison_runner_identity_error, candidate, selected) is None)
-    require(not selected.reserve_box_remappings and not selected.rejected_reserve_box_remappings)
+    require(not selected.rejected_reserve_box_remappings)
     require(set(selected.positions_by_box) == set(expected))
     require(deadline.call(ingest.result_validation_error, candidate, selected) in (None, 'duplicate_first_place_results'))
     require(deadline.call(ingest.finish_positions_follow_competition_ranking, selected.positions_by_box.values()))
@@ -139,6 +141,7 @@ def reconcile(authority_path, expected_sha, approval, *, now=None):
     require(approval and authority['authority_reference'] == approval)
     require(authority['network_requests_allowed'] is False and authority['outcomes_released'] is False
             and authority['preserve_attempts'] is True)
+    require(authority.get('mode', 'FULL_ORDER') in {'FULL_ORDER', 'KNOWN_NON_FINISH_ONLY'})
     deadline = RetainedDeadline(authority, now)
     now = deadline.check_deadline()
     require(stamp(authority['issued_at']) <= now)
@@ -148,6 +151,8 @@ def reconcile(authority_path, expected_sha, approval, *, now=None):
     deadline.deadline = min(deadline.deadline, stamp(cfg['expires_at']))
     deadline.check_deadline()
     root = Path(cfg['state_root']); result_db = Path(result_authority['result_database'])
+    if authority.get('mode') == 'KNOWN_NON_FINISH_ONLY':
+        require(not (root/'closure').exists())
     require(re.fullmatch(r'[a-zA-Z0-9_-]{1,96}', authority['reconciliation_id']))
     output = root/'reconciliations'/authority['reconciliation_id']
     attempt = Path(authority['attempt_directory'])
@@ -223,16 +228,30 @@ def _locked(authority, authority_ref, binding, plan, cfg, result_db, root, outpu
         require(failure['race_id'] == job.input.race_id and failure['errors'] == ['comparison_official_runner_identity_mismatch'])
         body = deadline.call(checked, authority['body'], maximum=MAX_BODY)
         require(response['sha256'] == authority['body']['sha256'] and response['bytes'] == len(body))
-        artifacts = evidence_rows(job, bundle, body, url, stamp(request['at']), now, deadline=deadline)
+        known_nonfinish = authority.get('mode') == 'KNOWN_NON_FINISH_ONLY'
+        if known_nonfinish:
+            from src.predictor.comparison_terminal_results import known_nonfinish_evidence
+            record = deadline.call(known_nonfinish_evidence, job, bundle, body, url,
+                stamp(request['at']), now, deadline=deadline, prediction_bundles=bundles,
+                source_evidence={key:authority[key] for key in ('body','request','response')})
+            evidence_sha = record['evidence_sha256']
+        else:
+            artifacts = evidence_rows(job, bundle, body, url, stamp(request['at']), now,
+                                      deadline=deadline, prediction_bundles=bundles)
+            expected_evidence = {'race_rows': artifacts['race_rows'],
+                'runner_rows': sorted(artifacts['runner_rows'], key=lambda r:r['box_number'])}
+            evidence_sha = hashlib.sha256(canonical(expected_evidence)).hexdigest()
         result_source = deadline.call(ComparisonResultSource, result_db)
         existing = deadline.call(result_source.read, job, bundle, now=deadline.check_deadline())
-        require(existing['state'] == 'RESULT_AVAILABLE' or existing.get('reason') == 'OFFICIAL_RESULT_UNAVAILABLE')
-        expected_evidence = {'race_rows': artifacts['race_rows'],
-            'runner_rows': sorted(artifacts['runner_rows'], key=lambda r:r['box_number'])}
-        evidence_sha = hashlib.sha256(canonical(expected_evidence)).hexdigest()
-        if existing['state'] == 'RESULT_AVAILABLE':
-            require(existing['evidence_sha256'] == evidence_sha)
+        if known_nonfinish:
+            require(existing.get('reason') == 'OFFICIAL_RESULT_UNAVAILABLE')
+        else:
+            require(existing['state'] == 'RESULT_AVAILABLE' or existing.get('reason') == 'OFFICIAL_RESULT_UNAVAILABLE')
+            if existing['state'] == 'RESULT_AVAILABLE':
+                require(existing['evidence_sha256'] == evidence_sha)
         preserved_paths = [Path(cfg['campaign_root'])/'ledger.json', Path(cfg['source_state'])]
+        if known_nonfinish:
+            preserved_paths.append(result_db)
         preserved = {str(p): sha(p) for p in preserved_paths}
         before = {'at': deadline.check_deadline().isoformat(), 'authority': authority_ref, 'job': dict(row),
             'requests_sha256': hashlib.sha256(canonical_bytes(requests)).hexdigest(),
@@ -246,12 +265,17 @@ def _locked(authority, authority_ref, binding, plan, cfg, result_db, root, outpu
         committed = None
         try:
             deadline.call(create_once, output/'before.json', before)
-            appended = deadline.call(append_official_result_evidence_to_db, db_path=result_db, artifact_rows=artifacts,
-                output_dir=output, execute=True, allow_dead_heats=True)
-            require(appended['status'] in {'APPENDED_OFFICIAL_RESULT_EVIDENCE','NOOP_ALREADY_PRESENT'})
-            verified_source = deadline.call(ComparisonResultSource, result_db)
-            verified = deadline.call(verified_source.read, job, bundle, now=deadline.check_deadline())
-            require(verified['state'] == 'RESULT_AVAILABLE' and verified['evidence_sha256'] == evidence_sha)
+            if known_nonfinish:
+                from scripts.run_comparison_result_queue import record_known_nonfinish
+                terminal_path = deadline.call(record_known_nonfinish, db, root, job, record,
+                                              deadline.check_deadline(), deadline=deadline)
+            else:
+                appended = deadline.call(append_official_result_evidence_to_db, db_path=result_db, artifact_rows=artifacts,
+                    output_dir=output, execute=True, allow_dead_heats=True)
+                require(appended['status'] in {'APPENDED_OFFICIAL_RESULT_EVIDENCE','NOOP_ALREADY_PRESENT'})
+                verified_source = deadline.call(ComparisonResultSource, result_db)
+                verified = deadline.call(verified_source.read, job, bundle, now=deadline.check_deadline())
+                require(verified['state'] == 'RESULT_AVAILABLE' and verified['evidence_sha256'] == evidence_sha)
             require(all(sha(path) == expected for path,expected in preserved.items()))
             require([dict(r) for r in db.execute('SELECT id,at,race,artifact FROM requests ORDER BY id')] == requests)
             after = {'status': 'VERIFIED_RETAINED_EVIDENCE_PENDING_QUEUE_COMMIT', 'at': deadline.check_deadline().isoformat(), 'job_id': job.job_id, 'race_id': job.input.race_id,
@@ -259,12 +283,20 @@ def _locked(authority, authority_ref, binding, plan, cfg, result_db, root, outpu
                 'evidence_sha256': evidence_sha, 'original_captured_at': request['at'],
                 'result_database_sha256': sha(result_db), 'attempts_preserved': row['attempts'],
                 'request_count_preserved': len(requests), 'provider_requests': 0, 'outcomes_released': False}
+            completion_status = NONFINISH_STATUS if known_nonfinish else STATUS
+            if known_nonfinish:
+                after.update(status='VERIFIED_KNOWN_NON_FINISH_PENDING_QUEUE_COMMIT',
+                    result_state='RESULT_KNOWN_NON_FINISH', full_order_eligible=False,
+                    terminal_record={'path':str(terminal_path),'sha256':sha(terminal_path)})
+                require(dict(db.execute('SELECT race,job,jump,state,due,attempts FROM jobs WHERE job=?',
+                    (job.job_id,)).fetchone()) == {**dict(row), 'state':'CLOSED_NON_FINISH'})
             deadline.call(create_once, output/'after.json', after)
-            db.execute("UPDATE jobs SET state='CLOSED' WHERE job=? AND state='QUARANTINED'", (job.job_id,))
-            require(db.execute('SELECT changes()').fetchone()[0] == 1)
-            db.execute('INSERT INTO events(at,race,status,artifact) VALUES(?,?,?,?)',
-                (deadline.check_deadline().isoformat(), job.input.race_id, STATUS, str(output)))
-            committed = {'status': STATUS, 'after_sha256': sha(output/'after.json'),
+            if not known_nonfinish:
+                db.execute("UPDATE jobs SET state='CLOSED' WHERE job=? AND state='QUARANTINED'", (job.job_id,))
+                require(db.execute('SELECT changes()').fetchone()[0] == 1)
+                db.execute('INSERT INTO events(at,race,status,artifact) VALUES(?,?,?,?)',
+                    (deadline.check_deadline().isoformat(), job.input.race_id, STATUS, str(output)))
+            committed = {'status': completion_status, 'after_sha256': sha(output/'after.json'),
                 'attempts_preserved': row['attempts'], 'provider_requests': 0, 'outcomes_released': False}
             def commit_queue():
                 nonlocal queue_committed, queue_commit_attempted
@@ -273,7 +305,7 @@ def _locked(authority, authority_ref, binding, plan, cfg, result_db, root, outpu
                 queue_committed = True
             deadline.call(commit_queue)
             deadline.call(create_once, output/'committed.json', committed)
-            return {'status': STATUS, **{k:after[k] for k in ('job_id','race_id','evidence_sha256','attempts_preserved','provider_requests','outcomes_released')}}
+            return {'status': completion_status, **({'result_state':'RESULT_KNOWN_NON_FINISH','full_order_eligible':False} if known_nonfinish else {}), **{k:after[k] for k in ('job_id','race_id','evidence_sha256','attempts_preserved','provider_requests','outcomes_released')}}
         except BaseException as exc:
             if not queue_committed:
                 try:
@@ -284,7 +316,11 @@ def _locked(authority, authority_ref, binding, plan, cfg, result_db, root, outpu
                     # SQLite may have committed and then raised (for example a
                     # delivered signal). A fresh read-only connection avoids a
                     # false rollback claim; unavailable metadata stays unknown.
-                    queue_committed = observed_queue_commit(root, dict(row), dict(event), output)
+                    if known_nonfinish:
+                        queue_committed = observed_queue_commit(root, dict(row), dict(event), terminal_path,
+                            expected_state='CLOSED_NON_FINISH', expected_status='CLOSED_NON_FINISH')
+                    else:
+                        queue_committed = observed_queue_commit(root, dict(row), dict(event), output)
             if queue_committed is True and not (output/'committed.json').exists():
                 # An irreversible queue commit can cross expiry. Finish only
                 # its structural receipt; do not reread results or imply rollback.

@@ -24,7 +24,7 @@ from src.predictor.future_comparison import stamp
 from src.predictor.on_demand import canonical_bytes
 
 ROOT = Path(__file__).resolve().parents[1]
-TERMINAL = {'CLOSED', 'QUARANTINED', 'ATTEMPTS_EXHAUSTED', 'DEADLINE_UNRESOLVED'}
+TERMINAL = {'CLOSED', 'CLOSED_NON_FINISH', 'QUARANTINED', 'ATTEMPTS_EXHAUSTED', 'DEADLINE_UNRESOLVED'}
 
 
 def event(db, now, race, status, artifact=None):
@@ -47,10 +47,154 @@ def status(root, db, now, code):
              'status': code, 'counts': counts,
              'request_attempts': db.execute('SELECT count(*) FROM requests').fetchone()[0],
              'oldest_due': db.execute("SELECT min(due) FROM jobs WHERE state='PENDING'").fetchone()[0],
-             'oldest_outstanding_jump': db.execute("SELECT min(jump) FROM jobs WHERE state NOT IN ('CLOSED')").fetchone()[0],
+             'oldest_outstanding_jump': db.execute("SELECT min(jump) FROM jobs WHERE state NOT IN ('CLOSED','CLOSED_NON_FINISH')").fetchone()[0],
              'outcomes_released': False}
     atomic_json(root / 'health.json', value)
     return value
+
+
+def record_known_nonfinish(db, root, job, record, now, *, deadline):
+    """Commit a separately validated terminal record; caller owns worker locks.
+
+    This helper does not commit the caller's transaction. A QUARANTINED job requires the caller's explicit retained-result
+    authority. The automatic worker only calls this for PENDING/RUNNING jobs.
+    """
+    from race_collection.live_freshness_contract import create_once
+    from scripts.reconcile_comparison_result_identity import checked
+    from src.operator_ui.job_store import canonical
+    deadline.check_deadline()
+    if (record.get('state') != 'RESULT_KNOWN_NON_FINISH'
+            or record.get('result_known') is not True or record.get('identity_verified') is not True
+            or record.get('full_order_eligible') is not False or record.get('outcomes_released') is not False
+            or record.get('job_id') != job.job_id or record.get('race_id') != job.input.race_id
+            or Path(job.job_id).name != job.job_id):
+        raise ValueError('known_nonfinish_record_invalid')
+    unsigned = {k: v for k, v in record.items() if k != 'evidence_sha256'}
+    if hashlib.sha256(canonical(unsigned)).hexdigest() != record.get('evidence_sha256'):
+        raise ValueError('known_nonfinish_record_changed')
+    row = db.execute('SELECT job,state,attempts FROM jobs WHERE race=?', (job.input.race_id,)).fetchone()
+    if (row is None or row['job'] != job.job_id or row['attempts'] < 1
+            or row['state'] not in {'PENDING', 'RUNNING', 'QUARANTINED', 'CLOSED_NON_FINISH'}):
+        raise ValueError('known_nonfinish_queue_state_invalid')
+    refs = record['source_evidence']
+    if set(refs) != {'body', 'request', 'response'}:
+        raise ValueError('known_nonfinish_source_refs_invalid')
+    for reference in refs.values():
+        deadline.call(checked, reference)
+    directory = root / 'terminal-results'
+    directory.mkdir(mode=0o700, exist_ok=True)
+    if directory.is_symlink() or directory.resolve() != directory:
+        raise ValueError('known_nonfinish_directory_unsafe')
+    path = directory / (job.job_id + '.json')
+    metadata = directory / (job.job_id + '.sources.json')
+    for target in (path, metadata):
+        value = record if target == path else {
+            'record_sha256': hashlib.sha256(path.read_bytes()).hexdigest(), 'sources': refs}
+        deadline.check_deadline()
+        if target.exists():
+            if target.is_symlink() or json.loads(target.read_bytes()) != value:
+                raise ValueError('known_nonfinish_record_conflict')
+        else:
+            deadline.call(create_once, target, value)
+        target.chmod(0o400)
+    deadline.check_deadline()
+    if row['state'] != 'CLOSED_NON_FINISH':
+        db.execute("UPDATE jobs SET state='CLOSED_NON_FINISH' WHERE race=?", (job.input.race_id,))
+        db.execute('INSERT INTO events(at,race,status,artifact) VALUES(?,?,?,?)',
+                   (now.isoformat(), job.input.race_id, 'CLOSED_NON_FINISH', str(path)))
+    else:
+        prior = db.execute('SELECT status,artifact FROM events WHERE race=? ORDER BY id DESC LIMIT 1',
+                           (job.input.race_id,)).fetchone()
+        if prior is None or tuple(prior) != ('CLOSED_NON_FINISH', str(path)):
+            raise ValueError('known_nonfinish_event_missing')
+    return path
+
+
+def close_retained_nonfinish(db, root, job, bundle, cfg, now):
+    """Try the exact latest charged response; unknown evidence stays unresolved."""
+    # A killed worker may leave its child alive. Hold the native campaign owner
+    # while reading/committing, even when no new acquisition is needed.
+    with (Path(cfg['campaign_root']) / 'owner.lock').open('a') as owner:
+        try:
+            fcntl.flock(owner, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return False
+        if Path(cfg['lock_path']).exists():
+            return False
+        return _close_retained_nonfinish(db, root, job, bundle, cfg, now)
+
+
+def _close_retained_nonfinish(db, root, job, bundle, cfg, now):
+    from scripts.reconcile_comparison_result_identity import RetainedDeadline, checked
+    from src.predictor.comparison_terminal_results import known_nonfinish_evidence
+    deadline = RetainedDeadline({'expires_at': cfg['expires_at']}, None)
+    deadline.check_deadline()
+    row = db.execute('SELECT state,attempts FROM jobs WHERE race=?', (job.input.race_id,)).fetchone()
+    if row is None or row['state'] not in {'PENDING', 'RUNNING'} or row['attempts'] < 1:
+        return False
+    requests = db.execute('SELECT at,artifact FROM requests WHERE race=? ORDER BY id',
+                          (job.input.race_id,)).fetchall()
+    if len(requests) != row['attempts']:
+        return False
+    artifact = Path(requests[-1]['artifact'])
+    if (not artifact.is_absolute() or artifact.resolve() != artifact
+            or not artifact.is_relative_to(root / 'attempts')
+            or (artifact.parent / 'transport-status.json').exists()):
+        return False
+    try:
+        from src.predictor.comparison_result_runtime import MAX_BODY
+        refs = {}
+        for name, suffix in (('body', '.body'), ('request', '.request.json'), ('response', '.json')):
+            path = artifact.with_suffix(suffix)
+            deadline.check_deadline()
+            if path.is_symlink() or path.resolve() != path or not path.is_file() or path.stat().st_size > 2*MAX_BODY:
+                return False
+            raw = deadline.call(path.read_bytes)
+            refs[name] = {'path': str(path), 'sha256': hashlib.sha256(raw).hexdigest()}
+        request = deadline.call(json.loads, deadline.call(checked, refs['request']))
+        if request['at'] != requests[-1]['at']:
+            return False
+        body = deadline.call(checked, refs['body'])
+        record = known_nonfinish_evidence(job, bundle, body, request['url'], stamp(request['at']), now,
+            deadline=deadline, prediction_bundles=Path(cfg['prediction_bundles']), source_evidence=refs)
+    except (ValueError, KeyError, TypeError, OSError):
+        deadline.check_deadline()  # expiry must never become a pending retry
+        return False
+    record_known_nonfinish(db, root, job, record, now, deadline=deadline)
+    db.commit()
+    return True
+
+
+def seal_known_nonfinish(root, db, staging):
+    """Seal opaque terminal bytes and source refs after expiry; decode no result."""
+    from scripts.reconcile_comparison_result_identity import checked
+    records = []
+    for row in db.execute("SELECT job FROM jobs WHERE state='CLOSED_NON_FINISH' ORDER BY job"):
+        job = row['job']
+        if Path(job).name != job:
+            raise ValueError('known_nonfinish_job_unsafe')
+        path = root / 'terminal-results' / (job + '.json')
+        metadata_path = path.with_name(job + '.sources.json')
+        if metadata_path.is_symlink() or metadata_path.resolve() != metadata_path:
+            raise ValueError('known_nonfinish_metadata_unsafe')
+        # Metadata contains only hashes/paths, no terminal status or placement.
+        metadata = json.loads(metadata_path.read_bytes())
+        sources = metadata['sources']
+        if set(sources) != {'body', 'request', 'response'}:
+            raise ValueError('known_nonfinish_source_refs_invalid')
+        target = staging / 'terminal-results' / job
+        target.mkdir(parents=True, exist_ok=False)
+        hashes = {}
+        references = {**sources, 'record': {'path': str(path), 'sha256': metadata['record_sha256']}}
+        for name, reference in references.items():
+            raw = checked(reference)
+            dest = target / name
+            with dest.open('xb') as stream:
+                stream.write(raw); stream.flush(); os.fsync(stream.fileno())
+            dest.chmod(0o400)
+            hashes[name] = hashlib.sha256(raw).hexdigest()
+        records.append({'job_id': job, 'files_sha256': hashes, 'full_order_eligible': False})
+    return records
 
 
 def _reconcile_closed_queue(db, now, final):
@@ -80,12 +224,18 @@ def _seal_closure(binding_path, root, db, now):
         receipt = json.loads((final / 'closure.json').read_bytes())
         if hashlib.sha256((final / 'official-results.sqlite3').read_bytes()).hexdigest() != receipt['result_database_sha256']:
             raise ValueError('closure_identity_changed')
+        for record in receipt.get('known_nonfinish_records', []):
+            for name, expected in record['files_sha256'].items():
+                path = final / 'terminal-results' / record['job_id'] / name
+                if path.is_symlink() or path.resolve() != path or hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+                    raise ValueError('closure_terminal_identity_changed')
         _reconcile_closed_queue(db,now,final)
         return status(root, db, now, 'CLOSURE_SEALED')
     # Interrupted staging directories remain private evidence. A subsequent pass
     # seals to a new directory, then publishes exactly once under worker flock.
     staging = root / ('closure-staging-' + uuid.uuid4().hex)
     receipt = seal(binding_path, staging, now=now)
+    receipt['known_nonfinish_records'] = seal_known_nonfinish(root, db, staging)
     receipt['result_database'] = str(final / 'official-results.sqlite3')
     atomic_json(staging / 'closure.json', receipt)
     (staging / 'closure.json').chmod(0o400)
@@ -200,6 +350,9 @@ def cycle(binding_path):
                 if evidence['state'] == 'RESULT_REJECTED':
                     db.execute("UPDATE jobs SET state='QUARANTINED' WHERE race=?", (row['race'],))
                     event(db, now, row['race'], 'RESULT_IDENTITY_REJECTED'); continue
+                if (evidence.get('reason') == 'OFFICIAL_RESULT_UNAVAILABLE'
+                        and close_retained_nonfinish(db, root, job, bundle, cfg, now)):
+                    continue
                 if row['attempts'] >= cfg['max_attempts_per_race']:
                     db.execute("UPDATE jobs SET state='ATTEMPTS_EXHAUSTED' WHERE race=?", (row['race'],))
                     event(db, now, row['race'], 'ATTEMPTS_EXHAUSTED'); continue
@@ -277,6 +430,9 @@ def cycle(binding_path):
                                  'thedogs_http_502', 'thedogs_http_503', 'thedogs_http_504'}
                     if errors and any(e not in retryable and not e.startswith('thedogs_http_error:') for e in errors):
                         state = 'QUARANTINED'
+                if (evidence['state'] == 'RESULT_PENDING' and evidence.get('reason') == 'OFFICIAL_RESULT_UNAVAILABLE'
+                        and close_retained_nonfinish(db, root, job, bundle, cfg, after)):
+                    continue
                 db.execute('UPDATE jobs SET state=? WHERE race=?', (state, row['race']))
                 event(db, after, row['race'], state if not code else 'COLLECTOR_FAILURE', output)
             if (closed := deadline_closure()) is not None: return closed
