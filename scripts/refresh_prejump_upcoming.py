@@ -10,6 +10,7 @@ labels, retrain, promote, or bet.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -813,11 +814,162 @@ def current_index_metadata_selection(
     }
 
 
+def _complete_local_runner_quarantine(
+    candidate: Mapping[str, Any], result: Mapping[str, Any], root: Any
+) -> bool:
+    """Authenticate the observed local CSV/canonical-field mismatch; admit no rows."""
+    normalization = result.get("normalization", {})
+    alignment = normalization.get("canonical_runner_alignment", {})
+    completeness = result.get("runner_completeness", {})
+    missing = alignment.get("missing_canonical_participants")
+    identity = canonical_thedogs_race_identity(candidate.get("race_url", ""))
+    if (
+        result.get("success") is not False
+        or result.get("error") != "Downloaded CSV failed canonical final runner-set alignment gate"
+        or normalization.get("normalization_status") != "rejected"
+        or normalization.get("normalization_failure_reason")
+        != "final_runner_set_not_aligned:canonical_participant_missing_from_source_csv"
+        or alignment.get("status") != "not_aligned"
+        or alignment.get("reason") != "canonical_participant_missing_from_source_csv"
+        or alignment.get("canonical_runner_set_status") != "available"
+        or identity is None
+        or canonical_thedogs_race_identity(alignment.get("canonical_source_url", "")) != identity
+        or completeness.get("status") != "COMPLETE"
+        or completeness.get("source") != "download:" + candidate["race_url"]
+        or any(
+            completeness.get(key)
+            for key in ("reasons", "duplicate_boxes", "duplicate_dog_names", "invalid_runner_rows")
+        )
+        or any(
+            alignment.get(key)
+            for key in (
+                "duplicate_source_runner_names",
+                "remapped_participants",
+                "dropped_participants",
+            )
+        )
+        or not isinstance(missing, list)
+        or not missing
+        or type(alignment.get("canonical_runner_count")) is not int
+        or not 0 < len(missing) < alignment["canonical_runner_count"]
+        or alignment.get("prediction_runner_count") != 0
+    ):
+        return False
+    if alignment.get("native_identity_status") == "available":
+        native = alignment.get("source_native_race_id")
+        if (
+            not isinstance(native, str)
+            or not native.isascii()
+            or not native.isdecimal()
+            or alignment.get("native_identity_reasons")
+        ):
+            return False
+    elif not (
+        alignment.get("native_identity_status") == "unavailable"
+        and alignment.get("source_native_race_id") is None
+        and alignment.get("native_identity_reasons")
+        == ["native_identity_evidence_rejected:expected_active_runner_boxes_invalid"]
+    ):
+        return False
+    size = normalization.get("raw_content_length")
+    expected = normalization.get("raw_content_sha256")
+    if (
+        type(size) is not int
+        or not 0 < size <= 16 * 1024 * 1024
+        or not isinstance(expected, str)
+        or not re.fullmatch(r"[0-9a-f]{64}", expected)
+    ):
+        return False
+    directory = Path(root)
+    if not directory.is_absolute() or directory.resolve() != directory:
+        return False
+    if normalization.get("raw_export_path") != result.get("raw_export_path"):
+        return False
+    for key in ("raw_export_path", "quarantine_path"):
+        path = Path(result[key])
+        if (
+            not path.is_absolute()
+            or not path.is_relative_to(directory)
+            or any(p.is_symlink() for p in (path, *path.parents))
+        ):
+            return False
+        with path.open("rb") as stream:
+            raw = stream.read(size + 1)
+        if len(raw) != size or hashlib.sha256(raw).hexdigest() != expected:
+            return False
+    return True
+
+
+def has_unisolated_refresh_failure(report: Mapping[str, Any]) -> bool:
+    """Do not publish even an eligible subset after an unisolated source failure."""
+    try:
+        if report.get("discovery_failures"):
+            return True
+        shared = report.get("shared_sportsbet_snapshot")
+        if shared is not None and (
+            not isinstance(shared, Mapping)
+            or shared.get("status") != "VALIDATED"
+            or not re.fullmatch(r"[0-9a-f]{64}", str(shared.get("payload_sha256", "")))
+        ):
+            return True
+        # Historical successful reports may predate per-download evidence.
+        if "downloads" not in report:
+            return False
+        downloads = report["downloads"]
+        selected = report.get("selected_races", [])
+        if (
+            not isinstance(downloads, list)
+            or not isinstance(selected, list)
+            or len(downloads) != len(selected)
+        ):
+            return True
+        for number, (candidate, download) in enumerate(zip(selected, downloads)):
+            result = download.get("result")
+            if (
+                not isinstance(result, Mapping)
+                or download.get("race_url") != candidate.get("race_url")
+                or result.get("source_http_status") not in {None, 200}
+                or any(
+                    result.get(key)
+                    for key in (
+                        "source_retry_after",
+                        "source_rate_limit_reset",
+                        "source_failure_category",
+                    )
+                )
+            ):
+                return True
+            if download.get("success") is True and result.get("success") is True:
+                continue
+            if download.get("success") is not False or not _complete_local_runner_quarantine(
+                candidate, result, report.get("upcoming_dir")
+            ):
+                return True
+            coverage = report["sidecar_metadata_coverage"]["races"]
+            row = coverage[number]
+            if (
+                len(coverage) != len(selected)
+                or row.get("race_url") != candidate.get("race_url")
+                or row.get("race_id") != candidate.get("race_id")
+                or row.get("csv_path")
+                or row.get("sidecar_path")
+                or row.get("weather_track_rejected_reasons") != ["accepted_csv_missing"]
+                or any(
+                    race.get("race_url") == candidate.get("race_url")
+                    for race in report.get("current_index_races", [])
+                )
+            ):
+                return True
+        return False
+    except (KeyError, IndexError, TypeError, ValueError, AttributeError, OSError):
+        return True
+
+
 def complete_empty_metadata_selection(report: Mapping[str, Any]) -> bool:
-    """Authenticate a completed refresh whose candidates are all ineligible.
+    """Authenticate a completed refresh whose candidates are all ineligible or locally quarantined.
 
     This is not a successful race input. Keep every race excluded, and do not
-    turn partial downloads, discovery failures or source errors into freshness.
+    turn incomplete attempts, discovery failures or source errors into freshness.
     """
     try:
         if (
@@ -838,21 +990,16 @@ def complete_empty_metadata_selection(report: Mapping[str, Any]) -> bool:
             or any(not isinstance(row, Mapping) for row in selected)
             or not isinstance(downloads, list)
             or len(downloads) != count
-            or any(
-                type(report.get(key)) is not int or report[key] != count
-                for key in ("accepted_csv_count", "sidecar_count")
-            )
             or report.get("current_index_race_count") != 0
             or report.get("current_index_races") != []
         ):
             return False
-        for candidate, download in zip(selected, downloads):
+        local_quarantines = set()
+        for number, (candidate, download) in enumerate(zip(selected, downloads)):
             result = download.get("result")
             if (
                 download.get("race_url") != candidate.get("race_url")
-                or download.get("success") is not True
                 or not isinstance(result, Mapping)
-                or result.get("success") is not True
                 or result.get("source_http_status") not in {None, 200}
                 or any(
                     result.get(key)
@@ -864,6 +1011,32 @@ def complete_empty_metadata_selection(report: Mapping[str, Any]) -> bool:
                 )
             ):
                 return False
+            if download.get("success") is True and result.get("success") is True:
+                continue
+            if download.get("success") is not False or not _complete_local_runner_quarantine(
+                candidate, result, report.get("upcoming_dir")
+            ):
+                return False
+            local_quarantines.add(number)
+        accepted = count - len(local_quarantines)
+        if any(
+            type(report.get(key)) is not int or report[key] != accepted
+            for key in ("accepted_csv_count", "sidecar_count")
+        ):
+            return False
+        shared = report.get("shared_sportsbet_snapshot")
+        if shared is not None and (
+            not isinstance(shared, Mapping)
+            or shared.get("status") != "VALIDATED"
+            or not re.fullmatch(r"[0-9a-f]{64}", str(shared.get("payload_sha256", "")))
+        ):
+            return False
+        if local_quarantines and (
+            type(report.get("quarantine_count")) is not int
+            or report["quarantine_count"] != len(local_quarantines)
+            or (not accepted and shared is None)
+        ):
+            return False
         rows = coverage["races"]
         local_rejections = {
             "sportsbet_matching_pre_race_event_not_found",
@@ -876,8 +1049,16 @@ def complete_empty_metadata_selection(report: Mapping[str, Any]) -> bool:
         }
         if not isinstance(rows, list) or len(rows) != count:
             return False
-        for row in rows:
+        for number, row in enumerate(rows):
             reasons = row.get("weather_track_rejected_reasons", [])
+            if number in local_quarantines:
+                if (
+                    row.get("csv_path")
+                    or row.get("sidecar_path")
+                    or reasons != ["accepted_csv_missing"]
+                ):
+                    return False
+                continue
             if (
                 not row.get("csv_path")
                 or not row.get("sidecar_path")
@@ -889,8 +1070,17 @@ def complete_empty_metadata_selection(report: Mapping[str, Any]) -> bool:
         eligible, selection = current_index_metadata_selection(
             selected, coverage, source_generated_at=report.get("generated_at")
         )
-        for row, exclusion in zip(rows, selection["exclusions"]):
+        for number, (row, exclusion) in enumerate(zip(rows, selection["exclusions"])):
             allowed_missing = {"weather", "track_condition"}
+            if number in local_quarantines:
+                allowed_missing.update(
+                    {
+                        "accepted_csv",
+                        "expert_form",
+                        "runner_source_timing",
+                        "native_source_identity",
+                    }
+                )
             if (
                 "sportsbet_matching_pre_race_event_not_found"
                 in row.get("weather_track_rejected_reasons", [])
@@ -909,7 +1099,7 @@ def complete_empty_metadata_selection(report: Mapping[str, Any]) -> bool:
             and selection["excluded_race_count"] == count
             and report.get("current_index_metadata_selection") == selection
         )
-    except (KeyError, TypeError, ValueError, AttributeError):
+    except (KeyError, TypeError, ValueError, AttributeError, OSError):
         return False
 
 
@@ -923,6 +1113,7 @@ def download_selected_race(task: Mapping[str, Any]) -> dict[str, Any]:
     restore_guard = None
     if task.get("live_freshness_contract"):
         from race_collection.live_freshness_contract import FreshnessContract, install_request_guard
+
         scope = FreshnessContract.load(task["live_freshness_contract"])
         scope.admit(datetime.now().astimezone(), seconds=0)
         restore_guard = install_request_guard(scope)
@@ -1052,6 +1243,7 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
     )
 
     downloads: list[dict[str, Any]] = []
+    shared_snapshot = None
     tasks = []
     if not args.dry_run:
         selected_record_by_url = {
@@ -1106,6 +1298,7 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
                     timing, "sportsbet_snapshot", fetch_sportsbet_next_events_snapshot,
                     session=browser.session,
                 )
+                shared_snapshot = snapshot
                 for task in tasks:
                     task["sportsbet_next_events_snapshot"] = snapshot
             downloads.extend(_timed_call(timing, "worker_pool_including_cleanup", _download_tasks, tasks))
@@ -1216,6 +1409,21 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
                       discovered_but_unusable_count=unusable_discovered_count)
         report['next_preferred_window'] = {'status': 'DISCOVERY_FAILED',
             'reason': 'discovery_source_unavailable', 'recommended_rerun_after_local': None}
+    snapshot = shared_snapshot or getattr(browser, "_sportsbet_next_events_snapshot", None)
+    if isinstance(snapshot, Mapping):
+        report["shared_sportsbet_snapshot"] = {
+            "status": (
+                "VALIDATED"
+                if isinstance(snapshot.get("events"), list)
+                and snapshot.get("snapshot_payload_sha256")
+                else "UNAVAILABLE"
+            ),
+            "payload_sha256": snapshot.get("snapshot_payload_sha256"),
+        }
+    if report["status"] == "SUCCESS" and has_unisolated_refresh_failure(report):
+        report.update(
+            status="ACQUISITION_INCOMPLETE", reason="unisolated_selected_race_acquisition_failure"
+        )
     if complete_empty_metadata_selection(report):
         report["status"] = "NO_QUALIFIED_RACES"
     return report
