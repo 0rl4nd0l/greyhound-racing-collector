@@ -14,6 +14,9 @@ OCTOBER2_CAPS = {**CAPS, 'max_capture_attempts_per_window':32,
                  'max_prediction_logical_requests_per_window':24064,
                  'max_result_requests_per_window':96, 'max_result_operations_per_window':96}
 DISPOSITION = 'AUTHORIZED_NON_EVALUATIVE_REUSE_EXCLUDING_ADMITTED_STUDY_IDENTITIES'
+# Exact retained user amendment removes the aggregate attempt limit, while
+# preserving finite per-run budgets, source controls, privacy and day cutoffs.
+LIVE_FIRST_AMENDMENT_SHA256 = '93cd03a256372f36fcd010eedb6a07211f18d8b570519da16e53dd37b2c80520'
 
 
 def stamp(value):
@@ -40,11 +43,13 @@ def load_incident_authority(ref):
     """Authenticate explicit non-evaluative reuse, unchanged reservations/models."""
     try:
         value = checked(ref)
-        october2 = value.get('schema_version') == 'collector_incident_engineering_authority_20261002_v1'
+        single = value.get('schema_version') == 'collector_incident_engineering_authority_20261002_v2'
+        october2 = single or value.get('schema_version') == 'collector_incident_engineering_authority_20261002_v1'
         caps = OCTOBER2_CAPS if october2 else CAPS
         day = '2026-10-02' if october2 else '2026-10-01'
         if (value['schema_version'] not in {'collector_incident_engineering_authority_v1',
-                                            'collector_incident_engineering_authority_20261002_v1'}
+                                            'collector_incident_engineering_authority_20261002_v1',
+                                            'collector_incident_engineering_authority_20261002_v2'}
                 or value['status'] != 'AUTHORIZED_INCIDENT_ENGINEERING'
                 or not all(isinstance(value[k],str) and value[k].strip()
                            for k in ('incident_id','authority_reference','campaign_id'))
@@ -59,11 +64,22 @@ def load_incident_authority(ref):
                     or type(value.get('max_browser_navigations_per_window')) is not int
                     or value.get('max_python_requests_per_window') != 24000
                     or value.get('max_browser_navigations_per_window') != 64
-                    or value.get('second_window_requires_demonstrated_correction') is not True
+                    or (not single and value.get('second_window_requires_demonstrated_correction') is not True)
                     or not isinstance(value.get('limits_basis'), dict) or not value['limits_basis']):
                 raise ValueError()
         zone = ZoneInfo('Australia/Melbourne')
         issued = stamp(value['issued_at'])
+        if single:
+            amendment_ref = value['live_first_amendment']
+            amendment = checked(amendment_ref)
+            if (amendment_ref['sha256'] != LIVE_FIRST_AMENDMENT_SHA256
+                    or amendment.get('schema') != 'live_first_recovery_authority_amendment_v1'
+                    or amendment.get('authority_reference') != 'user:20261002-live-first-resume-03'
+                    or amendment.get('local_request_caps_are_provider_permission') is not False
+                    or 'October2 overall two-acceptance-attempt maximum' not in amendment.get('superseded_restrictions', [])
+                    or amendment.get('prior_second_disposition') != 'PRESERVED_UNARMED_NOT_TO_BE_LAUNCHED'
+                    or not stamp(amendment['issued_at']) < issued):
+                raise ValueError()
         stop = stamp(value['collection_stop_at'])
         cleanup = stamp(value['cleanup_deadline'])
         deadline = stamp(value['result_deadline'])
@@ -73,7 +89,7 @@ def load_incident_authority(ref):
                 or issued.astimezone(zone).date().isoformat() != day):
             raise ValueError()
         slots = value['slots']
-        if not isinstance(slots,list) or len(slots) != 2:
+        if not isinstance(slots,list) or len(slots) != (1 if single else 2):
             raise ValueError()
         previous = None
         for number, slot in enumerate(slots, 1):
