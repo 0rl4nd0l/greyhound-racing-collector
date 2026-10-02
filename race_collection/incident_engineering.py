@@ -17,6 +17,7 @@ DISPOSITION = 'AUTHORIZED_NON_EVALUATIVE_REUSE_EXCLUDING_ADMITTED_STUDY_IDENTITI
 # Exact retained user amendment removes the aggregate attempt limit, while
 # preserving finite per-run budgets, source controls, privacy and day cutoffs.
 LIVE_FIRST_AMENDMENT_SHA256 = '93cd03a256372f36fcd010eedb6a07211f18d8b570519da16e53dd37b2c80520'
+LATE_WINDOW_AMENDMENT_SHA256 = 'e2924504181874fe3260313995175ec1bf47b1ce69d0a3ca609e5a112248c1af'
 
 
 def stamp(value):
@@ -43,13 +44,15 @@ def load_incident_authority(ref):
     """Authenticate explicit non-evaluative reuse, unchanged reservations/models."""
     try:
         value = checked(ref)
-        single = value.get('schema_version') == 'collector_incident_engineering_authority_20261002_v2'
+        late = value.get('schema_version') == 'collector_incident_engineering_authority_20261002_late_v1'
+        single = late or value.get('schema_version') == 'collector_incident_engineering_authority_20261002_v2'
         october2 = single or value.get('schema_version') == 'collector_incident_engineering_authority_20261002_v1'
         caps = OCTOBER2_CAPS if october2 else CAPS
         day = '2026-10-02' if october2 else '2026-10-01'
         if (value['schema_version'] not in {'collector_incident_engineering_authority_v1',
                                             'collector_incident_engineering_authority_20261002_v1',
-                                            'collector_incident_engineering_authority_20261002_v2'}
+                                            'collector_incident_engineering_authority_20261002_v2',
+                                            'collector_incident_engineering_authority_20261002_late_v1'}
                 or value['status'] != 'AUTHORIZED_INCIDENT_ENGINEERING'
                 or not all(isinstance(value[k],str) and value[k].strip()
                            for k in ('incident_id','authority_reference','campaign_id'))
@@ -69,6 +72,19 @@ def load_incident_authority(ref):
                 raise ValueError()
         zone = ZoneInfo('Australia/Melbourne')
         issued = stamp(value['issued_at'])
+        stop_bound = stamp(day+'T21:00:00+10:00')
+        cleanup_bound = stamp(day+'T21:30:00+10:00')
+        if late:
+            late_ref = value['late_window_amendment']
+            renewed = checked(late_ref)
+            if (late_ref['sha256'] != LATE_WINDOW_AMENDMENT_SHA256
+                    or renewed.get('schema') != 'late_evening_validation_amendment_v1'
+                    or value['authority_reference'] != renewed['authority_reference']
+                    or not stamp(renewed['issued_at']) < issued
+                    or value['result_deadline'] != renewed['result_deadline']):
+                raise ValueError()
+            stop_bound = stamp(renewed['collection_stop_at'])
+            cleanup_bound = stamp(renewed['cleanup_deadline'])
         if single:
             amendment_ref = value['live_first_amendment']
             amendment = checked(amendment_ref)
@@ -83,8 +99,8 @@ def load_incident_authority(ref):
         stop = stamp(value['collection_stop_at'])
         cleanup = stamp(value['cleanup_deadline'])
         deadline = stamp(value['result_deadline'])
-        if (stop != stamp(day+'T21:00:00+10:00')
-                or cleanup != stamp(day+'T21:30:00+10:00')
+        if (stop != stop_bound
+                or cleanup != cleanup_bound
                 or not cleanup <= deadline <= stamp('2026-10-04T12:00:00+11:00' if october2 else '2026-10-02T12:00:00+10:00')
                 or issued.astimezone(zone).date().isoformat() != day):
             raise ValueError()
