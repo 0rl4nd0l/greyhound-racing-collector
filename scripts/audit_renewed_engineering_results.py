@@ -59,7 +59,7 @@ def audit(reference, approval, *, source_commit):
     deadline = RetainedDeadline(value, None)
     deadline.check_deadline()
     root = Path(cfg['state_root']); result_db = Path(original['result_database'])
-    paths = [Path(binding['authority']), Path(binding['plan']), Path(value['original_binding']['path']),
+    paths = [Path(reference['path']), Path(binding['authority']), Path(binding['plan']), Path(value['original_binding']['path']),
         root/'queue.sqlite3',result_db,Path(cfg['campaign_root'])/'ledger.json',Path(cfg['source_state'])]
     paths.extend(p for p in (root/'closure').glob('*') if p.is_file())
     preserved = {str(path):digest(path) for path in paths}
@@ -150,6 +150,15 @@ def audit(reference, approval, *, source_commit):
         preserved_sha256=preserved,rows=rows)
 
 
+def publish_result(reference, approval, output, result):
+    # Hash-bound metadata validation after private work: never publish using an
+    # edited replacement deadline or a changed membership/authority receipt.
+    value, _, _, _, _ = load_renewal(reference, approval, now=datetime.now(timezone.utc))
+    RetainedDeadline(value, None).check_deadline()
+    from race_collection.live_freshness_contract import create_once
+    create_once(output, result)
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--authority',type=Path,required=True)
@@ -169,10 +178,8 @@ def main():
         print(json.dumps(dict(status='PRIVATE_AUDIT_FAILED',failure_class=type(exc).__name__,outcomes_released=False)))
         return 2
     # No publishing after expiry; the metadata receipt is create-only.
-    value=json.loads(args.authority.read_bytes())
-    RetainedDeadline(value,None).check_deadline()
-    from race_collection.live_freshness_contract import create_once
-    create_once(args.output,result)
+    publish_result(dict(path=str(args.authority),sha256=args.authority_sha256),
+                   args.approval_id,args.output,result)
     print(json.dumps({key:result[key] for key in ('counts','jobs','original_request_count','provider_requests','outcomes_released')}))
     return 0
 

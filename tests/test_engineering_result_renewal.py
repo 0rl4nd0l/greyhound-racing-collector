@@ -75,3 +75,16 @@ def test_membership_is_original_and_hash_bound(renewal,mutation):
     if mutation=='duplicate':renewal[1]['jobs'].append(dict(job))
     if mutation=='bad_binding':renewal[1]['original_binding']['sha256']='0'*64
     with pytest.raises(ValueError):load(renewal)
+
+
+def test_changed_authority_cannot_publish_completed_audit(renewal, tmp_path):
+    from scripts.audit_renewed_engineering_results import publish_result
+    path,value,*_=renewal
+    reference=put(path,value)
+    value['expires_at']='2026-10-04T12:00:00+11:00'
+    value['owner']='changed-after-private-audit'
+    put(path,value)
+    output=tmp_path/'never-published.json'
+    with pytest.raises(ValueError):
+        publish_result(reference,'SYNTHETIC_NEW',output,{'counts':{'IDENTITY_VERIFIED_CLOSED':1}})
+    assert not output.exists()
