@@ -1,4 +1,4 @@
-"""Finite October 1 incident authority; no provider or outcome access."""
+"""Finite dated incident authority; no provider or outcome access."""
 from datetime import datetime, timedelta
 import hashlib
 import json
@@ -10,6 +10,9 @@ CAPS = {'max_capture_attempts_per_window':24,
         'max_source_operations_per_window':192,
         'max_result_requests_per_window':72,
         'max_result_operations_per_window':72}
+OCTOBER2_CAPS = {**CAPS, 'max_capture_attempts_per_window':32,
+                 'max_prediction_logical_requests_per_window':24064,
+                 'max_result_requests_per_window':96, 'max_result_operations_per_window':96}
 DISPOSITION = 'AUTHORIZED_NON_EVALUATIVE_REUSE_EXCLUDING_ADMITTED_STUDY_IDENTITIES'
 
 
@@ -37,7 +40,11 @@ def load_incident_authority(ref):
     """Authenticate explicit non-evaluative reuse, unchanged reservations/models."""
     try:
         value = checked(ref)
-        if (value['schema_version'] != 'collector_incident_engineering_authority_v1'
+        october2 = value.get('schema_version') == 'collector_incident_engineering_authority_20261002_v1'
+        caps = OCTOBER2_CAPS if october2 else CAPS
+        day = '2026-10-02' if october2 else '2026-10-01'
+        if (value['schema_version'] not in {'collector_incident_engineering_authority_v1',
+                                            'collector_incident_engineering_authority_20261002_v1'}
                 or value['status'] != 'AUTHORIZED_INCIDENT_ENGINEERING'
                 or not all(isinstance(value[k],str) and value[k].strip()
                            for k in ('incident_id','authority_reference','campaign_id'))
@@ -45,17 +52,25 @@ def load_incident_authority(ref):
                 or any(value[k] is not False for k in
                        ('study_enrolment','performance_evaluation','human_outcome_access'))
                 or value['reservation_disposition'] != DISPOSITION
-                or any(type(value[k]) is not int or value[k] != cap for k,cap in CAPS.items())):
+                or any(type(value[k]) is not int or value[k] != cap for k,cap in caps.items())):
             raise ValueError()
+        if october2:
+            if (type(value.get('max_python_requests_per_window')) is not int
+                    or type(value.get('max_browser_navigations_per_window')) is not int
+                    or value.get('max_python_requests_per_window') != 24000
+                    or value.get('max_browser_navigations_per_window') != 64
+                    or value.get('second_window_requires_demonstrated_correction') is not True
+                    or not isinstance(value.get('limits_basis'), dict) or not value['limits_basis']):
+                raise ValueError()
         zone = ZoneInfo('Australia/Melbourne')
         issued = stamp(value['issued_at'])
         stop = stamp(value['collection_stop_at'])
         cleanup = stamp(value['cleanup_deadline'])
         deadline = stamp(value['result_deadline'])
-        if (stop != stamp('2026-10-01T21:00:00+10:00')
-                or cleanup != stamp('2026-10-01T21:30:00+10:00')
-                or not cleanup <= deadline <= stamp('2026-10-02T12:00:00+10:00')
-                or issued.astimezone(zone).date().isoformat() != '2026-10-01'):
+        if (stop != stamp(day+'T21:00:00+10:00')
+                or cleanup != stamp(day+'T21:30:00+10:00')
+                or not cleanup <= deadline <= stamp('2026-10-04T12:00:00+11:00' if october2 else '2026-10-02T12:00:00+10:00')
+                or issued.astimezone(zone).date().isoformat() != day):
             raise ValueError()
         slots = value['slots']
         if not isinstance(slots,list) or len(slots) != 2:
@@ -66,7 +81,7 @@ def load_incident_authority(ref):
             if (set(slot) != {'id','starts_at','ends_at','cleanup_by'} or slot['id'] != f'{number:03d}'
                     or not issued < start < end <= stop or end-start != timedelta(minutes=90)
                     or not end <= closed <= min(end+timedelta(seconds=1860),cleanup)
-                    or start.astimezone(zone).date().isoformat() != '2026-10-01'
+                    or start.astimezone(zone).date().isoformat() != day
                     or previous is not None and start < previous):
                 raise ValueError()
             previous = closed
@@ -137,9 +152,10 @@ def incident_usage(value, campaign_id, *, authority_sha256=None, slot=None):
         if tagged(row) and validate(row): totals['live_seconds'] += row['charged_seconds']
     for key,row in value.get('incident_request_usage',{}).items():
         matches = validate(row)
+        authority = load_incident_authority(row['incident_authority'])
         if (key != row['incident_authority_sha256']+':'+row['incident_slot']
                 or set(row['counts']) != {'prediction','results'}
-                or any(type(v) is not int or not 0<=v<=(16000 if k=='prediction' else 72) for k,v in row['counts'].items())):
+                or any(type(v) is not int or not 0<=v<=authority['max_prediction_logical_requests_per_window' if k=='prediction' else 'max_result_requests_per_window'] for k,v in row['counts'].items())):
             raise ValueError('invalid_incident_request_consumption')
         if matches:
             for kind in ('prediction','results'):totals[kind] += row['counts'][kind]
@@ -153,7 +169,7 @@ def validate_incident_lease(row):
     kind = row.get('incident_kind')
     start,end = row['authorized_at'],row['expires_at']
     bound = stamp(slot['ends_at'] if kind == 'prediction' else authority['result_deadline']).timestamp()
-    limit = 192 if kind == 'prediction' else 72
+    limit = authority['max_source_operations_per_window' if kind == 'prediction' else 'max_result_operations_per_window']
     reference = authority['authority_reference']+':slot:'+slot['id']+('' if kind=='prediction' else ':results')
     if (kind not in {'prediction','results'} or row.get('prior_phase') != 'OPEN'
             or row.get('incident_authority_sha256') != row['incident_authority']['sha256']

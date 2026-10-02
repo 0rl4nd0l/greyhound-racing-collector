@@ -217,7 +217,7 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         "first_index_deadline_seconds": 180,
         "profile": "bounded80-v1",
         "max_capture_attempts": campaign.value['max_capture_attempts'] if campaign else 1,
-        "max_logical_requests": (16000 if getattr(campaign,"programme",None) else campaign.value['max_logical_requests']) if campaign else 24000,
+        "max_logical_requests": campaign.incident.get("max_python_requests_per_window", campaign.value["max_logical_requests"]) if incident_authority else (16000 if getattr(campaign,"programme",None) else campaign.value['max_logical_requests']) if campaign else 24000,
         "capture_allowance": "PENDING_QUIESCENT_RECONCILIATION",
         "evidence_root": str(evidence),
         "lock_path": str(lock),
@@ -253,7 +253,7 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
             "operation": "operational_prediction",
             "history_db_path": str(history_db),
             "capture_db_path": str(db),
-            "max_jobs": (24 if incident_authority else 6 if development_authority else campaign.value['max_capture_attempts'] - len(json.loads((campaign.root / "ledger.json").read_bytes())["attempts"])),
+            "max_jobs": (campaign.incident["max_capture_attempts_per_window"] if incident_authority else 6 if development_authority else campaign.value['max_capture_attempts'] - len(json.loads((campaign.root / "ledger.json").read_bytes())["attempts"])),
             "result_access": False, "research_activation": False,
         }
         if comparison_binding is not None:

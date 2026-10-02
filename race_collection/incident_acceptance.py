@@ -218,7 +218,7 @@ def verify_structural_proof(study_cfg, reference, now, cfg, plan, prepared, laun
                     or evidence['authority_sha256'] != cfg['incident_authority']['sha256']
                     or evidence['closed_results'] != len(identities)
                     or type(evidence['verified_predictions']) is not int
-                    or not len(identities) <= evidence['verified_predictions'] <= 24
+                    or not len(identities) <= evidence['verified_predictions'] <= checked(cfg['incident_authority'])['max_capture_attempts_per_window']
                     or evidence['source_commit'] != cfg['source_commit']
                     or evidence['terminal_sha256'] != file_reference(Path(cfg['state_root'])/'slots/001/terminal.json')['sha256']
                     or evidence['outcomes_released'] is not False
@@ -282,7 +282,7 @@ def verified_incident_acceptance(study_cfg, reference, now, *, seal=False):
                 or measured['status'] != 'REHEARSAL_MEASURED_NOT_RELEASED'
                 or measured['completed_cycles']['full'] < 3 or measured['completed_cycles']['odds'] < 6
                 or measured['capture_count'] < 3 or measured['maximum_conservative_source_age'] >= 270
-                or measured['logical_requests'] > 16000
+                or measured['logical_requests'] > authority.get('max_python_requests_per_window', authority['max_prediction_logical_requests_per_window'])
                 or restored['sportsbet_hold'] is not False
                 or restored['status'] not in {'RESTORED', 'RESTORED_COLLECTOR_TRIGGERS_HELD'}):
             return None
