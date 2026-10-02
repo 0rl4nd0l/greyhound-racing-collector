@@ -593,12 +593,24 @@ def parse_thedogs_result_html_runner_rows(markup: str) -> List[dict]:
                 if name_cell is not None
                 else None
             )
+            from utils.thedogs_runner_identity import (extract_thedogs_profile_identity,
+                TheDogsRunnerIdentityError, TheDogsProfileIdentityMissing)
+            profile_error = False
+            try:
+                dog_id = extract_thedogs_profile_identity(row, require_profile_link=True)
+            except TheDogsProfileIdentityMissing:
+                dog_id = None
+            except TheDogsRunnerIdentityError:
+                dog_id = None
+                profile_error = True
             rows.append(
                 {
                     "box_number": box_number,
                     "finish_position": position,
                     "dog_name": dog_name,
                     "status": status,
+                    **({"source_native_dog_id": dog_id} if dog_id is not None else {}),
+                    **({"source_native_dog_identity_error": True} if profile_error else {}),
                 }
             )
         return rows
@@ -860,6 +872,9 @@ class SourceResult:
     ignored_terminal_status_rows: Optional[List[dict]] = None
     rejected_reserve_box_remappings: Optional[List[dict]] = None
     runner_identity_rows_complete: bool = False
+    dog_ids_by_box: Optional[Dict[int, str]] = None
+    runner_profile_identity_complete: bool = False
+    runner_profile_identity_conflict: bool = False
 
     @property
     def winner_box(self) -> Optional[int]:
@@ -1146,6 +1161,14 @@ class TheDogsResultFetcher:
             for row in remapped_rows
             if row.get("box_number") is not None and str(row.get("dog_name") or "").strip()
         }
+        dog_ids_by_box = {int(row['box_number']): row['source_native_dog_id']
+                          for row in remapped_rows if row.get('source_native_dog_id') is not None}
+        profile_ids = [row.get('source_native_dog_id') for row in runner_rows]
+        profiles_complete = (bool(profile_ids) and all(profile_ids)
+                             and len(set(profile_ids)) == len(profile_ids))
+        present_ids = [value for value in profile_ids if value is not None]
+        profile_conflict = (any(row.get('source_native_dog_identity_error') for row in runner_rows)
+                            or len(set(present_ids)) != len(present_ids))
         if positions:
             ordered_boxes = [
                 box for box, _ in sorted(positions.items(), key=lambda item: item[1])
@@ -1162,6 +1185,9 @@ class TheDogsResultFetcher:
                 ignored_terminal_status_rows=reserve_remap["ignored_terminal_status_rows"],
                 rejected_reserve_box_remappings=reserve_remap["rejected_remappings"],
                 runner_identity_rows_complete=identity_rows_complete,
+                dog_ids_by_box=dog_ids_by_box,
+                runner_profile_identity_complete=profiles_complete,
+                runner_profile_identity_conflict=profile_conflict,
             )
         if thedogs_result_rows_present(markup):
             return SourceResult(

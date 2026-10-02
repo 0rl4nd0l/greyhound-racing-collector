@@ -106,8 +106,8 @@ def r3_prediction_candidates(*, job_store_path: Path, prediction_bundles: Path,
                                                         min_complete_runners=len(rows)).as_dict()
                     if completeness.get("status") != "COMPLETE":
                         raise ValueError("R3_RUNNERS_INCOMPLETE")
-                    participants = [{"box_number": r["box"], "dog_name": r["name"]}
-                                    for r in job.input.ordered_runners]
+                    from src.predictor.comparison_runner_identity import frozen_result_participants
+                    participants = frozen_result_participants(job, bundle, prediction_bundles)
                     candidates.append(ingest.RaceCandidate(
                         race_id=job.input.race_id, venue=race["venue"],
                         race_number=race["race_number"], race_date=race["race_date"],

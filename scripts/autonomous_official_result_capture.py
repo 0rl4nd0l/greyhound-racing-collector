@@ -74,10 +74,25 @@ def comparison_runner_identity_error(candidate, result):
                 for r in candidate.participants}
     actual = {int(box): ingest._result_identity_name(name)
               for box, name in (result.dog_names_by_box or {}).items()}
-    if (not result.runner_identity_rows_complete or not expected or not all(expected.values())
-            or result.reserve_box_remappings or result.rejected_reserve_box_remappings
+    if (not result.runner_identity_rows_complete or result.runner_profile_identity_conflict
+            or not expected or not all(expected.values())
+            or result.rejected_reserve_box_remappings
             or {box: name for box, name in actual.items() if box in expected} != expected):
         return error
+    frozen = {int(r['box_number']): r for r in candidate.participants}
+    dog_ids = result.dog_ids_by_box or {}
+    if any(row.get('source_native_dog_id') is not None and dog_ids.get(box) is not None
+           and row['source_native_dog_id'] != dog_ids[box] for box, row in frozen.items()):
+        return error
+    for remap in result.reserve_box_remappings or []:
+        target = remap['target_box_number']
+        row = frozen.get(target, {})
+        if (not result.runner_profile_identity_complete
+                or remap['original_box_number'] not in {9, 10}
+                or row.get('original_box_number') != remap['original_box_number']
+                or row.get('source_native_dog_id') is None
+                or row['source_native_dog_id'] != dog_ids.get(target)):
+            return error
     extras = set(actual) - set(expected)
     extra_statuses = {int(box): status for box, status in (result.terminal_status_by_box or {}).items()
                       if int(box) not in expected}
