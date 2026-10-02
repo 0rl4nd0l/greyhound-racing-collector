@@ -814,10 +814,10 @@ def current_index_metadata_selection(
     }
 
 
-def _replay_final_runner_shortfall(
+def _replay_final_runner_field(
     candidate: Mapping[str, Any], result: Mapping[str, Any], content: str
 ) -> bool:
-    """Replay the canonical active field before classifying its minimum-size rejection."""
+    """Replay the identity-bound canonical field, without changing its eligibility."""
     from scripts.capture_thedogs_market_history import (
         _stored_response,
         validate_primary_native_identity_evidence,
@@ -839,11 +839,16 @@ def _replay_final_runner_shortfall(
         identity is None
         or str(candidate.get("race_number")) != str(identity["race_number"])
         or type(count) is not int
-        or not 0 < count < MIN_COMPLETE_RUNNERS
+        or after["status"] not in {"COMPLETE", "INCOMPLETE"}
+        or (
+            not 0 < count < MIN_COMPLETE_RUNNERS
+            if after["status"] == "INCOMPLETE"
+            else count < MIN_COMPLETE_RUNNERS
+        )
         or alignment["canonical_runner_count"] != count
         or alignment["prediction_runner_count"] != count
         or normal.get("source_native_race_id") != alignment.get("source_native_race_id")
-        or normal["normalization_verification"].get("runner_set_status") != "INCOMPLETE"
+        or normal["normalization_verification"].get("runner_set_status") != after["status"]
     ):
         return False
     evidence = normal.get("native_identity_evidence")
@@ -892,21 +897,57 @@ def _replay_final_runner_shortfall(
         member = active[(row["box_number"], normalise_runner_name(row["dog_name"]))]
         row["scratch_state"] = "ACTIVE"
         row["source_native_runner_id"] = member["source_native_runner_id"]
-    return (
-        effective == after
-        and effective["status"] == "INCOMPLETE"
-        and effective["reasons"] == [f"runner_count_below_min:{count}<{MIN_COMPLETE_RUNNERS}"]
+    return effective == after and effective["reasons"] == (
+        [f"runner_count_below_min:{count}<{MIN_COMPLETE_RUNNERS}"]
+        if after["status"] == "INCOMPLETE"
+        else []
     )
+
+
+def _local_target_metadata_components(
+    candidate: Mapping[str, Any], normal: Mapping[str, Any]
+) -> list[str] | None:
+    """Classify native nonidentity omissions separately from race/time integrity."""
+    verification = normal.get("normalization_verification")
+    if verification is None:
+        return []  # Older field-only reports have no target-metadata component.
+    status = verification.get("target_metadata_status")
+    reason = verification.get("target_metadata_failure_reason")
+    identity = canonical_thedogs_race_identity(candidate.get("race_url"))
+    # Missing metadata has precedence in the native summary; always inspect the
+    # independent identity fields so a local omission cannot conceal a mismatch.
+    if (
+        identity is None
+        or str(candidate.get("race_number")) != str(identity["race_number"])
+        or verification.get("schema_status") != "verified"
+        or verification.get("schema_failure_reasons") != []
+        or verification.get("race_time_mapping_status") != "exact_url_match"
+        or verification.get("race_time_source") not in {None, "canonical_race_url"}
+        or verification.get("canonical_url_race_number") != identity["race_number"]
+        or verification.get("capture_race_number") != identity["race_number"]
+    ):
+        return None
+    if status == "verified" and reason is None:
+        return []
+    reasons = str(reason or "").split(";")
+    if (
+        status != "missing"
+        or len(set(reasons)) != len(reasons)
+        or not set(reasons) <= {"missing_target_grade", "missing_target_distance"}
+        or verification.get("race_time_source") != "canonical_race_url"
+    ):
+        return None
+    return ["target_metadata_not_verified:" + ";".join(reasons)]
 
 
 def _replay_semantic_runner_shortfall(
     candidate: Mapping[str, Any], result: Mapping[str, Any], raw: bytes
 ) -> bool:
-    """Only a well-formed, identity-bound export with too few valid runners is local.
+    """Replay the export before accepting any local field or metadata rejection.
 
     Reuse native parsing instead of trusting a failure label. Empty/malformed CSV,
     duplicate or invalid identities, target metadata errors and transport errors
-    are not a semantic field shortfall and keep the refresh stopped.
+    are not local omissions and keep the refresh stopped.
     """
     from utils.csv_metadata import _read_form_guide_rows, _validate_thedogs_export_rows
     from utils.runner_completeness import MIN_COMPLETE_RUNNERS, analyze_csv_text_runner_completeness
@@ -921,8 +962,7 @@ def _replay_semantic_runner_shortfall(
         or normal.get("original_delimiter") not in {",", "|", ";", "\\t"}
         or verification.get("schema_status") != "verified"
         or verification.get("schema_failure_reasons") != []
-        or verification.get("target_metadata_status") != "verified"
-        or verification.get("target_metadata_failure_reason") is not None
+        or _local_target_metadata_components(candidate, normal) is None
         or verification.get("race_time_mapping_status") != "exact_url_match"
         or verification.get("canonical_url_race_number") != identity["race_number"]
         or verification.get("capture_race_number") != identity["race_number"]
@@ -945,7 +985,13 @@ def _replay_semantic_runner_shortfall(
     ):
         return False
     if normal["canonical_runner_alignment"].get("status") == "aligned":
-        return _replay_final_runner_shortfall(candidate, result, content)
+        return _replay_final_runner_field(candidate, result, content)
+    if replay["status"] == "COMPLETE":
+        return (
+            count >= MIN_COMPLETE_RUNNERS
+            and verification.get("runner_set_status") == "COMPLETE"
+            and replay["reasons"] == []
+        )
     return (
         0 < count < MIN_COMPLETE_RUNNERS
         and replay["status"] == verification.get("runner_set_status") == "INCOMPLETE"
@@ -969,25 +1015,37 @@ def _complete_local_runner_quarantine(
         == "INCOMPLETE"
     )
     shortfall = completeness.get("status") == "INCOMPLETE" or final_shortfall
+    field_mismatch = alignment.get("status") == "not_aligned"
+    metadata_components = _local_target_metadata_components(candidate, normalization)
+    if metadata_components is None or not (shortfall or field_mismatch or metadata_components):
+        return False
     expected_error = (
         "Incomplete runner set in downloaded CSV"
         if shortfall
-        else "Downloaded CSV failed canonical final runner-set alignment gate"
+        else (
+            "Downloaded CSV failed canonical final runner-set alignment gate"
+            if field_mismatch
+            else "Downloaded CSV failed canonical TheDogs normalization gate"
+        )
     )
-    expected_reason = (
-        "runner_set_not_complete:INCOMPLETE;" if shortfall else ""
-    ) + "final_runner_set_not_aligned:canonical_participant_missing_from_source_csv"
-    if final_shortfall:
-        expected_reason = "runner_set_not_complete:INCOMPLETE"
+    components = []
+    if shortfall:
+        components.append("runner_set_not_complete:INCOMPLETE")
+    if field_mismatch:
+        components.append(
+            "final_runner_set_not_aligned:canonical_participant_missing_from_source_csv"
+        )
+    components.extend(metadata_components)
+    expected_reason = ";".join(components)
     identity = canonical_thedogs_race_identity(candidate.get("race_url", ""))
     if (
         result.get("success") is not False
         or result.get("error") != expected_error
         or normalization.get("normalization_status") != "rejected"
         or normalization.get("normalization_failure_reason") != expected_reason
-        or alignment.get("status") != ("aligned" if final_shortfall else "not_aligned")
+        or alignment.get("status") != ("not_aligned" if field_mismatch else "aligned")
         or alignment.get("reason")
-        != (None if final_shortfall else "canonical_participant_missing_from_source_csv")
+        != ("canonical_participant_missing_from_source_csv" if field_mismatch else None)
         or alignment.get("canonical_runner_set_status") != "available"
         or identity is None
         or canonical_thedogs_race_identity(alignment.get("canonical_source_url", "")) != identity
@@ -1000,17 +1058,17 @@ def _complete_local_runner_quarantine(
         )
         or alignment.get("duplicate_source_runner_names")
         or (
-            not final_shortfall
+            field_mismatch
             and (alignment.get("remapped_participants") or alignment.get("dropped_participants"))
         )
         or not isinstance(missing, list)
         or type(alignment.get("canonical_runner_count")) is not int
         or (
             missing != []
-            if final_shortfall
+            if not field_mismatch
             else not 0 < len(missing) < alignment["canonical_runner_count"]
         )
-        or (not final_shortfall and alignment.get("prediction_runner_count") != 0)
+        or (field_mismatch and alignment.get("prediction_runner_count") != 0)
     ):
         return False
     if alignment.get("native_identity_status") == "available":
@@ -1055,7 +1113,9 @@ def _complete_local_runner_quarantine(
             raw = stream.read(size + 1)
         if len(raw) != size or hashlib.sha256(raw).hexdigest() != expected:
             return False
-    return not shortfall or _replay_semantic_runner_shortfall(candidate, result, raw)
+    return not (shortfall or metadata_components) or _replay_semantic_runner_shortfall(
+        candidate, result, raw
+    )
 
 
 def has_unisolated_refresh_failure(report: Mapping[str, Any]) -> bool:
