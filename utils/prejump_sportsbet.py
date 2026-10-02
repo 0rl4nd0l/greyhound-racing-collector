@@ -216,6 +216,26 @@ def usable_recovery_snapshot(url: str, response: Any) -> bool:
         return False
 
 
+def _event_list_is_structurally_valid(events: list[Any]) -> bool:
+    """Distinguish an absent target from a malformed shared discovery response."""
+    for event in events:
+        if (
+            not isinstance(event, Mapping)
+            or (_parse_int(event.get("id")) or 0) <= 0
+            or (_parse_int(event.get("raceNumber")) or 0) <= 0
+            or not str(event.get("competitionName") or "").strip()
+            or not any(
+                str(event.get(key) or "").strip() for key in ("type", "classId", "className")
+            )
+        ):
+            return False
+        try:
+            datetime.fromtimestamp(float(event.get("startTime")), timezone.utc)
+        except (TypeError, ValueError, OverflowError, OSError):
+            return False
+    return True
+
+
 def fetch_sportsbet_next_events_snapshot(*, session: Any = None) -> dict[str, Any]:
     """Fetch one immutable NextEvents payload for one bounded refresh."""
 
@@ -249,7 +269,7 @@ def fetch_sportsbet_next_events_snapshot(*, session: Any = None) -> dict[str, An
             except Exception:
                 pass
 
-    if not isinstance(events, list):
+    if not isinstance(events, list) or not _event_list_is_structurally_valid(events):
         return {
             "weather_track_metadata_source": "sportsbet_pre_race_page",
             "weather_track_metadata_source_url": SPORTSBET_NEXT_EVENTS_SOURCE_URL,
@@ -298,6 +318,13 @@ def collect_sportsbet_track_metadata(
     events = source.get("events")
     if not isinstance(events, list):
         return {key: value for key, value in source.items() if key != "events"}
+
+    if not _event_list_is_structurally_valid(events):
+        return {
+            "weather_track_metadata_source": "sportsbet_pre_race_page",
+            "weather_track_metadata_source_url": SPORTSBET_NEXT_EVENTS_SOURCE_URL,
+            "rejected_weather_track_metadata_sources": ["sportsbet_source_unexpected_payload"],
+        }
 
     event, rejected = _matching_event(events, race_info)
     if event is None:

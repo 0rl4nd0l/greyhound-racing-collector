@@ -813,6 +813,106 @@ def current_index_metadata_selection(
     }
 
 
+def complete_empty_metadata_selection(report: Mapping[str, Any]) -> bool:
+    """Authenticate a completed refresh whose candidates are all ineligible.
+
+    This is not a successful race input. Keep every race excluded, and do not
+    turn partial downloads, discovery failures or source errors into freshness.
+    """
+    try:
+        if (
+            report.get("status") not in {"METADATA_COVERAGE_INCOMPLETE", "NO_QUALIFIED_RACES"}
+            or report.get("dry_run") is True
+            or report.get("discovery_failures")
+        ):
+            return False
+        selected = report["selected_races"]
+        count = report["selected_count"]
+        coverage = report["sidecar_metadata_coverage"]
+        downloads = report["downloads"]
+        if (
+            type(count) is not int
+            or count <= 0
+            or not isinstance(selected, list)
+            or len(selected) != count
+            or any(not isinstance(row, Mapping) for row in selected)
+            or not isinstance(downloads, list)
+            or len(downloads) != count
+            or any(
+                type(report.get(key)) is not int or report[key] != count
+                for key in ("accepted_csv_count", "sidecar_count")
+            )
+            or report.get("current_index_race_count") != 0
+            or report.get("current_index_races") != []
+        ):
+            return False
+        for candidate, download in zip(selected, downloads):
+            result = download.get("result")
+            if (
+                download.get("race_url") != candidate.get("race_url")
+                or download.get("success") is not True
+                or not isinstance(result, Mapping)
+                or result.get("success") is not True
+                or result.get("source_http_status") not in {None, 200}
+                or any(
+                    result.get(key)
+                    for key in (
+                        "source_retry_after",
+                        "source_rate_limit_reset",
+                        "source_failure_category",
+                    )
+                )
+            ):
+                return False
+        rows = coverage["races"]
+        local_rejections = {
+            "sportsbet_matching_pre_race_event_not_found",
+            "sportsbet_venue_timezone_unmapped",
+            "sportsbet_track_status_missing_or_placeholder",
+            "weather_venue_not_mapped",
+            "track_condition_missing_or_placeholder",
+            "weather_missing_or_placeholder",
+            "weather_track_metadata_is_leakage_safe_not_true",
+        }
+        if not isinstance(rows, list) or len(rows) != count:
+            return False
+        for row in rows:
+            reasons = row.get("weather_track_rejected_reasons", [])
+            if (
+                not row.get("csv_path")
+                or not row.get("sidecar_path")
+                or row.get("safe_expert_form_present") is not True
+                or not isinstance(reasons, list)
+                or any(reason not in local_rejections for reason in reasons)
+            ):
+                return False
+        eligible, selection = current_index_metadata_selection(
+            selected, coverage, source_generated_at=report.get("generated_at")
+        )
+        for row, exclusion in zip(rows, selection["exclusions"]):
+            allowed_missing = {"weather", "track_condition"}
+            if (
+                "sportsbet_matching_pre_race_event_not_found"
+                in row.get("weather_track_rejected_reasons", [])
+                and row.get("source_native_race_id") is None
+                and isinstance(row.get("source_native_runner_ids"), list)
+                and len(row["source_native_runner_ids"]) >= 2
+                and all(value is None for value in row["source_native_runner_ids"])
+            ):
+                allowed_missing.add("native_source_identity")
+            missing = exclusion["missing_safe_metadata"]
+            if not missing or not set(missing) <= allowed_missing:
+                return False
+        return (
+            not eligible
+            and selection["status"] == "INCOMPLETE"
+            and selection["excluded_race_count"] == count
+            and report.get("current_index_metadata_selection") == selection
+        )
+    except (KeyError, TypeError, ValueError, AttributeError):
+        return False
+
+
 def download_selected_race(task: Mapping[str, Any]) -> dict[str, Any]:
     if task["deadline"] is not None and time.monotonic() >= task["deadline"]:
         return {
@@ -1116,6 +1216,8 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
                       discovered_but_unusable_count=unusable_discovered_count)
         report['next_preferred_window'] = {'status': 'DISCOVERY_FAILED',
             'reason': 'discovery_source_unavailable', 'recommended_rerun_after_local': None}
+    if complete_empty_metadata_selection(report):
+        report["status"] = "NO_QUALIFIED_RACES"
     return report
 
 
@@ -1154,7 +1256,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Exclude races lacking source-safe weather, track_condition, or "
             "expert-form sidecar metadata from current-index eligibility; return "
-            "a non-success status when selected races exist but none is eligible."
+            "an explicit NO_QUALIFIED_RACES status only for complete, safely excluded selections."
         ),
     )
     parser.add_argument("--output")
@@ -1172,7 +1274,17 @@ def main(argv: list[str] | None = None) -> int:
             out = ROOT / out
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(text + "\n", encoding="utf-8")
-    return 0 if report.get("status") == "SUCCESS" else 2
+    return (
+        0
+        if (
+            report.get("status") == "SUCCESS"
+            or (
+                report.get("status") == "NO_QUALIFIED_RACES"
+                and complete_empty_metadata_selection(report)
+            )
+        )
+        else 2
+    )
 
 
 if __name__ == "__main__":

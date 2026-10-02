@@ -345,3 +345,34 @@ def test_sportsbet_track_metadata_rejects_mismatched_jump_time():
     assert metadata["rejected_weather_track_metadata_sources"] == [
         "sportsbet_matching_pre_race_event_not_found"
     ]
+
+
+def test_malformed_shared_next_events_is_not_an_unmatched_race():
+    from utils.prejump_sportsbet import fetch_sportsbet_next_events_snapshot
+
+    for events in (
+        [{}],
+        ["bad-row"],
+        [_sale_r9_event(), {}],
+        [_sale_r9_event(startTime="invalid")],
+    ):
+        fetched = fetch_sportsbet_next_events_snapshot(session=FakeSportsbetSession(events))
+        for snapshot in (fetched, {"events": events}):
+            metadata = collect_sportsbet_track_metadata(
+                {"date": "2026-06-17", "venue": "SAL", "race_number": "9", "race_time": "1:57 PM"},
+                snapshot=snapshot,
+            )
+            assert metadata["rejected_weather_track_metadata_sources"] == [
+                "sportsbet_source_unexpected_payload"
+            ]
+
+
+def test_structurally_valid_empty_and_unmatched_other_racing_events_are_local_exclusions():
+    for events in ([], [_sale_r9_event(classId="1", className="Horse Racing", type="horse")]):
+        metadata = collect_sportsbet_track_metadata(
+            {"date": "2026-06-17", "venue": "SAL", "race_number": "9", "race_time": "1:57 PM"},
+            session=FakeSportsbetSession(events),
+        )
+        assert metadata["rejected_weather_track_metadata_sources"] == [
+            "sportsbet_matching_pre_race_event_not_found"
+        ]

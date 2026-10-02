@@ -697,6 +697,7 @@ def _normalize_current_index_rows(
     max_races: int,
 ) -> list[dict[str, Any]]:
     from scripts.refresh_prejump_upcoming import (
+        complete_empty_metadata_selection,
         current_index_metadata_selection,
         stable_race_id,
         stable_race_id_variants,
@@ -747,11 +748,18 @@ def _normalize_current_index_rows(
             selected_count != len(selected)
             or selected != expected_races
             or dict(selection) != expected_selection
-            or expected_selection["status"] not in {
-                "READY",
-                "READY_WITH_EXCLUSIONS",
-                "NOT_REQUESTED_NO_SELECTED_RACES",
-            }
+            or (
+                expected_selection["status"]
+                not in {
+                    "READY",
+                    "READY_WITH_EXCLUSIONS",
+                    "NOT_REQUESTED_NO_SELECTED_RACES",
+                }
+                and not (
+                    source.get("status") == "NO_QUALIFIED_RACES"
+                    and complete_empty_metadata_selection(source)
+                )
+            )
         ):
             raise CaptureOneRejected(
                 "CURRENT_INDEX_SOURCE_INVALID",
@@ -1299,8 +1307,17 @@ def publish_current_race_index(
             source = json.loads(source_raw)
             if not isinstance(source, Mapping):
                 raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
-            if source.get("status") != "SUCCESS" or source.get("dry_run") is True:
-                raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="refresh_not_accepted_success")
+            from scripts.refresh_prejump_upcoming import complete_empty_metadata_selection
+
+            empty_eligible = source.get(
+                "status"
+            ) == "NO_QUALIFIED_RACES" and complete_empty_metadata_selection(source)
+            if (source.get("status") != "SUCCESS" and not empty_eligible) or source.get(
+                "dry_run"
+            ) is True:
+                raise CaptureOneRejected(
+                    "CURRENT_INDEX_SOURCE_INVALID", reason="refresh_not_accepted_success"
+                )
             source_generated_at = datetime.fromisoformat(str(source["generated_at"]))
             if (
                 source_generated_at.tzinfo is None
@@ -1315,7 +1332,7 @@ def publish_current_race_index(
                 if source_generated_at <= previous_time:
                     raise CaptureOneRejected("CURRENT_INDEX_SOURCE_REGRESSION")
             races = _normalize_current_index_rows(source, max_races=max_races)
-            if not races:
+            if not races and not empty_eligible:
                 raise CaptureOneRejected(
                     "CURRENT_INDEX_SOURCE_INVALID", reason="no_valid_current_races"
                 )
@@ -1588,8 +1605,17 @@ def _bounded_current_race_index_main_thread(
         source = json.loads(source_raw)
         if not isinstance(source, Mapping):
             raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
+        from scripts.refresh_prejump_upcoming import complete_empty_metadata_selection
+
         if packet.get("schema_version") == CURRENT_RACE_INDEX_SCHEMA and (
-            source.get("status") != "SUCCESS" or source.get("dry_run") is True
+            (
+                source.get("status") != "SUCCESS"
+                and not (
+                    source.get("status") == "NO_QUALIFIED_RACES"
+                    and complete_empty_metadata_selection(source)
+                )
+            )
+            or source.get("dry_run") is True
         ):
             raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
         races = _normalize_current_index_rows(source, max_races=max_races)
