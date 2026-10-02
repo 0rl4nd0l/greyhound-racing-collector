@@ -149,7 +149,8 @@ class Campaign:
             select_slot(self.incident,incident_slot)
             if self.incident['campaign_id'] != self.value['campaign_id']:
                 raise ValueError('incident_campaign_binding_changed')
-            self.value = {**self.value,'max_capture_attempts':24,'max_logical_requests':16000,
+            self.value = {**self.value,'max_capture_attempts':self.incident['max_capture_attempts_per_window'],
+                          'max_logical_requests':self.incident['max_prediction_logical_requests_per_window'],
                           'max_live_seconds':7260,'incident_authority':incident_authority,'incident_slot':incident_slot}
             self.programme = None
 
@@ -362,7 +363,7 @@ class Campaign:
         with self.ledger() as value:
             if self.incident:
                 self.incident_window()
-                return self.incident_usage(value,selected=True)['capture_attempts'] < 24
+                return self.incident_usage(value,selected=True)['capture_attempts'] < self.incident['max_capture_attempts_per_window']
             if self.development:
                 return (self.development_usage(value)['capture_attempts'] < 24
                         and self.development_usage(value, self.development_day())['capture_attempts'] < 6)
@@ -387,7 +388,7 @@ class Campaign:
             if self.development and (self.development_usage(value)['capture_attempts'] >= 24
                     or self.development_usage(value, day)['capture_attempts'] >= 6):
                 raise ValueError('development_capture_allowance_consumed')
-            if self.incident and self.incident_usage(value,selected=True)['capture_attempts']>=24:
+            if self.incident and self.incident_usage(value,selected=True)['capture_attempts']>=self.incident['max_capture_attempts_per_window']:
                 raise ValueError('incident_capture_allowance_consumed')
             if (not self.development and not self.incident and len(value['attempts']) - self.development_usage(value)['capture_attempts'] - self.incident_usage(value)['capture_attempts'] >= self.value['max_capture_attempts']
                     or self.programme and self.programme_usage(value)['capture_attempts']>=1000):
@@ -427,7 +428,7 @@ class Campaign:
             with self.ledger() as value:
                 if value.get('source_holds'):
                     raise ValueError('campaign_source_hold')
-                if self.incident_usage(value,selected=True)[kind] >= (16000 if kind=='prediction' else 72):
+                if self.incident_usage(value,selected=True)[kind] >= self.incident['max_prediction_logical_requests_per_window' if kind=='prediction' else 'max_result_requests_per_window']:
                     raise ValueError('incident_request_cap_exhausted')
                 key=self.incident_authority['sha256']+':'+self.incident_slot
                 usage=value.setdefault('incident_request_usage',{}).setdefault(key,

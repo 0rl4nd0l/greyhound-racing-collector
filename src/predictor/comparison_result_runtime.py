@@ -37,7 +37,8 @@ def load_runtime(binding, *, now, allow_closure=False):
         from race_collection.incident_comparison import validate_incident_plan
         incident = validate_incident_plan(plan)
         if (any(cfg.get(key) != plan[key] for key in ('incident_authority', 'incident_slot'))
-                or cfg['max_races'] != 24 or cfg['max_requests'] != 72
+                or cfg['max_races'] != incident['max_capture_attempts_per_window']
+                or cfg['max_requests'] != incident['max_result_requests_per_window']
                 or cfg['max_attempts_per_race'] != 3
                 or Path(cfg['state_root']) != Path(incident['result_root']) / plan['incident_slot']
                 or Path(cfg['prediction_bundles']) != Path(incident['prediction_root']) / 'bundles'
