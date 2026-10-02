@@ -698,11 +698,17 @@ def _normalize_current_index_rows(
 ) -> list[dict[str, Any]]:
     from scripts.refresh_prejump_upcoming import (
         complete_empty_metadata_selection,
+        has_unisolated_refresh_failure,
         current_index_metadata_selection,
         stable_race_id,
         stable_race_id_variants,
     )
 
+    if has_unisolated_refresh_failure(source):
+        raise CaptureOneRejected(
+            "CURRENT_INDEX_SOURCE_INVALID",
+            reason="unisolated_selected_race_acquisition_failure",
+        )
     selected = source.get("selected_races")
     selected_count = source.get("selected_count")
     subset_fields = {
