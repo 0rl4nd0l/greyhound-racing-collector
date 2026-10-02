@@ -281,8 +281,14 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
             raise ValueError("incident_scope_window_changed")
     from zoneinfo import ZoneInfo
     zone = ZoneInfo('Australia/Melbourne')
-    if start.astimezone(zone).date() != (end + timedelta(seconds=plan['cleanup_seconds'])).astimezone(zone).date():
+    if start.astimezone(zone).date() != end.astimezone(zone).date():
         raise ValueError('execution_window_crosses_source_date')
+    cleanup_at = end + timedelta(seconds=plan['cleanup_seconds'])
+    if start.astimezone(zone).date() != cleanup_at.astimezone(zone).date():
+        from race_collection.incident_engineering import late_cleanup_deadline
+        cutoff = late_cleanup_deadline(incident_authority) if incident_authority else None
+        if cutoff is None or cleanup_at > cutoff:
+            raise ValueError('execution_window_crosses_source_date')
     if development_authority and (start.astimezone(zone).date().isoformat() not in campaign.development['dates']
             or start.astimezone(zone).strftime('%H:%M:%S.%f') != '12:40:00.000000'):
         raise ValueError('development_scope_window_changed')

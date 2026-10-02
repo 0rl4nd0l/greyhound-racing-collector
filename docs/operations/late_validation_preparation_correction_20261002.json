@@ -1,0 +1,28 @@
+{
+  "schema": "late_evening_validation_amendment_v1",
+  "authority_reference": "user:20261002-remaining-evening-races:preflight-correction-02",
+  "issued_at": "2026-10-02T22:08:29.125102+10:00",
+  "user_direction": "Get the system working and prove it on the remainder of tonight\u2019s races; fix whatever is not working well.",
+  "scope": "One fresh supervised90minute engineering window22:20-23:50 after correcting the pre-acquisition packaging failure; same source controls and frozen models; all earlier consumption remains recorded.",
+  "collection_stop_at": "2026-10-02T23:50:00+10:00",
+  "cleanup_deadline": "2026-10-03T00:21:00+10:00",
+  "result_deadline": "2026-10-04T12:00:00+11:00",
+  "preserve_prior_authorities_and_counters": true,
+  "study_enrolment": false,
+  "performance_evaluation": false,
+  "retraining": false,
+  "betting": false,
+  "local_request_caps_are_provider_permission": false,
+  "source_denial_controls_unchanged": true,
+  "supersedes_unexecuted_preparation": {
+    "authority": {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-late/control/incident-authority.json",
+      "sha256": "af8e69843919558d174732361d1097ebc7436ab816dcec6037af93394744faf7"
+    },
+    "terminal": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-late/runtime/windows/001/slots/001/terminal.json",
+    "status": "INTERRUPTED_CONSUMED",
+    "provider_requests": 0,
+    "source_operations": 0,
+    "preserve_admission_and_source_lease": true
+  }
+}

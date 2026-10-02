@@ -146,8 +146,12 @@ class FreshnessContract:
         cutoff = local_start.replace(hour=21, minute=20, second=0, microsecond=0)
         if value.get("campaign_root") and value.get("operational_predictions"):
             # Operational recovery has prospective scheduling authority. Keep
-            # execution and cleanup on the source date, not an old launch cutoff.
+            # collection on the source date; only an authenticated evening
+            # amendment can move its bounded cleanup past midnight.
             cutoff = local_start.replace(hour=23, minute=59, second=59, microsecond=999999)
+            if value.get('incident_authority') is not None:
+                from race_collection.incident_engineering import late_cleanup_deadline
+                cutoff = late_cleanup_deadline(value['incident_authority']) or cutoff
         if (
             local_start.date().isoformat() != value["source_date"]
             or local_end.date() != local_start.date()

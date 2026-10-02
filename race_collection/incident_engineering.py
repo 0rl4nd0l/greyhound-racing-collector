@@ -18,6 +18,7 @@ DISPOSITION = 'AUTHORIZED_NON_EVALUATIVE_REUSE_EXCLUDING_ADMITTED_STUDY_IDENTITI
 # preserving finite per-run budgets, source controls, privacy and day cutoffs.
 LIVE_FIRST_AMENDMENT_SHA256 = '93cd03a256372f36fcd010eedb6a07211f18d8b570519da16e53dd37b2c80520'
 LATE_WINDOW_AMENDMENT_SHA256 = 'e2924504181874fe3260313995175ec1bf47b1ce69d0a3ca609e5a112248c1af'
+LATE_PREPARATION_CORRECTION_SHA256 = '16592de74fbc4a4a42df8c12e09db1c0d65bc425a077744fd1a9eedfc4b50ec6'
 
 
 def stamp(value):
@@ -38,6 +39,17 @@ def checked(ref):
     if hashlib.sha256(raw).hexdigest() != ref['sha256']:
         raise ValueError('incident_reference_changed')
     return json.loads(raw)
+
+
+def late_cleanup_deadline(ref):
+    """Only the authenticated evening amendment permits next-day cleanup.
+
+    This does not extend the collection slot or provider-access deadline.
+    """
+    value = load_incident_authority(ref)
+    if value['schema_version'] == 'collector_incident_engineering_authority_20261002_late_v1':
+        return stamp(value['cleanup_deadline'])
+    return None
 
 
 def load_incident_authority(ref):
@@ -77,7 +89,7 @@ def load_incident_authority(ref):
         if late:
             late_ref = value['late_window_amendment']
             renewed = checked(late_ref)
-            if (late_ref['sha256'] != LATE_WINDOW_AMENDMENT_SHA256
+            if (late_ref['sha256'] not in {LATE_WINDOW_AMENDMENT_SHA256, LATE_PREPARATION_CORRECTION_SHA256}
                     or renewed.get('schema') != 'late_evening_validation_amendment_v1'
                     or value['authority_reference'] != renewed['authority_reference']
                     or not stamp(renewed['issued_at']) < issued

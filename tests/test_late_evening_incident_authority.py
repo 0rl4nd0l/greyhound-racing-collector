@@ -53,3 +53,19 @@ def test_late_window_cannot_expand_or_reinterpret_prior_authority(late,defect):
     elif defect=='more_requests':value['max_python_requests_per_window']+=1
     else:value['study_enrolment']=True
     with pytest.raises(ValueError):load_incident_authority(put(Path(ref['path']),value))
+
+
+def test_fresh_correction_keeps_prior_authority_valid(late):
+    import json, hashlib
+    value, ref = late
+    assert load_incident_authority(ref) == value
+    amendment = Path(__file__).resolve().parents[1] / 'docs/operations/late_validation_preparation_correction_20261002.json'
+    renewed = json.loads(amendment.read_bytes())
+    value = deepcopy(value)
+    value.update(authority_reference=renewed['authority_reference'], issued_at='2026-10-02T22:19:00+10:00',
+        collection_stop_at=renewed['collection_stop_at'], cleanup_deadline=renewed['cleanup_deadline'],
+        late_window_amendment={'path':str(amendment),'sha256':hashlib.sha256(amendment.read_bytes()).hexdigest()},
+        slots=[{'id':'001','starts_at':'2026-10-02T22:20:00+10:00','ends_at':'2026-10-02T23:50:00+10:00','cleanup_by':'2026-10-03T00:21:00+10:00'}])
+    new_ref = put(Path(ref['path']).with_name('corrected.json'),value)
+    assert load_incident_authority(new_ref) == value
+    assert load_incident_authority(ref)['authority_reference'] != value['authority_reference']
