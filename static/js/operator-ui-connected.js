@@ -7,7 +7,7 @@
   const connection = document.querySelector('#connection-state');
   const {createOperatorState,readAuthorityResponse,resourceEnvelope,levelOneFailureEnvelope,createRequestQueue,csrfEnvelope,capabilityEnvelope,errorEnvelope,jobEnvelope}=window.OperatorUiState;
   const apiFetch=createRequestQueue((...args)=>fetch(...args));
-  let modelCatalog=new Map(), capabilityAvailable=false, raceState='Loading', raceDeadline=0;
+  let modelCatalog=new Map(), capabilityAvailable=false, raceState='Loading', raceDeadline=0, lastKnownRaces=[], lastRaceObservation='';
   const node = (tag, value, className) => { const element=document.createElement(tag); if(className) element.className=className; if(value!==undefined) element.textContent=String(value); return element; };
   function stateClass(value) { return value==='AVAILABLE/FRESH'?'fresh':value==='STALE'?'stale':value==='DIVERGENT'?'divergent':value==='INVALID/INTEGRITY_FAILED'?'invalid':'unavailable'; }
   function renderValue(value) {
@@ -28,18 +28,54 @@
     if(raceSelect.options.length<2)return 'No upcoming races in the verified current index.';
     return null;
   }
+  function localTime(value){return new Intl.DateTimeFormat('en-AU',{dateStyle:'medium',timeStyle:'short',timeZone:'Australia/Melbourne'}).format(new Date(value));}
+  function renderSelectedRace(race){
+    const title=document.querySelector('#selected-race-title'),summary=document.querySelector('#selected-race-summary'),runners=document.querySelector('#selected-race-runners');
+    if(!race){title.textContent='Select a race';summary.textContent='Choose a race to inspect its runners and request a verified forecast.';runners.replaceChildren();return;}
+    title.textContent=`${race.venue} R${race.race_number}`;
+    summary.textContent=`Scheduled jump ${localTime(race.jump_utc)} · ${race.runners.length} runners`;
+    const list=node('ol',undefined,'selected-runner-list');
+    race.runners.forEach(runner=>{const item=node('li');item.append(node('span',runner.box,'runner-box'),node('strong',runner.name));list.append(item);});
+    runners.replaceChildren(list);
+  }
+  function selectRace(race,focus=false){
+    if(state.intent()||state.jobId())return;
+    raceSelect.value=race.race_id;
+    renderSelectedRace(race);
+    document.querySelectorAll('.upcoming-race').forEach(card=>card.classList.toggle('upcoming-race--selected',card.dataset.raceId===race.race_id));
+    guard();
+    if(focus){document.querySelector('#selected-race').scrollIntoView({block:'start'});document.querySelector('#selected-race-title').focus({preventScroll:true});}
+  }
+  function updateTodayStatus(){
+    if(connection.textContent.includes('Authentication required'))return;
+    const prediction=raceMessage()||!capabilityAvailable||!modelCatalog.size?'Blocked':'Available';
+    const input=raceState==='AVAILABLE/FRESH'?'Fresh':raceState==='STALE'?'Out of date':raceState==='Loading'?'Checking…':'Unavailable';
+    const observed=lastRaceObservation?` · checked ${localTime(lastRaceObservation)}`:'';
+    const summary=`${prediction}|${input}|${observed}`;
+    if(connection.dataset.summary===summary)return;
+    connection.dataset.summary=summary;
+    connection.replaceChildren();
+    const predictionItem=node('div',undefined,'today-status__item');predictionItem.append(node('span','New predictions'),node('strong',prediction));
+    const inputItem=node('div',undefined,'today-status__item');inputItem.append(node('span','Race inputs'),node('strong',input+observed));
+    const historyItem=node('div',undefined,'today-status__item');historyItem.append(node('span','Verified history'));const historyLink=node('a','Open forecasts');historyLink.href='/operator-ui/forecasts';const historyStrong=node('strong');historyStrong.append(historyLink);historyItem.append(historyStrong);
+    connection.append(predictionItem,inputItem,historyItem);
+  }
   function configurePrediction(panel,payload){
     if(panel.dataset.resource==='upcoming-races'){
+      const previousRace=raceSelect.value;
       raceState=payload.classification;
-      raceSelect.replaceChildren(optionNode('','Select an upcoming race'));
       raceDeadline=0;
       if(raceState==='AVAILABLE/FRESH'){
         const age=payload.evidence?.age_seconds;
         if(typeof age==='number'&&Number.isFinite(age)&&age>=0&&age<=300){
           raceDeadline=Date.now()+(300-age-(payload.requestSeconds||0))*1000;
-          (payload.data?.races||[]).forEach(race=>option(raceSelect,race.race_id,`${race.venue} · race ${race.race_number} · ${race.jump_utc}`,{runners:JSON.stringify(race.runners||[]),runnerHash:race.runner_set_sha256||'',jump:race.jump_utc}));
+          lastKnownRaces=[...(payload.data?.races||[])];
+          lastRaceObservation=payload.server_observed_at||'';
         }else raceState='STALE';
       }
+      raceSelect.replaceChildren(optionNode('','Select an upcoming race'));
+      lastKnownRaces.forEach(race=>option(raceSelect,race.race_id,`${race.venue} · race ${race.race_number} · ${race.jump_utc}`,{runners:JSON.stringify(race.runners||[]),runnerHash:race.runner_set_sha256||'',jump:race.jump_utc}));
+      if([...raceSelect.options].some(item=>item.value===previousRace))raceSelect.value=previousRace;
     }
     if(panel.dataset.resource==='models'){
       const latest=payload.classification==='AVAILABLE/FRESH'&&(payload.data?.models||[]).find(model=>model.role==='LATEST_RESEARCH'&&model.model_id==='market_form_residual_v1'&&model.config_id==='market-form-residual-v1');
@@ -49,31 +85,34 @@
       if(latest)modelSelect.value='latest-research';
       updateDependentChoices();
     }
-    guard();
+    guard();updateTodayStatus();
   }
   function renderUpcoming(container,payload){
-    if(raceState!=='AVAILABLE/FRESH'||!(payload.data?.races||[]).length){container.append(node('p',raceMessage(),'missing-value'));return;}
-    const formatter=new Intl.DateTimeFormat('en-AU',{dateStyle:'medium',timeStyle:'long',timeZone:'Australia/Melbourne'});
-    const races=[...payload.data.races].sort((a,b)=>Date.parse(a.jump_utc)-Date.parse(b.jump_utc));
-    container.append(node('p',`${races.length} races in the current verified index. Times shown in Australia/Melbourne. Refresh display reads existing evidence; it does not collect new races.`, 'race-list-summary'));
+    const races=[...lastKnownRaces].sort((a,b)=>Date.parse(a.jump_utc)-Date.parse(b.jump_utc));
+    if(!races.length){container.append(node('p',raceMessage(),'missing-value'));renderSelectedRace(null);return;}
+    if(raceState!=='AVAILABLE/FRESH')container.append(node('p',`${raceMessage()} Last known races remain visible for context; prediction controls are disabled.`,'stale-context'));
+    container.append(node('p',`${races.length} races · Melbourne time${lastRaceObservation?` · checked ${localTime(lastRaceObservation)}`:''}`, 'race-list-summary'));
     races.forEach(race=>{
       const card=node('article',undefined,'upcoming-race');
-      card.append(node('h3',`${race.venue} R${race.race_number}`),node('p',`Scheduled jump: ${formatter.format(new Date(race.jump_utc))}`),node('p',`Runners: ${race.runners.map(r=>`${r.box} · ${r.name}`).join(', ')}`));
+      card.dataset.raceId=race.race_id;
+      const heading=node('div',undefined,'upcoming-race__heading');heading.append(node('h3',`${race.venue} R${race.race_number}`),node('time',localTime(race.jump_utc),'race-jump'));card.append(heading,node('p',`${race.runners.length} runners`,'race-runner-count'));
       const button=node('button',`Select ${race.venue} R${race.race_number}`,'primary-button');button.type='button';
-      button.addEventListener('click',()=>{if(state.intent()||state.jobId())return;raceSelect.value=race.race_id;guard();document.querySelector('#manual-prediction').scrollIntoView();raceSelect.focus();});
+      button.addEventListener('click',()=>selectRace(race,true));
       const predict=node('button','Predict','primary-button race-predict');predict.type='button';predict.disabled=true;
       predict.setAttribute('aria-label',`Predict ${race.venue} R${race.race_number}`);
       predict.dataset.raceId=race.race_id;
       const readiness=node('p','Checking prediction access…','race-readiness');
       predict.addEventListener('click',()=>{
         guard();if(predict.disabled)return;
-        raceSelect.value=race.race_id;guard();
+        selectRace(race,false);
         if(submit.disabled)return;
         form.requestSubmit();predictionSection.scrollIntoView();jobStatus.focus();
       });
       const actions=node('div',undefined,'race-actions');actions.append(predict,button);
       card.append(readiness,actions);container.append(card);
     });
+    const selected=lastKnownRaces.find(race=>race.race_id===raceSelect.value);
+    if(selected)renderSelectedRace(selected);
     guard();
   }
   function racePredictionBlock(raceOption){
@@ -109,16 +148,16 @@
   async function authorityPayload(response,validate,stableError=false){return readAuthorityResponse(response,capabilityLoss,value=>response.ok?validate(value):((response.status===401||response.status===403)&&typeof value.classification==='string'&&Object.keys(value).length===1?true:(stableError?errorEnvelope(value):(levelOneFailureEnvelope(value,response.status)||validate(value)))));}
   async function request(name,path,detail=false){const started=Date.now();const response=await apiFetch(path,{method:'GET',credentials:'same-origin',cache:'no-store',redirect:'error'});const payload=await authorityPayload(response,value=>resourceEnvelope(value,name,detail));if(response.status===401||payload.classification==='NON_OPERATIONAL/AUTHENTICATION_REQUIRED')return{auth:true,payload};if(!response.ok)return{payload:{...payload,classification:payload.classification||'NON_OPERATIONAL/PROVIDER_ERROR'}};return{payload:{...payload,requestSeconds:(Date.now()-started)/1000}};}
   function authRequired(payload){connection.replaceChildren(node('div'));connection.firstChild.append(node('strong','Authentication required'),node('p','The connected API failed closed. Use the existing server login, then reload this page.'));const link=node('a','Open secure login');link.href='/operator-ui/sign-in';connection.firstChild.append(link);return payload;}
-  async function loadResource(name,path){const panel=panels.get(name);if(['upcoming-races','models'].includes(name)){configurePrediction(panel,{classification:'Loading'});panel.querySelector('.resource-data').replaceChildren();}try{const result=await request(name.replaceAll('-','_'),path);render(panel,result.auth?authRequired(result.payload):result.payload);}catch(error){render(panel,requestFailure(error));}}
+  async function loadResource(name,path){const panel=panels.get(name);if(name==='models'){configurePrediction(panel,{classification:'Loading'});panel.querySelector('.resource-data').replaceChildren();}try{const result=await request(name.replaceAll('-','_'),path);render(panel,result.auth?authRequired(result.payload):result.payload);}catch(error){render(panel,requestFailure(error));}}
   async function loadDetail(kind,id){if(!Object.hasOwn(detailPrefixes,kind)||!safeId.test(id))return;const section=document.querySelector('#detail'),panel=panels.get('detail');section.hidden=false;panel.setAttribute('aria-busy','true');setState(panel,'Loading','Loading exact detail…');try{const result=await request(kind+'_detail',detailPrefixes[kind]+encodeURIComponent(id),true);render(panel,result.auth?authRequired(result.payload):result.payload);}catch(error){render(panel,requestFailure(error));}document.querySelector('#detail-title').focus();}
   window.addEventListener('beforeprint',()=>document.querySelectorAll('.resource-detail details').forEach(item=>{item.dataset.printOpen=String(item.open);item.open=true;}));
   window.addEventListener('afterprint',()=>document.querySelectorAll('.resource-detail details').forEach(item=>{item.open=item.dataset.printOpen==='true';delete item.dataset.printOpen;}));
   const form=document.querySelector('#prediction-form'),raceSelect=document.querySelector('#prediction-race'),modelSelect=document.querySelector('#prediction-model'),configSelect=document.querySelector('#prediction-config'),oddsSelect=document.querySelector('#prediction-odds'),submit=document.querySelector('#prediction-submit'),jobStatus=document.querySelector('#job-status'),timeline=document.querySelector('#job-timeline'),resultView=document.querySelector('#job-result'),jobEvidence=document.querySelector('#job-evidence .evidence-view');
   const retransmitButton=node('button','Retransmit exact persisted submission','primary-button');retransmitButton.id='prediction-retransmit';retransmitButton.type='button';retransmitButton.hidden=true;retransmitButton.disabled=true;jobStatus.after(retransmitButton);
   function updateDependentChoices(){const choices=modelCatalog.get(modelSelect.value);configSelect.replaceChildren(optionNode('','Select a finite configuration'));oddsSelect.replaceChildren(optionNode('','Select a finite odds source'));(choices?.configs||[]).forEach(value=>option(configSelect,value,value));(choices?.odds||[]).forEach(value=>option(oddsSelect,value,value));if(choices){configSelect.value=choices.configs[0];oddsSelect.value=choices.odds[0];}guard();}
-  function guard(){const selected=raceSelect.selectedOptions[0],runners=selected?.dataset.runners?JSON.parse(selected.dataset.runners):[];document.querySelector('#runner-confirmation').textContent=runners.length?`Confirm ordered runner set (${runners.length}): ${runners.map(r=>`${r.box} ${r.name}`).join(', ')} · ${selected.dataset.runnerHash}`:'No exact ordered runner set selected.';const unresolved=state.intent();[raceSelect,modelSelect,configSelect,oddsSelect].forEach(item=>{item.disabled=!capabilityAvailable||!!unresolved;});const raceBlock=raceMessage();const preJump=!!selected?.dataset.jump&&Date.parse(selected.dataset.jump)>Date.now();submit.disabled=!(capabilityAvailable&&!raceBlock&&preJump&&!unresolved&&!state.jobId()&&raceSelect.value&&modelSelect.value&&configSelect.value&&oddsSelect.value&&runners.length);document.querySelector('#prediction-readiness').textContent=raceBlock||(!capabilityAvailable?'Prediction access is unavailable. Sign in or refresh to recheck access.':unresolved?'An earlier submission is unresolved. Review its status before submitting another.':state.jobId()?'A prediction job is already in progress.':!modelCatalog.size?'The frozen prediction model is unavailable.':!raceSelect.value?'Select an upcoming race to run a prediction.':!preJump?'The scheduled jump has passed. Select another upcoming race.':'Ready to request a prediction. The server will verify the matching odds receipt and all inputs before running.');retransmitButton.hidden=!unresolved;retransmitButton.disabled=!(capabilityAvailable&&unresolved);guardRaceButtons();}
+  function guard(){const selected=raceSelect.selectedOptions[0],runners=selected?.dataset.runners?JSON.parse(selected.dataset.runners):[];document.querySelector('#runner-confirmation').textContent=runners.length?`Confirmed runner set: ${runners.map(r=>`${r.box} ${r.name}`).join(', ')}`:'No exact ordered runner set selected.';const unresolved=state.intent();[raceSelect,modelSelect,configSelect,oddsSelect].forEach(item=>{item.disabled=!capabilityAvailable||!!unresolved;});const raceBlock=raceMessage();const preJump=!!selected?.dataset.jump&&Date.parse(selected.dataset.jump)>Date.now();submit.disabled=!(capabilityAvailable&&!raceBlock&&preJump&&!unresolved&&!state.jobId()&&raceSelect.value&&modelSelect.value&&configSelect.value&&oddsSelect.value&&runners.length);document.querySelector('#prediction-readiness').textContent=raceBlock||(!capabilityAvailable?'Prediction access is unavailable. Sign in or refresh to recheck access.':unresolved?'An earlier submission is unresolved. Review its status before submitting another.':state.jobId()?'A prediction job is already in progress.':!modelCatalog.size?'The frozen prediction model is unavailable.':!raceSelect.value?'Select an upcoming race to run a prediction.':!preJump?'The scheduled jump has passed. Select another upcoming race.':'Ready to request a prediction. The server will verify the matching odds receipt and all inputs before running.');retransmitButton.hidden=!unresolved;retransmitButton.disabled=!(capabilityAvailable&&unresolved);guardRaceButtons();updateTodayStatus();}
   raceSelect.addEventListener('change',guard);modelSelect.addEventListener('change',updateDependentChoices);[configSelect,oddsSelect].forEach(select=>select.addEventListener('change',guard));
-  function renderJob(payload){jobStatus.textContent=`Job ${payload.job_id}: ${payload.phase}${payload.terminal?' · terminal':''}`;timeline.replaceChildren();(payload.timeline||[]).forEach(event=>{const item=node('li');item.append(node('strong',event.phase),node('span',` ${event.event_at} · ${event.reason}`));timeline.append(item);});resultView.replaceChildren(node('h3','Verified terminal result or blocker'));if(payload.result){resultView.append(node('p','Strict sealed-v2 verification: VERIFIED'));resultView.append(renderValue(payload.result.probabilities));}else resultView.append(node('p',payload.blocker||'Probabilities withheld until strict sealed-v2 verification.','missing-value'));jobEvidence.replaceChildren(renderValue({job_id:payload.job_id,race_id:payload.race_id,jump_timestamp:payload.jump_timestamp,runner_set_sha256:payload.runner_set_sha256,model_id:payload.model_id,resolved_model_identity:payload.resolved_model_identity,config_id:payload.config_id,odds_source_id:payload.odds_source_id,timeline:payload.timeline}));const savedLink=node('a','Open this saved prediction');savedLink.href='/operator-ui?job='+encodeURIComponent(payload.job_id)+'#manual-prediction';resultView.append(savedLink);jobStatus.focus();guard();}
+  function renderJob(payload){jobStatus.textContent=`Job ${payload.job_id}: ${payload.phase}${payload.terminal?' · terminal':''}`;timeline.replaceChildren();(payload.timeline||[]).forEach(event=>{const item=node('li');item.append(node('strong',event.phase),node('span',` ${event.event_at} · ${event.reason}`));timeline.append(item);});resultView.replaceChildren(node('h3','Verified terminal result or blocker'));if(payload.result){resultView.append(node('p','Strict sealed-v2 verification: VERIFIED','verified-label'),node('p','Model probabilities compare runners within this race; they do not guarantee the result.','forecast-explainer'));const table=node('table',undefined,'forecast-table'),head=node('thead'),headRow=node('tr');['Rank','Runner','Model probability'].forEach(label=>headRow.append(node('th',label)));head.append(headRow);const body=node('tbody');[...(payload.result.probabilities||[])].sort((a,b)=>a.rank-b.rank).forEach(runner=>{const row=node('tr');row.append(node('td',runner.rank),node('td',runner.name),node('td',`${(runner.probability*100).toFixed(1)}%`));body.append(row);});table.append(head,body);const scroll=node('div',undefined,'table-scroll');scroll.append(table);resultView.append(scroll);}else resultView.append(node('p',payload.blocker||'Probabilities withheld until strict sealed-v2 verification.','missing-value'));jobEvidence.replaceChildren(renderValue({job_id:payload.job_id,race_id:payload.race_id,jump_timestamp:payload.jump_timestamp,runner_set_sha256:payload.runner_set_sha256,model_id:payload.model_id,resolved_model_identity:payload.resolved_model_identity,config_id:payload.config_id,odds_source_id:payload.odds_source_id,timeline:payload.timeline}));const savedLink=node('a','Open this saved prediction');savedLink.href='/operator-ui?job='+encodeURIComponent(payload.job_id)+'#manual-prediction';resultView.append(savedLink);guard();}
   async function csrfToken(){const response=await apiFetch('/operator-ui/login',{method:'GET',credentials:'same-origin',cache:'no-store',redirect:'error'});const payload=await authorityPayload(response,csrfEnvelope,true);if(!response.ok)throw new Error('CSRF token unavailable');return payload.csrf_token;}
   async function getJob(jobId){const response=await apiFetch(`/operator-ui/api/v1/prediction-jobs/${encodeURIComponent(jobId)}`,{method:'GET',credentials:'same-origin',cache:'no-store',redirect:'error'});const payload=await authorityPayload(response,jobEnvelope,true);if(!response.ok)throw Object.assign(new Error(payload.classification||'Job unavailable'),{stable:[401,403,404].includes(response.status)});return payload;}
   async function getCapability(){const response=await apiFetch('/operator-ui/api/v1/r3-capability',{method:'GET',credentials:'same-origin',cache:'no-store',redirect:'error'});const payload=await authorityPayload(response,capabilityEnvelope,true);if(!response.ok)throw new Error(payload.classification||'Capability unavailable');return payload;}
@@ -131,8 +170,9 @@
   const requestedJob=new URLSearchParams(window.location.search).get('job');
   if(/^job_[0-9a-f]{32}$/.test(requestedJob||'')&&!state.jobId()&&!state.intent())state.associateJob(requestedJob);
   getCapability().then(payload=>{if(!state.setCapability(payload)){state.loseCapability('CAPABILITY_DENIED');return;}if(state.jobId())state.reconnect();else if(state.intent())jobStatus.textContent='Unresolved submission intent: selections are locked. Activate this status to retransmit the exact persisted key.';}).catch(()=>state.loseCapability('CAPABILITY_UNAVAILABLE'));
-  async function loadResources(){await loadResource('upcoming-races',API['upcoming-races']);await loadResource('models',API.models);const background=Object.entries(API).filter(([name])=>!['upcoming-races','models'].includes(name));await Promise.allSettled(background.map(([name,path])=>loadResource(name,path)));if(!connection.textContent.includes('Authentication required'))connection.replaceChildren(node('div'));if(!connection.textContent)connection.firstChild.append(node('strong','Last request observation complete'),node('p','Resources were fetched independently. Inspect each classification and evidence disclosure; no global health claim is made.'));}
-  document.querySelector('#refresh-upcoming').addEventListener('click',async event=>{const button=event.currentTarget;button.disabled=true;render(panels.get('upcoming-races'),{classification:'Loading'});try{state.setCapability(await getCapability());await loadResource('upcoming-races',API['upcoming-races']);await loadResource('models',API.models);}catch(_){state.loseCapability('CAPABILITY_UNAVAILABLE');render(panels.get('upcoming-races'),{classification:'NON_OPERATIONAL/OFFLINE'});}finally{button.disabled=false;guard();}});
+  async function loadResources(){await loadResource('upcoming-races',API['upcoming-races']);await loadResource('models',API.models);const background=Object.entries(API).filter(([name])=>!['upcoming-races','models'].includes(name));await Promise.allSettled(background.map(([name,path])=>loadResource(name,path)));updateTodayStatus();}
+  document.querySelector('#refresh-upcoming').addEventListener('click',async event=>{const button=event.currentTarget;button.disabled=true;button.textContent='Refreshing…';panels.get('upcoming-races').setAttribute('aria-busy','true');try{state.setCapability(await getCapability());await loadResource('upcoming-races',API['upcoming-races']);await loadResource('models',API.models);}catch(_){state.loseCapability('CAPABILITY_UNAVAILABLE');render(panels.get('upcoming-races'),{classification:'NON_OPERATIONAL/OFFLINE'});}finally{button.disabled=false;button.textContent='Refresh races';guard();}});
+  document.querySelector('a[href="#system-details"]').addEventListener('click',()=>{document.querySelector('#system-details').open=true;});
   setInterval(()=>{if(raceState==='AVAILABLE/FRESH'&&Date.now()>=raceDeadline)render(panels.get('upcoming-races'),{classification:'STALE'});guard();},1000);
   loadResources();
 })();

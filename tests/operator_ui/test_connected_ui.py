@@ -34,7 +34,7 @@ def test_connected_client_has_explicit_isolated_truthful_accessible_states():
     for state in ("AVAILABLE/FRESH", "STALE", "DIVERGENT", "INVALID/INTEGRITY_FAILED", "NON_OPERATIONAL/PROVIDER_ERROR", "NON_OPERATIONAL/OFFLINE", "NON_OPERATIONAL/AUTHENTICATION_REQUIRED", "Loading"):
         assert state in source
     assert "Promise.allSettled" in source
-    assert "Resources were fetched independently" in source
+    assert "updateTodayStatus" in source
     assert "'/operator-ui/login'" in source
     assert "beforeprint" in source and "afterprint" in source
     css = (ROOT / "static/css/operator-ui.css").read_text(encoding="utf-8")
@@ -101,6 +101,10 @@ def test_connected_template_default_off_and_prototype_are_distinct():
     assert "UNAVAILABLE/DATA_MISSING" in disabled
     assert "PROTOTYPE DATA" not in connected
     assert "RESEARCH ONLY — NOT FOR BETTING" in connected
+    assert ">Today</a>" in connected
+    assert ">Forecasts</a>" in connected
+    assert ">System</a>" in connected
+    assert "System status and technical evidence" in connected
 
 
 def test_connected_route_source_has_no_direct_operational_access():

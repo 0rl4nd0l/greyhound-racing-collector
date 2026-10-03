@@ -142,7 +142,8 @@ def test_direct_predict_respects_access_jump_and_age(console, blocked):
     if blocked == "expired":
         expect(button).to_be_enabled()
         page.clock.fast_forward(301000)
-        expect(button).to_have_count(0)
+        expect(button).to_be_disabled()
+        expect(page.locator(".stale-context")).to_contain_text("Last known races remain visible")
         expect(page.locator("#prediction-readiness")).to_contain_text("too old")
     else:
         expect(button).to_be_disabled()
@@ -180,7 +181,8 @@ def test_verified_submission_response_renders_probabilities(console, race_id):
     page.get_by_role("button", name="Select Bulli R2").click()
     page.get_by_role("button", name="Run prediction", exact=True).click()
     expect(page.locator("#job-result")).to_contain_text("Strict sealed-v2 verification: VERIFIED")
-    expect(page.locator("#job-result")).to_contain_text("0.25")
+    expect(page.locator("#job-result")).to_contain_text("25.0%")
+    expect(page.locator("#job-result")).to_contain_text("do not guarantee the result")
     assert len(state["posts"]) == 1
 
 
@@ -250,7 +252,7 @@ def test_overview_distinguishes_api_errors_from_offline_and_preserves_evidence(c
     ("UNAVAILABLE/DATA_MISSING", None, "unavailable"),
     ("AVAILABLE/FRESH", [], "No upcoming races"),
 ])
-def test_refresh_removes_previous_races_and_explains_blocked_prediction(console, classification, races, reason):
+def test_refresh_preserves_context_and_explains_blocked_prediction(console, classification, races, reason):
     page, state = console
     page.goto("http://127.0.0.1:5055/operator-ui")
     page.get_by_role("button", name="Select Bulli R2").click()
@@ -258,10 +260,35 @@ def test_refresh_removes_previous_races_and_explains_blocked_prediction(console,
     state["classification"] = classification
     if races is not None:
         state["races"] = races
-    page.get_by_role("button", name="Refresh upcoming races", exact=True).click()
+    page.get_by_role("button", name="Refresh races", exact=True).click()
     expect(page.locator("#prediction-readiness")).to_contain_text(reason)
     expect(page.locator("#manual-prediction")).to_be_visible()
     expect(page.locator("#prediction-submit")).to_be_disabled()
-    expect(page.locator("#prediction-race option[value='exact-race-1']")).to_have_count(0)
-    expect(page.get_by_role("button", name="Select Bulli R2")).to_have_count(0)
+    expected = 0 if races == [] else 1
+    expect(page.locator("#prediction-race option[value='exact-race-1']")).to_have_count(expected)
+    expect(page.get_by_role("button", name="Select Bulli R2")).to_have_count(expected)
+    if expected:
+        expect(page.get_by_role("button", name="Predict Bulli R2", exact=True)).to_be_disabled()
+        expect(page.locator(".stale-context")).to_contain_text("Last known races remain visible")
     assert not state["posts"]
+
+
+def test_selected_race_shows_compact_runner_context(console):
+    page, _ = console
+    page.goto("http://127.0.0.1:5055/operator-ui")
+    page.get_by_role("button", name="Select Bulli R2").click()
+    expect(page.locator("#selected-race-title")).to_have_text("Bulli R2")
+    expect(page.locator(".selected-runner-list")).to_contain_text("Fixture runner")
+    expect(page.locator(".prediction-method")).to_contain_text("sealed verification")
+    expect(page.locator("#runner-confirmation")).not_to_contain_text("cccccccc")
+
+
+def test_today_layout_is_compact_and_has_no_mobile_overflow(console):
+    page, _ = console
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.goto("http://127.0.0.1:5055/operator-ui")
+    expect(page.locator(".nav-list--primary a")).to_have_text(["Today", "Forecasts", "System"])
+    expect(page.locator("#system-details")).not_to_have_attribute("open", "")
+    assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+    page.get_by_role("link", name="System", exact=True).click()
+    expect(page.locator("#system-details")).to_have_attribute("open", "")
