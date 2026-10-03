@@ -62,7 +62,7 @@ def control_status(pointer_path, output, health, now):
 
 
 def validate_binding(binding):
-    if set(binding) != {'config', 'config_sha256', 'source', 'source_commit', 'python'}:
+    if set(binding)-{'producer_packages'} != {'config', 'config_sha256', 'source', 'source_commit', 'python'}:
         raise ValueError('invalid_persistent_binding')
     for name in ('config', 'source', 'python'):
         path = Path(binding[name])
@@ -71,6 +71,12 @@ def validate_binding(binding):
     for name, size in (('config_sha256', 64), ('source_commit', 40)):
         if re.fullmatch('[0-9a-f]{'+str(size)+'}', binding[name]) is None:
             raise ValueError('invalid_persistent_identity')
+    if 'producer_packages' in binding:
+        if __package__:
+            from .native_verification import validate_packages
+        else:
+            from native_verification import validate_packages
+        validate_packages(binding['producer_packages'])
     return binding
 
 
@@ -170,12 +176,17 @@ def project_forecast(native, admission, manifest_sha, checked_at):
             'evidence_class': 'ENGINEERING', 'scientific_admission': 'CANARY_NOT_VERIFIED'}
 
 
-def verified_attempts(plan_sha, plan, allocation, *, remaining=255, deadline=None):
+def verified_attempts(plan_sha, plan, allocation, *, remaining=255, deadline=None, selected=None):
     value = {'forecasts': [], 'failed_forecasts': [], 'forecast_errors': []}
     attempts = Path(plan['programme_root'])/plan_sha/'attempts'
     admissions = sorted(attempts.glob('*/admission.json'))
     if len(admissions) > min(allocation['max_capture_attempts'], 255):
         raise ValueError('persistent_admission_bound')
+    if selected is not None:
+        requested=set(selected)
+        if not requested.issubset({str(path) for path in admissions}):
+            raise ValueError('persistent_selected_admission_outside_plan')
+        admissions=[path for path in admissions if str(path) in requested]
     from src.predictor.future_comparison import verify_comparison
     bundles = Path(allocation['prediction_root'])/'bundles'
     limited = False
@@ -248,12 +259,22 @@ def current_snapshot(binding, now, *, clock=None):
              'race_count': inventory['race_count'], 'upcoming': upcoming,
              'forecasts': [], 'failed_forecasts': [], 'forecast_errors': [], 'scientific_admission': 'CANARY_NOT_VERIFIED',
              'result_access': False, 'engineering_only': True}
-    comparisons, _, _ = verified_attempts(plan_sha, plan, allocation)
+    comparisons, _, _ = package_attempts(binding,receipt,output,plan_sha,plan,allocation)
     value.update(comparisons)
     if read(pointer_path) != pointer:
         raise ValueError('persistent_day_changed_during_read')
     value['forecasts'].sort(key=lambda forecast: stamp(forecast['race']['jump_timestamp']), reverse=True)
     return value
+
+
+def package_attempts(binding,receipt,output,plan_sha,plan,allocation,*,remaining=255,deadline=None):
+    if 'producer_packages' not in binding:
+        return verified_attempts(plan_sha,plan,allocation,remaining=remaining,deadline=deadline)
+    if __package__:
+        from .native_verification import replay
+    else:
+        from native_verification import replay
+    return replay(binding,receipt,output,receipt['comparison'],remaining=remaining,deadline=deadline)
 
 
 
@@ -335,7 +356,7 @@ def retained_history(binding, now, current=None):
                 if allocation['racing_date'] != racing_date or allocation['standing_authority'] != authority:
                     raise ValueError('persistent_history_allocation_changed')
                 bound_path(plan['programme_root'],day)
-                comparisons, limited, used = verified_attempts(reference['sha256'],plan,allocation,remaining=remaining,deadline=deadline)
+                comparisons, limited, used = package_attempts(binding,receipt,output,reference['sha256'],plan,allocation,remaining=remaining,deadline=deadline)
                 remaining -= used
                 value['history_limited'] |= limited
                 read(path,preparation['sha256'])
