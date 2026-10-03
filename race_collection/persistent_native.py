@@ -34,6 +34,24 @@ def _configuration_identity(cfg):
     return digest(value)
 
 
+def _checked_reconciliation(ref):
+    """Historical evidence inventories are larger than authority documents.
+
+    Keep the small authority limit unchanged. This separate read still pins
+    every byte and subsequently exercises native reconciliation validation.
+    """
+    if not isinstance(ref, dict) or set(ref) != {'path', 'sha256'}:
+        raise ValueError('persistent_reconciliation_reference_invalid')
+    path = Path(ref['path'])
+    if (not path.is_absolute() or path.resolve() != path or not path.is_file()
+            or path.stat().st_size > 64 * 1024 * 1024):
+        raise ValueError('persistent_reconciliation_reference_unsafe')
+    raw = path.read_bytes()
+    if len(raw) > 64 * 1024 * 1024 or hashlib.sha256(raw).hexdigest() != ref['sha256']:
+        raise ValueError('persistent_reconciliation_changed')
+    return json.loads(raw)
+
+
 def _verified_result(receipt_path, cfg, standing_ref, racing_date):
     receipt = json.loads(receipt_path.read_bytes())
     if (receipt.get('schema_version') != 'persistent_native_preparation_v1'
@@ -43,7 +61,8 @@ def _verified_result(receipt_path, cfg, standing_ref, racing_date):
             or receipt.get('racing_date') != racing_date):
         raise ValueError('persistent_native_preparation_binding_changed')
     documents = {key: checked(receipt[key]) for key in
-                 ('allocation', 'comparison', 'plan', 'contract', 'reconciliation', 'scope')}
+                 ('allocation', 'comparison', 'plan', 'contract', 'scope')}
+    documents['reconciliation'] = _checked_reconciliation(receipt['reconciliation'])
     allocation = load_persistent_allocation(receipt['allocation'])
     plan, contract = documents['plan'], documents['contract']
     if (allocation['standing_authority'] != standing_ref or allocation['racing_date'] != racing_date
