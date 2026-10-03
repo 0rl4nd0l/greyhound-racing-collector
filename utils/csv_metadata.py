@@ -206,6 +206,8 @@ def normalize_target_grade(value: Any) -> Optional[str]:
     if not text:
         return None
     compact = re.sub(r"\s+", " ", text)
+    if re.fullmatch(r"NOV(?:\s+\d{3,4}\s*m)?", compact, re.I):
+        return "Novice"
     patterns = (
         r"\b\d+(?:st|nd|rd|th)(?:/\d+(?:st|nd|rd|th))?\s+Grade\b",
         r"\bGrade\s*\d+\b",
@@ -296,6 +298,7 @@ def _exact_target_grade_core(value: Any) -> Optional[str]:
         r"\d+\s*-\s*\d+\s+Win",
         r"Best\s*8",
         r"Maiden",
+        r"NOV",
         r"Novice",
         r"Open",
         r"Mixed(?:\s+\d+(?:/\d+)+)?",
@@ -382,6 +385,7 @@ def normalize_exact_target_grade(value: Any) -> Optional[str]:
         "N.P": "N/P",
         "BEST 8": "Best 8",
         "MAIDEN": "Maiden",
+        "NOV": "Novice",
         "NOVICE": "Novice",
         "OPEN": "Open",
         "MIXED": "Mixed",
