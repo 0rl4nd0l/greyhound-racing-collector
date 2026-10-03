@@ -361,13 +361,15 @@ def _reviewed_refresh_failure(selection, prior, halt, stop):
     if review.get('schema_version') == 'persistent_reviewed_publication_failure_v1':
         return _reviewed_publication_failure(selection, prior, halt, stop, review)
     typed = review.get('disposition') == 'PROSPECTIVE_TYPED_UPSTREAM_OUTAGE_RECOVERY'
-    if (review.get('schema_version') != 'persistent_reviewed_refresh_failure_v1'
-            or (not typed and review.get('disposition') != 'PROSPECTIVE_CORRECTION_OLD_FAILURE_UNRESOLVED')
+    metadata = (review.get('schema_version') == 'persistent_reviewed_metadata_exclusion_v1'
+        and review.get('disposition') == 'PROSPECTIVE_ALL_SELECTED_METADATA_EXCLUSION_CORRECTION')
+    if ((not metadata and review.get('schema_version') != 'persistent_reviewed_refresh_failure_v1')
+            or (not typed and not metadata and review.get('disposition') != 'PROSPECTIVE_CORRECTION_OLD_FAILURE_UNRESOLVED')
             or not review.get('authority_reference')
             or review.get('source_commit') != selection['source_commit']
             or review.get('cleanup') != selection['cleanup']
             or (halt.get('reason') != 'persistent_native_terminal_failure:LIVE_PHASE_FAILED'
-                and not (typed and halt.get('reason') == 'persistent_native_scope_stopped'))
+                and not ((typed or metadata) and halt.get('reason') == 'persistent_native_scope_stopped'))
             or stop.get('reason') != 'LIVE_PHASE_FAILED'):
         raise ValueError('persistent_recovery_refresh_review_invalid')
     terminal, lifecycle, checkpoint, phase = (
@@ -398,7 +400,7 @@ def _reviewed_refresh_failure(selection, prior, halt, stop):
             or checkpoint.get('cycle_id') != terminal['run_id'] or checkpoint.get('output_dir') != str(cycle)):
         raise ValueError('persistent_recovery_refresh_terminal_unverified')
     phases = checkpoint['phases']
-    report_name = ('refresh_prejump_report.json' if typed and not terminal['run_id'].endswith('_odds_capture')
+    report_name = ('refresh_prejump_report.json' if (typed or metadata) and not terminal['run_id'].endswith('_odds_capture')
                    else 'odds_capture_refresh_report.json')
     if (len(phases) != 1 or phases[0].get('number') != 0 or phases[0].get('kind') != 'refresh'
             or phases[0].get('status') != 'COMPLETE' or phases[0].get('budget_exceeded') is not False
@@ -412,12 +414,31 @@ def _reviewed_refresh_failure(selection, prior, halt, stop):
             or phase.get('current_race_index_publish', {}).get('status') != 'REJECTED'
             or phase['current_race_index_publish'].get('reason') != 'CURRENT_INDEX_SOURCE_INVALID'
             or phase['current_race_index_publish'].get('source_refresh_report_path') != review['refresh_report']['path']
-            or report.get('status') != 'ACQUISITION_INCOMPLETE'
-            or report.get('reason') != 'unisolated_selected_race_acquisition_failure'
-            or (not typed and not any(row.get('success') is False and row.get('result', {}).get('success') is False
+            or (not metadata and (report.get('status') != 'ACQUISITION_INCOMPLETE'
+                or report.get('reason') != 'unisolated_selected_race_acquisition_failure'))
+            or (not typed and not metadata and not any(row.get('success') is False and row.get('result', {}).get('success') is False
                 and row['result'].get('error') == 'discovery_canonical_jump_changed'
                 for row in report.get('downloads', [])))):
         raise ValueError('persistent_recovery_refresh_checkpoint_unverified')
+    if metadata:
+        from race_collection.metadata_exclusion import classify_metadata_exclusion
+        classified = classify_metadata_exclusion(evidence, terminal['run_id'])
+        if (classified is None or classified != checked(review['classified_metadata_exclusion'])
+                or classified.get('schema_version') != 'completed_metadata_exclusions_v1'
+                or classified.get('disposition') != 'COMPLETED_METADATA_EXCLUSIONS'
+                or classified.get('run_id') != terminal['run_id']
+                or classified.get('failed_phase_number') != 0
+                or classified.get('refresh_sha256') != review['refresh_report']['sha256']
+                or classified.get('phase_result_sha256') != review['phase_result']['sha256']
+                or type(classified.get('selected_count')) is not int
+                or classified['selected_count'] <= 0
+                or classified.get('excluded_count') != classified['selected_count']
+                or classified.get('request_retries_added') != 0
+                or classified.get('current_index_published') is not False):
+            raise ValueError('persistent_recovery_metadata_exclusion_unverified')
+        # Reviewed control-flow correction only: the prior failed phase and its
+        # rejected index remain immutable. No outage allowance is replenished.
+        return None
     if typed:
         from race_collection.live_freshness_contract import classify_refresh_outage
         classified = classify_refresh_outage(evidence, terminal['run_id'])
