@@ -23,6 +23,14 @@
     models.forEach(model=>evidence.append(node('p',value.models[model]?`${names[model]} SHA-256 ${value.models[model]}`:`${names[model]}: derived from the verified captured WIN market`)));article.append(evidence);return article;
   }
   let loading=false;
+  function failure(value){
+    if(value.status!=='FAILED')throw new Error('Invalid failure record');
+    const article=node('article');article.className='panel persistent-failure';
+    article.append(node('h3',`Failed forecast attempt: ${value.race.race_id}`),node('p',`Jump ${time(value.race.jump_timestamp)} · No verified four-candidate forecast was produced.`));
+    article.append(table(['Candidate','Status','Failure'],models.map(name=>[names[name],value.candidates[name].status,value.candidates[name].failure||'Candidate sealed; comparison failed'])));
+    article.append(node('p','Capture timing does not establish forecast success. Scientific admission remains CANARY_NOT_VERIFIED.'));
+    return article;
+  }
   async function load(){
     if(loading)return;loading=true;target.replaceChildren();status.textContent='Checking persistent collection…';
     try{
@@ -30,17 +38,24 @@
       if(response.status===401){status.textContent='Sign in to view persistent collection. ';const link=node('a','Sign in');link.href='/operator-ui/sign-in';status.append(link);return;}
       if(!response.ok)throw new Error('Collection unavailable');const data=await response.json();
       if(data.schema!=='operator_ui_persistent_collector_v1')throw new Error('Invalid collection response');
-      if(data.state==='UNAVAILABLE'){status.textContent=data.reason;return;}
+      if(data.state==='UNAVAILABLE'){
+        status.textContent=data.reason;
+        if(data.service)status.append(node('span',` Installed service: ${data.service.state}${data.service.exit_status?`; exit ${data.service.exit_status}`:''}.`));
+        return;
+      }
       status.textContent=`Collector: ${data.state.replaceAll('_',' ')} · Status ${time(data.status_at)} · Inventory ${time(data.inventory_at)} (${data.inventory_state.replaceAll('_',' ').toLowerCase()}).`;
+      if(data.status_reason)status.append(node('span',` Stop reason: ${data.status_reason}.`));
+      if(data.service)status.append(node('span',` Installed service: ${data.service.state}; ${data.service.substate||'status unavailable'}${data.service.exit_status?`; exit ${data.service.exit_status}`:''}.`));
       target.append(node('p',`${data.race_count} races discovered · ${data.upcoming.length} still upcoming. Discovery does not establish fresh runner inputs or forecast readiness.`));
       target.append(node('p','Engineering evidence only. Scientific admission remains CANARY_NOT_VERIFIED.'));
+      for(const value of data.failed_forecasts||[])target.append(failure(value));
       if(target.dataset.today==='true'){
         const rows=data.upcoming.map(race=>[`${race.venue} R${race.race_number}`,time(race.jump_at),'Readiness not established by discovery']);
         target.append(table(['Race','Scheduled jump (Melbourne)','Forecast readiness'],rows.slice(0,10)));
         if(rows.length>10){const more=node('details');more.append(node('summary',`Show ${rows.length-10} more upcoming races`),table(['Race','Scheduled jump (Melbourne)','Forecast readiness'],rows.slice(10)));target.append(more);}
         const link=node('a','Open verified forecasts');link.href='/operator-ui/forecasts';const paragraph=node('p');paragraph.append(link);target.append(paragraph);
       }else{
-        if(!data.forecasts.length)target.append(node('p','No verified forecasts have been published by this collector yet. Historical forecasts remain below.'));
+        if(!data.forecasts.length)target.append(node('p','No verified four-candidate forecasts are available from this collector. Historical forecasts remain below.'));
         for(const value of data.forecasts){try{target.append(forecast(value));}catch(_){target.append(node('p','A four-candidate forecast was withheld because its probabilities could not be validated.'));}}
       }
       if(data.forecast_errors.length)target.append(node('p',`${data.forecast_errors.length} completed comparisons could not be verified and were withheld.`));

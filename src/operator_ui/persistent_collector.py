@@ -18,6 +18,44 @@ else:
 
 MODELS = ('production', 'market', 'residual_box', 'residual_half')
 SCHEMA = 'operator_ui_persistent_collector_v1'
+SAFE_FAILURE_CODES = {
+    'RESIDUAL_SCORER_FAILED', 'production_not_ready', 'candidate_completed_after_cutoff',
+    'operational_prediction_failed_preserved_consumption',
+}
+
+
+def failure_code(value):
+    return value.upper() if isinstance(value, str) and value in SAFE_FAILURE_CODES else 'FAILURE_DETAIL_WITHHELD'
+
+
+def control_status(pointer_path, output, health, now):
+    """A retained HOLD/HALT is a stop signal, never replaced by old activity."""
+    age = (now-stamp(health['at'])).total_seconds()
+    value = {'state': health['status'] if 0 <= age <= 300 else 'STATUS_STALE',
+             'status_at': health['at'], 'status_source': 'daily_health',
+             'daily_state': health['status'], 'daily_status_at': health['at']}
+    try:
+        runtime = read(pointer_path.parent/'health.json')
+    except FileNotFoundError:
+        runtime = None
+    try:
+        halt = read(output/'HALT.json')
+    except FileNotFoundError:
+        halt = None
+    stopped = runtime if runtime and runtime.get('status') == 'HOLD' else halt
+    if stopped is not None:
+        stamp(stopped['at'])
+        value.update(state='HOLD' if stopped is runtime else 'HALT', status_at=stopped['at'],
+                     status_source='runtime_hold' if stopped is runtime else 'daily_halt',
+                     status_reason=failure_code(stopped.get('reason')))
+    elif runtime and runtime.get('output') == str(output):
+        preparation = read(pointer_path).get('preparation')
+        if runtime.get('source_commit') != health['source_commit'] or runtime.get('preparation') != preparation:
+            raise ValueError('persistent_runtime_identity_changed')
+        age = (now-stamp(runtime['at'])).total_seconds()
+        value.update(state=runtime['status'] if runtime['status'] in ('PAUSED', 'DAY_ENDED') or 0 <= age <= 300 else 'STATUS_STALE',
+                     status_at=runtime['at'], status_source='runtime_health')
+    return value
 
 
 def validate_binding(binding):
@@ -62,9 +100,11 @@ def daily_bindings(binding):
     racing_date = date.fromisoformat(pointer['racing_date']).isoformat()
     day = state/'days'/racing_date
     output = bound_path(pointer['output'], day)
-    if output.parent != day or not output.name.startswith('native-'):
+    if not output.name.startswith('native-'):
         raise ValueError('persistent_daily_package_mismatch')
-    receipt = read(day/'native-prepared.json')
+    preparation = pointer.get('preparation')
+    receipt_path = bound_path(preparation['path'], day) if preparation else day/'native-prepared.json'
+    receipt = read(receipt_path, preparation['sha256'] if preparation else None)
     if (receipt['standing_authority'] != standing_ref or receipt['output'] != str(output)
             or receipt['racing_date'] != racing_date):
         raise ValueError('persistent_preparation_changed')
@@ -77,6 +117,29 @@ def daily_bindings(binding):
     if allocation['racing_date'] != racing_date or allocation['standing_authority'] != standing_ref:
         raise ValueError('persistent_allocation_changed')
     return cfg, pointer_path, pointer, output, plan_ref['sha256'], plan, allocation
+
+
+def project_failed_attempt(native, admission, manifest_sha, checked_at):
+    """Only independently verified failed records yield a failure card."""
+    records = native['records']
+    if (native['evidence_class'] != 'AUTHORIZED_ENGINEERING' or native['future_race_evidence'] is not False
+            or set(records) != set(MODELS) or not any(row['status'] == 'FAILED' for row in records.values())):
+        raise ValueError('persistent_failure_not_verified')
+    if any(row['status'] not in ('FAILED', 'SEALED') for row in records.values()):
+        raise ValueError('persistent_failure_status_invalid')
+    if any(row['predictions'] is not None for row in records.values() if row['status'] == 'FAILED'):
+        raise ValueError('persistent_failure_has_predictions')
+    race = admission['race']
+    stamp(race['jump_timestamp'])
+    if not isinstance(race['race_id'], str) or len(race['race_id']) > 256:
+        raise ValueError('persistent_failure_race_identity_invalid')
+    return {'race': {'race_id': race['race_id'], 'jump_timestamp': race['jump_timestamp']},
+            'job_id': admission['job_id'], 'status': 'FAILED',
+            'candidates': {name: {'status': records[name]['status'],
+                                'failure': failure_code(records[name].get('failure')) if records[name]['status'] == 'FAILED' else None}
+                           for name in MODELS},
+            'verified_at': checked_at.isoformat(), 'manifest_sha256': manifest_sha,
+            'evidence_class': 'ENGINEERING', 'scientific_admission': 'CANARY_NOT_VERIFIED'}
 
 
 def project_forecast(native, admission, manifest_sha, checked_at):
@@ -106,11 +169,23 @@ def project_forecast(native, admission, manifest_sha, checked_at):
 
 def snapshot(binding, now, *, clock=None):
     cfg, pointer_path, pointer, output, plan_sha, plan, allocation = daily_bindings(binding)
-    health = read(output/'persistent-health.json')
-    if health['source_commit'] != binding['source_commit'] or health['source_date'] != pointer['racing_date']:
+    preparation = pointer.get('preparation')
+    receipt = read(preparation['path'], preparation['sha256']) if preparation else read(output.parent/'native-prepared.json')
+    native_ref = receipt['plan']
+    bound_path(native_ref['path'], output)
+    native_plan = read(native_ref['path'], native_ref['sha256'])
+    try:
+        health = read(output/'persistent-health.json')
+    except FileNotFoundError:
+        health = {'at': receipt['at'], 'status': 'PREPARED_NOT_STARTED',
+                  'source_commit': native_plan['commit'], 'source_date': pointer['racing_date']}
+    if health['source_commit'] != native_plan['commit'] or health['source_date'] != pointer['racing_date']:
         raise ValueError('persistent_health_identity_changed')
-    inventory_path = bound_path(health['inventory']['path'], output/'inventories')
-    inventory = read(inventory_path, health['inventory']['sha256'])
+    if 'inventory' in health:
+        inventory_path = bound_path(health['inventory']['path'], output/'inventories')
+        inventory = read(inventory_path, health['inventory']['sha256'])
+    else:
+        inventory = {'observed_at': health['at'], 'races': [], 'race_count': 0}
     if not isinstance(inventory['races'], list) or len(inventory['races']) > 1024 or inventory['race_count'] != len(inventory['races']):
         raise ValueError('persistent_inventory_bound')
     if clock is not None:
@@ -124,14 +199,13 @@ def snapshot(binding, now, *, clock=None):
                          'race_number': race['race_number'], 'jump_at': jump,
                          'forecast_readiness': 'NOT_ESTABLISHED_BY_DISCOVERY'})
     upcoming.sort(key=lambda race: stamp(race['jump_at']))
-    age = (now-stamp(health['at'])).total_seconds()
     inventory_age = (now-stamp(inventory['observed_at'])).total_seconds()
     value = {'schema': SCHEMA, 'observed_at': now.isoformat(), 'racing_date': pointer['racing_date'],
-             'state': health['status'] if 0 <= age <= 300 else 'STATUS_STALE',
-             'status_at': health['at'], 'inventory_at': inventory['observed_at'],
-             'inventory_state': 'RECENT' if 0 <= inventory_age <= 300 else 'OLDER_INVENTORY',
+             **control_status(pointer_path, output, health, now),
+             'inventory_at': inventory['observed_at'],
+             'inventory_state': 'NOT_YET_DISCOVERED' if 'inventory' not in health else 'RECENT' if 0 <= inventory_age <= 300 else 'OLDER_INVENTORY',
              'race_count': inventory['race_count'], 'upcoming': upcoming,
-             'forecasts': [], 'forecast_errors': [], 'scientific_admission': 'CANARY_NOT_VERIFIED',
+             'forecasts': [], 'failed_forecasts': [], 'forecast_errors': [], 'scientific_admission': 'CANARY_NOT_VERIFIED',
              'result_access': False, 'engineering_only': True}
     attempts = Path(plan['programme_root'])/plan_sha/'attempts'
     admissions = sorted(attempts.glob('*/admission.json'))
@@ -153,12 +227,36 @@ def snapshot(binding, now, *, clock=None):
             if fingerprint != hashlib.sha256(path.read_bytes()+path.with_name('completion.json').read_bytes()).hexdigest():
                 raise ValueError('persistent_completion_changed_during_verification')
             read(directory/'bundle_manifest.json', manifest_sha)
-            value['forecasts'].append(project_forecast(native, admission, manifest_sha, datetime.now(timezone.utc)))
+            checked_at = datetime.now(timezone.utc)
+            if any(row['status'] == 'FAILED' for row in native['records'].values()):
+                value['failed_forecasts'].append(project_failed_attempt(native, admission, manifest_sha, checked_at))
+            else:
+                value['forecasts'].append(project_forecast(native, admission, manifest_sha, checked_at))
         except Exception:
             value['forecast_errors'].append({'attempt': path.parent.name, 'reason': 'Sealed comparison could not be verified.'})
     if read(pointer_path) != pointer:
         raise ValueError('persistent_day_changed_during_read')
     value['forecasts'].sort(key=lambda forecast: stamp(forecast['race']['jump_timestamp']), reverse=True)
+    return value
+
+
+def service_status(value):
+    """Observe the installed owner without changing its state."""
+    try:
+        result = subprocess.run(['systemctl', '--user', 'show', 'greyhound-persistent-collector.service',
+                                 '--property=ActiveState,SubState,MainPID,ExecMainStatus'],
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=3, check=True)
+        fields = dict(line.split('=', 1) for line in result.stdout.splitlines())
+        active, sub = fields['ActiveState'], fields['SubState']
+        if active not in ('active', 'inactive', 'failed', 'activating', 'deactivating') or not re.fullmatch('[a-z-]{1,32}', sub):
+            raise ValueError('unexpected_service_state')
+        value['service'] = {'state': active, 'substate': sub, 'pid': int(fields['MainPID']), 'exit_status': int(fields['ExecMainStatus'])}
+        if value['state'] not in ('HOLD', 'HALT', 'UNAVAILABLE') and active != 'active':
+            value.update(state='FAILED' if active == 'failed' else 'STOPPED', status_source='installed_service')
+    except Exception:
+        value['service'] = {'state': 'UNAVAILABLE'}
+        if value['state'] not in ('HOLD', 'HALT', 'UNAVAILABLE'):
+            value.update(state='UNAVAILABLE', reason='Installed collector state could not be verified.')
     return value
 
 
@@ -177,11 +275,11 @@ def observe(binding):
         value = json.loads(result.stdout)
         if value['schema'] != SCHEMA:
             raise ValueError('persistent_display_schema_changed')
-        return value
+        return service_status(value)
     except Exception:
-        return {'schema': SCHEMA, 'state': 'UNAVAILABLE', 'upcoming': [], 'forecasts': [],
+        return service_status({'schema': SCHEMA, 'state': 'UNAVAILABLE', 'upcoming': [], 'forecasts': [],
                 'reason': 'Persistent collector evidence could not be verified. Refresh display to check again.',
-                'scientific_admission': 'CANARY_NOT_VERIFIED', 'result_access': False}
+                'scientific_admission': 'CANARY_NOT_VERIFIED', 'result_access': False})
 
 
 def install_display(app, binding, protected):
@@ -193,7 +291,7 @@ def install_display(app, binding, protected):
     @protected(policy='LEVEL_1_API_V1_PREDICTION_DETAIL')
     def persistent_api():
         value = observe(binding)
-        status = EvidenceStatus.UNAVAILABLE_DATA_MISSING if value['state'] == 'UNAVAILABLE' else EvidenceStatus.STALE if value['state'] == 'STATUS_STALE' else EvidenceStatus.AVAILABLE_FRESH
+        status = EvidenceStatus.UNAVAILABLE_DATA_MISSING if value['state'] in ('UNAVAILABLE', 'HOLD', 'HALT', 'FAILED', 'STOPPED', 'PAUSED', 'DAY_ENDED', 'PREPARED_NOT_STARTED') else EvidenceStatus.STALE if value['state'] == 'STATUS_STALE' else EvidenceStatus.AVAILABLE_FRESH
         value['classification'] = status.value
         raw = json.dumps(value, sort_keys=True, allow_nan=False).encode()
         return PreparedDisclosure(body=raw, classification=status,

@@ -48,7 +48,8 @@ def daily(tmp_path, monkeypatch):
         plan={'date':day,'programme_root':str(root/'days'/day/'admission')}
         plans[day]=allocation
         plan_path=output.parent/'comparison.json';sha=put(plan_path,plan)
-        put(output.parent/'native-prepared.json',{'standing_authority':ref,'output':str(output),'racing_date':day,'comparison':{'path':str(plan_path),'sha256':sha}})
+        native_path=output/'plan.json';native_sha=put(native_path,{'commit':'a'*40})
+        put(output.parent/'native-prepared.json',{'at':NOW.isoformat(),'plan':{'path':str(native_path),'sha256':native_sha},'standing_authority':ref,'output':str(output),'racing_date':day,'comparison':{'path':str(plan_path),'sha256':sha}})
         inventory=output/'inventories/test.json'
         inventory_sha=put(inventory,{'observed_at':(NOW-timedelta(hours=1)).isoformat(),'race_count':2,'races':[
             {'title':title,'venue_name':'Venue','race_number':'1','scheduled_jump_datetime':(NOW+timedelta(hours=1)).isoformat()},
@@ -139,3 +140,93 @@ def test_authenticated_audited_no_store_api(daily,tmp_path,monkeypatch):
     from src.operator_ui.security import AuditUnavailable
     monkeypatch.setattr(app.extensions['operator_ui_audit'],'append_and_confirm',lambda *a,**k:(_ for _ in ()).throw(AuditUnavailable('fixture')))
     assert client.get(url).status_code==503
+
+
+@pytest.mark.parametrize('minutes',[0,40])
+def test_runtime_hold_overrides_fresh_or_stale_daily_activity(daily,minutes):
+    binding,_,output,_,root=daily
+    health=pc.read(output/'persistent-health.json')
+    health['status']='ACTIVE_COLLECTION'
+    put(output/'persistent-health.json',health)
+    put(root/'health.json',{'at':NOW.isoformat(),'status':'HOLD',
+                          'reason':'operational_prediction_failed_preserved_consumption'})
+    value=pc.snapshot(binding,NOW+timedelta(minutes=minutes))
+    assert value['state']=='HOLD'
+    assert value['status_source']=='runtime_hold'
+    assert value['status_reason']=='OPERATIONAL_PREDICTION_FAILED_PRESERVED_CONSUMPTION'
+    assert value['daily_state']=='ACTIVE_COLLECTION'
+    assert value['forecasts']==[]
+
+
+def test_failed_attempt_projection_never_exposes_probabilities_or_timing_success():
+    native={'evidence_class':'AUTHORIZED_ENGINEERING','future_race_evidence':False,
+            'records':{name:{'status':'FAILED','failure':'RESIDUAL_SCORER_FAILED','predictions':None} for name in pc.MODELS},
+            'completion':{'status':'COMPLETE_BEFORE_CUTOFF','published_complete_at':NOW.isoformat()}}
+    admission={'race':{'race_id':'Race 1 - DUBBO - 2026-10-03','jump_timestamp':NOW.isoformat()},'job_id':'job'}
+    value=pc.project_failed_attempt(native,admission,'f'*64,NOW)
+    assert value['status']=='FAILED'
+    assert all(row['failure']=='RESIDUAL_SCORER_FAILED' for row in value['candidates'].values())
+    assert 'COMPLETE_BEFORE_CUTOFF' not in json.dumps(value)
+    assert 'predictions' not in json.dumps(value) and 'probabilities' not in json.dumps(value)
+    native['records']['production']['failure']='secret/path/provider/token'
+    assert pc.project_failed_attempt(native,admission,'f'*64,NOW)['candidates']['production']['failure']=='FAILURE_DETAIL_WITHHELD'
+
+
+def test_failed_service_overrides_fresh_activity(monkeypatch):
+    monkeypatch.setattr(pc.subprocess,'run',lambda *a,**k:types.SimpleNamespace(stdout='ActiveState=failed\nSubState=failed\nMainPID=0\nExecMainStatus=78\n'))
+    value=pc.service_status({'state':'ACTIVE_COLLECTION'})
+    assert value['state']=='FAILED' and value['service']['exit_status']==78
+
+
+def test_successor_binding_retains_prior_package_and_failed_stop(daily):
+    binding,_,output,_,root=daily
+    cfg=pc.read(binding['config']);cfg['source_commit']='b'*40
+    binding.update(source_commit='b'*40,config_sha256=put(Path(binding['config']),cfg))
+    put(root/'health.json',{'at':NOW.isoformat(),'status':'HOLD','reason':'unknown secret'})
+    value=pc.snapshot(binding,NOW)
+    assert value['state']=='HOLD' and value['status_reason']=='FAILURE_DETAIL_WITHHELD'
+
+
+def test_recovery_pointer_uses_hash_pinned_nested_preparation(daily):
+    binding,_,output,_,root=daily
+    receipt=pc.read(output.parent/'native-prepared.json')
+    nested=output.parent/'recoveries/recovery-01/native-recovery-test'
+    receipt['output']=str(nested)
+    plan_path=nested/'plan.json'
+    receipt['plan']={'path':str(plan_path),'sha256':put(plan_path,{'commit':'a'*40})}
+    receipt_path=nested.parent/'native-prepared.json'
+    preparation={'path':str(receipt_path),'sha256':put(receipt_path,receipt)}
+    put(root/'current-day.json',{'racing_date':'2026-10-03','output':str(nested),'preparation':preparation})
+    value=pc.snapshot(binding,NOW)
+    assert value['state']=='PREPARED_NOT_STARTED' and value['inventory_state']=='NOT_YET_DISCOVERED'
+    put(root/'health.json',{'at':NOW.isoformat(),'status':'PAUSED','output':str(nested),
+                          'preparation':preparation,'source_commit':'a'*40})
+    assert pc.snapshot(binding,NOW+timedelta(minutes=40))['state']=='PAUSED'
+    put(root/'health.json',{'at':NOW.isoformat(),'status':'ACTIVE_COLLECTION','output':str(nested),
+                          'preparation':preparation,'source_commit':'b'*40})
+    with pytest.raises(ValueError,match='runtime_identity'):pc.snapshot(binding,NOW)
+
+
+def test_verified_failure_survives_snapshot_without_success_claim(daily,monkeypatch):
+    binding,_,output,sha,root=daily
+    admission=output.parent/'admission'/sha/'attempts/test/admission.json'
+    put(admission,{'race':{'race_id':'Dubbo R1','jump_timestamp':NOW.isoformat()},'job_id':'job'})
+    bundle=root.parent/'predictions/2026-10-03/bundles/bundle'
+    manifest_sha=put(bundle/'bundle_manifest.json',{'fixture':True})
+    put(admission.with_name('completion.json'),{'bundle_entry':{'directory':'bundle','manifest_sha256':manifest_sha}})
+    native={'evidence_class':'AUTHORIZED_ENGINEERING','future_race_evidence':False,
+            'records':{name:{'status':'FAILED','failure':'RESIDUAL_SCORER_FAILED','predictions':None} for name in pc.MODELS}}
+    monkeypatch.setattr(sys.modules['src.predictor.future_comparison'],'verify_comparison',lambda *a,**k:native)
+    value=pc.snapshot(binding,NOW)
+    assert len(value['failed_forecasts'])==1 and value['forecast_errors']==[] and value['forecasts']==[]
+
+
+def test_unavailable_evidence_still_reports_failed_installed_service(daily,monkeypatch):
+    binding,*_=daily
+    def run(command,**kwargs):
+        if command[0]=='bwrap':raise subprocess.TimeoutExpired(command,40)
+        return types.SimpleNamespace(stdout='ActiveState=failed\nSubState=failed\nMainPID=0\nExecMainStatus=78\n')
+    monkeypatch.setattr(pc.subprocess,'run',run)
+    value=pc.observe(binding)
+    assert value['state']=='UNAVAILABLE' and value['forecasts']==[]
+    assert value['service']['state']=='failed' and value['service']['exit_status']==78
