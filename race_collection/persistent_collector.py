@@ -31,6 +31,17 @@ def reference(path):
     return {'path': str(path), 'sha256': hashlib.sha256(path.read_bytes()).hexdigest()}
 
 
+def publish_owner_health(root, cfg, daily, status=None):
+    """Publish the actual package's state after a completed tick or drain."""
+    path = daily.output/'persistent-health.json'
+    value = json.loads(path.read_bytes()) if path.exists() else {}
+    if status is not None:
+        value.update(status=status, children=[])
+    atomic_json(Path(root)/'health.json', {**value, 'at': now().isoformat(),
+        'output': str(daily.output), 'preparation': daily.prepared['receipt_ref'],
+        'source_commit': cfg['source_commit'], 'recovery_selection': cfg.get('recovery_selection')})
+
+
 def inventory_schedule(value, current):
     """Keep every discovered opportunity, including unresolved or past races."""
     from utils.race_schedule_time import scheduled_jump_datetime
@@ -420,7 +431,8 @@ def run(config_path, config_sha256):
                         time.sleep(2)
                         continue
                 prepared = prepare_day(cfg, cfg['standing_authority'], day, now())
-                atomic_json(pointer, {'racing_date': day, 'output': prepared['output']})
+                atomic_json(pointer, {'racing_date': day, 'output': prepared['output'],
+                    'preparation': prepared['receipt_ref']})
                 daily = DailyOwner(cfg, prepared)
                 while now() < daily.scope.start and not stopping:
                     time.sleep(1)
@@ -429,15 +441,20 @@ def run(config_path, config_sha256):
                     # A retained expired day may be reconciled and closed, but
                     # its acquisition/source authority must never be reopened.
                     daily.drain(close=True)
+                    publish_owner_health(root, cfg, daily, 'DAY_ENDED')
                     daily = None
                     continue
                 daily.activate()
             if daily.tick() == 'DAY_ENDED':
                 daily.drain(close=True)
+                publish_owner_health(root, cfg, daily, 'DAY_ENDED')
                 daily = None
                 continue
+            publish_owner_health(root, cfg, daily)
             time.sleep(2)
-        if daily: daily.drain(close=False)
+        if daily:
+            daily.drain(close=False)
+            publish_owner_health(root, cfg, daily, 'PAUSED')
     except Exception as exc:
         if daily:
             create_once(daily.output/('failure-'+uuid.uuid4().hex+'.json'), {
@@ -450,7 +467,10 @@ def run(config_path, config_sha256):
                     'campaign_lease_retained': True, 'source_lease_not_manually_cleared': True})
             if not (daily.output/'HALT.json').exists():
                 create_once(daily.output/'HALT.json', {'at': now().isoformat(), 'reason': str(exc)})
-        atomic_json(root/'health.json', {'at': now().isoformat(), 'status': 'HOLD', 'reason': str(exc)})
+        atomic_json(root/'health.json', {'at': now().isoformat(), 'status': 'HOLD', 'reason': str(exc),
+            'output': str(daily.output) if daily else None,
+            'preparation': daily.prepared['receipt_ref'] if daily else None,
+            'source_commit': cfg['source_commit'], 'recovery_selection': cfg.get('recovery_selection')})
         raise
     finally:
         owner.close()
