@@ -144,7 +144,7 @@ def test_direct_predict_respects_access_jump_and_age(console, blocked):
         page.clock.fast_forward(301000)
         expect(button).to_be_disabled()
         expect(page.locator(".stale-context")).to_contain_text("Last known races remain visible")
-        expect(page.locator("#prediction-readiness")).to_contain_text("too old")
+        expect(page.locator(".stale-context")).to_contain_text("out of date")
     else:
         expect(button).to_be_disabled()
         expect(page.locator(".race-readiness")).to_contain_text("access is unavailable" if blocked == "unauthorized" else "jump has passed")
@@ -240,14 +240,14 @@ def test_overview_distinguishes_api_errors_from_offline_and_preserves_evidence(c
     expect(panel).not_to_contain_text("NON_OPERATIONAL/OFFLINE")
     expect(panel).not_to_contain_text("do not display")
     if kind in ("empty", "unregistered"):
-        expect(panel.locator("summary")).to_contain_text("2099-04-01T06:30:00Z")
+        expect(panel.locator(".resource-detail details")).to_contain_text("2099-04-01T06:30:00Z")
     else:
         expect(panel.locator("summary")).to_have_text("Source and freshness evidence unavailable")
         expect(page.locator("#prediction-submit")).to_be_disabled()
 
 
 @pytest.mark.parametrize("classification,races,reason", [
-    ("STALE", None, "too old"),
+    ("STALE", None, "out of date"),
     ("INVALID/INTEGRITY_FAILED", None, "failed verification"),
     ("UNAVAILABLE/DATA_MISSING", None, "unavailable"),
     ("AVAILABLE/FRESH", [], "No upcoming races"),
@@ -260,9 +260,12 @@ def test_refresh_preserves_context_and_explains_blocked_prediction(console, clas
     state["classification"] = classification
     if races is not None:
         state["races"] = races
-    page.get_by_role("button", name="Refresh races", exact=True).click()
-    expect(page.locator("#prediction-readiness")).to_contain_text(reason)
-    expect(page.locator("#manual-prediction")).to_be_visible()
+    page.get_by_role("button", name="Refresh display", exact=True).click()
+    expect(page.locator('[data-resource="upcoming-races"] .resource-data')).to_contain_text(reason)
+    if races == []:
+        expect(page.locator("#manual-prediction")).to_be_hidden()
+    else:
+        expect(page.locator("#manual-prediction")).to_be_visible()
     expect(page.locator("#prediction-submit")).to_be_disabled()
     expected = 0 if races == [] else 1
     expect(page.locator("#prediction-race option[value='exact-race-1']")).to_have_count(expected)
@@ -279,7 +282,7 @@ def test_selected_race_shows_compact_runner_context(console):
     page.get_by_role("button", name="Select Bulli R2").click()
     expect(page.locator("#selected-race-title")).to_have_text("Bulli R2")
     expect(page.locator(".selected-runner-list")).to_contain_text("Fixture runner")
-    expect(page.locator(".prediction-method")).to_contain_text("sealed verification")
+    expect(page.locator("#job-evidence")).to_contain_text("sealed verification")
     expect(page.locator("#runner-confirmation")).not_to_contain_text("cccccccc")
     expect(page.locator("#prediction-retransmit")).to_be_hidden()
 
@@ -293,3 +296,29 @@ def test_today_layout_is_compact_and_has_no_mobile_overflow(console):
     assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
     page.get_by_role("link", name="System", exact=True).click()
     expect(page.locator("#system-details")).to_have_attribute("open", "")
+
+
+def test_empty_stale_page_prioritizes_history_without_prediction_form(console):
+    page, state = console
+    state["classification"] = "STALE"
+    state["races"] = []
+    page.goto("http://127.0.0.1:5055/operator-ui")
+    expect(page.locator('[data-resource="upcoming-races"] .resource-data')).to_contain_text("Race inputs are out of date")
+    expect(page.locator("#manual-prediction")).to_be_hidden()
+    expect(page.get_by_role("link", name="Explore forecasts", exact=True)).to_be_visible()
+    expect(page.get_by_role("link", name="Sign in", exact=True)).to_have_count(0)
+    expect(page.get_by_role("button", name="Refresh display", exact=True)).to_be_visible()
+    page.set_viewport_size({"width": 390, "height": 844})
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    assert state["posts"] == []
+
+
+def test_selection_reveals_controls_and_jump_countdown(console):
+    page, state = console
+    page.goto("http://127.0.0.1:5055/operator-ui")
+    expect(page.locator("#manual-prediction")).to_be_hidden()
+    expect(page.locator(".race-countdown")).to_contain_text("Jumps in")
+    page.get_by_role("button", name="Select Bulli R2", exact=True).click()
+    expect(page.locator("#manual-prediction")).to_be_visible()
+    expect(page.locator("#prediction-submit")).to_be_enabled()
+    assert state["posts"] == []

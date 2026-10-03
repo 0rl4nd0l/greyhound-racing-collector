@@ -24,7 +24,7 @@
         </ul>
       </nav>
       <p class="sidebar__note">Authenticated private console. Every prediction request is checked by the server.</p>
-      <a class="sidebar__sign-in" href="/operator-ui/sign-in">Sign in</a>
+      <span class="sidebar__session">Private session active</span>
     </aside>
 
     <div class="workspace">
@@ -43,7 +43,7 @@
         <section class="workflow-section" id="upcoming-races" aria-labelledby="upcoming-races-title">
           <div class="section-heading today-heading">
             <div><p class="eyebrow">Next to jump</p><h2 id="upcoming-races-title">Upcoming races</h2></div>
-            <button id="refresh-upcoming" class="primary-button" type="button">Refresh races</button>
+            <button id="refresh-upcoming" class="primary-button" type="button">Refresh display</button>
           </div>
           <div class="today-layout">
             <article class="panel resource-panel resource-panel--unavailable race-list-panel" data-resource="upcoming-races" aria-busy="{{ 'true' if connected else 'false' }}">
@@ -58,7 +58,7 @@
               <p id="selected-race-summary" class="lede">Choose a race to inspect its runners and request a verified forecast.</p>
               <div id="selected-race-runners"></div>
 
-              <section id="manual-prediction" aria-labelledby="manual-prediction-title">
+              <section id="manual-prediction" aria-labelledby="manual-prediction-title" hidden>
                 <h3 id="manual-prediction-title">Prediction</h3>
                 <p id="prediction-readiness" role="status">Checking prediction access and fresh race inputs…</p>
                 <form id="prediction-form">
@@ -66,17 +66,22 @@
                   <label class="technical-control">Server model<select id="prediction-model" required disabled><option value="">Load the finite model catalog first</option></select></label>
                   <label class="technical-control">Server configuration<select id="prediction-config" required disabled><option value="">No server configuration selected</option></select></label>
                   <label class="technical-control">Odds source<select id="prediction-odds" required disabled><option value="">No server odds source selected</option></select></label>
-                  <p id="runner-confirmation" class="runner-confirmation">No exact ordered runner set selected.</p>
-                  <p class="prediction-method">Frozen model · retained pre-jump odds · sealed verification</p>
+                  <p id="runner-confirmation" class="runner-confirmation">Select a race to see its runners.</p>
                   <button class="primary-button" id="prediction-submit" type="submit" disabled>Run prediction</button>
                 </form>
                 <div id="job-status" role="status" aria-live="polite" tabindex="-1">No job submitted in this browser.</div>
                 <ol id="job-timeline" aria-label="Persisted job progress"></ol>
                 <section id="job-result" aria-labelledby="job-result-title"><h3 id="job-result-title">Forecast result</h3><p>No verified forecast available for this race.</p></section>
-                <details id="job-evidence"><summary>Technical forecast evidence</summary><div class="evidence-view">No job evidence disclosed.</div></details>
+                <details id="job-evidence"><summary>Technical forecast evidence</summary><p>Frozen model · retained pre-jump odds · sealed verification</p><div class="evidence-view">No job evidence disclosed.</div></details>
               </section>
             </aside>
           </div>
+        </section>
+
+        <section class="forecast-history-entry panel" aria-labelledby="history-entry-title">
+          <div><p class="eyebrow">Available to explore</p><h2 id="history-entry-title">Understand verified forecasts</h2>
+          <p>Compare each runner’s model probability with the captured market probability. Verified historical forecasts remain available when current race inputs are out of date.</p></div>
+          <a class="primary-button" href="/operator-ui/forecasts">Explore forecasts</a>
         </section>
 
         <details class="system-details" id="system-details">
