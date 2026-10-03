@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from utils.race_schedule_time import scheduled_jump_datetime
+
 import atexit
 import base64
 import contextlib
@@ -826,7 +828,11 @@ def _normalize_current_index_rows(
             or identity["race_number"] != race_number
             or jump.tzinfo is None
             or jump.utcoffset() is None
-            or jump.date().isoformat() != race_date
+            or (
+                scheduled_jump_datetime(raw) != jump
+                if "scheduled_jump_datetime" in raw
+                else jump.date().isoformat() != race_date
+            )
             or not venue
             or not race_id
             or not isinstance(aliases, list)
@@ -847,6 +853,8 @@ def _normalize_current_index_rows(
         row = {
             "date": race_date,
             "jump_datetime": jump.isoformat(),
+            **({"scheduled_jump_datetime": raw["scheduled_jump_datetime"]}
+               if "scheduled_jump_datetime" in raw else {}),
             "race_id": race_id,
             "race_id_aliases": list(aliases),
             "race_number": race_number,
@@ -922,6 +930,10 @@ def _v2_runner_rows(
     alignment = shadow.get("canonical_final_runner_alignment")
     if not isinstance(alignment, Mapping) or alignment.get("status") != "aligned" or alignment.get("canonical_runner_set_status") != "available":
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_source_not_aligned")
+    if "scheduled_jump_datetime" in race:
+        sidecar_timing = sidecar.get("race_info")
+        if not isinstance(sidecar_timing, Mapping) or scheduled_jump_datetime(sidecar_timing) != scheduled_jump_datetime(race):
+            raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_jump_timestamp_mismatch")
     if (
         shadow.get("source_url") != race["race_url"]
         or shadow.get("race_date") != race["date"]

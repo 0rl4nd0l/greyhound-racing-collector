@@ -8,6 +8,8 @@ target-race results.
 
 from __future__ import annotations
 
+from utils.race_schedule_time import scheduled_jump_datetime
+
 import csv
 import json
 import os
@@ -303,6 +305,8 @@ def _extract_target_metadata_from_sidecar(
         data["race_number"] = race_number
     if jump:
         data["jump_time"] = jump.strftime("%H:%M")
+    if "scheduled_jump_datetime" in race_info:
+        data["scheduled_jump_datetime"] = race_info["scheduled_jump_datetime"]
     if data:
         data["metadata_source"] = "csv_sidecar"
     return data
@@ -432,6 +436,7 @@ def _classify_from_metadata(
     source_path: Optional[str],
     now: Optional[datetime],
     source_context: str,
+    absolute_timing: Optional[Mapping[str, Any]] = None,
 ) -> RaceLifecycle:
     now_dt = now or melbourne_now()
     if now_dt.tzinfo is None:
@@ -440,6 +445,16 @@ def _classify_from_metadata(
             now_dt = now_dt.replace(tzinfo=tz)
 
     jump_dt = _combine_melbourne(race_day, jump) if race_day else None
+    if absolute_timing is not None and "scheduled_jump_datetime" in absolute_timing:
+        jump_dt = scheduled_jump_datetime(absolute_timing)
+        if jump_dt is None:
+            return RaceLifecycle(
+                status=STALE_FORM_GUIDE,
+                status_reason="invalid_official_jump_timestamp",
+                race_date=race_day.isoformat() if race_day else None,
+                venue=venue, race_number=race_number, source_path=source_path,
+            )
+        jump = jump_dt.time()
     if jump_dt is not None and now_dt.tzinfo is not None and jump_dt.tzinfo is None:
         jump_dt = jump_dt.replace(tzinfo=now_dt.tzinfo)
 
@@ -537,6 +552,7 @@ def classify_race_file(
         source_path=source_path,
         now=now,
         source_context=source_context,
+        absolute_timing=meta,
     )
 
 
@@ -583,6 +599,7 @@ def classify_race_record(
         source_path=None,
         now=now,
         source_context=source_context,
+        absolute_timing=record,
     )
 
 

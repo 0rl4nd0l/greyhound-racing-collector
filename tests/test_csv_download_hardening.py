@@ -925,6 +925,7 @@ def test_download_pdf_masquerading_as_csv_tries_expert_form_fallback(
     monkeypatch,
     _isolate_upcoming_dir,
 ):
+    from bs4 import BeautifulSoup
     import upcoming_race_browser as browser_module
     from upcoming_race_browser import UpcomingRaceBrowser
 
@@ -975,7 +976,7 @@ def test_download_pdf_masquerading_as_csv_tries_expert_form_fallback(
     monkeypatch.setattr(
         browser_module,
         "bs4",
-        types.SimpleNamespace(BeautifulSoup=lambda content, parser: object()),
+        types.SimpleNamespace(BeautifulSoup=BeautifulSoup),
     )
 
     class _Resp:

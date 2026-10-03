@@ -27,6 +27,7 @@ try:
 except Exception as _bs4_import_error:
     bs4 = None
 
+from utils.race_schedule_time import extract_formatted_timing, scheduled_jump_datetime, MELBOURNE
 from utils.http_client import get_shared_session, source_retry_headers
 from utils.runner_completeness import (
     analyze_csv_text_runner_completeness,
@@ -413,6 +414,9 @@ class UpcomingRaceBrowser:
         def _sort_key(race: dict):
             date_str = race.get("date", "9999-12-31")
             rn = int(race.get("race_number", 999))
+            jump = scheduled_jump_datetime(race) if "scheduled_jump_datetime" in race else None
+            if jump is not None:
+                return (jump.date().isoformat(), jump.hour * 60 + jump.minute, rn)
             mins = _minutes_from_time(race.get("race_time", ""), rn)
             # Sort by date asc, time (mins) asc, race_number asc
             return (date_str, mins, rn)
@@ -428,6 +432,16 @@ class UpcomingRaceBrowser:
         for race in races:
             race_date = race.get("date", "")
             race_time_str = race.get("race_time", "")
+
+            if "scheduled_jump_datetime" in race:
+                jump = scheduled_jump_datetime(race)
+                if jump is None:
+                    race["race_time"] = None
+                    race["race_time_mapping_status"] = "invalid_official_timing"
+                    future_races.append(race)
+                elif datetime.now(MELBOURNE) < jump + timedelta(minutes=30):
+                    future_races.append(race)
+                continue
 
             # Only filter for today's races
             if race_date == current_date and race_time_str:
@@ -528,27 +542,32 @@ class UpcomingRaceBrowser:
                         races.append(live_race)
                         existing_races_by_key[race_key] = live_race
                         added_live_count += 1
-                    elif (
-                        live_race.get("target_grade_context_schema")
-                        == "thedogs_meeting_card_exact_race_v1"
-                    ):
+                    else:
                         cached_race = existing_races_by_key[race_key]
-                        for key in (
-                            "grade",
-                            "target_grade",
-                            "target_grade_context_schema",
-                            "target_grade_equivalence_key",
-                            "target_grade_exact_value",
-                            "target_grade_race_date",
-                            "target_grade_race_number",
-                            "target_grade_race_url",
-                            "target_grade_source_url",
-                            "target_grade_source_sha256",
-                            "target_grade_venue",
-                        ):
-                            value = live_race.get(key)
-                            if value not in (None, ""):
-                                cached_race[key] = value
+                        # Live canonical discovery owns timing even when a CSV
+                        # already exists. Never retain a stale cached clock.
+                        for key in ("race_time", "scheduled_jump_datetime", "time_source",
+                                    "race_time_source", "race_time_mapping_status", "discovery_time_evidence"):
+                            cached_race.pop(key, None)
+                            if key in live_race:
+                                cached_race[key] = live_race[key]
+                        if live_race.get("target_grade_context_schema") == "thedogs_meeting_card_exact_race_v1":
+                            for key in (
+                                "grade",
+                                "target_grade",
+                                "target_grade_context_schema",
+                                "target_grade_equivalence_key",
+                                "target_grade_exact_value",
+                                "target_grade_race_date",
+                                "target_grade_race_number",
+                                "target_grade_race_url",
+                                "target_grade_source_url",
+                                "target_grade_source_sha256",
+                                "target_grade_venue",
+                            ):
+                                value = live_race.get(key)
+                                if value not in (None, ""):
+                                    cached_race[key] = value
 
                 print(
                     f"   ➕ Added {added_live_count} additional live races to cached races"
@@ -1431,22 +1450,8 @@ class UpcomingRaceBrowser:
         return None
 
     def _extract_formatted_race_time(self, soup):
-        """Read the explicit race-page formatted-time element, if present."""
-        try:
-            selectors = [
-                'formatted-time[data-format="datetime_short"]',
-                'formatted-time[data-format="time_24"]',
-            ]
-            for selector in selectors:
-                for element in soup.select(selector):
-                    text = element.get_text(" ", strip=True)
-                    match = re.search(r"\b(\d{1,2}:\d{2})\b", text)
-                    formatted = self._format_clock_time(match.group(1) if match else text)
-                    if formatted:
-                        return formatted
-        except Exception:
-            return None
-        return None
+        """Compatibility clock view of the validated official schedule evidence."""
+        return extract_formatted_timing(soup).get("race_time")
 
     def _extract_safe_target_metadata_from_page(
         self, soup, race_url, *, source_sha256=None
@@ -2116,15 +2121,20 @@ class UpcomingRaceBrowser:
             race_info.update(
                 self._extract_safe_weather_track_metadata_from_page(soup, race_url)
             )
-            if not race_info.get("race_time"):
-                exact_race_time = self._extract_formatted_race_time(soup)
-                if exact_race_time:
-                    race_info["race_time"] = exact_race_time
-                    race_info["race_time_source"] = "canonical_race_url"
-                    race_info["race_time_mapping_status"] = "exact_url_match"
-                else:
-                    race_info["race_time_source"] = "canonical_race_url"
-                    race_info["race_time_mapping_status"] = "missing_race_time"
+            canonical_timing = extract_formatted_timing(soup)
+            if canonical_timing:
+                race_info.update(canonical_timing)
+                if "scheduled_jump_datetime" in canonical_timing and scheduled_jump_datetime(race_info) is None:
+                    return {"success": False, "error": "official_jump_racing_day_mismatch"}
+                race_info["race_time_source"] = "canonical_race_url"
+                race_info["race_time_mapping_status"] = "exact_url_match"
+            elif not race_info.get("race_time"):
+                race_info["race_time_source"] = "canonical_race_url"
+                race_info["race_time_mapping_status"] = "missing_race_time"
+            hinted_jump = (race_info_hint or {}).get("scheduled_jump_datetime")
+            if hinted_jump is not None:
+                if scheduled_jump_datetime(race_info_hint) != scheduled_jump_datetime(race_info) or scheduled_jump_datetime(race_info) is None:
+                    return {"success": False, "error": "discovery_canonical_jump_changed"}
             if (race_info_hint or {}).get("race_time_source") == "exact_meeting_link":
                 meeting_clock = self._format_clock_time(race_info_hint.get("race_time"))
                 canonical_clock = self._format_clock_time(race_info.get("race_time"))
@@ -3121,7 +3131,7 @@ class UpcomingRaceBrowser:
 
         return races
 
-    def _scrape_race_time_from_page(self, race_url, max_retries=3):
+    def _scrape_race_time_from_page(self, race_url, max_retries=3, *, include_evidence=False):
         """Scrape actual race time from individual race page"""
         supervised = bool(os.environ.get("GREYHOUND_LIVE_EXECUTION"))
         if supervised:
@@ -3207,10 +3217,14 @@ class UpcomingRaceBrowser:
             # Strategy 0: TheDogs race pages expose the scheduled race time in a
             # formatted-time element tied to the canonical race page. Prefer this
             # over broad page-text regexes, which can pick up unrelated times.
-            formatted_time = self._extract_formatted_race_time(soup)
+            timing = extract_formatted_timing(soup)
+            formatted_time = timing.get("race_time")
             if formatted_time:
                 print(f"     ✅ Found race time: {formatted_time} (from formatted-time)")
-                return formatted_time
+                return timing if include_evidence else formatted_time
+
+            if include_evidence:
+                return None
 
             # Strategy 1: Look for common race time selectors
             time_selectors = [
@@ -3396,6 +3410,10 @@ class UpcomingRaceBrowser:
             race_links = self._find_race_links_fast(soup, date_str)
 
             if not race_links:
+                self.__dict__.setdefault("discovery_failures", []).append({
+                    "source_url": date_url, "source_date": date_str,
+                    "http_status": 200, "error_type": "EmptyDiscovery",
+                })
                 print(f"   ⚠️ No race links found on page")
                 return races
 
@@ -3434,6 +3452,7 @@ class UpcomingRaceBrowser:
                     return race_number if race_number is not None else 999
 
                 for link_element, href in sorted(links, key=race_link_sort_key):
+                    race_info = None
                     try:
                         race_info = self.extract_race_info_from_link(
                             link_element,
@@ -3442,6 +3461,10 @@ class UpcomingRaceBrowser:
                             meeting_card_sha256=meeting_card_sha256,
                         )
                         if not race_info:
+                            self.__dict__.setdefault("discovery_failures", []).append({
+                                "source_url": href, "source_date": date_str,
+                                "error_type": "RaceIdentityUnavailable",
+                            })
                             continue
 
                         canonical_race_number = self._extract_race_number_from_url(
@@ -3459,17 +3482,27 @@ class UpcomingRaceBrowser:
 
                         # Only exact-link explicit times are usable. Parent text can
                         # belong to another race and is never a schedule authority.
-                        meeting_times = set()
+                        meeting_timing = {}
                         if getattr(self, "bounded_meeting_discovery", False):
-                            for anchor in soup.find_all("a", href=href):
-                                for element in anchor.select('formatted-time[data-format="time_24"]'):
-                                    text = element.get_text(" ", strip=True)
-                                    if re.fullmatch(r"\d{1,2}:\d{2}", text):
-                                        value = self._format_clock_time(text)
-                                        if value:
-                                            meeting_times.add(value)
-                        meeting_time = next(iter(meeting_times)) if len(meeting_times) == 1 else None
-                        real_time = meeting_time or self._scrape_race_time_from_page(race_info["url"])
+                            anchors = soup.find_all("a", href=href)
+                            try:
+                                timings = [extract_formatted_timing(anchor) for anchor in anchors]
+                                explicit = [timing for timing in timings if timing]
+                                if explicit and all(timing == explicit[0] for timing in explicit):
+                                    meeting_timing = explicit[0]
+                            except ValueError:
+                                # An ambiguous meeting hint cannot authorize a clock;
+                                # fetch the exact canonical page to resolve it.
+                                meeting_timing = {}
+                        timing = meeting_timing or self._scrape_race_time_from_page(
+                            race_info["url"], include_evidence=True
+                        ) or {}
+                        real_time = timing.get("race_time")
+                        if "scheduled_jump_datetime" in timing:
+                            race_info["scheduled_jump_datetime"] = timing["scheduled_jump_datetime"]
+                            if scheduled_jump_datetime(race_info) is None:
+                                raise ValueError("official_jump_racing_day_mismatch")
+                        meeting_time = meeting_timing.get("race_time")
                         if meeting_time:
                             race_info["discovery_time_evidence"] = {
                                 "source_url": date_url,
@@ -3477,6 +3510,8 @@ class UpcomingRaceBrowser:
                                 "observed_at": meeting_card_observed_at,
                                 "canonical_race_url": race_info["url"],
                                 "clock_time": meeting_time,
+                                **({"scheduled_jump_datetime": timing["scheduled_jump_datetime"]}
+                                   if "scheduled_jump_datetime" in timing else {}),
                             }
                         if real_time:
                             race_info["race_time"] = real_time
@@ -3491,6 +3526,16 @@ class UpcomingRaceBrowser:
                     except RequestGuardStopped:
                         raise
                     except Exception as e:
+                        if race_info:
+                            race_info["race_time"] = None
+                            race_info.pop("scheduled_jump_datetime", None)
+                            race_info["race_time_mapping_status"] = "invalid_official_timing"
+                            venue_races.append(race_info)
+                        else:
+                            self.__dict__.setdefault("discovery_failures", []).append({
+                                "source_url": href, "source_date": date_str,
+                                "error_type": type(e).__name__,
+                            })
                         print(f"     ⚠️ Error processing race link for {venue}: {e}")
                 return venue_races
 

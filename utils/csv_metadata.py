@@ -1270,7 +1270,7 @@ def safe_weather_track_metadata_from_payload(payload: Mapping[str, Any]) -> Dict
         "metadata_captured_at": payload.get("metadata_captured_at")
         or shadow_metadata.get("metadata_captured_at"),
         "race_date": race_info.get("date") or shadow_metadata.get("race_date"),
-        "race_time": race_info.get("race_time") or shadow_metadata.get("jump_time"),
+        "race_time": race_info.get("scheduled_jump_datetime") or race_info.get("race_time") or shadow_metadata.get("jump_time"),
     }
     source = (
         payload.get("weather_track_metadata_source")
@@ -1547,6 +1547,7 @@ def build_csv_download_provenance_payload(
                 "race_name",
                 "race_number",
                 "race_time",
+                "scheduled_jump_datetime",
                 "race_time_mapping_status",
                 "race_time_source",
                 "title",
@@ -1737,7 +1738,8 @@ def build_prejump_shadow_metadata_payload(payload: Mapping[str, Any]) -> Dict[st
         "venue": race_info.get("venue") or payload.get("venue"),
         "race_number": _safe_int(race_info.get("race_number") or payload.get("race_number")),
         "jump_time": (
-            race_info.get("race_time")
+            race_info.get("scheduled_jump_datetime")
+            or race_info.get("race_time")
             or race_info.get("jump_time")
             or payload.get("jump_time")
             or payload.get("jump_datetime")

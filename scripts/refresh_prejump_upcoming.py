@@ -33,6 +33,7 @@ from utils.csv_metadata import (  # noqa: E402
     load_safe_weather_track_metadata,
 )
 from utils.expert_form_metadata import safe_expert_form_metadata_from_payload  # noqa: E402
+from utils.race_schedule_time import scheduled_jump_datetime
 from utils.race_lifecycle import melbourne_now  # noqa: E402
 from scripts.capture_thedogs_market_history import (  # noqa: E402
     validate_primary_native_identity_evidence,
@@ -188,6 +189,8 @@ def _parse_race_jump_datetime(
     now: datetime | None = None,
 ) -> datetime | None:
     now = now or melbourne_now()
+    if "scheduled_jump_datetime" in race:
+        return scheduled_jump_datetime(race)
     date_text = str(race.get("date") or race.get("race_date") or "").strip()
     time_text = str(
         race.get("race_time")
@@ -250,6 +253,8 @@ def race_window_record(
         "date": race.get("date") or race.get("race_date"),
         "race_time": race.get("race_time") or race.get("jump_time"),
         "jump_datetime": jump_dt.isoformat() if jump_dt else None,
+        **({"scheduled_jump_datetime": race["scheduled_jump_datetime"]}
+           if "scheduled_jump_datetime" in race else {}),
         "race_time_source": race.get("race_time_source"),
         "discovery_time_evidence": race.get("discovery_time_evidence"),
         "minutes_to_jump": minutes_to_jump,
