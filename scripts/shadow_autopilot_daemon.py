@@ -13988,6 +13988,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0 if result.get("status") == "RECEIPT_READY" else 2
     if args.command == "run-odds-capture-once":
         result = run_odds_capture_once(args)
+        from race_collection.persistent_collector import record_native_terminal
+        record_native_terminal(args, result)
         print(json.dumps(result, indent=2, sort_keys=True))
         if args.live_freshness:
             return 0 if result.get("runtime_action") == "LIVE_COLLECTION_COMPLETE" else 2
@@ -14038,6 +14040,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps(result, indent=2, sort_keys=True))
         return 0
     result = run_once(args)
+    from race_collection.persistent_collector import record_native_terminal
+    record_native_terminal(args, result)
     print(json.dumps(result, indent=2, sort_keys=True))
     if args.live_freshness:
         return 0 if result.get("runtime_action") == "LIVE_COLLECTION_COMPLETE" else 2

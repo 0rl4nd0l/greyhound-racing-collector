@@ -132,9 +132,12 @@ class FreshnessContract:
         duration = (self.end - self.start).total_seconds()
         operational = bool(value.get("campaign_root") and value.get("operational_predictions"))
         pilot = value.get("development_authority") is not None
+        persistent = value.get("persistent_allocation") is not None
         valid_duration = (300 <= duration <= 5400 and duration % 60 == 0) if operational else duration == 5400
         if pilot:
             valid_duration = operational and duration == 6600
+        if persistent:
+            valid_duration = operational and 0 < duration <= 26 * 3600
         if (
             self.start.utcoffset() is None
             or self.end.utcoffset() is None
@@ -154,9 +157,9 @@ class FreshnessContract:
                 cutoff = late_cleanup_deadline(value['incident_authority']) or cutoff
         if (
             local_start.date().isoformat() != value["source_date"]
-            or local_end.date() != local_start.date()
+            or (not persistent and local_end.date() != local_start.date())
             or value["cleanup_seconds"] != (600 if pilot else 1860 if value.get("campaign_root") else 1200)
-            or local_end + timedelta(seconds=value["cleanup_seconds"]) > cutoff
+            or (not persistent and local_end + timedelta(seconds=value["cleanup_seconds"]) > cutoff)
         ):
             raise ValueError("one_date_scope_required")
         self.campaign = None
@@ -191,6 +194,20 @@ class FreshnessContract:
         self.session = self.root / (
             "rehearsal-" + hashlib.sha256(value["rehearsal_id"].encode()).hexdigest()
         )
+        if persistent:
+            allocation = self.campaign.persistent
+            from src.predictor.future_comparison import load_plan
+            binding = value['frozen_comparison']
+            comparison, _ = load_plan(Path(binding['path']), binding['sha256'])
+            if (comparison.get('persistent_allocation') != value['persistent_allocation']
+                    or value['operational_predictions'].get('result_access') is not False
+                    or value['operational_predictions'].get('research_activation') is not False
+                    or self.start != datetime.fromisoformat(allocation['starts_at'])
+                    or self.end != datetime.fromisoformat(allocation['ends_at'])
+                    or self.end + timedelta(seconds=value['cleanup_seconds']) > datetime.fromisoformat(allocation['cleanup_by'])
+                    or value['source_date'] != allocation['racing_date']):
+                raise ValueError('persistent_scope_window_changed')
+            os.environ['GREYHOUND_PERSISTENT_ALLOCATION_SHA256'] = value['persistent_allocation']['sha256']
         if value.get('incident_authority') is not None:
             from race_collection.incident_engineering import incident_slot
             from src.predictor.future_comparison import load_plan
@@ -221,7 +238,7 @@ class FreshnessContract:
             or now + timedelta(seconds=seconds) > self.end
         ):
             raise ValueError("operating_scope_closed")
-        if (
+        if (not self.value.get('persistent_allocation') and
             now.astimezone(ZoneInfo("Australia/Melbourne")).date().isoformat()
             != self.value["source_date"]
         ):

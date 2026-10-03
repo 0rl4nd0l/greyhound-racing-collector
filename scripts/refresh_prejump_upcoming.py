@@ -1514,7 +1514,9 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
         from race_collection.live_freshness_contract import FreshnessContract, install_request_guard
         scope = FreshnessContract.load(args.live_freshness_contract)
         scope.admit(datetime.now().astimezone(), seconds=80)
-        if now.date().isoformat() != scope.value["source_date"] or now.utcoffset() != datetime.now().astimezone().utcoffset():
+        persistent_inventory = bool(scope.value.get("persistent_allocation") and inventory is not None)
+        if ((not persistent_inventory and now.date().isoformat() != scope.value["source_date"])
+                or now.utcoffset() != datetime.now().astimezone().utcoffset()):
             raise ValueError("discovery_clock_scope_mismatch")
         if inventory is not None and inventory_source_date != scope.value["source_date"]:
             raise ValueError("discovery_inventory_contract_date_mismatch")
