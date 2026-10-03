@@ -1,0 +1,1629 @@
+{
+  "schema_version": "controlled_model_metadata_readiness_manifest_v1",
+  "status": "FROZEN_READINESS_ONLY_NOT_RESEARCH_ENROLMENT",
+  "created_at": "2026-10-03T06:21:12.391093+00:00",
+  "deadline": "2026-10-03T07:06:12.391093+00:00",
+  "cohort": "exact_15_october2_live07_engineering_admissions",
+  "historical_root": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07",
+  "expected_admissions": 15,
+  "finite_limits": {
+    "files": 256,
+    "bytes_per_file": 2097152,
+    "aggregate_bytes_per_pass": 16777216,
+    "max_read_passes": 3,
+    "requests": 0,
+    "fits": 0,
+    "scores": 0
+  },
+  "projection_rules": {
+    "syntax": "dot separated keys; wildcard matches one array position or literal object key including dots",
+    "allowlisted_fields_by_role": {
+      "admission": [
+        "schema_version",
+        "prediction_id",
+        "job_id",
+        "status",
+        "runner_set_sha256",
+        "plan_sha256",
+        "retained_input_manifest_sha256",
+        "race.*",
+        "admitted_at",
+        "decision_at",
+        "evidence_class",
+        "membership_before_outcomes",
+        "bundle_directory",
+        "admission_sha256"
+      ],
+      "completion": [
+        "schema_version",
+        "prediction_id",
+        "job_id",
+        "status",
+        "runner_set_sha256",
+        "plan_sha256",
+        "retained_input_manifest_sha256",
+        "race.*",
+        "published_complete_at",
+        "decision_at",
+        "evidence_class",
+        "models.*",
+        "bundle_entry.*"
+      ],
+      "bundle_manifest": [
+        "schema_version",
+        "prediction_id",
+        "job_id",
+        "files.*.bytes",
+        "files.*.sha256"
+      ],
+      "implementation_manifest": [
+        "schema_version",
+        "git_head",
+        "git_branch",
+        "implementation_files.*",
+        "implementation_file_hashes.*",
+        "artifact_files.*.bytes",
+        "artifact_files.*.sha256"
+      ],
+      "feature_manifest": [
+        "schema_version",
+        "generated_at",
+        "run_started_at",
+        "feature_freeze_timestamp",
+        "output_mode",
+        "prediction_rows",
+        "tgr_enabled",
+        "registry_mutation",
+        "production_prediction_write",
+        "odds_used_for_shadow_scoring",
+        "betting_output",
+        "ev_output"
+      ],
+      "history_manifest": [
+        "schema_version",
+        "cutoff_timestamp",
+        "source_sha256",
+        "sealed_sha256",
+        "target_race_id",
+        "cutoff_basis",
+        "safe_race_count",
+        "safe_dog_row_count",
+        "excluded_target_metadata_rows",
+        "excluded_at_or_after_cutoff_metadata_rows",
+        "excluded_ambiguous_date_metadata_rows",
+        "target_rows_materialized",
+        "at_or_after_cutoff_rows_materialized"
+      ],
+      "model_manifest": [
+        "schema_version",
+        "status",
+        "model_sha256",
+        "model_schema_version",
+        "fit_population_sha256",
+        "derivation_contract.*",
+        "candidate_hashes.*"
+      ],
+      "model_header": [
+        "schema_version",
+        "model_family",
+        "algorithm.residual_cap",
+        "algorithm.strengths.*",
+        "algorithm.within_race_centering",
+        "feature_contract.feature_order.*",
+        "feature_contract.expanded_feature_order.*",
+        "fit.population_sha256"
+      ],
+      "request_header": [
+        "schema_version",
+        "prediction_id",
+        "job_id",
+        "retained_input_manifest_sha256",
+        "race.*",
+        "runner_set_sha256",
+        "runners.*.box_number",
+        "runners.*.identity",
+        "runners.*.display_name",
+        "model.*"
+      ],
+      "prediction_header": [
+        "schema_version",
+        "prediction_id",
+        "job_id",
+        "generated_at",
+        "status",
+        "race.*",
+        "model.*",
+        "config.sha256",
+        "evidence.runner_set_sha256",
+        "evidence.authenticated_cutoff.*",
+        "prediction.predictions.*.box_number",
+        "prediction.predictions.*.dog_name",
+        "prediction.artifact_prediction.effective_state_sha256",
+        "prediction.artifact_prediction.effective_state_schema_version",
+        "prediction.artifact_prediction.input_hashes.*"
+      ],
+      "receipt_header": [
+        "schema_version",
+        "captured_at",
+        "race.*",
+        "race_id",
+        "runner_set_sha256",
+        "markets.win.*.box_number",
+        "markets.win.*.dog_name",
+        "markets.win.*.identity",
+        "capture_identity.*"
+      ],
+      "comparison_header": [
+        "schema_version",
+        "prediction_id",
+        "job_id",
+        "status",
+        "runner_set_sha256",
+        "plan_sha256",
+        "retained_input_manifest_sha256",
+        "race.*",
+        "candidate",
+        "model_sha256",
+        "completed_at",
+        "failure",
+        "admission_sha256",
+        "input_identity.*",
+        "predictions.*.box_number",
+        "predictions.*.identity",
+        "predictions.*.dog_name"
+      ],
+      "comparison_registry": [
+        "schema_version",
+        "production.*",
+        "candidates.*.path",
+        "candidates.*.sha256",
+        "source_sha256.*"
+      ],
+      "comparison_plan": [
+        "schema_version",
+        "status",
+        "candidate_registry.path",
+        "candidate_registry.sha256",
+        "history_policy",
+        "decision_seconds_before_jump",
+        "quote_lead_seconds.*"
+      ],
+      "original_source_identity": [
+        "commit",
+        "files.*"
+      ],
+      "original_plan": [
+        "schema_version",
+        "commit",
+        "source_root",
+        "source_identity_sha256"
+      ],
+      "source_code_hash_only": [],
+      "projection_implementation_hash_only": []
+    },
+    "unknown_scalar_values": "skip bytes without JSON decoding",
+    "never_decode": [
+      "probabilities",
+      "feature_values",
+      "history_rows",
+      "official_results",
+      "winners",
+      "placements",
+      "performance_metrics"
+    ],
+    "hash_only_files": "source code bytes only; no execution"
+  },
+  "files": [
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/1a50f362baf30165293d9f3712b0eba60eddc1f2f19a2fc85693b053ae801d57/admission.json",
+      "role": "admission",
+      "bytes": 873,
+      "sha256": "3a87e57f25d4870f1edc95835c0ded13c8dd7a6a088c79152f59c00a7c0f2f7f"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/36eab998bec94499d6be51d73ec0c3df4e9c764bf22a775a69363a5317cdb2cf/admission.json",
+      "role": "admission",
+      "bytes": 881,
+      "sha256": "5e8be3062f452bc8744e1693e8b7decb119b973d95556420830f26a850a60828"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/3c97a310079aeb46ba5b0299adb0cc20184d0ce42606230a6ea4cd0d87c7fe9b/admission.json",
+      "role": "admission",
+      "bytes": 911,
+      "sha256": "a0ec193b8e7a58df60fc9cb4f912572a8f08d7f676a82811192d8ec0ab4f8eb3"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/460177a19c071b12386e689ea36e16e6de1ee5f211ea4b87f5872f8c69bdaddf/admission.json",
+      "role": "admission",
+      "bytes": 871,
+      "sha256": "13d6504d017f76418d510720cfb3bb4f390cb7e2fb08c2fbf6b797af6547729e"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/5c1936d26f974d3d23b2f7e9738d101f88d2beb2fa81391ca9bf8254b74acc77/admission.json",
+      "role": "admission",
+      "bytes": 875,
+      "sha256": "62937a5c83e854d90a27e009b22fb9cfc35bca13c0a44696d564a30a45bce803"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/5e44437d995eae5bbde3e4fedad50df36708561b16cb56beb02770285c18892b/admission.json",
+      "role": "admission",
+      "bytes": 886,
+      "sha256": "3d3fe7de9697a249d89aa2bb4a2e5f8275899ef47f019fdc06ac78fe52a26d80"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/8662134fc46de6cc0a30993a9f7f43ec3fc32022bd9fc477046f5f567251f8da/admission.json",
+      "role": "admission",
+      "bytes": 873,
+      "sha256": "75b2a4ee3d068f151f2802fb010847132e806bfaa36a4a47855f2153d9b40f56"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/870e27668721c7c94ac59206e42e6cb85aad2e12ba07dd0ba84f27e9cfe0a1ed/admission.json",
+      "role": "admission",
+      "bytes": 871,
+      "sha256": "2536862fafd32736e5de4bad97bd1da897cfbe66a80b86deb8794000c2669c1b"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/911704d83a8c8bbd73cfc5f6ead61779cdbcf9873dadbbbde10f7f62526ca0d1/admission.json",
+      "role": "admission",
+      "bytes": 932,
+      "sha256": "91f05f0862fe27dc681287e05cf89b8d299766c2147fac7ec5b37ee616058ae6"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/96b29b1c52b88d627dca0e8ea9a2f3c62b4b77ceca41b0758975177c56541433/admission.json",
+      "role": "admission",
+      "bytes": 885,
+      "sha256": "59a7eb0aa706aa0fc622cac28615e951edd1ba95c318d52a7173b28c5e968777"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/9f752480f3b4a9680c765b792bce025746645a86ab358824345b948a6bfe7ab1/admission.json",
+      "role": "admission",
+      "bytes": 881,
+      "sha256": "97fbec777e3cc01e35c9ee2aabc40d1c42dd34c19dab111e96dac441286a8c8f"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/cef725cc313a6db51a95c9d1d1a6813f9ea74e73247c30aea8b7ac2c3095018b/admission.json",
+      "role": "admission",
+      "bytes": 938,
+      "sha256": "3002217f437aa73fe79d9b2e76ee541497dbf108df166143a6733ce5b0897bc9"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/e4744579706d223aad29b03cecea3533d6d3ae130e3c8eee07d7f61f311f140a/admission.json",
+      "role": "admission",
+      "bytes": 882,
+      "sha256": "2f4ae5c05b7ecedae462feec522b0cbecca88e3ca8e49920bf299f451deebe53"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/e4c45cfc7c16fdd80e15a274722d7c2816d521874494aa8cc0a66579aae48c01/admission.json",
+      "role": "admission",
+      "bytes": 908,
+      "sha256": "efc98785d28707eeff99b987a4fefbca7c1908e8b209d20999cf81cf41b9b70e"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/e6921d9758c5feb90d435e4932775c8afb893ece1b5d3b367b92540b60445706/admission.json",
+      "role": "admission",
+      "bytes": 884,
+      "sha256": "a57772fd45c3da3322b9042fbc5c5a9ff33a43357921a886f7f992b141848303"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/1a50f362baf30165293d9f3712b0eba60eddc1f2f19a2fc85693b053ae801d57/completion.json",
+      "role": "completion",
+      "bytes": 1457,
+      "sha256": "689548f9d3f9b8fa73dd67d0bf0009316b081776e42880d8982e4da8be154e2a"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/36eab998bec94499d6be51d73ec0c3df4e9c764bf22a775a69363a5317cdb2cf/completion.json",
+      "role": "completion",
+      "bytes": 1465,
+      "sha256": "57a7bc6e9195680e1634c3378e1267d744b772cfd982ed63bf473bd3ef1c86ff"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/3c97a310079aeb46ba5b0299adb0cc20184d0ce42606230a6ea4cd0d87c7fe9b/completion.json",
+      "role": "completion",
+      "bytes": 1495,
+      "sha256": "13945abea1bf8d95ffcecba87e69c5eaa44136fe9b04213b19b2374c6ff7135a"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/460177a19c071b12386e689ea36e16e6de1ee5f211ea4b87f5872f8c69bdaddf/completion.json",
+      "role": "completion",
+      "bytes": 1455,
+      "sha256": "b010015085d4212c91d9fe477ba8bf9be61042212004ca3503d69a8d5bdda3bb"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/5c1936d26f974d3d23b2f7e9738d101f88d2beb2fa81391ca9bf8254b74acc77/completion.json",
+      "role": "completion",
+      "bytes": 1459,
+      "sha256": "bf2efaab5f1f688cd47a5db1f61c1a38f3da54d2c85f1ddd95070863c968d344"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/5e44437d995eae5bbde3e4fedad50df36708561b16cb56beb02770285c18892b/completion.json",
+      "role": "completion",
+      "bytes": 1470,
+      "sha256": "9af6f4948eb32a8e709f6dc7eb97a1efdf30e1846cca684c44f46e167e5c1168"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/8662134fc46de6cc0a30993a9f7f43ec3fc32022bd9fc477046f5f567251f8da/completion.json",
+      "role": "completion",
+      "bytes": 1457,
+      "sha256": "a4f327d2bfec64c1ea3dfe08088c30d38c5699d3a7358adcc5e5d5b1036568ab"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/870e27668721c7c94ac59206e42e6cb85aad2e12ba07dd0ba84f27e9cfe0a1ed/completion.json",
+      "role": "completion",
+      "bytes": 1455,
+      "sha256": "854f56b3432290b046a11a979972e452f89c94ef352a481f38df685c138ac65c"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/911704d83a8c8bbd73cfc5f6ead61779cdbcf9873dadbbbde10f7f62526ca0d1/completion.json",
+      "role": "completion",
+      "bytes": 1516,
+      "sha256": "f9387a771fcd5b9cddcde84a4f2760f7a650e2f3dbf10f3ab76b51bf8716df20"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/96b29b1c52b88d627dca0e8ea9a2f3c62b4b77ceca41b0758975177c56541433/completion.json",
+      "role": "completion",
+      "bytes": 1469,
+      "sha256": "ee26440f9564ab7d6811a09bf65a3220cb5cea3236d43b671cefb6505163ffbc"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/9f752480f3b4a9680c765b792bce025746645a86ab358824345b948a6bfe7ab1/completion.json",
+      "role": "completion",
+      "bytes": 1465,
+      "sha256": "2bcf1bbc86564ebcfc9df93cd7a06f640b79ab55b51e7dca34809343fbf4b353"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/cef725cc313a6db51a95c9d1d1a6813f9ea74e73247c30aea8b7ac2c3095018b/completion.json",
+      "role": "completion",
+      "bytes": 1522,
+      "sha256": "f49cfae36b1b4728eba0ba31feb2f369a649ffbb4be5f1a6f87fbdafdb170f0d"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/e4744579706d223aad29b03cecea3533d6d3ae130e3c8eee07d7f61f311f140a/completion.json",
+      "role": "completion",
+      "bytes": 1466,
+      "sha256": "1e6ba23fdc1b1554ba20dab02c50c3f74de68d1f1887916db9b77a91d22e5d96"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/e4c45cfc7c16fdd80e15a274722d7c2816d521874494aa8cc0a66579aae48c01/completion.json",
+      "role": "completion",
+      "bytes": 1492,
+      "sha256": "3a402b7ff6a5d4c0330a1537058e5aa6e4e94cc6f575527007bb303b61093758"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/admission/001/efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7/attempts/e6921d9758c5feb90d435e4932775c8afb893ece1b5d3b367b92540b60445706/completion.json",
+      "role": "completion",
+      "bytes": 1468,
+      "sha256": "9aa5e446b1511df01e92075d1ea6f2822d2803885bc5c876a4f0b2adfe05a59a"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T180011769120+1000_4ba2ea83cdfd/bundle_manifest.json",
+      "role": "bundle_manifest",
+      "bytes": 3941,
+      "sha256": "079a510e424ecb0f5d89d91d3d3556c08112031540d727bc0cb748a059d50a65"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T180011769120+1000_4ba2ea83cdfd/features/sealed/implementation_file_manifest.json",
+      "role": "implementation_manifest",
+      "bytes": 2407,
+      "sha256": "faa3c3422f42e2aa4ebefe216971dea6ad89efd62d8a39e88d9021f928a75599"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T180011769120+1000_4ba2ea83cdfd/features/sealed/shadow_manifest.json",
+      "role": "feature_manifest",
+      "bytes": 801,
+      "sha256": "e7da3baf4045dc28370c40c5f7fc257bbcf3b61d2a1a56d0ced97278b3247901"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T180011769120+1000_4ba2ea83cdfd/features/history_seal.json",
+      "role": "history_manifest",
+      "bytes": 607,
+      "sha256": "d2120d7a28f544d90e1de3cc4885447ed97b905729d90eca5dcc87e7a8acb383"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T180011769120+1000_4ba2ea83cdfd/model/manifest.json",
+      "role": "model_manifest",
+      "bytes": 17191,
+      "sha256": "8537cbc3d843d106a1fe48793ef01197454ef092c0244025fd65685636a42080"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T180011769120+1000_4ba2ea83cdfd/model/model.json",
+      "role": "model_header",
+      "bytes": 5807,
+      "sha256": "624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T180011769120+1000_4ba2ea83cdfd/request.json",
+      "role": "request_header",
+      "bytes": 2165,
+      "sha256": "b9187d4a0e94108c8ac02413a091b46623398cc04265c580882c2a79f9ccd9e4"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T180011769120+1000_4ba2ea83cdfd/result.json",
+      "role": "prediction_header",
+      "bytes": 2916,
+      "sha256": "fea1a56c5de956e66a916afa43008bc5c0804b01b3e78a377f1181ec400fa5e6"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T180011769120+1000_4ba2ea83cdfd/protocol/collector_exact_receipt.json",
+      "role": "receipt_header",
+      "bytes": 2048,
+      "sha256": "b23c2e0b9939a3c115a9b3532713a65d96ffc60ac6f5d2e8bece853f6100e753"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T180011769120+1000_4ba2ea83cdfd/comparison/production.json",
+      "role": "comparison_header",
+      "bytes": 1973,
+      "sha256": "2b4d97e86c7da6fc552a29e5bc4a32b3594a27862985a9dcce358e024f53cac3"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T180011769120+1000_4ba2ea83cdfd/comparison/registry.json",
+      "role": "comparison_registry",
+      "bytes": 2235,
+      "sha256": "938f433133057591e4ebd17a1ceef4fb25da252b5e3d6aba903194eb54b96ca9"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T180011769120+1000_4ba2ea83cdfd/comparison/plan.json",
+      "role": "comparison_plan",
+      "bytes": 1908,
+      "sha256": "efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T180235642422+1000_5feb65f8ddfe/bundle_manifest.json",
+      "role": "bundle_manifest",
+      "bytes": 3941,
+      "sha256": "2567f9b546836ce4c7445112cb8e4c129bf4aa9a447ef366e42b11688b9b3aa8"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T180235642422+1000_5feb65f8ddfe/features/sealed/implementation_file_manifest.json",
+      "role": "implementation_manifest",
+      "bytes": 2407,
+      "sha256": "be1b6b7c2fbead7f3800b2d3b9585dfc42d1270c07ab9ca077a435481033df9a"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T180235642422+1000_5feb65f8ddfe/features/sealed/shadow_manifest.json",
+      "role": "feature_manifest",
+      "bytes": 801,
+      "sha256": "60a473b66e6d4af3a362710c4dd9e92bb2988ce5d7b595bca658cee1a6c72b82"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T180235642422+1000_5feb65f8ddfe/features/history_seal.json",
+      "role": "history_manifest",
+      "bytes": 608,
+      "sha256": "1ef6cb5e7008b4375f11b20c02d31f8aff3b3ca739fbd725c6949a84169ecd92"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T180235642422+1000_5feb65f8ddfe/model/manifest.json",
+      "role": "model_manifest",
+      "bytes": 17191,
+      "sha256": "8537cbc3d843d106a1fe48793ef01197454ef092c0244025fd65685636a42080"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T180235642422+1000_5feb65f8ddfe/model/model.json",
+      "role": "model_header",
+      "bytes": 5807,
+      "sha256": "624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T180235642422+1000_5feb65f8ddfe/request.json",
+      "role": "request_header",
+      "bytes": 2498,
+      "sha256": "e86835a6d200e6e375fef392f6b889745337378e62910a06122c2fb98e9b9b7e"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T180235642422+1000_5feb65f8ddfe/result.json",
+      "role": "prediction_header",
+      "bytes": 3341,
+      "sha256": "399da11cf9b68f253b5b6483890d08800aacece809833e3e6fac4eddb16a26fe"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T180235642422+1000_5feb65f8ddfe/protocol/collector_exact_receipt.json",
+      "role": "receipt_header",
+      "bytes": 2023,
+      "sha256": "59d5229f9c88c8e2fbdc0c2cd12107b32eada8d852b4513d60f1ad133eb33c88"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T180235642422+1000_5feb65f8ddfe/comparison/production.json",
+      "role": "comparison_header",
+      "bytes": 2263,
+      "sha256": "c183a13df286b267459bb9eb21b7162c2ae70a9bf4d91066f9addee1036b4dc7"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T180235642422+1000_5feb65f8ddfe/comparison/registry.json",
+      "role": "comparison_registry",
+      "bytes": 2235,
+      "sha256": "938f433133057591e4ebd17a1ceef4fb25da252b5e3d6aba903194eb54b96ca9"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T180235642422+1000_5feb65f8ddfe/comparison/plan.json",
+      "role": "comparison_plan",
+      "bytes": 1908,
+      "sha256": "efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T181123558781+1000_a4c78755c251/bundle_manifest.json",
+      "role": "bundle_manifest",
+      "bytes": 3977,
+      "sha256": "6882cac5b354fcd60c343f8107c9e7331fddc9b3971aa89ff48311bee7b58983"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T181123558781+1000_a4c78755c251/features/sealed/implementation_file_manifest.json",
+      "role": "implementation_manifest",
+      "bytes": 2407,
+      "sha256": "129a3b097dda2e32453d077fb09d9d7cdc99bd7927834e74dee05fdff42bc9c8"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T181123558781+1000_a4c78755c251/features/sealed/shadow_manifest.json",
+      "role": "feature_manifest",
+      "bytes": 819,
+      "sha256": "c41098dea175d542c00d117a4986b5383d7b24f16b284a4b6282ce7e2c435e6d"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T181123558781+1000_a4c78755c251/features/history_seal.json",
+      "role": "history_manifest",
+      "bytes": 625,
+      "sha256": "45f9d675e62d8b94c04cd78101a21b992b35411fef9e12c56aeeefc3090f932b"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T181123558781+1000_a4c78755c251/model/manifest.json",
+      "role": "model_manifest",
+      "bytes": 17191,
+      "sha256": "8537cbc3d843d106a1fe48793ef01197454ef092c0244025fd65685636a42080"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T181123558781+1000_a4c78755c251/model/model.json",
+      "role": "model_header",
+      "bytes": 5807,
+      "sha256": "624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T181123558781+1000_a4c78755c251/request.json",
+      "role": "request_header",
+      "bytes": 2410,
+      "sha256": "adc197f9f32aa20b9a91a15dbf5deb517de06541ed1d292012592ba563937f5d"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T181123558781+1000_a4c78755c251/result.json",
+      "role": "prediction_header",
+      "bytes": 3233,
+      "sha256": "189041a6cf83756e080619b09770ab496d1b37eaffdd5075d919c01c6a949fe1"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T181123558781+1000_a4c78755c251/protocol/collector_exact_receipt.json",
+      "role": "receipt_header",
+      "bytes": 2082,
+      "sha256": "b99792b46c1e97e508e79deab4b1dd1267306a6e181cf05e32da432689ca3160"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T181123558781+1000_a4c78755c251/comparison/production.json",
+      "role": "comparison_header",
+      "bytes": 2213,
+      "sha256": "bd3f277f6ca5487438821667ccb75d2800ef6d3f420f8b9202cfdf560e4d43a2"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T181123558781+1000_a4c78755c251/comparison/registry.json",
+      "role": "comparison_registry",
+      "bytes": 2235,
+      "sha256": "938f433133057591e4ebd17a1ceef4fb25da252b5e3d6aba903194eb54b96ca9"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T181123558781+1000_a4c78755c251/comparison/plan.json",
+      "role": "comparison_plan",
+      "bytes": 1908,
+      "sha256": "efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T181813830926+1000_1b9120e3f14e/bundle_manifest.json",
+      "role": "bundle_manifest",
+      "bytes": 3943,
+      "sha256": "a8bdb5716004d9907130aa6c2b00e7bafc2e09a57edb04cb5f08bc0543deb0f5"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T181813830926+1000_1b9120e3f14e/features/sealed/implementation_file_manifest.json",
+      "role": "implementation_manifest",
+      "bytes": 2407,
+      "sha256": "9d2694e45f7da58b7bc1589c816f2348f67727f7ae5037c86d73614f6c61c117"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T181813830926+1000_1b9120e3f14e/features/sealed/shadow_manifest.json",
+      "role": "feature_manifest",
+      "bytes": 802,
+      "sha256": "0c655386993e8fca26dd256faf5110036bf8270c2012cfa265859a7f446e2658"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T181813830926+1000_1b9120e3f14e/features/history_seal.json",
+      "role": "history_manifest",
+      "bytes": 609,
+      "sha256": "75172200bec5321266fd983a3c396e41266aacc1e904a0139eda38fb3449510d"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T181813830926+1000_1b9120e3f14e/model/manifest.json",
+      "role": "model_manifest",
+      "bytes": 17191,
+      "sha256": "8537cbc3d843d106a1fe48793ef01197454ef092c0244025fd65685636a42080"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T181813830926+1000_1b9120e3f14e/model/model.json",
+      "role": "model_header",
+      "bytes": 5807,
+      "sha256": "624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T181813830926+1000_1b9120e3f14e/request.json",
+      "role": "request_header",
+      "bytes": 2490,
+      "sha256": "d62fd02de7a557662f72d6502de781e878e0a7b0f75fab87c23d9b0a83801e87"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T181813830926+1000_1b9120e3f14e/result.json",
+      "role": "prediction_header",
+      "bytes": 3323,
+      "sha256": "5b04447c4524ee4ba1d77129372f6dc4acc5d06ddf7f9ccfc6bc4655e2f54a42"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T181813830926+1000_1b9120e3f14e/protocol/collector_exact_receipt.json",
+      "role": "receipt_header",
+      "bytes": 2020,
+      "sha256": "d2fe938bf8978d1a33b932a2b8a9e3baf328b0187c4a233ad06c4a1f2198e2a3"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T181813830926+1000_1b9120e3f14e/comparison/production.json",
+      "role": "comparison_header",
+      "bytes": 2245,
+      "sha256": "b5865a98f23cd8d17934dfa9a5ed5de6064aa376f1c9a5e33289986627d26c0f"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T181813830926+1000_1b9120e3f14e/comparison/registry.json",
+      "role": "comparison_registry",
+      "bytes": 2235,
+      "sha256": "938f433133057591e4ebd17a1ceef4fb25da252b5e3d6aba903194eb54b96ca9"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T181813830926+1000_1b9120e3f14e/comparison/plan.json",
+      "role": "comparison_plan",
+      "bytes": 1908,
+      "sha256": "efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T182615847891+1000_b4bbd632652e/bundle_manifest.json",
+      "role": "bundle_manifest",
+      "bytes": 3943,
+      "sha256": "22af7e350d4d8c2f33f1cebdb098b416a6183d85b5bc01433a8c61ea09e87f13"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T182615847891+1000_b4bbd632652e/features/sealed/implementation_file_manifest.json",
+      "role": "implementation_manifest",
+      "bytes": 2407,
+      "sha256": "89dd6c38457d7123c2817d8d99f40460f16afdf79d998b280dc2a9c852dd7efd"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T182615847891+1000_b4bbd632652e/features/sealed/shadow_manifest.json",
+      "role": "feature_manifest",
+      "bytes": 802,
+      "sha256": "66d4804b64ca63ee02ca9aff74d8ac1a8d8b9b8b618b41dafdb8a39a2df900d9"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T182615847891+1000_b4bbd632652e/features/history_seal.json",
+      "role": "history_manifest",
+      "bytes": 608,
+      "sha256": "4fa3a3ee761cee5e670b7aaa07fd43f71f5a23075799d931150e001931df22c9"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T182615847891+1000_b4bbd632652e/model/manifest.json",
+      "role": "model_manifest",
+      "bytes": 17191,
+      "sha256": "8537cbc3d843d106a1fe48793ef01197454ef092c0244025fd65685636a42080"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T182615847891+1000_b4bbd632652e/model/model.json",
+      "role": "model_header",
+      "bytes": 5807,
+      "sha256": "624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T182615847891+1000_b4bbd632652e/request.json",
+      "role": "request_header",
+      "bytes": 2173,
+      "sha256": "d75436565286ffe3a7dbcf10fe47d5b39c23a7f457fed95d50f29c099bd3f6d2"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T182615847891+1000_b4bbd632652e/result.json",
+      "role": "prediction_header",
+      "bytes": 2925,
+      "sha256": "5111056be6299af65b6a840718a77e67c7820e4c88b9ccfb6d0aef6aab8671c1"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T182615847891+1000_b4bbd632652e/protocol/collector_exact_receipt.json",
+      "role": "receipt_header",
+      "bytes": 2056,
+      "sha256": "21abdaab364cadd1e38586d3fa778f561158bc652c4fab83a53cfe7b5778cf07"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T182615847891+1000_b4bbd632652e/comparison/production.json",
+      "role": "comparison_header",
+      "bytes": 1982,
+      "sha256": "3e56ae1f7ae61ab67bcde660d89f96c73d599e2cba71301feac7a1367049949c"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T182615847891+1000_b4bbd632652e/comparison/registry.json",
+      "role": "comparison_registry",
+      "bytes": 2235,
+      "sha256": "938f433133057591e4ebd17a1ceef4fb25da252b5e3d6aba903194eb54b96ca9"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T182615847891+1000_b4bbd632652e/comparison/plan.json",
+      "role": "comparison_plan",
+      "bytes": 1908,
+      "sha256": "efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T183319907384+1000_6f393ec90e0c/bundle_manifest.json",
+      "role": "bundle_manifest",
+      "bytes": 3977,
+      "sha256": "82c9f86140fb9ab0e1b5053031de42b312c0fb1ad065d82626d7b37751f0ae7d"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T183319907384+1000_6f393ec90e0c/features/sealed/implementation_file_manifest.json",
+      "role": "implementation_manifest",
+      "bytes": 2407,
+      "sha256": "97919848f9239251e2d903a1f73602735088c64c01149825bd772acc5beb5e67"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T183319907384+1000_6f393ec90e0c/features/sealed/shadow_manifest.json",
+      "role": "feature_manifest",
+      "bytes": 819,
+      "sha256": "bdfeb0d6da91f979e1bd7db459e67fb31aa2f6ebda7e4c515af28f7b1687630a"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T183319907384+1000_6f393ec90e0c/features/history_seal.json",
+      "role": "history_manifest",
+      "bytes": 626,
+      "sha256": "eb5093eedab93a088e3233562d2c151a33c2cca9f92f672ddac0243d3bb4adce"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T183319907384+1000_6f393ec90e0c/model/manifest.json",
+      "role": "model_manifest",
+      "bytes": 17191,
+      "sha256": "8537cbc3d843d106a1fe48793ef01197454ef092c0244025fd65685636a42080"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T183319907384+1000_6f393ec90e0c/model/model.json",
+      "role": "model_header",
+      "bytes": 5807,
+      "sha256": "624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T183319907384+1000_6f393ec90e0c/request.json",
+      "role": "request_header",
+      "bytes": 2508,
+      "sha256": "680e438900775e9f4c4d1bdfaddc0e675e1b664c2658ed8522808ed88378cc1e"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T183319907384+1000_6f393ec90e0c/result.json",
+      "role": "prediction_header",
+      "bytes": 3366,
+      "sha256": "6083eb2837a5abcfd14bd278b1104b9410825949a153cc16d3f675fb86fc5e58"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T183319907384+1000_6f393ec90e0c/protocol/collector_exact_receipt.json",
+      "role": "receipt_header",
+      "bytes": 2154,
+      "sha256": "953f11bb3774116d60859ea3ffe60354db99ea451a09f1efdc3c62201e17925c"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T183319907384+1000_6f393ec90e0c/comparison/production.json",
+      "role": "comparison_header",
+      "bytes": 2288,
+      "sha256": "34308cbbcb8cc8069bae12110f5b1ddca0245a14a4c642fa00166e6029bea9c3"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T183319907384+1000_6f393ec90e0c/comparison/registry.json",
+      "role": "comparison_registry",
+      "bytes": 2235,
+      "sha256": "938f433133057591e4ebd17a1ceef4fb25da252b5e3d6aba903194eb54b96ca9"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T183319907384+1000_6f393ec90e0c/comparison/plan.json",
+      "role": "comparison_plan",
+      "bytes": 1908,
+      "sha256": "efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184119718181+1000_071f3bc3383e/bundle_manifest.json",
+      "role": "bundle_manifest",
+      "bytes": 3943,
+      "sha256": "add90bad6cfb17898662e42c7ea80768294bfa3fd0412fa914a63362ab030b44"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184119718181+1000_071f3bc3383e/features/sealed/implementation_file_manifest.json",
+      "role": "implementation_manifest",
+      "bytes": 2407,
+      "sha256": "c113f1431763bf902c2308839f053ca9f5ed430e8808c6b0536c2af35c1082f1"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184119718181+1000_071f3bc3383e/features/sealed/shadow_manifest.json",
+      "role": "feature_manifest",
+      "bytes": 802,
+      "sha256": "e96043ef46faf63a07cb30c36032c30633c963db0a515a099e79d964179824fc"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184119718181+1000_071f3bc3383e/features/history_seal.json",
+      "role": "history_manifest",
+      "bytes": 609,
+      "sha256": "18dfcaa2fdfd54936fe9aad623c2bc2fe9fcbfa4ca972d5956b3534b830f128c"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184119718181+1000_071f3bc3383e/model/manifest.json",
+      "role": "model_manifest",
+      "bytes": 17191,
+      "sha256": "8537cbc3d843d106a1fe48793ef01197454ef092c0244025fd65685636a42080"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184119718181+1000_071f3bc3383e/model/model.json",
+      "role": "model_header",
+      "bytes": 5807,
+      "sha256": "624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184119718181+1000_071f3bc3383e/request.json",
+      "role": "request_header",
+      "bytes": 2489,
+      "sha256": "0a06152b5382ee018b27e7d5fbda6eb8e0168e9b8baa7e33221595329fb00739"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184119718181+1000_071f3bc3383e/result.json",
+      "role": "prediction_header",
+      "bytes": 3320,
+      "sha256": "5ae6ada7f26c995f792340856fc23f2a74c8cacd7f040fb8db8f681790806c5a"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184119718181+1000_071f3bc3383e/protocol/collector_exact_receipt.json",
+      "role": "receipt_header",
+      "bytes": 2020,
+      "sha256": "152030d930935f4dbc162181e40197660e99341fec8c8efb44e7450a06a8d55d"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184119718181+1000_071f3bc3383e/comparison/production.json",
+      "role": "comparison_header",
+      "bytes": 2242,
+      "sha256": "c38927535d6df366b44ee33e242242adfcd390f7b52e6fe57d20725090007e77"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184119718181+1000_071f3bc3383e/comparison/registry.json",
+      "role": "comparison_registry",
+      "bytes": 2235,
+      "sha256": "938f433133057591e4ebd17a1ceef4fb25da252b5e3d6aba903194eb54b96ca9"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184119718181+1000_071f3bc3383e/comparison/plan.json",
+      "role": "comparison_plan",
+      "bytes": 1908,
+      "sha256": "efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184401792289+1000_f2456e85fb82/bundle_manifest.json",
+      "role": "bundle_manifest",
+      "bytes": 3943,
+      "sha256": "f02f07e9d60af9d647605654f91aa69374ac030b93555af565224d0e22d5ecc4"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184401792289+1000_f2456e85fb82/features/sealed/implementation_file_manifest.json",
+      "role": "implementation_manifest",
+      "bytes": 2407,
+      "sha256": "b9d842270c3ae24d515c27188337eee4cc7dc01bb1b77e5f72e3d9f03d5b41f6"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184401792289+1000_f2456e85fb82/features/sealed/shadow_manifest.json",
+      "role": "feature_manifest",
+      "bytes": 802,
+      "sha256": "3c6e23bbc7bef7e29a20ba9dea9e833327ae136144090d78ad490b3462dbc883"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184401792289+1000_f2456e85fb82/features/history_seal.json",
+      "role": "history_manifest",
+      "bytes": 609,
+      "sha256": "108b77ab389dadac7c0fc205e095995f5508e9960a0c346a2bf61b2c777b1b69"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184401792289+1000_f2456e85fb82/model/manifest.json",
+      "role": "model_manifest",
+      "bytes": 17191,
+      "sha256": "8537cbc3d843d106a1fe48793ef01197454ef092c0244025fd65685636a42080"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184401792289+1000_f2456e85fb82/model/model.json",
+      "role": "model_header",
+      "bytes": 5807,
+      "sha256": "624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184401792289+1000_f2456e85fb82/request.json",
+      "role": "request_header",
+      "bytes": 2271,
+      "sha256": "103f899ff91ddeea09fdc8703c12c4daace807649d82cecd4b4cc6e9cf63d11f"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184401792289+1000_f2456e85fb82/result.json",
+      "role": "prediction_header",
+      "bytes": 3035,
+      "sha256": "3544765bdca10845e03beb32b50b4812c55989fa9214e7c6b2abc3fdec4b596a"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184401792289+1000_f2456e85fb82/protocol/collector_exact_receipt.json",
+      "role": "receipt_header",
+      "bytes": 1953,
+      "sha256": "cf921016765a323cce2613a21de093f98bf992573de005fbc125d658b3c3deb3"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184401792289+1000_f2456e85fb82/comparison/production.json",
+      "role": "comparison_header",
+      "bytes": 2060,
+      "sha256": "06f80f93a33ee3078862a050d8e177240fcd47668bba81a41dd5adafefeb79ec"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184401792289+1000_f2456e85fb82/comparison/registry.json",
+      "role": "comparison_registry",
+      "bytes": 2235,
+      "sha256": "938f433133057591e4ebd17a1ceef4fb25da252b5e3d6aba903194eb54b96ca9"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184401792289+1000_f2456e85fb82/comparison/plan.json",
+      "role": "comparison_plan",
+      "bytes": 1908,
+      "sha256": "efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184807858360+1000_a38e4b239869/bundle_manifest.json",
+      "role": "bundle_manifest",
+      "bytes": 3939,
+      "sha256": "7e4e3d6d9905fff0cb9c23c18968458d68fa604369af156ee806368abd74dd4f"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184807858360+1000_a38e4b239869/features/sealed/implementation_file_manifest.json",
+      "role": "implementation_manifest",
+      "bytes": 2407,
+      "sha256": "22b48472ee5b0fb4dde4aaaba483183a559aa5595febeb860db9a36746993951"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184807858360+1000_a38e4b239869/features/sealed/shadow_manifest.json",
+      "role": "feature_manifest",
+      "bytes": 800,
+      "sha256": "8d515fa54f114c0779fda4dbd19369a9d84b24515fbf6ab740e348c2c863d394"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184807858360+1000_a38e4b239869/features/history_seal.json",
+      "role": "history_manifest",
+      "bytes": 606,
+      "sha256": "f58dc94982e04c10455e3319de51f4cb8c1cee834f066946a028e0da50cb0d23"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184807858360+1000_a38e4b239869/model/manifest.json",
+      "role": "model_manifest",
+      "bytes": 17191,
+      "sha256": "8537cbc3d843d106a1fe48793ef01197454ef092c0244025fd65685636a42080"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184807858360+1000_a38e4b239869/model/model.json",
+      "role": "model_header",
+      "bytes": 5807,
+      "sha256": "624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184807858360+1000_a38e4b239869/request.json",
+      "role": "request_header",
+      "bytes": 2264,
+      "sha256": "471c8c5dc78d8dd5cc09605fbf24e92f749dae41ecd9c049ea3aa50eb57479a6"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184807858360+1000_a38e4b239869/result.json",
+      "role": "prediction_header",
+      "bytes": 3019,
+      "sha256": "d9e8c7314c50c7cc90e4d598527a66f7a1cd2f83ad32c95725c0da074aab16c7"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184807858360+1000_a38e4b239869/protocol/collector_exact_receipt.json",
+      "role": "receipt_header",
+      "bytes": 2012,
+      "sha256": "7f0d6be510ba21fafd6cc98ad03008c41b2ad8893f6e85af476761458594cf61"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184807858360+1000_a38e4b239869/comparison/production.json",
+      "role": "comparison_header",
+      "bytes": 2031,
+      "sha256": "20b1a9d53a9e2a0b1903bf633a2be925b2669123eeea8173185716b56129581e"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184807858360+1000_a38e4b239869/comparison/registry.json",
+      "role": "comparison_registry",
+      "bytes": 2235,
+      "sha256": "938f433133057591e4ebd17a1ceef4fb25da252b5e3d6aba903194eb54b96ca9"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T184807858360+1000_a38e4b239869/comparison/plan.json",
+      "role": "comparison_plan",
+      "bytes": 1908,
+      "sha256": "efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T185812048113+1000_8a554a57f11a/bundle_manifest.json",
+      "role": "bundle_manifest",
+      "bytes": 3943,
+      "sha256": "42f0a1b999460554f102ef715954a3487fdafed642f994c2dc07829c1a7fdc49"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T185812048113+1000_8a554a57f11a/features/sealed/implementation_file_manifest.json",
+      "role": "implementation_manifest",
+      "bytes": 2407,
+      "sha256": "b802573469a2d22620539f780ac7edae31ed08877de92eff3b314bfd29d998c0"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T185812048113+1000_8a554a57f11a/features/sealed/shadow_manifest.json",
+      "role": "feature_manifest",
+      "bytes": 802,
+      "sha256": "18f02ec43a85f644b36573c1e8a878383290d457938b1df9618e3b60175ffcd0"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T185812048113+1000_8a554a57f11a/features/history_seal.json",
+      "role": "history_manifest",
+      "bytes": 608,
+      "sha256": "7096d78f458dca7f6546b2978295e7cdf30f6a77cd91eb72dc229fad0cbc9c2b"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T185812048113+1000_8a554a57f11a/model/manifest.json",
+      "role": "model_manifest",
+      "bytes": 17191,
+      "sha256": "8537cbc3d843d106a1fe48793ef01197454ef092c0244025fd65685636a42080"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T185812048113+1000_8a554a57f11a/model/model.json",
+      "role": "model_header",
+      "bytes": 5807,
+      "sha256": "624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T185812048113+1000_8a554a57f11a/request.json",
+      "role": "request_header",
+      "bytes": 2489,
+      "sha256": "5ababa49663cf2a7bf93c4f4cb68227084f81e095573d35874eea32ae391b0b9"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T185812048113+1000_8a554a57f11a/result.json",
+      "role": "prediction_header",
+      "bytes": 3329,
+      "sha256": "ed446199bcce22e3292fc451eb562d99d63cafd1bc991d17e333130ebafbb593"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T185812048113+1000_8a554a57f11a/protocol/collector_exact_receipt.json",
+      "role": "receipt_header",
+      "bytes": 2028,
+      "sha256": "911a6d7fb892bfd9bd9d20ffe79abd7be1c4913b896be006b9a6a419bc8b94b1"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T185812048113+1000_8a554a57f11a/comparison/production.json",
+      "role": "comparison_header",
+      "bytes": 2251,
+      "sha256": "c93bfc6ef82bb19cc1b2086fadad41fa28a9b6d2a9d17b31cdf8462cf112a3cb"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T185812048113+1000_8a554a57f11a/comparison/registry.json",
+      "role": "comparison_registry",
+      "bytes": 2235,
+      "sha256": "938f433133057591e4ebd17a1ceef4fb25da252b5e3d6aba903194eb54b96ca9"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T185812048113+1000_8a554a57f11a/comparison/plan.json",
+      "role": "comparison_plan",
+      "bytes": 1908,
+      "sha256": "efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190006947506+1000_938d9f9c98e9/bundle_manifest.json",
+      "role": "bundle_manifest",
+      "bytes": 3939,
+      "sha256": "1d16c262406657eaa91011eb556914ddd722da6ebe36e72926906dbc96d13865"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190006947506+1000_938d9f9c98e9/features/sealed/implementation_file_manifest.json",
+      "role": "implementation_manifest",
+      "bytes": 2407,
+      "sha256": "b3b8555b0ac355e6d6f30da779a51f59e63cf6822fe5c5596146f810277b1be1"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190006947506+1000_938d9f9c98e9/features/sealed/shadow_manifest.json",
+      "role": "feature_manifest",
+      "bytes": 800,
+      "sha256": "61aa141f2c469a4c2e8bfc3317247e1ee4c4d8790c708ef1d494f57e38368e9d"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190006947506+1000_938d9f9c98e9/features/history_seal.json",
+      "role": "history_manifest",
+      "bytes": 606,
+      "sha256": "f4c470320bed5b4e366a2d2fff21fe67d8b8fb101b7268acf2b99ec8cb6aefea"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190006947506+1000_938d9f9c98e9/model/manifest.json",
+      "role": "model_manifest",
+      "bytes": 17191,
+      "sha256": "8537cbc3d843d106a1fe48793ef01197454ef092c0244025fd65685636a42080"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190006947506+1000_938d9f9c98e9/model/model.json",
+      "role": "model_header",
+      "bytes": 5807,
+      "sha256": "624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190006947506+1000_938d9f9c98e9/request.json",
+      "role": "request_header",
+      "bytes": 2249,
+      "sha256": "a593380edb49c2287439b3048191f646541f7dbf4c35af8e9e70131a1343ab03"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190006947506+1000_938d9f9c98e9/result.json",
+      "role": "prediction_header",
+      "bytes": 3016,
+      "sha256": "84fb1538579768ad990ca79feca9693ce968430569d6da03fcbcaa864c1c5d91"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190006947506+1000_938d9f9c98e9/protocol/collector_exact_receipt.json",
+      "role": "receipt_header",
+      "bytes": 1947,
+      "sha256": "24e8043270542d01265d9d3f554ebf3b06dd849653747538fe0f0f08816f98a9"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190006947506+1000_938d9f9c98e9/comparison/production.json",
+      "role": "comparison_header",
+      "bytes": 2041,
+      "sha256": "98e98f4186ddb818aa29418d14460c0752d444e1885792868a36cf71eeb4868b"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190006947506+1000_938d9f9c98e9/comparison/registry.json",
+      "role": "comparison_registry",
+      "bytes": 2235,
+      "sha256": "938f433133057591e4ebd17a1ceef4fb25da252b5e3d6aba903194eb54b96ca9"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190006947506+1000_938d9f9c98e9/comparison/plan.json",
+      "role": "comparison_plan",
+      "bytes": 1908,
+      "sha256": "efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190228096546+1000_51deb9055d9a/bundle_manifest.json",
+      "role": "bundle_manifest",
+      "bytes": 3941,
+      "sha256": "db9b11abee413f58ae839cef51dc143dec554b55390c354298bdbfb8dec9ecc3"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190228096546+1000_51deb9055d9a/features/sealed/implementation_file_manifest.json",
+      "role": "implementation_manifest",
+      "bytes": 2407,
+      "sha256": "21fbb6c7457a3a6aaf416de61977d8b80cf84c20850016b3bc9853f7c77b1cf2"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190228096546+1000_51deb9055d9a/features/sealed/shadow_manifest.json",
+      "role": "feature_manifest",
+      "bytes": 801,
+      "sha256": "a1b2b0e808bdba990e3fadb837f2d386696e8056acc0cf109122c7a782ab1e2c"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190228096546+1000_51deb9055d9a/features/history_seal.json",
+      "role": "history_manifest",
+      "bytes": 607,
+      "sha256": "d0e2e3086dc8af164e1192bea369d1cbb04df180c96b4af14e8684f483e539fd"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190228096546+1000_51deb9055d9a/model/manifest.json",
+      "role": "model_manifest",
+      "bytes": 17191,
+      "sha256": "8537cbc3d843d106a1fe48793ef01197454ef092c0244025fd65685636a42080"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190228096546+1000_51deb9055d9a/model/model.json",
+      "role": "model_header",
+      "bytes": 5807,
+      "sha256": "624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190228096546+1000_51deb9055d9a/request.json",
+      "role": "request_header",
+      "bytes": 2497,
+      "sha256": "d07d3de88f5e5ec2b91f536d63d967f5e54815317eb6068834901fc8655d761e"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190228096546+1000_51deb9055d9a/result.json",
+      "role": "prediction_header",
+      "bytes": 3339,
+      "sha256": "f77e0e86bc4ab481fe631a6c258017677ed0a8540ffdc527204aeee5cf64a7e2"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190228096546+1000_51deb9055d9a/protocol/collector_exact_receipt.json",
+      "role": "receipt_header",
+      "bytes": 2027,
+      "sha256": "d9d921a962386ee7c31dfc0aab1fc261bcb237e838aede11db3c4d5613374c5f"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190228096546+1000_51deb9055d9a/comparison/production.json",
+      "role": "comparison_header",
+      "bytes": 2261,
+      "sha256": "fec46ae7eee6c91d56d092bccd857d9e8cbc512a70fc5f4d5fff56b7c985e259"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190228096546+1000_51deb9055d9a/comparison/registry.json",
+      "role": "comparison_registry",
+      "bytes": 2235,
+      "sha256": "938f433133057591e4ebd17a1ceef4fb25da252b5e3d6aba903194eb54b96ca9"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190228096546+1000_51deb9055d9a/comparison/plan.json",
+      "role": "comparison_plan",
+      "bytes": 1908,
+      "sha256": "efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190718101923+1000_7917725caf26/bundle_manifest.json",
+      "role": "bundle_manifest",
+      "bytes": 3947,
+      "sha256": "700b84f9fde4d58752074708cf0b9172ff0fa7928df8f575438a6a5986b91298"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190718101923+1000_7917725caf26/features/sealed/implementation_file_manifest.json",
+      "role": "implementation_manifest",
+      "bytes": 2407,
+      "sha256": "06095c89272b21cf4392e3c8bbbbd33f685785be3f9bfd8608a66ba3b5805831"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190718101923+1000_7917725caf26/features/sealed/shadow_manifest.json",
+      "role": "feature_manifest",
+      "bytes": 804,
+      "sha256": "a8e4a83ba2c8110a52c922b8e5d638ae0497c20f0d9948a9ccb46f8a1fc6661e"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190718101923+1000_7917725caf26/features/history_seal.json",
+      "role": "history_manifest",
+      "bytes": 607,
+      "sha256": "b174c4fec98467a0ecb111c651f3ef07ada612951d73157b9cb8834c0470e3ae"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190718101923+1000_7917725caf26/model/manifest.json",
+      "role": "model_manifest",
+      "bytes": 17191,
+      "sha256": "8537cbc3d843d106a1fe48793ef01197454ef092c0244025fd65685636a42080"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190718101923+1000_7917725caf26/model/model.json",
+      "role": "model_header",
+      "bytes": 5807,
+      "sha256": "624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190718101923+1000_7917725caf26/request.json",
+      "role": "request_header",
+      "bytes": 2484,
+      "sha256": "8b86586391268ff964fda2d18a321211855512ace02475e39c9375044e02bec5"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190718101923+1000_7917725caf26/result.json",
+      "role": "prediction_header",
+      "bytes": 3331,
+      "sha256": "1e032cf31fdb7c2a54e8e5f26f41dbb8039afdd4f855b8458829bf1848a7e325"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190718101923+1000_7917725caf26/protocol/collector_exact_receipt.json",
+      "role": "receipt_header",
+      "bytes": 2040,
+      "sha256": "6fda0fb54ebf0170fcc4f76e7a2b99642773c9288fbce8567964f648a4c5cc8f"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190718101923+1000_7917725caf26/comparison/production.json",
+      "role": "comparison_header",
+      "bytes": 2253,
+      "sha256": "b2bd2a26f8c429cc3003ddfd74355972e3d41c89718e276479c0cd5dc41e22bf"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190718101923+1000_7917725caf26/comparison/registry.json",
+      "role": "comparison_registry",
+      "bytes": 2235,
+      "sha256": "938f433133057591e4ebd17a1ceef4fb25da252b5e3d6aba903194eb54b96ca9"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T190718101923+1000_7917725caf26/comparison/plan.json",
+      "role": "comparison_plan",
+      "bytes": 1908,
+      "sha256": "efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T191118725835+1000_b965f4d29f8d/bundle_manifest.json",
+      "role": "bundle_manifest",
+      "bytes": 3939,
+      "sha256": "d6c58e468385bdfcff832ef387183c868649e921523c3556ceea8d53357f1e8a"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T191118725835+1000_b965f4d29f8d/features/sealed/implementation_file_manifest.json",
+      "role": "implementation_manifest",
+      "bytes": 2407,
+      "sha256": "b3dd18130b558df87dbfe6a35ba1fb9bc6c5b6739eddccac84ab7f37946ae5d3"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T191118725835+1000_b965f4d29f8d/features/sealed/shadow_manifest.json",
+      "role": "feature_manifest",
+      "bytes": 800,
+      "sha256": "2529d633c73259fd176588c12af31e3f92f485b7de3315596a72b917c6bf7c9c"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T191118725835+1000_b965f4d29f8d/features/history_seal.json",
+      "role": "history_manifest",
+      "bytes": 606,
+      "sha256": "36f48fad131e3a35fb988aa8bed38f203fb0bfc4f2437d47d7d27a78d893576a"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T191118725835+1000_b965f4d29f8d/model/manifest.json",
+      "role": "model_manifest",
+      "bytes": 17191,
+      "sha256": "8537cbc3d843d106a1fe48793ef01197454ef092c0244025fd65685636a42080"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T191118725835+1000_b965f4d29f8d/model/model.json",
+      "role": "model_header",
+      "bytes": 5807,
+      "sha256": "624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T191118725835+1000_b965f4d29f8d/request.json",
+      "role": "request_header",
+      "bytes": 2276,
+      "sha256": "c788e8f0b8348c91d76c7a9e0802c7b901d18e356f07c19303a897ad4623c987"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T191118725835+1000_b965f4d29f8d/result.json",
+      "role": "prediction_header",
+      "bytes": 3031,
+      "sha256": "c4ffacd32b5174199751b69fcd93e51d9ec0936755e306521fb3054745231941"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T191118725835+1000_b965f4d29f8d/protocol/collector_exact_receipt.json",
+      "role": "receipt_header",
+      "bytes": 2012,
+      "sha256": "0bb9f991eecbf7420be09005ee5c7d1264478e560de16ee307eeb087813d5008"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T191118725835+1000_b965f4d29f8d/comparison/production.json",
+      "role": "comparison_header",
+      "bytes": 2043,
+      "sha256": "9c10621a6c69f48ccfce0c13151f65a61169e43b0f423e172117f90437c1c83f"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T191118725835+1000_b965f4d29f8d/comparison/registry.json",
+      "role": "comparison_registry",
+      "bytes": 2235,
+      "sha256": "938f433133057591e4ebd17a1ceef4fb25da252b5e3d6aba903194eb54b96ca9"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T191118725835+1000_b965f4d29f8d/comparison/plan.json",
+      "role": "comparison_plan",
+      "bytes": 1908,
+      "sha256": "efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T191810388249+1000_a1df424dc88b/bundle_manifest.json",
+      "role": "bundle_manifest",
+      "bytes": 3941,
+      "sha256": "f27da0c1124225b4a4c0c70d08027e60ae0bc8a34ba172230780fc705be97d8d"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T191810388249+1000_a1df424dc88b/features/sealed/implementation_file_manifest.json",
+      "role": "implementation_manifest",
+      "bytes": 2407,
+      "sha256": "3162be816a3ca3c00725b2ae4218030a18b5cf3a8a6bf2dd264cfb10236d8e38"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T191810388249+1000_a1df424dc88b/features/sealed/shadow_manifest.json",
+      "role": "feature_manifest",
+      "bytes": 801,
+      "sha256": "4f5955f1f0ce426bba7d678b00a4a6bc4d2df8e3ccc8bb933e71ac07e6657d73"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T191810388249+1000_a1df424dc88b/features/history_seal.json",
+      "role": "history_manifest",
+      "bytes": 607,
+      "sha256": "63ccc3dca3d31525a5109b1c2e4cc99fdb2974c1a38d972d62bcda70e3ede642"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T191810388249+1000_a1df424dc88b/model/manifest.json",
+      "role": "model_manifest",
+      "bytes": 17191,
+      "sha256": "8537cbc3d843d106a1fe48793ef01197454ef092c0244025fd65685636a42080"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T191810388249+1000_a1df424dc88b/model/model.json",
+      "role": "model_header",
+      "bytes": 5807,
+      "sha256": "624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T191810388249+1000_a1df424dc88b/request.json",
+      "role": "request_header",
+      "bytes": 2514,
+      "sha256": "9004437b5d4c8093ac265b4ee1c95ce9fefb443ba15bd30092e3d570aeb0526f"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T191810388249+1000_a1df424dc88b/result.json",
+      "role": "prediction_header",
+      "bytes": 3351,
+      "sha256": "6d5a25bd93277659a333600298c321f58b7ceeb78e16be1526c943a401d82b3b"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T191810388249+1000_a1df424dc88b/protocol/collector_exact_receipt.json",
+      "role": "receipt_header",
+      "bytes": 2020,
+      "sha256": "0c023904fd69cd9ffdf9d03121139ce9e9a6ef6952cb59d7fffe9e2a60ce7559"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T191810388249+1000_a1df424dc88b/comparison/production.json",
+      "role": "comparison_header",
+      "bytes": 2273,
+      "sha256": "d605d3f11af1096044f5bcbcf6d7bf213116d2b41ab7fb9984b06e2eb6a27eb0"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T191810388249+1000_a1df424dc88b/comparison/registry.json",
+      "role": "comparison_registry",
+      "bytes": 2235,
+      "sha256": "938f433133057591e4ebd17a1ceef4fb25da252b5e3d6aba903194eb54b96ca9"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/predictions/bundles/prediction_20261002T191810388249+1000_a1df424dc88b/comparison/plan.json",
+      "role": "comparison_plan",
+      "bytes": 1908,
+      "sha256": "efddd2a0370b32ead792650d6f29ba282c3d7cd0dfd8d5fe85179903858cedd7"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/windows/001/slots/001/live07-20261002-001-001/source/SOURCE_IDENTITY.json",
+      "role": "original_source_identity",
+      "bytes": 90528,
+      "sha256": "8b413a80cb2bc0977fb68bbd553b4ae2b1ef4b0a66ca88d76376da34048e519b"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/windows/001/slots/001/live07-20261002-001-001/plan.json",
+      "role": "original_plan",
+      "bytes": 22280,
+      "sha256": "5411a17671c9a3d236f198d50e08c9352305d7fb7b7babaacc1c85344b18abe4"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/windows/001/slots/001/live07-20261002-001-001/source/scripts/run_shadow_non_tgr_rf_evaluation.py",
+      "role": "source_code_hash_only",
+      "bytes": 117757,
+      "sha256": "afe229f290dd12100c7ad47bd9b091894d44aaf6405fb2716e2d4b814383ae92"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-method-feasibility-20261003/scripts/run_shadow_non_tgr_rf_evaluation.py",
+      "role": "source_code_hash_only",
+      "bytes": 117757,
+      "sha256": "afe229f290dd12100c7ad47bd9b091894d44aaf6405fb2716e2d4b814383ae92"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/windows/001/slots/001/live07-20261002-001-001/source/scripts/run_feature_recovery_execution_v1.py",
+      "role": "source_code_hash_only",
+      "bytes": 127647,
+      "sha256": "0e21032359969cde58aa5419d11076184c3f21cba71ec6fd3051fcc3125b0fb0"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-method-feasibility-20261003/scripts/run_feature_recovery_execution_v1.py",
+      "role": "source_code_hash_only",
+      "bytes": 127647,
+      "sha256": "0e21032359969cde58aa5419d11076184c3f21cba71ec6fd3051fcc3125b0fb0"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/windows/001/slots/001/live07-20261002-001-001/source/utils/expert_form_metadata.py",
+      "role": "source_code_hash_only",
+      "bytes": 12607,
+      "sha256": "dfb8d3cf2aff99ce351f56dff39bd7995539024d407f514aed4951c97c8b4f47"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-method-feasibility-20261003/utils/expert_form_metadata.py",
+      "role": "source_code_hash_only",
+      "bytes": 12607,
+      "sha256": "dfb8d3cf2aff99ce351f56dff39bd7995539024d407f514aed4951c97c8b4f47"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/windows/001/slots/001/live07-20261002-001-001/source/utils/prejump_weather.py",
+      "role": "source_code_hash_only",
+      "bytes": 18033,
+      "sha256": "5584cdcb2730ca885b5e0a75168cd43cff292c9dc1e7ab5f0210f2316ee15ab6"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-method-feasibility-20261003/utils/prejump_weather.py",
+      "role": "source_code_hash_only",
+      "bytes": 18033,
+      "sha256": "5584cdcb2730ca885b5e0a75168cd43cff292c9dc1e7ab5f0210f2316ee15ab6"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/windows/001/slots/001/live07-20261002-001-001/source/utils/http_client.py",
+      "role": "source_code_hash_only",
+      "bytes": 3586,
+      "sha256": "642210ac90046d552171853462a8b62743c03079a7e5be17afe5c94746d2771c"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-method-feasibility-20261003/utils/http_client.py",
+      "role": "source_code_hash_only",
+      "bytes": 3586,
+      "sha256": "642210ac90046d552171853462a8b62743c03079a7e5be17afe5c94746d2771c"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/windows/001/slots/001/live07-20261002-001-001/source/utils/csv_metadata.py",
+      "role": "source_code_hash_only",
+      "bytes": 101717,
+      "sha256": "1f60499f666805c585ba842eafe24addf4166d7bf42e4329fad0896f320c5521"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-method-feasibility-20261003/utils/csv_metadata.py",
+      "role": "source_code_hash_only",
+      "bytes": 101860,
+      "sha256": "8440c7ddba3816a77ef23f5bbfba9b6731da4b0040352cc050f8c908c0c7b78d"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/windows/001/slots/001/live07-20261002-001-001/source/utils/runner_completeness.py",
+      "role": "source_code_hash_only",
+      "bytes": 40562,
+      "sha256": "f004a44f5d043e700b399943479252c82f4fb85473c03322b1b06bbb3b8a9134"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-method-feasibility-20261003/utils/runner_completeness.py",
+      "role": "source_code_hash_only",
+      "bytes": 40562,
+      "sha256": "f004a44f5d043e700b399943479252c82f4fb85473c03322b1b06bbb3b8a9134"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/windows/001/slots/001/live07-20261002-001-001/source/utils/race_lifecycle.py",
+      "role": "source_code_hash_only",
+      "bytes": 19701,
+      "sha256": "97087e2337c2a7568ac4413ff3c9af22fc85fb5db3493de67a3c4f3b68f85bda"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-method-feasibility-20261003/utils/race_lifecycle.py",
+      "role": "source_code_hash_only",
+      "bytes": 20513,
+      "sha256": "377c7df2855e6443a98b0b85671498a9e0bc8fe79b606e5cdb40f85596c85213"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/windows/001/slots/001/live07-20261002-001-001/source/tests/test_run_shadow_non_tgr_rf_evaluation.py",
+      "role": "source_code_hash_only",
+      "bytes": 41174,
+      "sha256": "d15a2955b310172a95fdb5db511970bc02e9123bd14d5ba42a89f2a66fe34000"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-method-feasibility-20261003/tests/test_run_shadow_non_tgr_rf_evaluation.py",
+      "role": "source_code_hash_only",
+      "bytes": 41174,
+      "sha256": "d15a2955b310172a95fdb5db511970bc02e9123bd14d5ba42a89f2a66fe34000"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-live-engineering-20261002-07/runtime/windows/001/slots/001/live07-20261002-001-001/source/src/predictor/market_form_residual.py",
+      "role": "source_code_hash_only",
+      "bytes": 46776,
+      "sha256": "50039cbc46f48d2f2d0dda8973e75dc73055872ff74b082821535060cc36b7f6"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-method-feasibility-20261003/src/predictor/market_form_residual.py",
+      "role": "source_code_hash_only",
+      "bytes": 46776,
+      "sha256": "50039cbc46f48d2f2d0dda8973e75dc73055872ff74b082821535060cc36b7f6"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-method-feasibility-20261003/src/predictor/research_input_firewall.py",
+      "role": "projection_implementation_hash_only",
+      "bytes": 9830,
+      "sha256": "af5bfc73e9bc85bacff547f80add1fb659771e80336268ee925764c4e2f9b87e"
+    }
+  ],
+  "actual_file_count": 233,
+  "actual_bytes_per_pass": 1888309,
+  "current_day_separate_census": {
+    "root": "/mnt/tenn-nvme2/tenn/greyhound-persistent-engineering-20261003-02/runtime/days/2026-10-03/admission/d3d72b7e1680073d1657d88083d98c79817c315d5fa12598fe80db6fcef09c4a/attempts",
+    "method": "count immediate admission.json filenames only; do not read bodies or mix membership",
+    "max_paths": 500,
+    "observed_at_required": true
+  },
+  "limitations": [
+    "No semantic revalidation of unprojected form, history or feature values",
+    "No present-code substitution for origin-bound implementation",
+    "No result or predictive-performance verification"
+  ]
+}
