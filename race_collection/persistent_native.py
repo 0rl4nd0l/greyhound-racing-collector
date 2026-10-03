@@ -60,6 +60,8 @@ def _verified_result(receipt_path, cfg, standing_ref, racing_date):
             or receipt.get('standing_authority') != standing_ref
             or receipt.get('racing_date') != racing_date):
         raise ValueError('persistent_native_preparation_binding_changed')
+    for inherited in receipt.get('inherited_refresh_failures', []):
+        checked(inherited)
     documents = {key: checked(receipt[key]) for key in
                  ('allocation', 'comparison', 'plan', 'contract', 'scope')}
     documents['reconciliation'] = _checked_reconciliation(receipt['reconciliation'])
@@ -238,6 +240,7 @@ def recovery_baseline(prepared, cfg):
             if (directory/name).is_file(): records.append(_ref(directory/name))
     return dict(closed_launch=launch, usage=used, source_grant_sha256=digest(grant),
         prior_owner_state=_ref(output/'persistent-owner-state.json'),
+        preserved_refresh_deferrals=[_ref(p) for p in sorted((output/'refresh-deferrals').glob('*.json'))],
         preserved_prediction_records=sorted(records, key=lambda r:r['path']),
         source_operation_count=len(source.get('operations', [])), source_operations_sha256=digest(source.get('operations', [])),
         attempt_count=len(ledger['attempts']), attempts_sha256=digest(ledger['attempts']))
@@ -268,12 +271,14 @@ def _reviewed_refresh_failure(selection, prior, halt, stop):
     the old terminal, checkpoint and incomplete publication remain immutable.
     """
     review = checked(selection['reviewed_failure'])
+    typed = review.get('disposition') == 'PROSPECTIVE_TYPED_UPSTREAM_OUTAGE_RECOVERY'
     if (review.get('schema_version') != 'persistent_reviewed_refresh_failure_v1'
-            or review.get('disposition') != 'PROSPECTIVE_CORRECTION_OLD_FAILURE_UNRESOLVED'
+            or (not typed and review.get('disposition') != 'PROSPECTIVE_CORRECTION_OLD_FAILURE_UNRESOLVED')
             or not review.get('authority_reference')
             or review.get('source_commit') != selection['source_commit']
             or review.get('cleanup') != selection['cleanup']
-            or halt.get('reason') != 'persistent_native_terminal_failure:LIVE_PHASE_FAILED'
+            or (halt.get('reason') != 'persistent_native_terminal_failure:LIVE_PHASE_FAILED'
+                and not (typed and halt.get('reason') == 'persistent_native_scope_stopped'))
             or stop.get('reason') != 'LIVE_PHASE_FAILED'):
         raise ValueError('persistent_recovery_refresh_review_invalid')
     terminal, lifecycle, checkpoint, phase = (
@@ -304,6 +309,8 @@ def _reviewed_refresh_failure(selection, prior, halt, stop):
             or checkpoint.get('cycle_id') != terminal['run_id'] or checkpoint.get('output_dir') != str(cycle)):
         raise ValueError('persistent_recovery_refresh_terminal_unverified')
     phases = checkpoint['phases']
+    report_name = ('refresh_prejump_report.json' if typed and not terminal['run_id'].endswith('_odds_capture')
+                   else 'odds_capture_refresh_report.json')
     if (len(phases) != 1 or phases[0].get('number') != 0 or phases[0].get('kind') != 'refresh'
             or phases[0].get('status') != 'COMPLETE' or phases[0].get('budget_exceeded') is not False
             or {'path':phases[0]['result_path'], 'sha256':phases[0]['result_sha256']} != review['phase_result']
@@ -312,16 +319,62 @@ def _reviewed_refresh_failure(selection, prior, halt, stop):
             or phase.get('final_verdict') != 'COLLECTION_PHASE_BLOCKED'
             or phase.get('run_id') != terminal['run_id']+'_phase_0'
             or Path(phase['output_dir']) != evidence/('shadow_autopilot_v1_'+phase['run_id'])
-            or Path(review['refresh_report']['path']) != Path(phase['output_dir'])/'odds_capture_refresh_report.json'
+            or Path(review['refresh_report']['path']) != Path(phase['output_dir'])/report_name
             or phase.get('current_race_index_publish', {}).get('status') != 'REJECTED'
             or phase['current_race_index_publish'].get('reason') != 'CURRENT_INDEX_SOURCE_INVALID'
             or phase['current_race_index_publish'].get('source_refresh_report_path') != review['refresh_report']['path']
             or report.get('status') != 'ACQUISITION_INCOMPLETE'
             or report.get('reason') != 'unisolated_selected_race_acquisition_failure'
-            or not any(row.get('success') is False and row.get('result', {}).get('success') is False
+            or (not typed and not any(row.get('success') is False and row.get('result', {}).get('success') is False
                 and row['result'].get('error') == 'discovery_canonical_jump_changed'
-                for row in report.get('downloads', []))):
+                for row in report.get('downloads', [])))):
         raise ValueError('persistent_recovery_refresh_checkpoint_unverified')
+    if typed:
+        from race_collection.live_freshness_contract import classify_refresh_outage
+        classified = classify_refresh_outage(evidence, terminal['run_id'])
+        if (classified is None or classified != checked(review['classified_outage'])
+                or classified['refresh_sha256'] != review['refresh_report']['sha256']
+                or classified['phase_result_sha256'] != review['phase_result']['sha256']
+                or not classified['upstream_statuses'] or set(classified['upstream_statuses']) != {502}
+                or classified['request_retries_added'] != 0 or classified['maximum_failed_cycles'] != 2):
+            raise ValueError('persistent_recovery_typed_outage_unverified')
+        stamp(terminal['at'])
+        return {**classified, 'observed_at':terminal['at'],
+            'source_evidence_root':str(evidence), 'inherited_review':selection['reviewed_failure'],
+            'allocation_sha256':prior['allocation_ref']['sha256']}
+    return None
+
+
+def _recovery_refresh_records(selection, prior, inherited):
+    """Preserve each classified failed cycle exactly once across packages."""
+    from race_collection.live_freshness_contract import classify_refresh_outage
+    records = []
+    runs = set()
+    for reference in selection['baseline'].get('preserved_refresh_deferrals', []):
+        value = checked(reference)
+        if Path(reference['path']).parent != Path(prior['output'])/'refresh-deferrals':
+            raise ValueError('persistent_recovery_refresh_record_outside_prior')
+        evidence = value.get('source_evidence_root', prior['plan']['evidence_root'])
+        classified = classify_refresh_outage(evidence, value['run_id'])
+        if (classified is None or any(value.get(k) != v for k,v in classified.items())
+                or value['run_id'] in runs or value.get('failed_cycle_count') != len(records)+1
+                or Path(reference['path']).name != value['run_id']+'.json'
+                or value.get('allocation_sha256',prior['allocation_ref']['sha256']) != prior['allocation_ref']['sha256']):
+            raise ValueError('persistent_recovery_prior_refresh_unverified')
+        runs.add(value['run_id'])
+        records.append((reference,{**value,'source_evidence_root':str(evidence),
+            'allocation_sha256':prior['allocation_ref']['sha256']}))
+    if inherited is not None:
+        if inherited['run_id'] in runs:
+            prior_row = next(v for r,v in records if v['run_id'] == inherited['run_id'])
+            if any(prior_row.get(k) != inherited[k] for k in
+                   ('refresh_sha256','phase_result_sha256','upstream_statuses')):
+                raise ValueError('persistent_recovery_refresh_duplicate_changed')
+        else:
+            records.append((None,{**inherited,'failed_cycle_count':len(records)+1}))
+    if len(records) > 2:
+        raise ValueError('persistent_recovery_failed_refresh_budget_exhausted')
+    return records
 
 
 def prepare_recovery(cfg, standing_ref, racing_date, now):
@@ -361,8 +414,9 @@ def prepare_recovery(cfg, standing_ref, racing_date, now):
             or selection['prior_stop']['path'] != str(old_scope.session/'STOP.json')
             ):
         raise ValueError('persistent_recovery_cleanup_unverified')
+    inherited_outage = None
     if selection.get('reviewed_failure') is not None:
-        _reviewed_refresh_failure(selection, prior, halt, stop)
+        inherited_outage = _reviewed_refresh_failure(selection, prior, halt, stop)
     elif (halt.get('reason') != 'operational_prediction_failed_preserved_consumption'
             or stop.get('reason') != 'PERSISTENT_OWNER_FAILURE'):
         raise ValueError('persistent_recovery_cleanup_unverified')
@@ -371,6 +425,7 @@ def prepare_recovery(cfg, standing_ref, racing_date, now):
     recovery_root = dayroot/'recoveries'/reference['sha256']
     receipt_path = recovery_root/'native-prepared.json'
     baseline = selection['baseline']
+    refresh_records = _recovery_refresh_records(selection, prior, inherited_outage)
     live = recovery_baseline(prior, cfg)
     if cleanup['closed_launch'] != baseline['closed_launch'] or live['closed_launch'] != baseline['closed_launch']:
         raise ValueError('persistent_recovery_closed_lease_changed')
@@ -433,10 +488,24 @@ def prepare_recovery(cfg, standing_ref, racing_date, now):
     # Preserve cadence, cumulative lane counts and every old dispatch in its
     # original file. The shared prediction roots already exclude failed races.
     old_state = json.loads((prior_output/'persistent-owner-state.json').read_bytes())
+    inherited_refresh_failures = []
+    for original, value in refresh_records:
+        target = package/'refresh-deferrals'/(value['run_id']+'.json')
+        if original is not None:
+            original_copy = package/'refresh-deferrals'/'originals'/(value['run_id']+'.json')
+            original_copy.parent.mkdir(parents=True, exist_ok=True)
+            raw = Path(original['path']).read_bytes()
+            if hashlib.sha256(raw).hexdigest() != original['sha256']:
+                raise ValueError('persistent_recovery_prior_refresh_changed')
+            with original_copy.open('xb') as stream:
+                stream.write(raw); stream.flush(); os.fsync(stream.fileno())
+            value = {**value,'inherited_from':original,'inherited_bytes':_ref(original_copy)}
+        create_once(target,value)
+        inherited_refresh_failures.append(_ref(target))
     create_once(package/'persistent-owner-state.json', dict(schema_version='persistent_owner_state_v1',
         dispatches=[], inventory=None, completed_lanes=old_state['completed_lanes'],
         deferred_lanes=old_state.get('deferred_lanes', {'full':0,'odds':0}),
-        refresh_failures=[], next_due_at=old_state.get('next_due_at', {}),
+        refresh_failures=inherited_refresh_failures, next_due_at=old_state.get('next_due_at', {}),
         prior_owner_state=_ref(prior_output/'persistent-owner-state.json'), recovery_selection=reference))
     receipt = dict(schema_version='persistent_native_preparation_v1', status='PREPARED_NOT_STARTED',
         at=current.isoformat(), standing_authority=standing_ref, racing_date=racing_date,
@@ -444,6 +513,7 @@ def prepare_recovery(cfg, standing_ref, racing_date, now):
         allocation=prior['allocation_ref'], comparison=comparison, plan=_ref(Path(result['plan'])),
         contract=_ref(package/'contract.json'), reconciliation=_ref(scope.session/'reconciliation.json'),
         scope=_ref(scope.session/'scope.json'), recovery_selection=reference,
+        inherited_refresh_failures=inherited_refresh_failures,
         prior_root_health=(_ref(recovery_root/'prior-root-health.json')
             if (recovery_root/'prior-root-health.json').exists() else None))
     create_once(receipt_path, receipt)
