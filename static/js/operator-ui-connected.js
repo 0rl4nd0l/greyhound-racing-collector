@@ -55,7 +55,7 @@
     if(connection.dataset.summary===summary)return;
     connection.dataset.summary=summary;
     connection.replaceChildren();
-    const predictionItem=node('div',undefined,'today-status__item');predictionItem.append(node('span','New predictions'),node('strong',prediction));
+    const predictionItem=node('div',undefined,'today-status__item');predictionItem.append(node('span',document.querySelector('#persistent-collection')?'Manual predictions':'New predictions'),node('strong',prediction));
     const inputItem=node('div',undefined,'today-status__item');inputItem.append(node('span','Race inputs'),node('strong',input+observed));
     const historyItem=node('div',undefined,'today-status__item');historyItem.append(node('span','Verified history'));const historyLink=node('a','Open forecasts');historyLink.href='/operator-ui/forecasts';const historyStrong=node('strong');historyStrong.append(historyLink);historyItem.append(historyStrong);
     connection.append(predictionItem,inputItem,historyItem);

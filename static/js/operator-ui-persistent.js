@@ -35,7 +35,7 @@
       target.append(node('p',`${data.race_count} races discovered · ${data.upcoming.length} still upcoming. Discovery does not establish fresh runner inputs or forecast readiness.`));
       target.append(node('p','Engineering evidence only. Scientific admission remains CANARY_NOT_VERIFIED.'));
       if(target.dataset.today==='true'){
-        const rows=data.upcoming.map(race=>[`${race.venue} R${race.race_number}`,time(race.jump_at),'Waiting for verified capture and forecast']);
+        const rows=data.upcoming.map(race=>[`${race.venue} R${race.race_number}`,time(race.jump_at),'Readiness not established by discovery']);
         target.append(table(['Race','Scheduled jump (Melbourne)','Forecast readiness'],rows.slice(0,10)));
         if(rows.length>10){const more=node('details');more.append(node('summary',`Show ${rows.length-10} more upcoming races`),table(['Race','Scheduled jump (Melbourne)','Forecast readiness'],rows.slice(10)));target.append(more);}
         const link=node('a','Open verified forecasts');link.href='/operator-ui/forecasts';const paragraph=node('p');paragraph.append(link);target.append(paragraph);

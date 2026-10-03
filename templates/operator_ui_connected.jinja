@@ -37,7 +37,7 @@
         {% set persistent_today = true %}
         {% include "operator_ui_persistent.jinja" %}
         <section id="connection-state" class="today-status" role="status" aria-live="polite">
-          <div class="today-status__item"><span>Manual predictions</span><strong>{{ 'Checking…' if connected else 'Unavailable' }}</strong></div>
+          <div class="today-status__item"><span>{{ "Manual predictions" if config.get("OPERATOR_UI_PERSISTENT_DISPLAY") else "New predictions" }}</span><strong>{{ 'Checking…' if connected else 'Unavailable' }}</strong></div>
           <div class="today-status__item"><span>Race inputs</span><strong>{{ 'Checking…' if connected else 'Not connected' }}</strong></div>
           <div class="today-status__item"><span>Verified history</span><strong><a href="/operator-ui/forecasts">Open forecasts</a></strong></div>
         </section>
