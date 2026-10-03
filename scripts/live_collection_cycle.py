@@ -610,6 +610,17 @@ def run_live_collection_cycle(args, *, odds_only: bool):
             access = SportsbetAccess().read()
             if access["phase"] != "OPEN" or access["access_basis"]["status"] != "permitted":
                 return False
+            if scope.value.get("persistent_allocation"):
+                from race_collection.metadata_exclusion import classify_metadata_exclusion
+                excluded = classify_metadata_exclusion(evidence, run_id)
+                if excluded is not None:
+                    directory = Path(args.live_freshness_contract).resolve().parent / "metadata-exclusions"
+                    with native_publication_lock(evidence, exclusive=True):
+                        create_once(directory / (run_id + ".json"), {
+                            **excluded, "observed_at": daemon.wall_clock_now().isoformat(),
+                            "allocation_sha256": scope.value["persistent_allocation"]["sha256"],
+                        })
+                    return True
             classified = classify_refresh_outage(evidence, run_id)
             if classified is None:
                 return False
