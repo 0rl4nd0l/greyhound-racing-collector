@@ -62,7 +62,7 @@ def control_status(pointer_path, output, health, now):
 
 
 def validate_binding(binding):
-    if set(binding)-{'producer_packages'} != {'config', 'config_sha256', 'source', 'source_commit', 'python'}:
+    if set(binding)-{'producer_packages','daily_producer'} != {'config', 'config_sha256', 'source', 'source_commit', 'python'}:
         raise ValueError('invalid_persistent_binding')
     for name in ('config', 'source', 'python'):
         path = Path(binding[name])
@@ -77,6 +77,14 @@ def validate_binding(binding):
         else:
             from native_verification import validate_packages
         validate_packages(binding['producer_packages'])
+    if 'daily_producer' in binding:
+        if 'producer_packages' not in binding:
+            raise ValueError('daily_producer_requires_history_approvals')
+        if __package__:
+            from .native_verification import validate_daily_policy
+        else:
+            from native_verification import validate_daily_policy
+        validate_daily_policy(binding['daily_producer'])
     return binding
 
 
