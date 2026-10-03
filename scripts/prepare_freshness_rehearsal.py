@@ -26,6 +26,22 @@ def utc_now():
     return datetime.now(timezone.utc)
 
 
+def remaining_capture_jobs(campaign):
+    """Package the native remaining allowance without rewriting its ledger."""
+    ledger = json.loads((campaign.root / 'ledger.json').read_bytes())
+    remaining = campaign.value['max_capture_attempts'] - len(ledger['attempts'])
+    if campaign.programme:
+        # Match Campaign.available/consume: authenticated incident/development
+        # consumption belongs to separate allowances; the study still has its
+        # own 1,000-capture ceiling as well as the cumulative campaign ceiling.
+        remaining += (campaign.development_usage(ledger)['capture_attempts']
+                      + campaign.incident_usage(ledger)['capture_attempts'])
+        remaining = min(remaining, 1000 - campaign.programme_usage(ledger)['capture_attempts'])
+        if remaining <= 0:
+            raise ValueError('campaign_capture_allowance_consumed')
+    return remaining
+
+
 def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False, observation_minutes=90, start_after_minutes=None, comparison_plan=None, prediction_root=None, engineering_authority=None, development_authority=None, reduced_request_cap=None, incident_authority=None, incident_slot=None):
     if engineering_authority is not None and (
             not operational_predictions or campaign_root is None
@@ -253,7 +269,7 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
             "operation": "operational_prediction",
             "history_db_path": str(history_db),
             "capture_db_path": str(db),
-            "max_jobs": (campaign.incident["max_capture_attempts_per_window"] if incident_authority else 6 if development_authority else campaign.value['max_capture_attempts'] - len(json.loads((campaign.root / "ledger.json").read_bytes())["attempts"])),
+            "max_jobs": (campaign.incident["max_capture_attempts_per_window"] if incident_authority else 6 if development_authority else remaining_capture_jobs(campaign)),
             "result_access": False, "research_activation": False,
         }
         if comparison_binding is not None:
