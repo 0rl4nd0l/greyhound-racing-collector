@@ -1271,6 +1271,24 @@ def complete_empty_timing_selection(report: Mapping[str, Any]) -> bool:
 
 
 def complete_empty_metadata_selection(report: Mapping[str, Any]) -> bool:
+    return _complete_empty_metadata_selection(report)
+
+
+def complete_unavailable_metadata_selection(report: Mapping[str, Any]) -> bool:
+    """Classify completed exclusions for waiting only, never index publication."""
+    try:
+        rows = report["sidecar_metadata_coverage"]["races"]
+        return (
+            report.get("status") == "METADATA_COVERAGE_INCOMPLETE"
+            and report.get("accepted_csv_count") == report.get("selected_count")
+            and all(row.get("native_identity_evidence_status") == "verified" for row in rows)
+            and _complete_empty_metadata_selection(report, allow_rejected_expert=True)
+        )
+    except (KeyError, TypeError, AttributeError):
+        return False
+
+
+def _complete_empty_metadata_selection(report: Mapping[str, Any], *, allow_rejected_expert=False) -> bool:
     """Authenticate a completed refresh whose candidates are all ineligible or locally quarantined.
 
     This is not a successful race input. Keep every race excluded, and do not
@@ -1370,7 +1388,15 @@ def complete_empty_metadata_selection(report: Mapping[str, Any]) -> bool:
             if (
                 not row.get("csv_path")
                 or not row.get("sidecar_path")
-                or row.get("safe_expert_form_present") is not True
+                or (row.get("safe_expert_form_present") is not True and not (
+                    allow_rejected_expert
+                    and isinstance(row.get("expert_form_rejected_reasons"), list)
+                    and bool(row["expert_form_rejected_reasons"])
+                    and set(row["expert_form_rejected_reasons"]) <= {
+                        "expert_form_metadata_captured_at_not_before_jump",
+                        "expert_form_runner_metadata_missing",
+                    }
+                ))
                 or not isinstance(reasons, list)
                 or any(reason not in local_rejections for reason in reasons)
             ):
@@ -1380,6 +1406,8 @@ def complete_empty_metadata_selection(report: Mapping[str, Any]) -> bool:
         )
         for number, (row, exclusion) in enumerate(zip(rows, selection["exclusions"])):
             allowed_missing = {"weather", "track_condition"}
+            if allow_rejected_expert:
+                allowed_missing.add("expert_form")
             if number in local_quarantines:
                 allowed_missing.update(
                     {

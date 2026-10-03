@@ -142,6 +142,15 @@ def classify_native_dispatch(evidence, record, allocation_sha, *, output=None):
         run_id = terminal.get('run_id')
         import re
         if isinstance(run_id, str) and re.fullmatch(r'[A-Za-z0-9_+.-]+', run_id):
+            metadata = Path(output)/'metadata-exclusions'/(run_id+'.json')
+            if (metadata.is_file() and Path(terminal.get('output_dir', '')) ==
+                    Path(evidence)/('shadow_autopilot_daemonization_v1_'+run_id)):
+                from race_collection.metadata_exclusion import verify_metadata_exclusion
+                ref = reference(metadata)
+                verify_metadata_exclusion(ref, evidence, allocation_sha)
+                return {'disposition': 'METADATA_EXCLUDED', 'runtime_action': action,
+                        'terminal': reference(terminal_path), 'lifecycle': reference(lifecycle_path),
+                        'metadata_exclusion': ref}
             retained = Path(output)/'refresh-deferrals'/(run_id+'.json')
             if (retained.is_file() and Path(terminal.get('output_dir', '')) ==
                     Path(evidence)/('shadow_autopilot_daemonization_v1_'+run_id)):
@@ -362,6 +371,8 @@ class DailyOwner:
                 record['native_disposition'] = verdict['disposition']
                 key = 'completed_lanes' if verdict['disposition'] == 'COMPLETED' else 'deferred_lanes'
                 self.state[key][lane] += 1
+                if verdict['disposition'] == 'METADATA_EXCLUDED':
+                    self.state['metadata_exclusion'] = verdict['metadata_exclusion']
                 if verdict['disposition'] == 'REFRESH_OUTAGE':
                     ref = verdict['refresh_deferral']
                     if ref not in self.state['refresh_failures']:
@@ -381,10 +392,14 @@ class DailyOwner:
         # triggers the strict path-swap guard. Wait at the owner boundary;
         # never catch or weaken that integrity rejection.
         publishing = any(lane in self.children for lane in ('full', 'odds'))
-        pending = publishing or refresh_outage_pending(self.output, self.plan,
+        from race_collection.metadata_exclusion import metadata_exclusion_pending
+        excluded = not publishing and metadata_exclusion_pending(self.plan,
+            self.state.get('metadata_exclusion'), self.prepared['allocation_ref']['sha256'], now())
+        pending = publishing or excluded or refresh_outage_pending(self.output, self.plan,
             self.state['refresh_failures'], self.prepared['allocation_ref']['sha256'])
         self.state['forecast_admission_reason'] = (
             'CURRENT_INDEX_REFRESH_IN_PROGRESS' if publishing
+            else 'NO_QUALIFIED_METADATA' if excluded
             else 'UPSTREAM_TEMPORARY_UNAVAILABLE' if pending else None)
         self.state['forecast_admission_ready'] = not pending
         self.save()
