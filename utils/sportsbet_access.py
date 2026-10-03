@@ -138,11 +138,19 @@ class SportsbetAccess:
                              max_operations, rationale, engineering_quiet_seconds=None,
                              engineering_authority=None, development_authority=None,
                              development_slot=None, incident_authority=None,
-                             incident_slot=None, incident_kind='prediction'):
+                             incident_slot=None, incident_kind='prediction', persistent_allocation=None):
         """Explicit prospective user authority; never automatic denial recovery."""
         with self.locked():
             value = self.read()
             now = self.clock()
+            persistent = None
+            if persistent_allocation is not None:
+                from race_collection.persistent_authority import load_persistent_allocation
+                persistent = load_persistent_allocation(persistent_allocation)
+                if (any(x is not None for x in (engineering_authority, development_authority,
+                        development_slot, incident_authority, incident_slot, engineering_quiet_seconds))
+                        or value['phase'] != 'OPEN'):
+                    raise SportsbetAccessBlocked('persistent_source_requires_open_exclusive_profile')
             if engineering_authority is not None and (
                     not isinstance(engineering_authority, str) or not engineering_authority.strip()
                     or engineering_authority != reference or value['phase'] != 'OPEN'
@@ -180,8 +188,8 @@ class SportsbetAccess:
                     or now < effective_not_before):
                 raise SportsbetAccessBlocked('diagnostic_authority_state_or_cooldown')
             if (not reference or not rationale or not math.isfinite(expires_at)
-                    or not now < expires_at <= now + 10800
-                    or type(max_operations) is not int or not 1 <= max_operations <= 192):
+                    or not now < expires_at <= now + (26 * 3600 if persistent else 10800)
+                    or type(max_operations) is not int or not 1 <= max_operations <= (persistent['max_source_operations'] if persistent else 192)):
                 raise ValueError('invalid_finite_diagnostic_authority')
             row = dict(reference=reference, rationale=rationale, authorized_at=now,
                        expires_at=expires_at, max_operations=max_operations,
@@ -225,6 +233,16 @@ class SportsbetAccess:
                 incident_source_usage(value, 0)
             elif incident_slot is not None:
                 raise ValueError('incident_authority_required')
+            if persistent:
+                from race_collection.persistent_authority import validate_persistent_lease, persistent_source_usage
+                row.update(persistent_allocation=persistent_allocation,
+                    persistent_allocation_sha256=persistent_allocation['sha256'],
+                    persistent_allocation_id=persistent['allocation_id'])
+                validate_persistent_lease(row)
+                persistent_source_usage(value, 0)
+                if any(a.get('persistent_allocation_id') == persistent['allocation_id']
+                       for a in value.get('diagnostic_authorizations', [])):
+                    raise ValueError('persistent_source_day_consumed')
             value.setdefault('diagnostic_authorizations', []).append(row)
             value['diagnostic_authority'] = row
             value.setdefault('operating_policy', dict(reference=reference,
@@ -234,6 +252,16 @@ class SportsbetAccess:
 
     def _check_diagnostic(self, value):
         diagnostic = value.get('diagnostic_authority')
+        if (os.environ.get('GREYHOUND_PERSISTENT_ALLOCATION_SHA256')
+                and (not diagnostic or 'persistent_allocation' not in diagnostic)):
+            raise SportsbetAccessBlocked('sportsbet_persistent_allocation_not_current')
+        persistent = None
+        if diagnostic and 'persistent_allocation' in diagnostic:
+            from race_collection.persistent_authority import validate_persistent_lease, persistent_source_usage
+            persistent = validate_persistent_lease(diagnostic)
+            persistent_source_usage(value, 0)
+            if os.environ.get('GREYHOUND_PERSISTENT_ALLOCATION_SHA256') != diagnostic['persistent_allocation_sha256']:
+                raise SportsbetAccessBlocked('sportsbet_persistent_owner_required')
         if (os.environ.get('GREYHOUND_INCIDENT_AUTHORITY_SHA256')
                 and (not diagnostic or 'incident_authority' not in diagnostic)):
             raise SportsbetAccessBlocked('sportsbet_incident_allocation_not_current')
@@ -248,13 +276,13 @@ class SportsbetAccess:
                     diagnostic == value['diagnostic_authorizations'][-1]
                     and bool(diagnostic['reference']) and bool(diagnostic['rationale'])
                     and type(diagnostic['max_operations']) is int
-                    and 1 <= diagnostic['max_operations'] <= 192
+                    and 1 <= diagnostic['max_operations'] <= (persistent['max_source_operations'] if persistent else 192)
                     and type(diagnostic['operation_start']) is int
                     and 0 <= diagnostic['operation_start'] <= len(value.get('operations', []))
                     and all(type(diagnostic[key]) in {int, float}
                             and math.isfinite(diagnostic[key])
                             for key in ('authorized_at', 'expires_at'))
-                    and 0 < diagnostic['expires_at'] - diagnostic['authorized_at'] <= 10800
+                    and 0 < diagnostic['expires_at'] - diagnostic['authorized_at'] <= (26 * 3600 if persistent else 10800)
                     and self.clock() >= diagnostic['authorized_at']
                 )
             except (KeyError, IndexError, TypeError):
@@ -373,6 +401,9 @@ class SportsbetAccess:
                 if 'incident_authority' in diagnostic:
                     record.update({key: diagnostic[key] for key in
                         ('incident_authority_sha256', 'incident_slot', 'incident_kind')})
+                if 'persistent_allocation' in diagnostic:
+                    record.update({key: diagnostic[key] for key in
+                        ('persistent_allocation_sha256', 'persistent_allocation_id')})
                 operations.append(record)
             if recovery:
                 value["recovery_attempts"] += 1

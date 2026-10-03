@@ -12,8 +12,8 @@ from race_collection.live_phase_checkpoint import atomic_json
 
 class Campaign:
     def __init__(self, path, *, engineering_authority=None, development_authority=None,
-                 incident_authority=None, incident_slot=None):
-        if sum(v is not None for v in (engineering_authority,development_authority,incident_authority)) > 1:
+                 incident_authority=None, incident_slot=None, persistent_allocation=None):
+        if sum(v is not None for v in (engineering_authority,development_authority,incident_authority,persistent_allocation)) > 1:
             raise ValueError("conflicting_campaign_profiles")
         if (incident_authority is None) != (incident_slot is None):
             raise ValueError('incident_authority_and_slot_required')
@@ -154,8 +154,25 @@ class Campaign:
                           'max_live_seconds':7260,'incident_authority':incident_authority,'incident_slot':incident_slot}
             self.programme = None
 
+        self.persistent_allocation = persistent_allocation
+        self.persistent = None
+        if persistent_allocation is not None:
+            from race_collection.persistent_authority import load_persistent_allocation
+            self.persistent = load_persistent_allocation(persistent_allocation)
+            if self.persistent['campaign_id'] != self.value['campaign_id']:
+                raise ValueError('persistent_campaign_binding_changed')
+            self.value = {**self.value, **{key: self.persistent[key] for key in
+                ('max_capture_attempts', 'max_logical_requests', 'max_live_seconds')},
+                'persistent_allocation': persistent_allocation}
+            self.programme = None
+
     @staticmethod
     def from_scope(value):
+        if value.get('persistent_allocation') is not None:
+            if any(value.get(k) is not None for k in
+                   ('engineering_authority', 'development_authority', 'incident_authority', 'incident_slot')):
+                raise ValueError('conflicting_campaign_profiles')
+            return Campaign(value['campaign_root'], persistent_allocation=value['persistent_allocation'])
         if value.get('incident_authority') is None and value.get('incident_slot') is not None:
             raise ValueError('incident_authority_and_slot_required')
         if value.get('incident_authority') is not None:
@@ -184,14 +201,42 @@ class Campaign:
         initial = self.programme['initial_counters']
         pilot = self.development_usage(value)
         incident = self.incident_usage(value)
+        persistent = self.persistent_usage(value)
         return {
             'capture_attempts': len(value['attempts']) - initial['capture_attempts']
-                - sum(bool(r.get('engineering_authority')) for r in value['attempts']) - pilot['capture_attempts'] - incident['capture_attempts'],
+                - sum(bool(r.get('engineering_authority')) for r in value['attempts']) - pilot['capture_attempts'] - incident['capture_attempts'] - persistent['capture_attempts'],
             'logical_requests': value['logical_requests'] - initial['logical_requests']
-                - value.get('preprogramme_engineering_requests', 0) - pilot['logical_requests'] - incident['logical_requests'],
+                - value.get('preprogramme_engineering_requests', 0) - pilot['logical_requests'] - incident['logical_requests'] - persistent['logical_requests'],
             'live_seconds': sum(r['charged_seconds'] for r in value['launches'].values()
-                                if not r.get('engineering_authority')) - initial['live_seconds'] - pilot['live_seconds'] - incident['live_seconds'],
+                                if not r.get('engineering_authority')) - initial['live_seconds'] - pilot['live_seconds'] - incident['live_seconds'] - persistent['live_seconds'],
         }
+
+    def persistent_usage(self, value, *, selected=False):
+        from race_collection.persistent_authority import persistent_usage, TAG_KEYS
+        if selected:
+            rows = [*value['attempts'], *value['launches'].values(),
+                    *value.get('persistent_operation_request_usage', {}).values()]
+            if any(TAG_KEYS.intersection(row)
+                   and row.get('persistent_allocation_id') == self.persistent['allocation_id']
+                   and row.get('persistent_allocation') != self.persistent_allocation for row in rows):
+                raise ValueError('persistent_daily_allocation_changed')
+        return persistent_usage(value, self.value['campaign_id'], allocation_sha256=
+            self.persistent_allocation['sha256'] if selected else None)
+
+    def persistent_tags(self):
+        return dict(persistent_allocation=self.persistent_allocation,
+                    persistent_allocation_sha256=self.persistent_allocation['sha256'],
+                    persistent_allocation_id=self.persistent['allocation_id'])
+
+    def persistent_window(self, now=None, *, kind='prediction', preflight=False):
+        from race_collection.persistent_authority import stamp
+        if kind not in {'prediction', 'python', 'browser'}:
+            raise ValueError('persistent_results_forbidden')
+        current = now or datetime.now(timezone.utc)
+        start = stamp(self.persistent['issued_at'] if preflight else self.persistent['starts_at'])
+        if not start <= current < stamp(self.persistent['ends_at']):
+            raise ValueError('persistent_daily_window_closed')
+        return self.persistent
 
     def incident_usage(self, value, *, selected=False):
         from race_collection.incident_engineering import incident_usage
@@ -279,6 +324,8 @@ class Campaign:
         return day
 
     def check_programme_time(self):
+        if self.persistent:
+            self.persistent_window(preflight=True)
         if self.incident:
             self.incident_window(preflight=True)
         if self.development:
@@ -303,15 +350,23 @@ class Campaign:
             atomic_json(path, value)
 
     def admit(self, launch, now):
+        if self.persistent:
+            self.persistent_window(now)
         with self.ledger() as value:
             if value.get('source_holds'):
                 raise ValueError('campaign_source_hold')
             row = value['launches'].get(launch)
-            if row is None or row.get('closed_at') or now.timestamp() >= row['deadline_epoch']:
+            if (row is None or row.get('closed_at') or now.timestamp() >= row['deadline_epoch']
+                    or self.persistent and row.get('persistent_allocation') != self.persistent_allocation):
                 raise ValueError('campaign_live_lease_closed')
 
     def begin(self, launch, *, now, deadline):
         self.check_programme_time()
+        if self.persistent:
+            from race_collection.persistent_authority import stamp
+            self.persistent_window(now)
+            if deadline > stamp(self.persistent['cleanup_by']):
+                raise ValueError('persistent_cleanup_deadline_exceeded')
         if self.development:
             day = self.development_day(now)
             if deadline > now.astimezone(ZoneInfo('Australia/Melbourne')).replace(hour=14, minute=40, second=0, microsecond=0):
@@ -327,14 +382,24 @@ class Campaign:
         with self.ledger() as value:
             if value.get('source_holds'):
                 raise ValueError('campaign_source_hold')
+            if self.persistent and launch in value['launches']:
+                self.persistent_usage(value, selected=True)
+                prior = value['launches'][launch]
+                if (not prior.get('closed_at') and prior.get('persistent_allocation') == self.persistent_allocation
+                        and prior['deadline_epoch'] == deadline.timestamp()
+                        and datetime.fromisoformat(prior['started_at']) <= now < deadline
+                        and not any(k != launch and not r.get('closed_at') for k, r in value['launches'].items())):
+                    return
+                raise ValueError('persistent_launch_consumed')
             if launch in value['launches'] or any(not r.get('closed_at') for r in value['launches'].values()):
                 raise ValueError('campaign_owner_or_launch_already_exists')
             if self.incident and any(r.get('incident_authority_sha256')==self.incident_authority['sha256']
                     and r.get('incident_slot')==self.incident_slot for r in value['launches'].values()):
                 raise ValueError('incident_slot_consumed')
-            used = (self.incident_usage(value,selected=True)['live_seconds'] if self.incident else
+            used = (self.persistent_usage(value,selected=True)['live_seconds'] if self.persistent else
+                    self.incident_usage(value,selected=True)['live_seconds'] if self.incident else
                     self.development_usage(value)['live_seconds'] if self.development else
-                    sum(r['charged_seconds'] for r in value['launches'].values()) - self.development_usage(value)['live_seconds'] - self.incident_usage(value)['live_seconds'])
+                    sum(r['charged_seconds'] for r in value['launches'].values()) - self.development_usage(value)['live_seconds'] - self.incident_usage(value)['live_seconds'] - self.persistent_usage(value)['live_seconds'])
             charge = (deadline - now).total_seconds()
             if (charge <= 0 or used + charge > self.value['max_live_seconds']
                     or self.programme and self.programme_usage(value)['live_seconds']+charge>580800):
@@ -344,6 +409,8 @@ class Campaign:
                 raise ValueError('development_slot_consumed')
             value['launches'][launch] = dict(started_at=now.isoformat(),
                 deadline_epoch=deadline.timestamp(), charged_seconds=charge)
+            if self.persistent:
+                value['launches'][launch].update(self.persistent_tags())
             if self.development:
                 value['launches'][launch].update(self.development_tags(day))
             if self.incident:
@@ -361,22 +428,31 @@ class Campaign:
 
     def available(self):
         with self.ledger() as value:
+            if self.persistent:
+                self.persistent_window()
+                return self.persistent_usage(value, selected=True)['capture_attempts'] < self.persistent['max_capture_attempts']
             if self.incident:
                 self.incident_window()
                 return self.incident_usage(value,selected=True)['capture_attempts'] < self.incident['max_capture_attempts_per_window']
             if self.development:
                 return (self.development_usage(value)['capture_attempts'] < 24
                         and self.development_usage(value, self.development_day())['capture_attempts'] < 6)
-            return (len(value['attempts']) - self.development_usage(value)['capture_attempts'] - self.incident_usage(value)['capture_attempts'] < self.value['max_capture_attempts'] and
+            return (len(value['attempts']) - self.development_usage(value)['capture_attempts'] - self.incident_usage(value)['capture_attempts'] - self.persistent_usage(value)['capture_attempts'] < self.value['max_capture_attempts'] and
                     (not self.programme or self.programme_usage(value)['capture_attempts']<1000))
 
     def consume(self, claim, item):
         self.check_programme_time()
-        if self.incident:
-            self.incident_window()
-            from race_collection.incident_engineering import checked
-            study=checked(self.incident['study_plan'])
-            claims=Path(study['programme_root'])/self.incident['study_plan']['sha256']/'attempts'
+        if self.incident or self.persistent:
+            if self.persistent:
+                self.persistent_window()
+                from race_collection.persistent_authority import checked
+                study_ref = self.persistent['study_plan']
+            else:
+                self.incident_window()
+                from race_collection.incident_engineering import checked
+                study_ref = self.incident['study_plan']
+            study=checked(study_ref)
+            claims=Path(study['programme_root'])/study_ref['sha256']/'attempts'
             identities=set(item.get('race_id_aliases',[]))|{item['race_id']}
             if any((claims/hashlib.sha256(identity.encode()).hexdigest()/'admission.json').exists() for identity in identities):
                 raise ValueError('incident_study_identity_already_admitted')
@@ -388,9 +464,11 @@ class Campaign:
             if self.development and (self.development_usage(value)['capture_attempts'] >= 24
                     or self.development_usage(value, day)['capture_attempts'] >= 6):
                 raise ValueError('development_capture_allowance_consumed')
+            if self.persistent and self.persistent_usage(value,selected=True)['capture_attempts'] >= self.persistent['max_capture_attempts']:
+                raise ValueError('persistent_capture_allowance_consumed')
             if self.incident and self.incident_usage(value,selected=True)['capture_attempts']>=self.incident['max_capture_attempts_per_window']:
                 raise ValueError('incident_capture_allowance_consumed')
-            if (not self.development and not self.incident and len(value['attempts']) - self.development_usage(value)['capture_attempts'] - self.incident_usage(value)['capture_attempts'] >= self.value['max_capture_attempts']
+            if (not self.development and not self.incident and not self.persistent and len(value['attempts']) - self.development_usage(value)['capture_attempts'] - self.incident_usage(value)['capture_attempts'] - self.persistent_usage(value)['capture_attempts'] >= self.value['max_capture_attempts']
                     or self.programme and self.programme_usage(value)['capture_attempts']>=1000):
                 raise ValueError('campaign_capture_allowance_consumed')
             aliases = set(item.get('race_id_aliases', [item['race_id']])) | {item['race_id']}
@@ -400,6 +478,8 @@ class Campaign:
             value['attempts'].append(dict(claim=str(claim), race_id=item['race_id'],
                 aliases=sorted(aliases), window=item['capture_window_minutes'], item=item,
                 consumed_at=datetime.now(timezone.utc).isoformat()))
+            if self.persistent:
+                value['attempts'][-1].update(self.persistent_tags())
             if self.development:
                 value['attempts'][-1].update(self.development_tags(day))
             if self.incident:
@@ -423,6 +503,22 @@ class Campaign:
             value['logical_requests'] += 1
 
     def request(self, *, kind='prediction'):
+        if self.persistent:
+            self.persistent_window(kind=kind)
+            request_kind = 'python' if kind == 'prediction' else kind
+            with self.ledger() as value:
+                if value.get('source_holds'):
+                    raise ValueError('campaign_source_hold')
+                used = self.persistent_usage(value, selected=True)
+                cap = self.persistent['max_python_requests' if request_kind == 'python' else 'max_browser_navigations']
+                if used[request_kind] >= cap:
+                    raise ValueError('persistent_request_cap_exhausted')
+                row = value.setdefault('persistent_operation_request_usage', {}).setdefault(
+                    self.persistent['allocation_id'], {**self.persistent_tags(),
+                        'counts': {'python': 0, 'browser': 0, 'results': 0}})
+                row['counts'][request_kind] += 1
+                value['logical_requests'] += 1
+            return
         if self.incident:
             self.incident_window(kind=kind)
             with self.ledger() as value:
@@ -444,7 +540,7 @@ class Campaign:
         with self.ledger() as value:
             if value.get('source_holds'):
                 raise ValueError('campaign_source_hold')
-            if (value['logical_requests'] - self.development_usage(value)['logical_requests'] - self.incident_usage(value)['logical_requests'] >= self.value['max_logical_requests']
+            if (value['logical_requests'] - self.development_usage(value)['logical_requests'] - self.incident_usage(value)['logical_requests'] - self.persistent_usage(value)['logical_requests'] >= self.value['max_logical_requests']
                     or self.programme and self.programme_usage(value)['logical_requests']>=1304000):
                 raise ValueError('campaign_request_cap_exhausted')
             if self.programme:
