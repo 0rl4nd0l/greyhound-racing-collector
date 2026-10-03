@@ -263,6 +263,93 @@ def _checked_recovery_refresh_report(ref):
     return json.loads(raw)
 
 
+def _quiet_publication_view(prior, index_path):
+    # This verifies retained historical publication integrity, not freshness for
+    # new admission. The successor must publish its own fresh native index.
+    from race_collection.synchronous_manual_capture import bounded_current_race_index
+    return bounded_current_race_index(current_time=datetime.now(timezone.utc),
+        timeout_seconds=5, index_path=index_path,
+        evidence_root=Path(prior['plan']['evidence_root']),
+        max_age_seconds=270, return_verified_view=True)
+
+
+def _reviewed_publication_failure(selection, prior, halt, stop, review):
+    """Permit only explicit reviewed correction after an owned publication overlap.
+
+    The original inner exception was lost. Correlation and a quiet strict replay
+    support prospective repair; neither reclassifies the old failed observation
+    nor swallows PATH_UNSAFE in normal operation.
+    """
+    if (review.get('schema_version') != 'persistent_reviewed_publication_failure_v1'
+            or review.get('disposition') != 'PROSPECTIVE_OWNED_PUBLICATION_CORRECTION'
+            or not review.get('authority_reference')
+            or review.get('source_commit') != selection['source_commit']
+            or review.get('cleanup') != selection['cleanup']
+            or review.get('original_exception_detail') != 'NOT_RETAINED'
+            or review.get('correlation_only') is not True
+            or halt.get('reason') != 'CURRENT_INDEX_PATH_UNSAFE'
+            or stop.get('reason') != 'PERSISTENT_OWNER_FAILURE'):
+        raise ValueError('persistent_recovery_publication_review_invalid')
+    failure, health, terminal, lifecycle, replay, cleanup = (checked(review[k]) for k in
+        ('failure', 'last_owner_health', 'service_terminal', 'service_lifecycle', 'quiet_replay', 'cleanup'))
+    evidence = Path(prior['plan']['evidence_root'])
+    output = Path(prior['output'])
+    runtime = evidence/'shadow_autopilot_daemon_runtime'
+    invocation = terminal.get('invocation_id', '')
+    state = checked(selection['baseline']['prior_owner_state'])
+    rows = [row for row in state['dispatches'] if row.get('invocation_id') == invocation]
+    if (len(invocation) != 32 or any(c not in '0123456789abcdef' for c in invocation)
+            or len(rows) != 1 or rows[0].get('lane') not in ('full','odds')
+            or rows[0].get('returncode') != 0 or rows[0].get('native_disposition') != 'COMPLETED'
+            or terminal.get('allocation_sha256') != prior['allocation_ref']['sha256']
+            or terminal.get('status') not in ('READY','DAEMON_READY')
+            or terminal.get('runtime_action') != 'LIVE_COLLECTION_COMPLETE'
+            or terminal.get('final_verdict') != 'DAEMON_READY'
+            or lifecycle.get('invocation_id') != invocation or lifecycle.get('status') != 'COMPLETE'
+            or lifecycle.get('returncode') != 0 or lifecycle.get('children_reaped') is not True
+            or lifecycle.get('interrupted', False) is not False
+            or Path(review['service_terminal']['path']) != runtime/'service-terminals'/(invocation+'.json')
+            or Path(review['service_lifecycle']['path']) != runtime/'service-lifecycles'/(invocation+'.json')
+            or Path(terminal['output_dir']) != evidence/('shadow_autopilot_daemonization_v1_'+terminal['run_id'])
+            or Path(review['failure']['path']).parent != output
+            or not Path(review['failure']['path']).name.startswith('failure-')
+            or failure.get('failure_class') != 'CaptureOneRejected'
+            or failure.get('reason') != 'CURRENT_INDEX_PATH_UNSAFE'
+            or Path(review['last_owner_health']['path']) != output/'persistent-health.json'
+            or health.get('status') != 'ACTIVE_COLLECTION'
+            or rows[0]['lane'] not in health.get('children', [])):
+        raise ValueError('persistent_recovery_publication_owner_unverified')
+    index_path = runtime/'manual_prediction_current_race_index.json'
+    packet = _checked_recovery_refresh_report(review['index'])
+    st = index_path.stat()
+    published = datetime.fromtimestamp(st.st_mtime_ns/1e9, timezone.utc)
+    failed = stamp(failure['at'])
+    if (Path(review['index']['path']) != index_path
+            or review.get('index_mtime_ns') != st.st_mtime_ns
+            or packet.get('run_id') != terminal['run_id']
+            or not stamp(rows[0]['started_at']) <= stamp(health['at']) <= published <= failed < stamp(terminal['at'])
+            or not stamp(terminal['at']) <= stamp(rows[0]['completed_at']) <= stamp(halt['at']) <= stamp(cleanup['at'])
+            or (failed-published).total_seconds() > 1
+            or replay.get('status') != 'PASS_HISTORICAL_PUBLICATION_INTEGRITY_ONLY'
+            or replay.get('index') != review['index']
+            or replay.get('source_evidence_root') != str(evidence)
+            or stamp(replay['at']) < stamp(cleanup['at'])):
+        raise ValueError('persistent_recovery_publication_overlap_unverified')
+    view = _quiet_publication_view(prior, index_path)
+    expected = {key:getattr(view,key) for key in ('run_id','packet_sha256',
+        'source_refresh_report_path','source_refresh_report_sha256',
+        'publication_sha256','state_sha256','report_sha256')}
+    source_report = Path(view.source_refresh_report_path)
+    if not source_report.is_absolute():
+        source_report = evidence/source_report
+    if (replay.get('verified_view') != expected
+            or view.packet_sha256 != review['index']['sha256']
+            or view.run_id != terminal['run_id']
+            or source_report.parent != evidence/('shadow_autopilot_v1_'+terminal['run_id']+'_phase_0')):
+        raise ValueError('persistent_recovery_publication_replay_changed')
+    return None
+
+
 def _reviewed_refresh_failure(selection, prior, halt, stop):
     """Authenticate explicit prospective repair; old refresh remains failed.
 
@@ -271,6 +358,8 @@ def _reviewed_refresh_failure(selection, prior, halt, stop):
     the old terminal, checkpoint and incomplete publication remain immutable.
     """
     review = checked(selection['reviewed_failure'])
+    if review.get('schema_version') == 'persistent_reviewed_publication_failure_v1':
+        return _reviewed_publication_failure(selection, prior, halt, stop, review)
     typed = review.get('disposition') == 'PROSPECTIVE_TYPED_UPSTREAM_OUTAGE_RECOVERY'
     if (review.get('schema_version') != 'persistent_reviewed_refresh_failure_v1'
             or (not typed and review.get('disposition') != 'PROSPECTIVE_CORRECTION_OLD_FAILURE_UNRESOLVED')
