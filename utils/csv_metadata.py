@@ -1737,9 +1737,13 @@ def build_prejump_shadow_metadata_payload(payload: Mapping[str, Any]) -> Dict[st
         "race_date": race_info.get("date") or payload.get("race_date"),
         "venue": race_info.get("venue") or payload.get("venue"),
         "race_number": _safe_int(race_info.get("race_number") or payload.get("race_number")),
+        # The scorer validates absolute instants separately from display clocks.
+        # Preserve explicit values (including invalid ones) for strict rejection;
+        # never hide a conflicting scheduled instant behind a valid clock.
+        **({"jump_datetime": race_info["scheduled_jump_datetime"]}
+           if "scheduled_jump_datetime" in race_info else {}),
         "jump_time": (
-            race_info.get("scheduled_jump_datetime")
-            or race_info.get("race_time")
+            race_info.get("race_time")
             or race_info.get("jump_time")
             or payload.get("jump_time")
             or payload.get("jump_datetime")
