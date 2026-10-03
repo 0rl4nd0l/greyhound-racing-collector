@@ -10,8 +10,10 @@ playwright = pytest.importorskip('playwright.sync_api')
 ROOT = Path(__file__).parents[2]
 
 
+@pytest.mark.parametrize('case', ['valid', 'invalid_probability', 'unauthenticated'])
 @pytest.mark.parametrize('engineering', [False, True])
-def test_retained_source_labels_and_distinct_verified_timestamps(engineering):
+def test_retained_source_labels_and_distinct_verified_timestamps(engineering, case):
+    invalid_probability = case == 'invalid_probability'
     executable = shutil.which('google-chrome') or shutil.which('chromium')
     if executable is None:
         pytest.skip('Local Chromium is required for offline browser acceptance')
@@ -42,6 +44,12 @@ def test_retained_source_labels_and_distinct_verified_timestamps(engineering):
                         'forecasts': [forecast], 'errors': []})
     else:
         sources[0].update(state='VERIFIED', forecasts=[forecast])
+    if invalid_probability:
+        from copy import deepcopy
+        invalid = deepcopy(forecast)
+        invalid['prediction_id'] = 'invalid-probability'
+        invalid['runners'][0]['market_probability'] = 2
+        next(source for source in sources if source['forecasts'])['forecasts'].append(invalid)
     payload = {'schema': 'operator_ui_retained_forecasts_v1',
                'observed_at': '2026-10-01T06:30:00Z', 'sources': sources,
                'programme': {'state': 'CANARY_NOT_VERIFIED', 'collecting': False,
@@ -64,6 +72,8 @@ def test_retained_source_labels_and_distinct_verified_timestamps(engineering):
             if path.startswith('/static/'):
                 return route.fulfill(path=str(ROOT / path.lstrip('/')))
             if path == '/operator-ui/api/v1/predictions/retained':
+                if case == 'unauthenticated':
+                    return route.fulfill(status=401, body='{}', content_type='application/json')
                 return route.fulfill(body=json.dumps(payload), content_type='application/json')
             if path == '/operator-ui/api/v1/collector':
                 return route.fulfill(body='{"classification":"STALE"}', content_type='application/json')
@@ -71,6 +81,13 @@ def test_retained_source_labels_and_distinct_verified_timestamps(engineering):
 
         page.route('**/*', respond)
         page.goto('http://offline.invalid/operator-ui/forecasts')
+        if case == 'unauthenticated':
+            playwright.expect(page.get_by_role('link', name='Sign in to view forecasts')).to_have_attribute('href', '/operator-ui/sign-in')
+            playwright.expect(page.locator('#forecast-sources article')).to_have_count(0)
+            assert not errors
+            browser.close()
+            return
+        playwright.expect(page.get_by_role('link', name='Sign in to view forecasts')).to_have_count(0)
         headings = ['Operational forecasts', 'October programme forecasts']
         if engineering:
             headings.append('Engineering rehearsals')
@@ -91,6 +108,9 @@ def test_retained_source_labels_and_distinct_verified_timestamps(engineering):
         page.set_viewport_size({'width': 390, 'height': 844})
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         playwright.expect(page.locator('#programme-status')).to_contain_text('CANARY NOT VERIFIED')
+        if invalid_probability:
+            playwright.expect(page.locator('article[data-prediction-id="invalid-probability"]')).to_have_count(0)
+            playwright.expect(page.locator('#forecast-sources')).to_contain_text('A forecast was withheld')
         assert not errors
         assert all(method == 'GET' for method, _ in requests)
         browser.close()

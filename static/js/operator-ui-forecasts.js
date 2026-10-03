@@ -26,7 +26,7 @@
     sources.replaceChildren();programme.replaceChildren();collector.replaceChildren();status.textContent='Checking retained artifacts…';
     try{
       const response=await fetch('/operator-ui/api/v1/predictions/retained',{credentials:'same-origin',cache:'no-store'});
-      if(response.status===401){status.textContent='Authentication required. Sign in to view forecasts.';return;}
+      if(response.status===401){status.textContent='Authentication required. ';const login=node('a','Sign in to view forecasts');login.href='/operator-ui/sign-in';status.append(login);return;}
       if(!response.ok)throw new Error('Forecast API unavailable');const data=await response.json();
       if(data.schema!=='operator_ui_retained_forecasts_v1'||!Array.isArray(data.sources))throw new Error('Invalid forecast response');
       status.textContent=`Artifacts checked ${time(data.observed_at)}. Times shown in Melbourne time.`;
