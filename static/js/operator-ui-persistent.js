@@ -44,7 +44,7 @@
         return;
       }
       status.textContent=`Collector: ${data.state.replaceAll('_',' ')} · Status ${time(data.status_at)} · Inventory ${time(data.inventory_at)} (${data.inventory_state.replaceAll('_',' ').toLowerCase()}).`;
-      if(data.status_reason)status.append(node('span',` Stop reason: ${data.status_reason}.`));
+      if(data.status_reason)status.append(node('span',` Stop reason: ${data.status_reason.replaceAll('_',' ').toLowerCase()}.`));
       if(data.service)status.append(node('span',` Installed service: ${data.service.state}; ${data.service.substate||'status unavailable'}${data.service.exit_status?`; exit ${data.service.exit_status}`:''}.`));
       target.append(node('p',`${data.race_count} races discovered · ${data.upcoming.length} still upcoming. Discovery does not establish fresh runner inputs or forecast readiness.`));
       target.append(node('p','Engineering evidence only. Scientific admission remains CANARY_NOT_VERIFIED.'));
