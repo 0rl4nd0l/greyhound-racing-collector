@@ -144,6 +144,7 @@ def test_direct_predict_respects_access_jump_and_age(console, blocked):
         page.clock.fast_forward(301000)
         expect(button).to_be_disabled()
         expect(page.locator(".stale-context")).to_contain_text("Last known races remain visible")
+        expect(page.locator(".race-readiness")).to_have_text("Prediction paused")
         expect(page.locator(".stale-context")).to_contain_text("out of date")
     else:
         expect(button).to_be_disabled()
@@ -273,6 +274,7 @@ def test_refresh_preserves_context_and_explains_blocked_prediction(console, clas
     if expected:
         expect(page.get_by_role("button", name="Predict Bulli R2", exact=True)).to_be_disabled()
         expect(page.locator(".stale-context")).to_contain_text("Last known races remain visible")
+        expect(page.locator(".race-readiness")).to_have_text("Prediction paused")
     assert not state["posts"]
 
 

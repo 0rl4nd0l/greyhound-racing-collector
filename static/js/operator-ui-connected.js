@@ -135,7 +135,7 @@
       const raceOption=[...raceSelect.options].find(item=>item.value===button.dataset.raceId);
       const blocker=racePredictionBlock(raceOption);
       button.disabled=!!blocker;
-      button.closest('.upcoming-race').querySelector('.race-readiness').textContent=blocker||'Ready to request. The server checks the matching odds receipt before predicting.';
+      button.closest('.upcoming-race').querySelector('.race-readiness').textContent=(raceMessage()?'Prediction paused':blocker)||'Ready to request. The server checks the matching odds receipt before predicting.';
     });
   }
   function optionNode(value,label){const item=node('option',label);item.value=value;return item;}
