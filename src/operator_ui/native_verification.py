@@ -11,6 +11,7 @@ import subprocess
 import sys
 import time
 from contextlib import redirect_stdout, redirect_stderr
+from datetime import date
 
 if __package__:
     from .readonly_json import read
@@ -45,6 +46,92 @@ def validate_packages(entries):
             raise ValueError('duplicate_approved_producer')
         identities.add(identity)
     return entries
+
+
+def validate_daily_policy(policy):
+    if set(policy)!={'config','standing_authority','commit','tree','source_identity_sha256'}:
+        raise ValueError('invalid_daily_producer_policy')
+    for name in ('config','standing_authority'):
+        reference=policy[name]
+        if set(reference)!={'path','sha256'} or not re.fullmatch('[0-9a-f]{64}',reference['sha256']):
+            raise ValueError('invalid_daily_producer_reference')
+        path=Path(reference['path'])
+        if not path.is_absolute() or path.resolve()!=path:
+            raise ValueError('unsafe_daily_producer_reference')
+    for name in ('commit','tree','source_identity_sha256'):
+        if not re.fullmatch('[0-9a-f]{'+str(64 if name=='source_identity_sha256' else 40)+'}',policy[name]):
+            raise ValueError('invalid_daily_producer_identity')
+    return policy
+
+
+def expand_daily(binding,receipt,output):
+    """Derive only this day's exact package from an approved unchanged producer."""
+    if 'daily_producer' not in binding or any(entry['plan']==receipt['plan'] for entry in binding['producer_packages']):
+        return binding
+    policy=validate_daily_policy(binding['daily_producer'])
+    cfg=read(policy['config']['path'],policy['config']['sha256'])
+    primary=read(binding['config'],binding['config_sha256'])
+    authority=policy['standing_authority']
+    standing=read(authority['path'],authority['sha256'])
+    if (cfg['status']!='AUTHORIZED_PERSISTENT_COLLECTOR' or cfg['standing_authority']!=authority
+            or primary['standing_authority']!=authority or receipt['standing_authority']!=authority
+            or cfg['source_commit']!=policy['commit'] or cfg['python']!=binding['python']
+            or standing['engineering_only'] is not True or standing['human_outcome_access'] is not False
+            or receipt['configuration_sha256']!=digest(cfg)):
+        raise ValueError('daily_producer_authority_changed')
+    racing_date=date.fromisoformat(receipt['racing_date']).isoformat()
+    state=Path(standing['state_root'])
+    if not state.is_absolute() or state.resolve()!=state:
+        raise ValueError('unsafe_daily_producer_state')
+    day=state/'days'/racing_date
+    expected=day/('native-'+racing_date+'-'+authority['sha256'][:12])
+    if output!=expected or output.resolve()!=output or receipt['output']!=str(output):
+        raise ValueError('daily_producer_package_changed')
+    if (receipt['schema_version']!='persistent_native_preparation_v1'
+            or receipt['status']!='PREPARED_NOT_STARTED' or 'recovery_selection' in receipt
+            or read(day/'native-prepared.json')!=receipt):
+        raise ValueError('daily_producer_preparation_changed')
+    native_ref=receipt['plan']
+    if Path(native_ref['path'])!=output/'plan.json':
+        raise ValueError('daily_producer_plan_path_changed')
+    native=read(native_ref['path'],native_ref['sha256'])
+    comparison=receipt['comparison']
+    allocation_ref=receipt['allocation']
+    if Path(allocation_ref['path'])!=day/'allocation.json':
+        raise ValueError('daily_producer_allocation_path_changed')
+    allocation=read(allocation_ref['path'],allocation_ref['sha256'])
+    prediction_root=Path(standing['prediction_root'])/'days'/racing_date
+    if (allocation['racing_date']!=racing_date or allocation['standing_authority']!=authority
+            or allocation['state_root']!=str(day) or allocation['prediction_root']!=str(prediction_root)
+            or native['persistent_allocation']!=allocation_ref
+            or native['prediction_root']!=str(prediction_root) or native['campaign_root']!=cfg['campaign_root']):
+        raise ValueError('daily_producer_allocation_changed')
+    if (Path(comparison['path'])!=day/'comparison.json' or native['frozen_comparison']!=comparison
+            or native['racing_date']!=racing_date or native['python']!=binding['python']
+            or native['source_root']!=str(output/'source')
+            or native['evidence_root']!=str(output/'collector/evidence')
+            or any(native[name]!=policy[name] for name in ('commit','tree','source_identity_sha256'))):
+        raise ValueError('daily_producer_native_identity_changed')
+    plan=read(comparison['path'],comparison['sha256'])
+    if plan['candidate_registry']!=standing['candidate_registry'] or plan['persistent_allocation']!=allocation_ref:
+        raise ValueError('daily_producer_models_or_allocation_changed')
+    read(standing['candidate_registry']['path'],standing['candidate_registry']['sha256'])
+    read(standing['study_plan']['path'],standing['study_plan']['sha256'])
+    entry={'plan':native_ref,'source_root':native['source_root'],
+        **{name:policy[name] for name in ('commit','tree','source_identity_sha256')},
+        'configuration_sha256':receipt['configuration_sha256']}
+    verify_source(entry)
+    # Static history approvals remain intact; local replay never accumulates days.
+    relevant=[];errors=[]
+    for old in binding['producer_packages']:
+        try:
+            if read(old['plan']['path'],old['plan']['sha256']).get('frozen_comparison')==comparison:
+                relevant.append(old)
+        except Exception:
+            errors.append({'reason':'Retained producer approval could not be verified.'})
+    expanded={**binding,'producer_packages':[*relevant,entry],'_daily_approval_errors':errors}
+    validate_packages(expanded['producer_packages'])
+    return expanded
 
 
 def verify_source(entry):
@@ -160,6 +247,7 @@ def replay_group(binding,entry,comparison,selected,*,remaining,deadline):
 
 
 def replay(binding,receipt,output,comparison,*,remaining=255,deadline=None):
+    binding=expand_daily(binding,receipt,output)
     select_package(binding,receipt,output)
     from src.predictor.future_comparison import load_plan
     from race_collection.persistent_comparison import validate_persistent_plan
@@ -168,7 +256,7 @@ def replay(binding,receipt,output,comparison,*,remaining=255,deadline=None):
     admissions=sorted((Path(plan['programme_root'])/comparison['sha256']/'attempts').glob('*/admission.json'))
     if len(admissions)>min(allocation['max_capture_attempts'],255):
         raise ValueError('producer_admission_bound')
-    groups={};value={'forecasts':[],'failed_forecasts':[],'forecast_errors':[]};used=0;limited=False
+    groups={};value={'forecasts':[],'failed_forecasts':[],'forecast_errors':list(binding.get('_daily_approval_errors',[]))};used=0;limited=False
     for path in admissions:
         if used>=remaining or (deadline is not None and time.monotonic()>=deadline):
             limited=True;break
