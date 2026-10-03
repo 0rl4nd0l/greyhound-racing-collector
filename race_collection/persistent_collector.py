@@ -111,7 +111,7 @@ def record_native_terminal(args, result):
     })
 
 
-def classify_native_dispatch(evidence, record, allocation_sha):
+def classify_native_dispatch(evidence, record, allocation_sha, *, output=None):
     """A successful process exit alone never establishes native lane progress."""
     runtime = Path(evidence)/'shadow_autopilot_daemon_runtime'
     invocation = record['invocation_id']
@@ -136,7 +136,65 @@ def classify_native_dispatch(evidence, record, allocation_sha):
             and record['returncode'] in (0, 2)):
         return {'disposition': 'DEFERRED', 'runtime_action': action,
                 'terminal': reference(terminal_path), 'lifecycle': reference(lifecycle_path)}
+    if (output is not None and action == 'LIVE_PHASE_FAILED' and status == 'FAILED'
+            and terminal.get('final_verdict') == 'NEEDS_MORE_AUTOMATION'
+            and record['returncode'] == 2 and lifecycle.get('interrupted', False) is False):
+        run_id = terminal.get('run_id')
+        import re
+        if isinstance(run_id, str) and re.fullmatch(r'[A-Za-z0-9_+.-]+', run_id):
+            retained = Path(output)/'refresh-deferrals'/(run_id+'.json')
+            if (retained.is_file() and Path(terminal.get('output_dir', '')) ==
+                    Path(evidence)/('shadow_autopilot_daemonization_v1_'+run_id)):
+                ref = reference(retained)
+                _verified_refresh_deferral(ref, evidence, allocation_sha)
+                return {'disposition': 'REFRESH_OUTAGE', 'runtime_action': action,
+                        'terminal': reference(terminal_path), 'lifecycle': reference(lifecycle_path),
+                        'refresh_deferral': ref}
     raise ValueError('persistent_native_terminal_failure:'+str(action))
+
+
+
+def _verified_refresh_deferral(ref, evidence, allocation_sha):
+    from race_collection.live_freshness_contract import classify_refresh_outage
+    value = checked(ref)
+    classified = classify_refresh_outage(value.get('source_evidence_root', evidence), value.get('run_id'))
+    if (classified is None or any(value.get(key) != item for key, item in classified.items())
+            or value.get('allocation_sha256', allocation_sha) != allocation_sha
+            or type(value.get('failed_cycle_count')) is not int
+            or not 1 <= value['failed_cycle_count'] <= 2
+            or stamp(value['observed_at']) > now()
+            or Path(ref['path']).name != value['run_id']+'.json'):
+        raise ValueError('persistent_refresh_deferral_unverified')
+    return value
+
+
+def refresh_outage_pending(output, plan, references, allocation_sha):
+    """A prior fresh index is retained history, never proof an outage recovered."""
+    paths = list((Path(output)/'refresh-deferrals').glob('*.json'))
+    if len(paths) > 2 or len(references) > 2:
+        raise ValueError('persistent_refresh_outage_limit_exceeded')
+    if not paths and not references:
+        return False
+    known = []
+    for ref in references:
+        if Path(ref['path']).parent != Path(output)/'refresh-deferrals':
+            raise ValueError('persistent_refresh_deferral_path_invalid')
+        known.append(_verified_refresh_deferral(ref, plan['evidence_root'], allocation_sha))
+    if len({item['run_id'] for item in known}) != len(known):
+        raise ValueError('persistent_refresh_deferral_duplicate')
+    # The wrapper may have durably recorded a failure before its child exits.
+    # Keep dispatch blocked until the owner can verify that terminal lifecycle.
+    if {str(path) for path in paths} != {ref['path'] for ref in references}:
+        return True
+    from race_collection.synchronous_manual_capture import bounded_current_race_index
+    evidence = Path(plan['evidence_root'])
+    try:
+        view = bounded_current_race_index(current_time=now(), timeout_seconds=5,
+            index_path=evidence/'shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json',
+            evidence_root=evidence, max_age_seconds=270, return_verified_view=True)
+        return stamp(view.source_generated_at) <= max(stamp(item['observed_at']) for item in known)
+    except (OSError, ValueError, KeyError, TypeError):
+        return True
 
 
 def restore_due_times(state):
@@ -288,7 +346,7 @@ class DailyOwner:
             else:
                 try:
                     verdict = classify_native_dispatch(self.plan['evidence_root'], record,
-                        self.prepared['allocation_ref']['sha256'])
+                        self.prepared['allocation_ref']['sha256'], output=self.output)
                 except Exception as exc:
                     record['native_disposition'] = 'FAILED_OR_UNVERIFIED'
                     failure = str(exc)
@@ -298,12 +356,25 @@ class DailyOwner:
                 record['native_disposition'] = verdict['disposition']
                 key = 'completed_lanes' if verdict['disposition'] == 'COMPLETED' else 'deferred_lanes'
                 self.state[key][lane] += 1
+                if verdict['disposition'] == 'REFRESH_OUTAGE':
+                    ref = verdict['refresh_deferral']
+                    if ref not in self.state['refresh_failures']:
+                        self.state['refresh_failures'].append(ref)
                 self.save()
         if failure:
             raise ValueError(failure)
         if predictions:
+            if (self.scope.session/'STOP.json').exists():
+                raise ValueError('persistent_native_scope_stopped')
             verify_captures(self.output, self.plan, self.scope)
-            self.predictions.tick()
+            self.predictions.tick(allow_dispatch=not self.outage_pending())
+
+    def outage_pending(self):
+        pending = refresh_outage_pending(self.output, self.plan,
+            self.state['refresh_failures'], self.prepared['allocation_ref']['sha256'])
+        self.state['forecast_admission_ready'] = not pending
+        self.save()
+        return pending
 
     def tick(self):
         from race_collection.daily_race_inventory import load_daily_inventory
@@ -357,8 +428,11 @@ class DailyOwner:
                     command += ['--discovery-inventory', ref['path'], '--discovery-inventory-sha256', ref['sha256'],
                                 '--discovery-inventory-source-date', self.scope.value['source_date']]
                     self.launch(lane, command, cwd, env)
+        pending = self.outage_pending()
         atomic_json(self.output/'persistent-health.json', {'at': current.isoformat(),
-            'status': 'ACTIVE_COLLECTION' if active and inventory else 'DISCOVERING' if not inventory else 'WAITING_FOR_RACE',
+            'reason': 'UPSTREAM_TEMPORARY_UNAVAILABLE' if pending else None,
+            'forecast_admission_ready': not pending, 'refresh_failures': self.state['refresh_failures'],
+            'status': 'HOLD' if pending else 'ACTIVE_COLLECTION' if active and inventory else 'DISCOVERING' if not inventory else 'WAITING_FOR_RACE',
             'source_date': self.scope.value['source_date'], 'inventory': ref,
             'children': list(self.children), 'completed_lanes': self.state['completed_lanes'],
             'deferred_lanes': self.state['deferred_lanes'], 'next_due_at': self.state['next_due_at'],

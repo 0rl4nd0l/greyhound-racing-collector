@@ -106,9 +106,9 @@ class Supervisor:
         self.log = None
         self.comparison_index_seen = None
 
-    def tick(self):
+    def tick(self, *, allow_dispatch=True):
         import subprocess
-        if self.plan.get("frozen_comparison"):
+        if allow_dispatch and self.plan.get("frozen_comparison"):
             self.observe_comparison_schedule()
         if self.child is not None:
             if self.child.poll() is None:
@@ -118,7 +118,7 @@ class Supervisor:
             self.child = None
             if result not in (0, 3):
                 raise ValueError("operational_prediction_failed_preserved_consumption")
-        if not self.plan.get("operational_predictions") or (self.scope.end-now()).total_seconds() < 200:
+        if not allow_dispatch or not self.plan.get("operational_predictions") or (self.scope.end-now()).total_seconds() < 200:
             return
 
         from race_collection.live_freshness_contract import AttemptAllowance

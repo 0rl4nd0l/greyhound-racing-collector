@@ -23,6 +23,62 @@ def digest(value):
     return hashlib.sha256(encoded(value)).hexdigest()
 
 
+def _mixed_refresh_outage_statuses(refresh):
+    """Account for every selected race without publishing any partial acquisition.
+
+    Successful inputs and authenticated local rejections may accompany typed
+    upstream failures. The complete refresh remains FAILED until another normal
+    scheduled cycle publishes an independently verified fresh index.
+    """
+    from scripts.refresh_prejump_upcoming import _complete_local_acquisition_rejection
+    selected, downloads = refresh["selected_races"], refresh["downloads"]
+    coverage = refresh["sidecar_metadata_coverage"]["races"]
+    snapshot = refresh.get("shared_sportsbet_snapshot") or {}
+    if (refresh.get("reason") != "unisolated_selected_race_acquisition_failure"
+            or refresh.get("discovery_failures") or refresh.get("dry_run") is not False
+            or type(refresh.get("selected_count")) is not int
+            or not 0 < refresh["selected_count"] == len(selected) == len(downloads) == len(coverage)
+            or snapshot.get("status") != "VALIDATED"
+            or not re.fullmatch(r"[0-9a-f]{64}", str(snapshot.get("payload_sha256", "")))):
+        return None
+    statuses, successful = [], 0
+    for number, (candidate, download) in enumerate(zip(selected, downloads)):
+        item = download["result"]
+        if (download.get("race_url") != candidate.get("race_url")
+                or item.get("source_retry_after") or item.get("source_rate_limit_reset")
+                or item.get("source_failure_category")
+                or any(str(key).lower() in {"retry-after", "x-ratelimit-reset", "ratelimit-reset"}
+                       for key in (item.get("source_retry_headers") or {}))):
+            return None
+        status = item.get("source_http_status")
+        if download.get("success") is True and item.get("success") is True:
+            if status not in (None, 200):
+                return None
+            successful += 1
+            continue
+        if download.get("success") is not False or item.get("success") is not False:
+            return None
+        if type(status) is int and status in {502, 503, 504}:
+            if item.get("error") != f"Source HTTP status {status}":
+                return None
+            statuses.append(status)
+        elif (status is not None or not _complete_local_acquisition_rejection(
+                candidate, item, refresh.get("upcoming_dir"))):
+            return None
+        row = coverage[number]
+        if (row.get("race_url") != candidate.get("race_url")
+                or row.get("race_id") != candidate.get("race_id")
+                or row.get("csv_path") or row.get("sidecar_path")
+                or row.get("weather_track_rejected_reasons") != ["accepted_csv_missing"]
+                or any(race.get("race_url") == candidate.get("race_url")
+                       for race in refresh.get("current_index_races", []))):
+            return None
+    if (not statuses or any(type(refresh.get(key)) is not int or refresh[key] != successful
+                           for key in ("accepted_csv_count", "sidecar_count"))):
+        return None
+    return statuses
+
+
 def classify_refresh_outage(evidence, run_id):
     """Classify one retained refresh failure; no requests or state changes."""
     if not isinstance(run_id, str) or not re.fullmatch(r"[A-Za-z0-9_+.-]+", run_id):
@@ -72,6 +128,10 @@ def classify_refresh_outage(evidence, run_id):
                         or failure["source_url"] != "https://www.thedogs.com.au/racing/" + failure["source_date"]):
                     return None
                 errors.append(failure["error_type"])
+        elif refresh.get("status") == "ACQUISITION_INCOMPLETE":
+            statuses = _mixed_refresh_outage_statuses(refresh)
+            if statuses is None:
+                return None
         elif (refresh.get("status") != "METADATA_COVERAGE_INCOMPLETE"
                 or refresh.get("reason") != "no_selected_race_csv_sidecars"
                 or refresh.get("accepted_csv_count") != 0 or refresh.get("sidecar_count") != 0):
@@ -90,7 +150,7 @@ def classify_refresh_outage(evidence, run_id):
                     return None
         if not statuses and not errors:
             return None
-    except (OSError, ValueError, KeyError, TypeError):
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return None
     return {
         "status": "FAILED_REFRESH_AWAITING_NORMAL_TIMER", "run_id": run_id,
