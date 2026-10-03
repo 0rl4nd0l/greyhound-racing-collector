@@ -24,8 +24,10 @@ from zoneinfo import ZoneInfo
 import logging
 
 from src.operator_ui.deployment import bound_operator_ui_log_dir
+from src.operator_ui.startup_policy import legacy_startup_disabled
 
 OPERATOR_UI_LOG_DIR = bound_operator_ui_log_dir()
+LEGACY_STARTUP_DISABLED = legacy_startup_disabled()
 
 # Force legacy ML v3 to use the lightweight stub by default to avoid archived import errors
 # This prevents attempts to import 'archive.ml_systems_old', which was relocated per ARCHIVE_MANIFEST.
@@ -177,15 +179,20 @@ except ImportError as e:
         return func
 
 
-# In test environments, force-disable DB optimization to avoid teardown instability
+# In test and isolated R3 environments, do not start the legacy write-oriented pool.
 try:
-    if str(os.environ.get("TESTING", "")).lower() in ("1", "true", "yes"):
+    if LEGACY_STARTUP_DISABLED or str(os.environ.get("TESTING", "")).lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
         DB_OPTIMIZATION_ENABLED = False
 
         def query_performance_decorator(func):
             return func
 
-        print("ℹ️ DB optimization disabled in TESTING mode")
+        if not LEGACY_STARTUP_DISABLED:
+            print("ℹ️ DB optimization disabled in TESTING mode")
 except Exception as e:
     _debug_silent_failure("Disable DB optimization for TESTING", e)
 
@@ -219,16 +226,20 @@ def track_sequence(step_name, component, step_type="processing"):
 
 
 # Import Strategy Manager for unified prediction pipeline
-try:
-    from prediction_strategy_manager import get_strategy_manager
-
-    STRATEGY_MANAGER_AVAILABLE = True
-    strategy_manager = get_strategy_manager()  # Initialize strategy manager
-    print("🎯 Strategy Manager available")
-except ImportError:
-    print("⚠️ Strategy Manager not available")
+if LEGACY_STARTUP_DISABLED:
     STRATEGY_MANAGER_AVAILABLE = False
     strategy_manager = None
+else:
+    try:
+        from prediction_strategy_manager import get_strategy_manager
+
+        STRATEGY_MANAGER_AVAILABLE = True
+        strategy_manager = get_strategy_manager()  # Initialize strategy manager
+        print("🎯 Strategy Manager available")
+    except ImportError:
+        print("⚠️ Strategy Manager not available")
+        STRATEGY_MANAGER_AVAILABLE = False
+        strategy_manager = None
 
 # Lazy accessor for comprehensive form data collector (avoid module-level import)
 from importlib import import_module
@@ -427,7 +438,7 @@ try:
     ENHANCED_PREDICTION_SERVICE_AVAILABLE = True
     # Defer heavy initialization in tests or when explicitly disabled via env
     enhanced_prediction_service = None
-    _skip_eps = str(os.environ.get("TESTING", "")).lower() in (
+    _skip_eps = LEGACY_STARTUP_DISABLED or str(os.environ.get("TESTING", "")).lower() in (
         "1",
         "true",
         "yes",
@@ -749,7 +760,7 @@ bind_configured_live_evidence(app)
 bind_configured_r3(app)
 
 # Initialize asset management system
-if ASSET_MANAGEMENT_AVAILABLE and AssetManager:
+if ASSET_MANAGEMENT_AVAILABLE and AssetManager and not LEGACY_STARTUP_DISABLED:
     try:
         asset_manager = AssetManager(app)
         print("✅ Asset management system initialized successfully")
@@ -758,7 +769,8 @@ if ASSET_MANAGEMENT_AVAILABLE and AssetManager:
         asset_manager = None
 else:
     asset_manager = None
-    print("⚠️ Asset management system not available")
+    if not LEGACY_STARTUP_DISABLED:
+        print("⚠️ Asset management system not available")
 
     # Provide safe template fallbacks when asset pipeline is unavailable
     # This prevents Jinja 'asset_url' UndefinedError and falls back to existing static files
@@ -9109,8 +9121,8 @@ def handle_exception(e):
     return jsonify(response), 500
 
 
-# Initialize database manager
-db_manager = DatabaseManager(DATABASE_PATH)
+# Initialize the legacy database manager only outside the isolated R3 process.
+db_manager = None if LEGACY_STARTUP_DISABLED else DatabaseManager(DATABASE_PATH)
 
 # Initialize database performance optimizations
 if DB_OPTIMIZATION_ENABLED:
@@ -9259,46 +9271,50 @@ def get_model_predictions():
         return []
 
 
-# Initialize model registry system with enhanced logging
-log_model_registry_debug("Initializing model registry system...", "INFO")
-try:
-    model_registry = get_model_registry()
-    model_count = len(model_registry.list_models())
-    log_model_registry_debug(
-        f"Model registry initialized successfully: {model_count} models tracked", "INFO"
-    )
-    print(f"✅ Model registry initialized successfully: {model_count} models tracked")
-except Exception as e:
-    log_model_registry_debug(f"Model registry initialization failed: {str(e)}", "ERROR")
-    print(f"⚠️  Model registry initialization failed: {e}")
+# Initialize model registry system with enhanced logging.
+if LEGACY_STARTUP_DISABLED:
     model_registry = None
+else:
+    log_model_registry_debug("Initializing model registry system...", "INFO")
+    try:
+        model_registry = get_model_registry()
+        model_count = len(model_registry.list_models())
+        log_model_registry_debug(
+            f"Model registry initialized successfully: {model_count} models tracked", "INFO"
+        )
+        print(f"✅ Model registry initialized successfully: {model_count} models tracked")
+    except Exception as e:
+        log_model_registry_debug(f"Model registry initialization failed: {str(e)}", "ERROR")
+        print(f"⚠️  Model registry initialization failed: {e}")
+        model_registry = None
 
-# Initialize database manager
-print("🗄️ Initializing database manager...")
-try:
-    # Use the analytics database path for read operations in the UI
-    db_manager = DatabaseManager(ANALYTICS_DATABASE_PATH)
-    print(
-        f"✅ Database manager initialized successfully with analytics database: {ANALYTICS_DATABASE_PATH}"
-    )
-    # Ensure key indexes exist for fast results lookup
+# Initialize the legacy database manager and schema helpers outside R3 only.
+if not LEGACY_STARTUP_DISABLED:
+    print("🗄️ Initializing database manager...")
     try:
-        if ensure_results_indexes():
-            print("✅ Ensured DB result indexes")
-        else:
-            print("⚠️ Could not ensure DB indexes (non-fatal)")
+        # Use the analytics database path for read operations in the UI
+        db_manager = DatabaseManager(ANALYTICS_DATABASE_PATH)
+        print(
+            f"✅ Database manager initialized successfully with analytics database: {ANALYTICS_DATABASE_PATH}"
+        )
+        # Ensure key indexes exist for fast results lookup
+        try:
+            if ensure_results_indexes():
+                print("✅ Ensured DB result indexes")
+            else:
+                print("⚠️ Could not ensure DB indexes (non-fatal)")
+        except Exception as e:
+            print(f"⚠️ Could not ensure DB indexes: {e}")
+        # Ensure optional ML schema columns/tables exist to satisfy ML tests
+        try:
+            _ensure_minimal_ml_schema()
+            print("✅ Ensured minimal ML schema columns/tables")
+        except Exception as e:
+            print(f"⚠️ Could not ensure minimal ML schema: {e}")
     except Exception as e:
-        print(f"⚠️ Could not ensure DB indexes: {e}")
-    # Ensure optional ML schema columns/tables exist to satisfy ML tests
-    try:
-        _ensure_minimal_ml_schema()
-        print("✅ Ensured minimal ML schema columns/tables")
-    except Exception as e:
-        print(f"⚠️ Could not ensure minimal ML schema: {e}")
-except Exception as e:
-    print(f"⚠️ Database manager initialization failed: {e}")
-    # Create a minimal fallback db_manager to prevent crashes
-    db_manager = None
+        print(f"⚠️ Database manager initialization failed: {e}")
+        # Create a minimal fallback db_manager to prevent crashes
+        db_manager = None
 
 
 # Ensure auxiliary tables exist (e.g., race_notes)
@@ -9336,7 +9352,8 @@ def _ensure_aux_tables():
         return False
 
 
-_ensure_aux_tables()
+if not LEGACY_STARTUP_DISABLED:
+    _ensure_aux_tables()
 
 
 def run_schema_validation_and_healing(db_path, schema_contract_path):

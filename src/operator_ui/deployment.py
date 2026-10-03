@@ -802,6 +802,10 @@ def generate_package(*, source_root: Path, pinned_python: Path, evidence_root: P
         f"OPERATOR_UI_DEPLOYED_VERSION={ui_version}", f"OPERATOR_UI_DEPLOYED_PROFILE={profile_id}",
         *(("OPERATOR_UI_R3_JOURNAL_SHA256=" + hashlib.sha256(journal_bytes).hexdigest(),) if journal_bytes is not None else ()),
         *(("OPERATOR_UI_FORECAST_DISPLAY_SHA256=" + hashlib.sha256(display_bytes).hexdigest(),) if display_bytes is not None else ()),
+        f"GREYHOUND_DB_PATH={database}", f"DATABASE_PATH={database}",
+        f"ANALYTICS_DB_PATH={database}",
+        f"MPLCONFIGDIR={operations / 'runtime/matplotlib'}",
+        "DISABLE_SPORTSBET_INTEGRATOR=1", "OPERATOR_UI_DISABLE_LEGACY_STARTUP=1",
         "ENABLE_SCRAPING_DEFAULT=0", "ENABLE_LIVE_SCRAPING=0", "ENABLE_RESULTS_SCRAPERS=0", "TGR_ENABLED=0", "PREDICTION_IMPORT_MODE=prediction_only", ""))
     service = "\n".join((
         "[Unit]", "Description=Greyhound Operator UI R3 (generated, private)", "After=network-online.target", "Wants=network-online.target", "",

@@ -599,6 +599,12 @@ def test_explicit_enable_changes_only_feature_gate_and_retains_evidence_on_rollb
     assert "OPERATOR_UI_CONNECTED_MODE=1" in environment
     assert "OPERATOR_UI_LEVEL=2" in environment
     assert "OPERATOR_UI_R3_PROFILE=repository-v1" in environment
+    assert f"GREYHOUND_DB_PATH={values['canonical_db']}" in environment
+    assert f"DATABASE_PATH={values['canonical_db']}" in environment
+    assert f"ANALYTICS_DB_PATH={values['canonical_db']}" in environment
+    assert f"MPLCONFIGDIR={values['operations_root']}/runtime/matplotlib" in environment
+    assert "DISABLE_SPORTSBET_INTEGRATOR=1" in environment
+    assert "OPERATOR_UI_DISABLE_LEGACY_STARTUP=1" in environment
     assert "disable" in rollback.lower()
     assert "do not delete" in rollback.lower()
     assert str(values["operations_root"]) in rollback
