@@ -14,7 +14,7 @@ from typing import Any, Mapping
 from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
-from utils.prejump_weather import venue_weather_location
+from utils.prejump_weather import _explicit_jump_datetime, venue_weather_location
 
 try:
     from bs4 import BeautifulSoup
@@ -204,6 +204,8 @@ def _parse_capture_timestamp(value: Any) -> datetime:
 
 
 def _parse_jump_datetime(race_info: Mapping[str, Any]) -> datetime | None:
+    if "scheduled_jump_datetime" in race_info:
+        return _explicit_jump_datetime(race_info)
     race_date = str(race_info.get("date") or race_info.get("race_date") or "").strip()
     race_time = str(race_info.get("race_time") or race_info.get("jump_time") or "").strip()
     if not race_date or not race_time:
