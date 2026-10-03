@@ -281,6 +281,7 @@ def test_selected_race_shows_compact_runner_context(console):
     expect(page.locator(".selected-runner-list")).to_contain_text("Fixture runner")
     expect(page.locator(".prediction-method")).to_contain_text("sealed verification")
     expect(page.locator("#runner-confirmation")).not_to_contain_text("cccccccc")
+    expect(page.locator("#prediction-retransmit")).to_be_hidden()
 
 
 def test_today_layout_is_compact_and_has_no_mobile_overflow(console):
