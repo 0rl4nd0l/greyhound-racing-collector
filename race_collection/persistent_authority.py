@@ -2,6 +2,7 @@
 from datetime import date, datetime, timezone
 import hashlib
 import json
+import math
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -115,6 +116,7 @@ def persistent_usage(ledger, campaign_id, *, allocation_sha256=None):
     """Subtract only complete authenticated daily allocations from study totals."""
     totals = dict(capture_attempts=0, live_seconds=0, python=0, browser=0, prediction=0, results=0, logical_requests=0)
     allocations = {}; identities = {}; per_allocation = {}
+    overruns = {}; violations = []
 
     def validate(row):
         ref = row.get('persistent_allocation')
@@ -140,17 +142,28 @@ def persistent_usage(ledger, campaign_id, *, allocation_sha256=None):
         if not stamp(allocation['starts_at']) <= stamp(row['consumed_at']) < stamp(allocation['ends_at']):
             raise ValueError('persistent_capture_time_invalid')
         usage['capture_attempts'] += 1
-    for row in ledger['launches'].values():
+    for launch, row in ledger['launches'].items():
         if not TAG_KEYS.intersection(row):
             continue
         allocation, usage, sha = validate(row)
         charged = row['charged_seconds']
-        start = stamp(row['started_at']).timestamp()
+        started_at = stamp(row['started_at'])
+        start = started_at.timestamp()
         end = row['deadline_epoch']
-        if (type(charged) not in (int, float) or not 0 <= charged <= allocation['max_live_seconds']
+        closed_at = stamp(row['closed_at']) if row.get('closed_at') else None
+        expected_charge = ((closed_at - started_at).total_seconds() if closed_at else end - start)
+        if (type(charged) not in (int, float) or not math.isfinite(charged) or charged < 0
+                or type(end) not in (int, float) or not math.isfinite(end)
                 or not stamp(allocation['starts_at']).timestamp() <= start < end <= stamp(allocation['cleanup_by']).timestamp()
-                or not charged <= end - start):
+                or closed_at is not None and closed_at < started_at
+                or not math.isclose(charged, expected_charge, rel_tol=0, abs_tol=1e-6)):
             raise ValueError('persistent_launch_time_invalid')
+        if closed_at is not None and closed_at.timestamp() > end:
+            overrun = closed_at.timestamp() - end
+            overruns[sha] = overruns.get(sha, 0) + overrun
+            violations.append({'category': 'PERSISTENT_LEASE_CLEANUP_OVERRUN',
+                'allocation_id': allocation['allocation_id'], 'allocation_sha256': sha,
+                'launch': launch, 'overrun_seconds': overrun, 'closed_at': row['closed_at']})
         usage['live_seconds'] += charged
     for identity, row in ledger.get('persistent_operation_request_usage', {}).items():
         allocation, usage, sha = validate(row)
@@ -165,8 +178,13 @@ def persistent_usage(ledger, campaign_id, *, allocation_sha256=None):
         a = allocations[sha]
         caps = dict(capture_attempts=a['max_capture_attempts'], live_seconds=a['max_live_seconds'],
                     python=a['max_python_requests'], browser=a['max_browser_navigations'], results=0)
-        if any(usage[k] > caps[k] for k in caps):
+        if (any(usage[k] > caps[k] for k in caps if k != 'live_seconds')
+                or usage['live_seconds'] - caps['live_seconds'] > overruns.get(sha, 0) + 1e-6):
             raise ValueError('persistent_consumption_exceeds_allocation')
+        if usage['live_seconds'] > caps['live_seconds']:
+            violations.append({'category': 'PERSISTENT_LIVE_ALLOWANCE_OVERRUN',
+                'allocation_id': a['allocation_id'], 'allocation_sha256': sha,
+                'overrun_seconds': usage['live_seconds'] - caps['live_seconds']})
         if allocation_sha256 is None or sha == allocation_sha256:
             for k in usage:
                 totals[k] += usage[k]
@@ -174,6 +192,10 @@ def persistent_usage(ledger, campaign_id, *, allocation_sha256=None):
     totals['logical_requests'] = totals['prediction'] + totals['results']
     if totals['logical_requests'] > ledger.get('logical_requests', 0):
         raise ValueError('persistent_consumption_exceeds_global_accounting')
+    # A proven late cleanup is a violation and remains fully charged. It is
+    # historical engineering consumption, never permission for more acquisition.
+    totals['violations'] = [row for row in violations
+        if allocation_sha256 is None or row['allocation_sha256'] == allocation_sha256]
     return totals
 
 
