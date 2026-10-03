@@ -363,7 +363,12 @@ def run(plan_path: Path, claim_path: Path):
             raise ValueError("captured_race_changed")
         race = races[0]
         if race["runner_set_sha256"] != item["race_identity"]["runner_set_sha256"]:
-            raise ValueError("captured_runners_changed")
+            from race_collection.captured_snapshot import classify_superseded_capture
+            proof = classify_superseded_capture(reserved, view,
+                evidence_root=evidence, current_time=now())
+            timing.update(status="REJECTED", stage=stage, reason=proof["code"],
+                preserved_rejection=proof["code"], rejection_proof=proof)
+            return timing
         source_root = Path(plan["source_root"])
         model = resolve_model("latest-research")
         config_path = source_root / "configs/prediction/manual-default.json"
@@ -438,5 +443,7 @@ if __name__ == "__main__":
         print(json.dumps({k: result[k] for k in ("status", "total_seconds")}))
         # Exit 3 is a verified, sealed per-race exclusion, never a successful forecast.
         raise SystemExit(0 if result["status"] == "PREDICTION_READY" else
-                         3 if result.get("preserved_rejection") == "TARGET_GRADE_CONTEXT_UNAVAILABLE" else 2)
+                         3 if result.get("preserved_rejection") in {
+                             "TARGET_GRADE_CONTEXT_UNAVAILABLE", "CAPTURE_SNAPSHOT_SUPERSEDED",
+                             "CAPTURE_RUNNERS_CHANGED"} else 2)
     raise SystemExit(bounded_run(Path(sys.argv[1]), Path(sys.argv[2])))

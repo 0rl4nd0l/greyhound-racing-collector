@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
     (False, "preprogramme_murray"),
     (False, "maitland"), (False, "grafton"), (False, "launceston"),
     (False, "grade_context_missing"),
+    (False, "snapshot_superseded"),
 ])
 def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, landing_missing, venue_case):
     from scripts.prepare_freshness_rehearsal import prepare, UNITS
@@ -158,13 +159,14 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
         campaign = Campaign(campaign.root, engineering_authority=authority)
     prepare(output=package, start=stamp-timedelta(seconds=5), python=Path(sys.executable), db=db,
         lock=tmp_path/'collector.lock', reconciliation_roots={}, installed_dir=installed,
-        campaign_root=campaign.root, operational_predictions=True, observation_minutes=60,
+        campaign_root=campaign.root, operational_predictions=True,
+        observation_minutes=15 if venue_case == 'snapshot_superseded' else 60,
         engineering_authority=authority,
         reduced_request_cap=6000 if venue_case == 'grade_context_missing' else None)
     plan = json.loads((package/'plan.json').read_bytes())
     if venue_case == 'grade_context_missing':
         assert plan['max_logical_requests'] == 6000
-    assert (datetime.fromisoformat(plan['ends_at']) - datetime.fromisoformat(plan['starts_at'])).total_seconds() == 3600
+    assert (datetime.fromisoformat(plan['ends_at']) - datetime.fromisoformat(plan['starts_at'])).total_seconds() == (900 if venue_case == 'snapshot_superseded' else 3600)
     assert plan['max_capture_attempts'] == (12 if landing_missing else 64)
     from race_collection.synchronous_manual_capture import _atomic_replace_canonical
     from race_collection.live_phase_checkpoint import atomic_json
@@ -246,6 +248,30 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     assert inspection['paired_readiness'][-1]['paired_card_count'] == 4
     claims = allowance.claims()
     assert len(claims) == 1
+    if venue_case == "snapshot_superseded":
+        from race_collection.synchronous_manual_capture import (
+            publish_current_race_index, publish_current_race_index_lifecycle,
+        )
+        from race_collection.manual_prediction_collector_request import canonical_bytes
+        index = evidence / "shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json"
+        old = json.loads(index.read_bytes())
+        refreshed = json.loads((evidence / old['source_refresh_report_path']).read_bytes())
+        refreshed['generated_at'] = datetime.now().astimezone().isoformat()
+        successor = evidence / 'synthetic-successor'
+        successor.mkdir()
+        report_path = successor / 'refresh.json'
+        report_path.write_bytes(canonical_bytes(refreshed))
+        state_path = index.parent / 'state.json'
+        publication = publish_current_race_index(state_path=state_path, evidence_root=evidence,
+            source_refresh_report_path=report_path, run_id='synthetic-successor')
+        assert publication['status'] == 'PUBLISHED', publication
+        publication_path = successor / 'current_race_index_publish.json'
+        publication_path.write_bytes(canonical_bytes(publication))
+        publish_current_race_index_lifecycle(state_path=state_path, evidence_root=evidence,
+            publication_report_path=publication_path, publication=publication)
+        new = json.loads(index.read_bytes())
+        assert old['races'][0]['runners'] == new['races'][0]['runners']
+        assert old['races'][0]['runner_set_sha256'] != new['races'][0]['runner_set_sha256']
     result = subprocess.run([sys.executable,'-B','-m','race_collection.operational_prediction',str(package/'plan.json'),str(claims[0])],
         cwd=cwd,env=env,capture_output=True,text=True,timeout=180)
     (tmp_path/'prediction.log').write_text(result.stdout+result.stderr)
@@ -260,6 +286,27 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     terminal = json.loads(terminals[0].read_bytes())
     with sqlite3.connect(db) as history_conn:
         assert history_conn.execute('SELECT count(*) FROM live_odds').fetchone()[0] == initial_odds
+    if venue_case == 'snapshot_superseded':
+        assert terminal['status'] == 'REJECTED', terminal
+        assert terminal['preserved_rejection'] == 'CAPTURE_SNAPSHOT_SUPERSEDED'
+        assert terminal['stage'] == 'job_admission'
+        assert terminal['rejection_proof']['same_roster'] is True
+        assert result.returncode == 3
+        assert not (campaign.root/'operational-predictions/jobs.sqlite3').exists()
+        from race_collection.operational_prediction import Supervisor
+        import io
+        from types import SimpleNamespace
+        supervisor = Supervisor(package, {}, None)
+        supervisor.child = SimpleNamespace(poll=lambda: 3, returncode=3)
+        supervisor.log = io.StringIO()
+        supervisor.tick()
+        assert supervisor.child is None and not (scope.session/'STOP.json').exists()
+        before = terminals[0].read_bytes()
+        repeated = subprocess.run([sys.executable,'-B','-m','race_collection.operational_prediction',
+            str(package/'plan.json'),str(claims[0])], cwd=cwd, env=env,
+            capture_output=True,text=True,timeout=20)
+        assert repeated.returncode != 0 and terminals[0].read_bytes() == before
+        return
     if venue_case == 'grade_context_missing':
         assert terminal['status'] == 'REJECTED'
         assert terminal['preserved_rejection'] == 'TARGET_GRADE_CONTEXT_UNAVAILABLE'
