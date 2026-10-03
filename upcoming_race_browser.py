@@ -2583,7 +2583,14 @@ class UpcomingRaceBrowser:
                             race_number = url_parts[racing_index + 3]
 
                         # Map venue slug to code
-                        venue = self.venue_map.get(venue_slug, venue_slug.upper())
+                        # Use the same canonical venue mapping as discovery.
+                        # Exact-page metadata must not turn /meadows (MEA) into
+                        # an unmapped MEADOWS weather/track-condition identity.
+                        venue = self.venue_map.get(venue_slug)
+                        if not venue:
+                            venue = _normalize_venue(venue_slug) if _normalize_venue else None
+                        if not venue:
+                            venue = venue_slug.upper()
 
                         # Convert date from YYYY-MM-DD to YYYY-MM-DD for consistency
                         if url_date and re.match(r"\d{4}-\d{2}-\d{2}", url_date):
