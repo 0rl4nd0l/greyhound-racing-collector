@@ -26,7 +26,12 @@ def metadata_recovery(terminal_recovery):
     old_report_path=Path(review['refresh_report']['path'])
     report_ref=put(old_report_path.with_name('refresh_prejump_report.json'),report)
     phase=native.checked(review['phase_result'])
-    phase['current_race_index_publish']['source_refresh_report_path']=report_ref['path']
+    phase['current_race_index_publish'].update(
+        schema_version='collector_current_race_index_publish_v2',
+        failure_detail={'reason':'refresh_not_accepted_success'},
+        run_id=service['run_id'],
+        index_path=str(evidence/'shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json'),
+        source_refresh_report_path=report_ref['path'])
     review['phase_result']=put(Path(review['phase_result']['path']),phase)
     checkpoint=native.checked(review['checkpoint'])
     checkpoint['phases'][0]['result_sha256']=review['phase_result']['sha256']
