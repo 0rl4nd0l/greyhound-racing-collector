@@ -110,7 +110,8 @@ if '--discover' not in __import__('sys').argv:
 '''
 
 
-def test_actual_cli_pause_restart_and_day_rollover_preserve_budgets(backend,tmp_path,monkeypatch):
+@pytest.mark.parametrize('timeout_child',[False,True],ids=['pause-restart-rollover','child-deadline'])
+def test_actual_cli_pause_restart_and_day_rollover_preserve_budgets(backend,tmp_path,monkeypatch,timeout_child):
     cfg,standing,standing_ref,calls=backend
     first=native.prepare_day(cfg,standing_ref,'2026-10-03',stamp('2026-10-03T12:00:00+10:00'))
     second=native.prepare_day(cfg,standing_ref,'2026-10-04',stamp('2026-10-04T01:22:00+10:00'))
@@ -118,8 +119,11 @@ def test_actual_cli_pause_restart_and_day_rollover_preserve_budgets(backend,tmp_
     for day,value in [('2026-10-03',first),('2026-10-04',second)]:
         (fixture/('prepared-'+day+'.json')).write_text(json.dumps(value))
     checkout=tmp_path/'checkout';commit=clean_checkout(checkout)
+    mount=json.loads(subprocess.check_output(['findmnt','--json','--output','TARGET,UUID',
+        '--target',str(tmp_path)],text=True))['filesystems'][0]
     cfg={**cfg,'status':'AUTHORIZED_PERSISTENT_COLLECTOR','standing_authority':standing_ref,
-         'campaign_id':standing['campaign_id'],'source_commit':commit}
+         'campaign_id':standing['campaign_id'],'source_commit':commit,
+         'storage_mount':{'path':mount['target'],'uuid':mount['uuid']}}
     config=fixture/'config.json';config.write_text(json.dumps(cfg,sort_keys=True))
     config_sha=hashlib.sha256(config.read_bytes()).hexdigest()
     (fixture/'sitecustomize.py').write_text(BOOTSTRAP)
@@ -149,6 +153,27 @@ def test_actual_cli_pause_restart_and_day_rollover_preserve_budgets(backend,tmp_
     try:
         process=start()
         wait_for(lambda:len(list(fixture.glob('child-*.json')))==1,process)
+        if timeout_child:
+            state_path=Path(first['output'])/'persistent-owner-state.json'
+            dispatch=read(state_path)['dispatches'][0]
+            assert stamp(dispatch['deadline_at'])>stamp(dispatch['started_at'])
+            clock=fixture/'clock.next'
+            clock.write_text((stamp(dispatch['deadline_at'])+timedelta(seconds=1)).isoformat())
+            clock.replace(fixture/'clock.txt')
+            assert process.wait(timeout=15)==78
+            state=read(state_path)
+            assert state['dispatches'][0]['timeout_signal_sent_at']
+            assert state['dispatches'][0]['returncode']!=0
+            assert state['inventory'] is None
+            assert read(Path(first['output'])/'HALT.json')['reason']=='persistent_child_deadline'
+            assert usage()['logical_requests']==1 and len(source()['diagnostic_authorizations'])==1
+            assert source()['active'] is None and source()['phase']=='OPEN'
+            assert not Path(cfg['lock_path']).exists()
+            process=start()
+            assert process.wait(timeout=15)==78
+            assert len(list(fixture.glob('child-*.json')))==1
+            assert usage()['logical_requests']==1 and len(source()['diagnostic_authorizations'])==1
+            return
         # Stop the actual owner while its actual discovery child is in flight.
         os.kill(int((fixture/'owner-pid.txt').read_text()),signal.SIGTERM)
         time.sleep(.15)
