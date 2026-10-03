@@ -1123,6 +1123,12 @@ def _complete_local_runner_quarantine(
     )
 
 
+def _complete_local_acquisition_rejection(candidate, result, root):
+    from utils.race_schedule_rejection import complete_schedule_change_rejection
+    return (_complete_local_runner_quarantine(candidate, result, root)
+            or complete_schedule_change_rejection(candidate, result, root))
+
+
 def has_unisolated_refresh_failure(report: Mapping[str, Any]) -> bool:
     """Do not publish even an eligible subset after an unisolated source failure."""
     try:
@@ -1164,7 +1170,7 @@ def has_unisolated_refresh_failure(report: Mapping[str, Any]) -> bool:
                 return True
             if download.get("success") is True and result.get("success") is True:
                 continue
-            if download.get("success") is not False or not _complete_local_runner_quarantine(
+            if download.get("success") is not False or not _complete_local_acquisition_rejection(
                 candidate, result, report.get("upcoming_dir")
             ):
                 return True
@@ -1294,6 +1300,7 @@ def complete_empty_metadata_selection(report: Mapping[str, Any]) -> bool:
         ):
             return False
         local_quarantines = set()
+        schedule_rejections = set()
         for number, (candidate, download) in enumerate(zip(selected, downloads)):
             result = download.get("result")
             if (
@@ -1312,11 +1319,13 @@ def complete_empty_metadata_selection(report: Mapping[str, Any]) -> bool:
                 return False
             if download.get("success") is True and result.get("success") is True:
                 continue
-            if download.get("success") is not False or not _complete_local_runner_quarantine(
+            if download.get("success") is not False or not _complete_local_acquisition_rejection(
                 candidate, result, report.get("upcoming_dir")
             ):
                 return False
             local_quarantines.add(number)
+            if result.get("error") == "discovery_canonical_jump_changed":
+                schedule_rejections.add(number)
         accepted = count - len(local_quarantines)
         if any(
             type(report.get(key)) is not int or report[key] != accepted
@@ -1332,7 +1341,7 @@ def complete_empty_metadata_selection(report: Mapping[str, Any]) -> bool:
             return False
         if local_quarantines and (
             type(report.get("quarantine_count")) is not int
-            or report["quarantine_count"] != len(local_quarantines)
+            or report["quarantine_count"] != len(local_quarantines - schedule_rejections)
             or (not accepted and shared is None)
         ):
             return False

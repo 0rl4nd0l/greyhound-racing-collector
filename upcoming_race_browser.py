@@ -2134,7 +2134,13 @@ class UpcomingRaceBrowser:
             hinted_jump = (race_info_hint or {}).get("scheduled_jump_datetime")
             if hinted_jump is not None:
                 if scheduled_jump_datetime(race_info_hint) != scheduled_jump_datetime(race_info) or scheduled_jump_datetime(race_info) is None:
-                    return {"success": False, "error": "discovery_canonical_jump_changed"}
+                    from utils.race_schedule_rejection import retain_schedule_change
+                    evidence = retain_schedule_change(
+                        race_url=race_url, hint=race_info_hint, canonical_info=race_info,
+                        response=retained_race_page, artifact_root=self.upcoming_dir,
+                    )
+                    return {"success": False, "error": "discovery_canonical_jump_changed",
+                            **({"schedule_change_evidence": evidence} if evidence else {})}
             if (race_info_hint or {}).get("race_time_source") == "exact_meeting_link":
                 meeting_clock = self._format_clock_time(race_info_hint.get("race_time"))
                 canonical_clock = self._format_clock_time(race_info.get("race_time"))
