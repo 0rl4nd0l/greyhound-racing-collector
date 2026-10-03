@@ -376,8 +376,16 @@ class DailyOwner:
             self.predictions.tick(allow_dispatch=not self.outage_pending())
 
     def outage_pending(self):
-        pending = refresh_outage_pending(self.output, self.plan,
+        # A native lane owns publication until its complete lifecycle is reaped.
+        # Reading the mutable index during its atomic replacement correctly
+        # triggers the strict path-swap guard. Wait at the owner boundary;
+        # never catch or weaken that integrity rejection.
+        publishing = any(lane in self.children for lane in ('full', 'odds'))
+        pending = publishing or refresh_outage_pending(self.output, self.plan,
             self.state['refresh_failures'], self.prepared['allocation_ref']['sha256'])
+        self.state['forecast_admission_reason'] = (
+            'CURRENT_INDEX_REFRESH_IN_PROGRESS' if publishing
+            else 'UPSTREAM_TEMPORARY_UNAVAILABLE' if pending else None)
         self.state['forecast_admission_ready'] = not pending
         self.save()
         return pending
@@ -436,7 +444,7 @@ class DailyOwner:
                     self.launch(lane, command, cwd, env)
         pending = self.outage_pending()
         atomic_json(self.output/'persistent-health.json', {'at': current.isoformat(),
-            'reason': 'UPSTREAM_TEMPORARY_UNAVAILABLE' if pending else None,
+            'reason': self.state['forecast_admission_reason'],
             'forecast_admission_ready': not pending, 'refresh_failures': self.state['refresh_failures'],
             'status': 'HOLD' if pending else 'ACTIVE_COLLECTION' if active and inventory else 'DISCOVERING' if not inventory else 'WAITING_FOR_RACE',
             'source_date': self.scope.value['source_date'], 'inventory': ref,
@@ -480,6 +488,15 @@ class DailyOwner:
         else:
             self.state['restartable_pause_at'] = now().isoformat()
             self.save()
+
+
+def _safe_capture_diagnostics(error):
+    from race_collection.synchronous_manual_capture import CaptureOneRejected
+    if not isinstance(error, CaptureOneRejected):
+        return {}
+    return {'capture_rejection': {'code': error.code, **{
+        key: value for key, value in error.details.items()
+        if key in ('path', 'reason') and isinstance(value, str) and len(value) <= 4096}}}
 
 
 def run(config_path, config_sha256):
@@ -538,7 +555,8 @@ def run(config_path, config_sha256):
     except Exception as exc:
         if daily:
             create_once(daily.output/('failure-'+uuid.uuid4().hex+'.json'), {
-                'at': now().isoformat(), 'failure_class': type(exc).__name__, 'reason': str(exc)})
+                'at': now().isoformat(), 'failure_class': type(exc).__name__, 'reason': str(exc),
+                **_safe_capture_diagnostics(exc)})
             daily.scope.stop('PERSISTENT_OWNER_FAILURE')
             try: daily.drain(close=False)
             except Exception as cleanup_error:
@@ -546,7 +564,8 @@ def run(config_path, config_sha256):
                     'at': now().isoformat(), 'reason': str(cleanup_error),
                     'campaign_lease_retained': True, 'source_lease_not_manually_cleared': True})
             if not (daily.output/'HALT.json').exists():
-                create_once(daily.output/'HALT.json', {'at': now().isoformat(), 'reason': str(exc)})
+                create_once(daily.output/'HALT.json', {'at': now().isoformat(), 'reason': str(exc),
+                    **_safe_capture_diagnostics(exc)})
         atomic_json(root/'health.json', {'at': now().isoformat(), 'status': 'HOLD', 'reason': str(exc),
             'output': str(daily.output) if daily else None,
             'preparation': daily.prepared['receipt_ref'] if daily else None,
