@@ -114,7 +114,7 @@ def test_pending_outage_requires_new_verified_index_and_survives_reload(tmp_path
     calls=[]
     def view(**kwargs):
         calls.append(kwargs)
-        if observed[0]=='EXPIRED':raise ValueError('current_index_stale')
+        if observed[0]=='EXPIRED':raise capture.CaptureOneRejected('CURRENT_INDEX_STALE')
         return SimpleNamespace(source_generated_at=observed[0])
     monkeypatch.setattr(capture,'bounded_current_race_index',view)
     refs=[collector.reference(retained)]
@@ -122,11 +122,25 @@ def test_pending_outage_requires_new_verified_index_and_survives_reload(tmp_path
     assert collector.refresh_outage_pending(output,plan,json.loads(json.dumps(refs)),'b'*64)
     observed[0]='EXPIRED'
     assert collector.refresh_outage_pending(output,plan,refs,'b'*64)
+    monkeypatch.setattr(capture,'bounded_current_race_index',lambda **kwargs: (_ for _ in ()).throw(capture.CaptureOneRejected('CURRENT_INDEX_INVALID')))
+    with pytest.raises(capture.CaptureOneRejected):collector.refresh_outage_pending(output,plan,refs,'b'*64)
+    monkeypatch.setattr(capture,'bounded_current_race_index',view)
     observed[0]='2099-01-01T12:01:00+00:00'
     assert not collector.refresh_outage_pending(output,plan,refs,'b'*64)
     assert calls[-1]['max_age_seconds']==270 and calls[-1]['return_verified_view'] is True
+    current += timedelta(seconds=300)
+    assert collector.refresh_outage_pending(output,plan,refs,'b'*64)  # VerifiedView may still return stale data.
+    observed[0]=(current+timedelta(seconds=1)).isoformat()
+    assert collector.refresh_outage_pending(output,plan,refs,'b'*64)  # Future timestamps are not fresh.
     retained.write_text('{}')
     with pytest.raises(ValueError):collector.refresh_outage_pending(output,plan,refs,'b'*64)
+
+
+def test_real_reader_missing_successor_index_stays_pending(tmp_path,monkeypatch):
+    output,plan,record,retained=deferred_fixture(tmp_path)
+    monkeypatch.setattr(collector,'now',lambda:datetime.fromisoformat('2099-01-01T12:02:00+00:00'))
+    # Exercise the real bounded reader's CaptureOneRejected, not a ValueError stub.
+    assert collector.refresh_outage_pending(output,plan,[collector.reference(retained)],'b'*64)
 
 
 def test_supervisor_hold_reaps_child_but_never_observes_or_dispatches(tmp_path,monkeypatch):

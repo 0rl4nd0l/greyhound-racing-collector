@@ -186,15 +186,21 @@ def refresh_outage_pending(output, plan, references, allocation_sha):
     # Keep dispatch blocked until the owner can verify that terminal lifecycle.
     if {str(path) for path in paths} != {ref['path'] for ref in references}:
         return True
-    from race_collection.synchronous_manual_capture import bounded_current_race_index
+    from race_collection.synchronous_manual_capture import bounded_current_race_index, CaptureOneRejected
     evidence = Path(plan['evidence_root'])
     try:
         view = bounded_current_race_index(current_time=now(), timeout_seconds=5,
             index_path=evidence/'shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json',
             evidence_root=evidence, max_age_seconds=270, return_verified_view=True)
-        return stamp(view.source_generated_at) <= max(stamp(item['observed_at']) for item in known)
-    except (OSError, ValueError, KeyError, TypeError):
-        return True
+        source_at = stamp(view.source_generated_at)
+        # VerifiedView intentionally preserves stale historical publications;
+        # callers must enforce their own admission age even with max_age set.
+        age = (now()-source_at).total_seconds()
+        return not (0 <= age < 270 and source_at > max(stamp(item['observed_at']) for item in known))
+    except CaptureOneRejected as exc:
+        if exc.code in {'CURRENT_INDEX_UNAVAILABLE', 'CURRENT_INDEX_STALE', 'DISCOVERY_TIMEOUT'}:
+            return True
+        raise
 
 
 def restore_due_times(state):
