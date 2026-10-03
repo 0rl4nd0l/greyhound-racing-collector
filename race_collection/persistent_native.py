@@ -350,8 +350,11 @@ def _recovery_refresh_records(selection, prior, inherited):
     from race_collection.live_freshness_contract import classify_refresh_outage
     records = []
     runs = set()
-    for reference in selection['baseline'].get('preserved_refresh_deferrals', []):
-        value = checked(reference)
+    prior_records = [(reference, checked(reference)) for reference in
+                     selection['baseline'].get('preserved_refresh_deferrals', [])]
+    if any(type(value.get('failed_cycle_count')) is not int for _,value in prior_records):
+        raise ValueError('persistent_recovery_prior_refresh_count_invalid')
+    for reference,value in sorted(prior_records, key=lambda row:row[1]['failed_cycle_count']):
         if Path(reference['path']).parent != Path(prior['output'])/'refresh-deferrals':
             raise ValueError('persistent_recovery_refresh_record_outside_prior')
         evidence = value.get('source_evidence_root', prior['plan']['evidence_root'])

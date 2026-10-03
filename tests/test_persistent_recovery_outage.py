@@ -52,7 +52,7 @@ def test_reviewed_two502_responses_consume_one_failed_cycle(outage_recovery):
     record=json.loads(paths[0].read_bytes())
     assert record['failed_cycle_count']==1 and record['upstream_statuses']==[502,502]
     assert record['source_evidence_root']==old['plan']['evidence_root']
-    assert record['inherited_review']==cfg['recovery_selection'] or record['inherited_review']==native.checked(cfg['recovery_selection'])['reviewed_failure']
+    assert record['inherited_review']==native.checked(cfg['recovery_selection'])['reviewed_failure']
     state=json.loads((Path(new['output'])/'persistent-owner-state.json').read_bytes())
     assert state['refresh_failures']==[native._ref(paths[0])]
     assert ledger.read_bytes()==before
@@ -122,3 +122,22 @@ def test_prior_cycles_are_preserved_and_third_cycle_cannot_be_forgiven(outage_re
         assert Path(ref['path']).read_bytes()==raw
     states=[json.loads(p.read_bytes())['failed_cycle_count'] for p in directory.glob('*.json')]
     assert sorted(states)==[1,2]
+
+
+def test_completion_order_not_filename_and_already_charged_run_not_duplicated(outage_recovery,tmp_path):
+    from tests.test_scheduled_refresh_outage import outage
+    recovery,review=outage_recovery
+    cfg,standing,old,now,item,terminal,calls=recovery
+    current=native.checked(review['classified_outage'])
+    put(Path(old['output'])/'refresh-deferrals'/(current['run_id']+'.json'),{
+        **current,'observed_at':now.isoformat(),'failed_cycle_count':1})
+    _,prior_plan,prior_run,_,_=outage(tmp_path/'later-completion',run_id='000_lexically_first_odds_capture')
+    later=classify_refresh_outage(prior_plan['evidence_root'],prior_run)
+    put(Path(old['output'])/'refresh-deferrals'/(prior_run+'.json'),{
+        **later,'observed_at':now.isoformat(),'failed_cycle_count':2,'source_evidence_root':prior_plan['evidence_root']})
+    selection=native.checked(cfg['recovery_selection']);selection['baseline']=native.recovery_baseline(old,cfg)
+    rebind(outage_recovery,selection,review)
+    new=native.prepare_day(cfg,standing,'2026-10-03',now)
+    rows=[json.loads(p.read_bytes()) for p in (Path(new['output'])/'refresh-deferrals').glob('*.json')]
+    assert len(rows)==2
+    assert next(r for r in rows if r['run_id']==current['run_id'])['failed_cycle_count']==1
