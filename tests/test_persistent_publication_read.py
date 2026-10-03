@@ -112,3 +112,21 @@ def test_capture_rejection_diagnostics_are_scalar_and_allowlisted():
     assert collector._safe_capture_diagnostics(RuntimeError('other')) == {}
     malformed = capture.CaptureOneRejected('CURRENT_INDEX_PATH_UNSAFE', path={'private':'hidden'},reason='x'*4097)
     assert collector._safe_capture_diagnostics(malformed) == {'capture_rejection':{'code':'CURRENT_INDEX_PATH_UNSAFE'}}
+
+
+def test_owned_prediction_finishes_index_admission_before_due_publishers_launch(owner_case):
+    from types import SimpleNamespace
+    from tests.test_persistent_collector import retain_inventory
+    c=owner_case;c.owner.activate();retain_inventory(c)
+    child=SimpleNamespace(returncode=None)
+    child.poll=lambda:child.returncode
+    c.owner.predictions.child=child
+    c.owner.predictions.log=SimpleNamespace(close=lambda:None)
+    due=dict(c.owner.state['next_due_at'])
+    assert c.owner.tick()=='RUNNING'
+    assert not c.children
+    assert c.owner.state['next_due_at']==due  # Waiting consumes no lane launch.
+    child.returncode=0
+    assert c.owner.tick()=='RUNNING'
+    assert c.owner.predictions.child is None
+    assert {row['lane'] for row in c.owner.state['dispatches']}=={'full','odds'}

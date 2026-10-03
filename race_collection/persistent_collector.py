@@ -436,7 +436,10 @@ class DailyOwner:
                 for lane, unit in (('full', 'shadow-autopilot.service'),
                                    ('odds', 'shadow-autopilot-odds-capture.service')):
                     due = self.state['next_due_at'].get(lane)
-                    if (due and current < stamp(due)) or lane in self.children or (self.scope.end-current).total_seconds() <= 600:
+                    # Prediction workers read the mutable index after retaining
+                    # history. Keep the ownership exclusion bidirectional.
+                    if (self.predictions.child is not None or (due and current < stamp(due))
+                            or lane in self.children or (self.scope.end-current).total_seconds() <= 600):
                         continue
                     command, cwd, env = service_command(self.output/'units'/unit)
                     command += ['--discovery-inventory', ref['path'], '--discovery-inventory-sha256', ref['sha256'],
