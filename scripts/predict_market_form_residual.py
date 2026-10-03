@@ -1083,9 +1083,10 @@ def _jump_timestamp(sidecar: Mapping[str, Any], race_date: date) -> datetime:
         raise ManualPredictionError("prejump_shadow_metadata_missing")
     race_info = race_info if isinstance(race_info, Mapping) else {}
     supplied_datetime_timestamps = []
-    for mapping in (shadow, sidecar):
-        if "jump_datetime" in mapping:
-            value = mapping["jump_datetime"]
+    for mapping, key in ((shadow, "jump_datetime"), (sidecar, "jump_datetime"),
+                         (race_info, "scheduled_jump_datetime")):
+        if key in mapping:
+            value = mapping[key]
             if (
                 value is None
                 or isinstance(value, bool)
@@ -1096,6 +1097,27 @@ def _jump_timestamp(sidecar: Mapping[str, Any], race_date: date) -> datetime:
             supplied_datetime_timestamps.append(
                 _parse_timestamp(value, "jump_timestamp").timestamp()
             )
+
+    clock_date = race_date
+    explicit_jump = None
+    if supplied_datetime_timestamps:
+        if any(value != supplied_datetime_timestamps[0]
+               for value in supplied_datetime_timestamps[1:]):
+            raise ManualPredictionError("jump_timestamp_mismatch")
+        explicit_jump = datetime.fromtimestamp(supplied_datetime_timestamps[0], tz=MELBOURNE)
+        clock_date = explicit_jump.date()
+        if clock_date != race_date:
+            # The canonical page's explicit epoch may belong to the following
+            # local calendar day. Preserve the source racing-day identity and
+            # history cutoff; never infer rollover from a clock alone.
+            if clock_date != race_date + timedelta(days=1):
+                raise ManualPredictionError("jump_date_target_date_mismatch")
+            if ("scheduled_jump_datetime" not in race_info
+                    or race_info.get("race_time_source") != "canonical_race_url"
+                    or race_info.get("race_time_mapping_status") != "exact_url_match"
+                    or "race_time" not in race_info
+                    or _agreed_race_date(shadow, race_info) != race_date):
+                raise ManualPredictionError("jump_rollover_proof_missing")
 
     supplied_time_timestamps = []
     for mapping, key in ((shadow, "jump_time"), (race_info, "race_time")):
@@ -1112,9 +1134,11 @@ def _jump_timestamp(sidecar: Mapping[str, Any], race_date: date) -> datetime:
         for fmt in ("%I:%M %p", "%I:%M%p", "%H:%M", "%H:%M:%S"):
             try:
                 parsed_time = datetime.strptime(value.strip().upper(), fmt).time()
+                if explicit_jump is not None and parsed_time != explicit_jump.time():
+                    raise ManualPredictionError("jump_timestamp_mismatch")
                 supplied_time_timestamps.append(
                     datetime.combine(
-                        race_date, parsed_time, tzinfo=MELBOURNE
+                        clock_date, parsed_time, tzinfo=MELBOURNE
                     ).timestamp()
                 )
                 break
@@ -1369,8 +1393,6 @@ def _sidecar_context(sidecar: Mapping[str, Any]) -> dict[str, Any]:
     ):
         raise ManualPredictionError("target_grade_proof_mismatch")
     jump = _jump_timestamp(sidecar, target_date)
-    if jump.astimezone(MELBOURNE).date() != target_date:
-        raise ManualPredictionError("jump_date_target_date_mismatch")
     return {
         "shadow": shadow,
         "runners": runners,

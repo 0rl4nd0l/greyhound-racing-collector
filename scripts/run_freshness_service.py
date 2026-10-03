@@ -24,7 +24,7 @@ def main():
 
     # ExecCondition runs in a separate process. Validate and bind this wrapper's
     # owner before its gate; children inherit only that authenticated binding.
-    for key in ("GREYHOUND_INCIDENT_AUTHORITY_SHA256", "GREYHOUND_INCIDENT_SLOT"):
+    for key in ("GREYHOUND_INCIDENT_AUTHORITY_SHA256", "GREYHOUND_INCIDENT_SLOT", "GREYHOUND_PERSISTENT_ALLOCATION_SHA256"):
         os.environ.pop(key, None)
     scope = FreshnessContract.load(contract)
     from utils.sportsbet_access import SportsbetAccess

@@ -140,7 +140,7 @@ class BrowserNetworkAccounting:
             scope.admit(datetime.now(timezone.utc), seconds=0)
             if scope.campaign:
                 try:
-                    scope.campaign.request()
+                    scope.campaign.request(kind='browser' if getattr(scope.campaign, 'persistent', None) else 'prediction')
                 except ValueError:
                     scope.stop("CAMPAIGN_REQUEST_CAP_EXHAUSTED")
                     raise

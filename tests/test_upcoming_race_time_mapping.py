@@ -59,11 +59,11 @@ def test_live_scrape_maps_times_by_each_canonical_race_url(monkeypatch):
     )
     monkeypatch.setattr(browser, "_find_race_links_fast", lambda soup, date: links)
 
-    def exact_time(url):
+    def exact_time(url, *, include_evidence=False):
         if "/11/" in url:
-            return "5:40 PM"
+            return {"race_time": "5:40 PM"} if include_evidence else "5:40 PM"
         if "/12/" in url:
-            return "6:05 PM"
+            return {"race_time": "6:05 PM"} if include_evidence else "6:05 PM"
         return None
 
     monkeypatch.setattr(browser, "_scrape_race_time_from_page", exact_time)
@@ -85,7 +85,7 @@ def test_missing_canonical_race_time_is_flagged_not_estimated(monkeypatch):
         '<a href="/racing/horsham/2026-05-26/12/sportsbet-more-places">R12</a>'
     )
     monkeypatch.setattr(browser, "_find_race_links_fast", lambda soup, date: links)
-    monkeypatch.setattr(browser, "_scrape_race_time_from_page", lambda url: None)
+    monkeypatch.setattr(browser, "_scrape_race_time_from_page", lambda url, **kwargs: None)
 
     races = browser._scrape_live_races_for_date("2026-05-26")
 

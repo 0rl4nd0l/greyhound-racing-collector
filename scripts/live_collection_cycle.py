@@ -667,6 +667,8 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                 str(args.live_freshness_contract),
             ]
         if kind == "refresh":
+            from race_collection.daily_race_inventory import inventory_cli_args
+            command += inventory_cli_args(args)
             command += [
                 "--days-ahead",
                 str(args.days_ahead),

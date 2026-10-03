@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from utils.race_schedule_time import scheduled_jump_datetime
+
 import atexit
 import base64
 import contextlib
@@ -698,6 +700,7 @@ def _normalize_current_index_rows(
 ) -> list[dict[str, Any]]:
     from scripts.refresh_prejump_upcoming import (
         complete_empty_metadata_selection,
+        complete_empty_timing_selection,
         has_unisolated_refresh_failure,
         current_index_metadata_selection,
         stable_race_id,
@@ -771,6 +774,10 @@ def _normalize_current_index_rows(
                 "CURRENT_INDEX_SOURCE_INVALID",
                 reason="current_index_metadata_selection_invalid",
             )
+    if selected == [] and source.get("selected_count") == 0 and not complete_empty_timing_selection(source):
+        raise CaptureOneRejected(
+            "CURRENT_INDEX_SOURCE_INVALID", reason="empty_timing_selection_incomplete"
+        )
     if (
         not isinstance(selected, list)
         or isinstance(selected_count, bool)
@@ -821,7 +828,11 @@ def _normalize_current_index_rows(
             or identity["race_number"] != race_number
             or jump.tzinfo is None
             or jump.utcoffset() is None
-            or jump.date().isoformat() != race_date
+            or (
+                scheduled_jump_datetime(raw) != jump
+                if "scheduled_jump_datetime" in raw
+                else jump.date().isoformat() != race_date
+            )
             or not venue
             or not race_id
             or not isinstance(aliases, list)
@@ -842,6 +853,8 @@ def _normalize_current_index_rows(
         row = {
             "date": race_date,
             "jump_datetime": jump.isoformat(),
+            **({"scheduled_jump_datetime": raw["scheduled_jump_datetime"]}
+               if "scheduled_jump_datetime" in raw else {}),
             "race_id": race_id,
             "race_id_aliases": list(aliases),
             "race_number": race_number,
@@ -917,6 +930,10 @@ def _v2_runner_rows(
     alignment = shadow.get("canonical_final_runner_alignment")
     if not isinstance(alignment, Mapping) or alignment.get("status") != "aligned" or alignment.get("canonical_runner_set_status") != "available":
         raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_source_not_aligned")
+    if "scheduled_jump_datetime" in race:
+        sidecar_timing = sidecar.get("race_info")
+        if not isinstance(sidecar_timing, Mapping) or scheduled_jump_datetime(sidecar_timing) != scheduled_jump_datetime(race):
+            raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID", reason="runner_jump_timestamp_mismatch")
     if (
         shadow.get("source_url") != race["race_url"]
         or shadow.get("race_date") != race["date"]
@@ -1313,11 +1330,13 @@ def publish_current_race_index(
             source = json.loads(source_raw)
             if not isinstance(source, Mapping):
                 raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
-            from scripts.refresh_prejump_upcoming import complete_empty_metadata_selection
+            from scripts.refresh_prejump_upcoming import (
+                complete_empty_metadata_selection, complete_empty_timing_selection,
+            )
 
-            empty_eligible = source.get(
-                "status"
-            ) == "NO_QUALIFIED_RACES" and complete_empty_metadata_selection(source)
+            empty_eligible = (
+                source.get("status") == "NO_QUALIFIED_RACES" and complete_empty_metadata_selection(source)
+            ) or complete_empty_timing_selection(source)
             if (source.get("status") != "SUCCESS" and not empty_eligible) or source.get(
                 "dry_run"
             ) is True:

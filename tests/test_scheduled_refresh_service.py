@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.mark.parametrize("scenario", ["recovery", "cap", "untyped", "guidance", "denial", "no_index",
-                                     "discovery_recovery", "discovery_cap", "discovery_no_index"])
+                                     "discovery_recovery", "discovery_cap", "discovery_no_index", "empty_close", "empty_future", "mixed_recovery", "mixed_cap"])
 def test_actual_service_preserves_bounded_scheduled_refresh_recovery(tmp_path, monkeypatch, scenario):
     from scripts import prepare_freshness_rehearsal as packaging
     from scripts.check_freshness_service import service_command
@@ -25,7 +25,7 @@ def test_actual_service_preserves_bounded_scheduled_refresh_recovery(tmp_path, m
 
     gate = access(tmp_path)
     monkeypatch.setenv("GREYHOUND_SPORTSBET_ACCESS_STATE", str(gate))
-    http = fixture(tmp_path, 1)
+    http = fixture(tmp_path, 2 if scenario.startswith("mixed_") else 1)
     good = json.loads(http.read_text())
     installed = tmp_path / "installed"
     installed.mkdir()
@@ -72,15 +72,32 @@ def test_actual_service_preserves_bounded_scheduled_refresh_recovery(tmp_path, m
         old_events = len(list(publications.glob("*.json")))
     bad = json.loads(json.dumps(good))
     for url, row in bad["responses"].items():
-        if scenario.startswith("discovery_"):
+        if scenario.startswith("empty_"):
+            import re
+            jump = (stamp + timedelta(minutes=5 if scenario == "empty_close" else 80)).strftime("%H:%M")
+            row["body"] = re.sub(r'(<formatted-time data-format="time_24">)[^<]+',
+                                 lambda match: match[1] + jump, row.get("body", ""))
+        elif scenario.startswith("discovery_"):
             if url == "www.thedogs.com.au/racing/" + stamp.date().isoformat():
                 row["error_type"] = "ConnectionError"
         elif url.endswith("export.csv"):
+            if scenario.startswith("mixed_") and "/2/" in url:
+                continue
             row.update(status=200 if scenario == "untyped" else 429 if scenario == "denial" else 502,
                        body="not a csv", headers={"Retry-After": "60"} if scenario == "guidance" else {})
     http.write_text(json.dumps(bad))
     traffic_before_failure = len((tmp_path / "transport.jsonl").read_text().splitlines()) if (tmp_path / "transport.jsonl").exists() else 0
     failed = invoke(1)
+    if scenario.startswith("empty_"):
+        assert failed and failed["runtime_action"] == "LIVE_COLLECTION_COMPLETE"
+        assert not (scope.session / "STOP.json").exists()
+        assert not AttemptAllowance(scope).claims()
+        index = evidence / "shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json"
+        assert json.loads(index.read_bytes())["races"] == []
+        assert len(list(publications.glob("*.json"))) > old_events
+        traffic = [json.loads(line) for line in (tmp_path / "transport.jsonl").read_text().splitlines()][traffic_before_failure:]
+        assert not any(row["path"].endswith("export.csv") for row in traffic)
+        return
     expected_action = "LIVE_COLLECTION_BLOCKED" if scenario.endswith("no_index") else "LIVE_PHASE_FAILED"
     assert failed and failed["runtime_action"] == expected_action
     assert failed["status"] == "FAILED"
@@ -102,7 +119,12 @@ def test_actual_service_preserves_bounded_scheduled_refresh_recovery(tmp_path, m
     records = list((package / "refresh-deferrals").glob("*.json"))
     assert len(records) == 1
     assert json.loads(records[0].read_text())["status"] == "FAILED_REFRESH_AWAITING_NORMAL_TIMER"
-    if scenario in {"recovery", "discovery_recovery"}:
+    if scenario.startswith("mixed_"):
+        report = json.loads((evidence / "shadow_autopilot_v1_fixture1_odds_capture_phase_0/odds_capture_refresh_report.json").read_bytes())
+        assert report["status"] == "ACQUISITION_INCOMPLETE"
+        assert report["selected_count"] == 2 and report["accepted_csv_count"] == 1
+        assert len(list(publications.glob("*.json"))) == old_events
+    if scenario in {"recovery", "discovery_recovery", "mixed_recovery"}:
         http.write_text(json.dumps(good))
         recovered = invoke(2)
         assert recovered and recovered["runtime_action"] == "LIVE_COLLECTION_COMPLETE"

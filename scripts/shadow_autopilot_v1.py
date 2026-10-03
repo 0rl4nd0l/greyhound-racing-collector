@@ -6882,6 +6882,8 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             "--output",
             str(output_dir / "refresh_prejump_report.json"),
         ]
+        from race_collection.daily_race_inventory import inventory_cli_args
+        refresh_command.extend(inventory_cli_args(args))
         if args.refresh_dry_run:
             refresh_command.append("--dry-run")
         if args.require_safe_refresh_metadata:
@@ -6974,6 +6976,8 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
             "--output",
             str(output_dir / "odds_capture_refresh_report.json"),
         ]
+        from race_collection.daily_race_inventory import inventory_cli_args
+        odds_capture_refresh_command.extend(inventory_cli_args(args))
         if args.refresh_dry_run:
             odds_capture_refresh_command.append("--dry-run")
         if args.require_safe_refresh_metadata:
@@ -8707,6 +8711,8 @@ def run_autopilot(args: argparse.Namespace) -> dict[str, Any]:
 
 def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
+    from race_collection.daily_race_inventory import add_inventory_arguments
+    add_inventory_arguments(parser)
     parser.add_argument("--collection-phase", choices=("refresh", "capture"))
     parser.add_argument("--live-freshness-profile", choices=("bounded80-v1",))
     parser.add_argument("--live-freshness-contract", type=Path)

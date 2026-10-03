@@ -98,6 +98,10 @@ def test_real_prepare_and_supervisor_contract_accept_prospective_root(prepared,m
     campaign=Campaign(prepared['campaign_root'])
     prediction=prepared['output'].parent/'new-nvme-predictions'
     campaign.programme={'prediction_root':str(prediction)}
+    # This test isolates root propagation; cumulative accounting is covered by
+    # native Campaign tests, so its existing fake provides the read-only seam.
+    for method in ('development_usage', 'incident_usage', 'persistent_usage', 'programme_usage'):
+        setattr(campaign, method, lambda _: {'capture_attempts': 0})
     roots={k:[str(prepared['output'].parent)] for k in ('scheduled_progress','scheduled_reports','phase_checkpoints','prior_rehearsals','manual_claims','manual_attempts')}
     prepared['reconciliation_roots']=roots
     prepare(**prepared,prediction_root=prediction)

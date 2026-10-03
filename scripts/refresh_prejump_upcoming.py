@@ -33,6 +33,7 @@ from utils.csv_metadata import (  # noqa: E402
     load_safe_weather_track_metadata,
 )
 from utils.expert_form_metadata import safe_expert_form_metadata_from_payload  # noqa: E402
+from utils.race_schedule_time import scheduled_jump_datetime
 from utils.race_lifecycle import melbourne_now  # noqa: E402
 from scripts.capture_thedogs_market_history import (  # noqa: E402
     validate_primary_native_identity_evidence,
@@ -188,6 +189,8 @@ def _parse_race_jump_datetime(
     now: datetime | None = None,
 ) -> datetime | None:
     now = now or melbourne_now()
+    if "scheduled_jump_datetime" in race:
+        return scheduled_jump_datetime(race)
     date_text = str(race.get("date") or race.get("race_date") or "").strip()
     time_text = str(
         race.get("race_time")
@@ -250,6 +253,8 @@ def race_window_record(
         "date": race.get("date") or race.get("race_date"),
         "race_time": race.get("race_time") or race.get("jump_time"),
         "jump_datetime": jump_dt.isoformat() if jump_dt else None,
+        **({"scheduled_jump_datetime": race["scheduled_jump_datetime"]}
+           if "scheduled_jump_datetime" in race else {}),
         "race_time_source": race.get("race_time_source"),
         "discovery_time_evidence": race.get("discovery_time_evidence"),
         "minutes_to_jump": minutes_to_jump,
@@ -1118,6 +1123,12 @@ def _complete_local_runner_quarantine(
     )
 
 
+def _complete_local_acquisition_rejection(candidate, result, root):
+    from utils.race_schedule_rejection import complete_schedule_change_rejection
+    return (_complete_local_runner_quarantine(candidate, result, root)
+            or complete_schedule_change_rejection(candidate, result, root))
+
+
 def has_unisolated_refresh_failure(report: Mapping[str, Any]) -> bool:
     """Do not publish even an eligible subset after an unisolated source failure."""
     try:
@@ -1159,7 +1170,7 @@ def has_unisolated_refresh_failure(report: Mapping[str, Any]) -> bool:
                 return True
             if download.get("success") is True and result.get("success") is True:
                 continue
-            if download.get("success") is not False or not _complete_local_runner_quarantine(
+            if download.get("success") is not False or not _complete_local_acquisition_rejection(
                 candidate, result, report.get("upcoming_dir")
             ):
                 return True
@@ -1181,6 +1192,82 @@ def has_unisolated_refresh_failure(report: Mapping[str, Any]) -> bool:
         return False
     except (KeyError, IndexError, TypeError, ValueError, AttributeError, OSError):
         return True
+
+
+def complete_empty_timing_selection(report: Mapping[str, Any]) -> bool:
+    """Recognize complete discovery with every race outside the capture window.
+
+    An empty selection is fresh evidence of no eligible work, not race inputs.
+    Recompute timing exclusions so missing, failed or partial discovery cannot
+    acquire a successful empty index merely by setting selected_count to zero.
+    """
+    import math
+
+    try:
+        if (report.get("status") != "SUCCESS" or report.get("dry_run") is not False
+                or has_unisolated_refresh_failure(report)
+                or any(report.get(key) for key in (
+                    "reason", "source_http_status", "source_retry_after",
+                    "source_rate_limit_reset", "source_retry_headers", "discovery_failures"))):
+            return False
+        if any(type(report.get(key)) is not int or report[key] != 0 for key in (
+                "selected_count", "accepted_csv_count", "sidecar_count",
+                "raw_export_count", "quarantine_count", "current_index_race_count")):
+            return False
+        if any(report.get(key) != [] for key in (
+                "selected_races", "downloads", "current_index_races")):
+            return False
+        if report.get("artifact_counts") != {key: 0 for key in (
+                "accepted_csv_count", "sidecar_count", "raw_export_count", "quarantine_count")}:
+            return False
+        records = report["considered_races"]
+        count = report["total_races_found"]
+        if (not isinstance(records, list) or not records or type(count) is not int
+                or count != len(records)):
+            return False
+        observed = datetime.fromisoformat(report["generated_at"])
+        if observed.utcoffset() is None:
+            return False
+        lower, upper = (report["window"][key] for key in ("min_minutes", "max_minutes"))
+        if (any(type(v) not in (int, float) or not math.isfinite(v) for v in (lower, upper))
+                or not 0 <= lower <= upper):
+            return False
+        buckets = Counter()
+        identities = set()
+        race_ids = set()
+        for row in records:
+            if (not isinstance(row, Mapping) or row.get("selected") is not False
+                    or row.get("excluded_reason") or not row.get("race_id")
+                    or not row.get("race_url") or row["race_url"] in identities
+                    or row["race_id"] in race_ids or stable_race_id(row) != row["race_id"]):
+                return False
+            identities.add(row["race_url"])
+            race_ids.add(row["race_id"])
+            jump = datetime.fromisoformat(row["jump_datetime"])
+            if jump.utcoffset() is None or _parse_race_jump_datetime(row, now=observed) != jump:
+                return False
+            minutes = (jump - observed).total_seconds() / 60
+            bucket = ("past_or_too_close" if minutes < lower else
+                      "future_outside_preferred_window" if minutes > upper else None)
+            if (bucket is None or row.get("bucket") != bucket
+                    or row.get("selection_decision") != bucket
+                    or row.get("minutes_to_jump") != minutes):
+                return False
+            buckets[bucket] += 1
+        if report.get("bucket_counts") != dict(buckets):
+            return False
+        coverage = report["sidecar_metadata_coverage"]
+        if (coverage.get("status") != "NOT_REQUESTED_NO_SELECTED_RACES"
+                or coverage.get("reason") != "no_selected_races"
+                or coverage.get("races") != []
+                or any(type(coverage.get(k)) is not int or coverage[k] != 0 for k in (
+                    "selected_race_count", "accepted_selected_csv_count"))
+                or report.get("metadata_collection_status") != "NOT_REQUESTED_NO_SELECTED_RACES"):
+            return False
+        rows, selection = current_index_metadata_selection([], coverage, source_generated_at=observed)
+        return not rows and report.get("current_index_metadata_selection") == selection
+    except (KeyError, TypeError, ValueError, AttributeError, OverflowError):
+        return False
 
 
 def complete_empty_metadata_selection(report: Mapping[str, Any]) -> bool:
@@ -1213,6 +1300,7 @@ def complete_empty_metadata_selection(report: Mapping[str, Any]) -> bool:
         ):
             return False
         local_quarantines = set()
+        schedule_rejections = set()
         for number, (candidate, download) in enumerate(zip(selected, downloads)):
             result = download.get("result")
             if (
@@ -1231,11 +1319,13 @@ def complete_empty_metadata_selection(report: Mapping[str, Any]) -> bool:
                 return False
             if download.get("success") is True and result.get("success") is True:
                 continue
-            if download.get("success") is not False or not _complete_local_runner_quarantine(
+            if download.get("success") is not False or not _complete_local_acquisition_rejection(
                 candidate, result, report.get("upcoming_dir")
             ):
                 return False
             local_quarantines.add(number)
+            if result.get("error") == "discovery_canonical_jump_changed":
+                schedule_rejections.add(number)
         accepted = count - len(local_quarantines)
         if any(
             type(report.get(key)) is not int or report[key] != accepted
@@ -1251,7 +1341,7 @@ def complete_empty_metadata_selection(report: Mapping[str, Any]) -> bool:
             return False
         if local_quarantines and (
             type(report.get("quarantine_count")) is not int
-            or report["quarantine_count"] != len(local_quarantines)
+            or report["quarantine_count"] != len(local_quarantines - schedule_rejections)
             or (not accepted and shared is None)
         ):
             return False
@@ -1412,14 +1502,33 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
     os.environ["UPCOMING_RACES_DIR"] = str(upcoming_dir)
 
     timing = RefreshRequestTiming(upcoming_dir) if getattr(args, "trace_requests", False) else None
-    browser_type = _timed_call(timing, "browser_import", _browser_type)
     now = parse_current_time(getattr(args, "current_time", None))
+    inventory_path = getattr(args, "discovery_inventory", None)
+    inventory_sha = getattr(args, "discovery_inventory_sha256", None)
+    inventory = None
+    inventory_source_date = getattr(args, "discovery_inventory_source_date", None) or now.date().isoformat()
+    if inventory_path or inventory_sha or getattr(args, "discovery_inventory_source_date", None):
+        from race_collection.daily_race_inventory import InventoryError, load_daily_inventory
+        if not inventory_path or not inventory_sha:
+            raise InventoryError("INVENTORY_REFERENCE_INCOMPLETE")
+        max_inventory_age = getattr(args, "discovery_inventory_max_age_seconds", 900)
+        if not isinstance(max_inventory_age, (int, float)) or max_inventory_age > 900:
+            raise InventoryError("INVENTORY_ACTIVE_MAX_AGE_INVALID")
+        inventory = load_daily_inventory(
+            inventory_path, inventory_sha, source_date=inventory_source_date, now=now,
+            max_age_seconds=max_inventory_age,
+        )
+    browser_type = _timed_call(timing, "browser_import", _browser_type)
     if getattr(args, "live_freshness_contract", None):
         from race_collection.live_freshness_contract import FreshnessContract, install_request_guard
         scope = FreshnessContract.load(args.live_freshness_contract)
         scope.admit(datetime.now().astimezone(), seconds=80)
-        if now.date().isoformat() != scope.value["source_date"] or now.utcoffset() != datetime.now().astimezone().utcoffset():
+        persistent_inventory = bool(scope.value.get("persistent_allocation") and inventory is not None)
+        if ((not persistent_inventory and now.date().isoformat() != scope.value["source_date"])
+                or now.utcoffset() != datetime.now().astimezone().utcoffset()):
             raise ValueError("discovery_clock_scope_mismatch")
+        if inventory is not None and inventory_source_date != scope.value["source_date"]:
+            raise ValueError("discovery_inventory_contract_date_mismatch")
         install_request_guard(scope)  # This CLI process exits after the refresh.
     browser = _refresh_browser(timing, browser_type)
     browser.bounded_meeting_discovery = budget is not None
@@ -1433,9 +1542,14 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
         )
     if getattr(args, "live_freshness_contract", None) and discovery_days_ahead != 0:
         raise ValueError("two_date_refresh_not_authorized")
-    races = _timed_call(
-        timing, "discovery", browser.get_upcoming_races, days_ahead=discovery_days_ahead
-    )
+    if inventory is None:
+        races = _timed_call(
+            timing, "discovery", browser.get_upcoming_races, days_ahead=discovery_days_ahead
+        )
+    else:
+        if discovery_days_ahead != 0:
+            raise ValueError("discovery_inventory_single_date_only")
+        races = inventory["races"]
     discovery_finished = time.monotonic()
     discovery_failures = list(getattr(browser, 'discovery_failures', []))
     unusable_discovered_count = len(races) if discovery_failures else 0
@@ -1545,6 +1659,13 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
         "upcoming_dir": str(upcoming_dir),
         "days_ahead": int(args.days_ahead),
         "discovery_days_ahead": discovery_days_ahead,
+        "discovery_observed_at": inventory["observed_at"] if inventory is not None else now.isoformat(),
+        "discovery_inventory": ({
+            "path": str(Path(inventory_path).absolute()), "sha256": inventory_sha,
+            "source_date": inventory["source_date"], "observed_at": inventory["observed_at"],
+            "age_seconds": (now - datetime.fromisoformat(inventory["observed_at"])).total_seconds(),
+            "mode": "RETAINED_DISCOVERY_FRESH_SELECTED_INPUTS",
+        } if inventory is not None else None),
         "window": {
             "min_minutes": float(args.min_minutes),
             "max_minutes": float(args.max_minutes),
@@ -1657,6 +1778,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--upcoming-dir", default="upcoming_races")
     parser.add_argument("--days-ahead", type=int, default=0)
+    from race_collection.daily_race_inventory import add_inventory_arguments
+    add_inventory_arguments(parser)
     parser.add_argument("--min-minutes", type=float, default=20.0)
     parser.add_argument("--max-minutes", type=float, default=160.0)
     parser.add_argument("--limit", type=int, default=16)

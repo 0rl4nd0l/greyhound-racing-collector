@@ -106,9 +106,9 @@ class Supervisor:
         self.log = None
         self.comparison_index_seen = None
 
-    def tick(self):
+    def tick(self, *, allow_dispatch=True):
         import subprocess
-        if self.plan.get("frozen_comparison"):
+        if allow_dispatch and self.plan.get("frozen_comparison"):
             self.observe_comparison_schedule()
         if self.child is not None:
             if self.child.poll() is None:
@@ -118,7 +118,7 @@ class Supervisor:
             self.child = None
             if result not in (0, 3):
                 raise ValueError("operational_prediction_failed_preserved_consumption")
-        if not self.plan.get("operational_predictions") or (self.scope.end-now()).total_seconds() < 200:
+        if not allow_dispatch or not self.plan.get("operational_predictions") or (self.scope.end-now()).total_seconds() < 200:
             return
 
         from race_collection.live_freshness_contract import AttemptAllowance
@@ -176,7 +176,7 @@ def operational_root(plan, campaign):
     root = plan.get('prediction_root')
     if root is None:
         return campaign.root / 'operational-predictions'
-    approved = (getattr(campaign, 'incident', None) or
+    approved = (getattr(campaign, 'persistent', None) or getattr(campaign, 'incident', None) or
                 (campaign.development if getattr(campaign, 'development', None) else campaign.programme))
     if not approved or root != approved.get('prediction_root'):
         raise ValueError('prediction_root_not_in_approved_programme')
@@ -363,7 +363,12 @@ def run(plan_path: Path, claim_path: Path):
             raise ValueError("captured_race_changed")
         race = races[0]
         if race["runner_set_sha256"] != item["race_identity"]["runner_set_sha256"]:
-            raise ValueError("captured_runners_changed")
+            from race_collection.captured_snapshot import classify_superseded_capture
+            proof = classify_superseded_capture(reserved, view,
+                evidence_root=evidence, current_time=now())
+            timing.update(status="REJECTED", stage=stage, reason=proof["code"],
+                preserved_rejection=proof["code"], rejection_proof=proof)
+            return timing
         source_root = Path(plan["source_root"])
         model = resolve_model("latest-research")
         config_path = source_root / "configs/prediction/manual-default.json"
@@ -438,5 +443,7 @@ if __name__ == "__main__":
         print(json.dumps({k: result[k] for k in ("status", "total_seconds")}))
         # Exit 3 is a verified, sealed per-race exclusion, never a successful forecast.
         raise SystemExit(0 if result["status"] == "PREDICTION_READY" else
-                         3 if result.get("preserved_rejection") == "TARGET_GRADE_CONTEXT_UNAVAILABLE" else 2)
+                         3 if result.get("preserved_rejection") in {
+                             "TARGET_GRADE_CONTEXT_UNAVAILABLE", "CAPTURE_SNAPSHOT_SUPERSEDED",
+                             "CAPTURE_RUNNERS_CHANGED"} else 2)
     raise SystemExit(bounded_run(Path(sys.argv[1]), Path(sys.argv[2])))

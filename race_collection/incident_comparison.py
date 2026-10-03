@@ -13,6 +13,9 @@ STATUS = 'AUTHORIZED_ENGINEERING'
 
 
 def validate_incident_plan(plan):
+    if plan.get('persistent_allocation') is not None:
+        from race_collection.persistent_comparison import validate_persistent_plan
+        return validate_persistent_plan(plan)
     from src.predictor.future_comparison import checked, stamp
     authority = load_incident_authority(plan['incident_authority'])
     slots = {row['id']: row for row in authority['slots']}

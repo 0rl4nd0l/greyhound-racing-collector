@@ -26,7 +26,42 @@ def utc_now():
     return datetime.now(timezone.utc)
 
 
-def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False, observation_minutes=90, start_after_minutes=None, comparison_plan=None, prediction_root=None, engineering_authority=None, development_authority=None, reduced_request_cap=None, incident_authority=None, incident_slot=None):
+def remaining_capture_jobs(campaign):
+    """Package the native remaining allowance without rewriting its ledger."""
+    ledger = json.loads((campaign.root / 'ledger.json').read_bytes())
+    if getattr(campaign, 'persistent', None):
+        remaining = campaign.persistent['max_capture_attempts'] - campaign.persistent_usage(ledger, selected=True)['capture_attempts']
+        if remaining <= 0:
+            raise ValueError('persistent_capture_allowance_consumed')
+        return remaining
+    remaining = campaign.value['max_capture_attempts'] - len(ledger['attempts'])
+    if campaign.programme:
+        # Match Campaign.available/consume: authenticated incident/development
+        # consumption belongs to separate allowances; the study still has its
+        # own 1,000-capture ceiling as well as the cumulative campaign ceiling.
+        remaining += (campaign.development_usage(ledger)['capture_attempts']
+                      + campaign.incident_usage(ledger)['capture_attempts']
+                      + campaign.persistent_usage(ledger)['capture_attempts'])
+        remaining = min(remaining, 1000 - campaign.programme_usage(ledger)['capture_attempts'])
+        if remaining <= 0:
+            raise ValueError('campaign_capture_allowance_consumed')
+    return remaining
+
+
+def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_dir, campaign_root=None, operational_predictions=False, observation_minutes=90, start_after_minutes=None, comparison_plan=None, prediction_root=None, engineering_authority=None, development_authority=None, reduced_request_cap=None, incident_authority=None, incident_slot=None, persistent_allocation=None):
+    persistent = None
+    if persistent_allocation is not None:
+        from race_collection.persistent_authority import load_persistent_allocation, stamp
+        if (any(v is not None for v in (engineering_authority, development_authority, incident_authority,
+                                       incident_slot, start_after_minutes))
+                or not operational_predictions or campaign_root is None or comparison_plan is None
+                or prediction_root is None):
+            raise ValueError('persistent_requires_native_comparison_path')
+        persistent = load_persistent_allocation(persistent_allocation)
+        if start is None:
+            start = stamp(persistent['starts_at'])
+        if start.utcoffset() is None or start != stamp(persistent['starts_at']):
+            raise ValueError('persistent_scope_window_changed')
     if engineering_authority is not None and (
             not operational_predictions or campaign_root is None
             or comparison_plan is not None or prediction_root is not None):
@@ -39,6 +74,7 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         raise ValueError("incident_requires_native_comparison_path")
     incident_args = ({"incident_authority": incident_authority, "incident_slot": incident_slot}
                      if incident_authority is not None else {})
+    profile_args = {**incident_args, **({'persistent_allocation': persistent_allocation} if persistent else {})}
     comparison_binding = None
     if comparison_plan is not None:
         if not operational_predictions:
@@ -51,12 +87,16 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
                 comparison_value['status'] != 'AUTHORIZED_ENGINEERING'
                 or any(comparison_value.get(key) != item for key, item in incident_args.items())):
             raise ValueError('incident_comparison_scope_mismatch')
+        if persistent and (comparison_value.get('status') != 'AUTHORIZED_ENGINEERING'
+                or comparison_value.get('persistent_allocation') != persistent_allocation
+                or comparison_value.get('candidate_registry') != persistent['candidate_registry']):
+            raise ValueError('persistent_comparison_scope_mismatch')
         comparison_binding = {"path": str(comparison_plan), "sha256": comparison_sha}
     operational = bool(campaign_root and operational_predictions)
-    if (type(observation_minutes) is not int
+    if not persistent and (type(observation_minutes) is not int
             or not (observation_minutes == 110 if development_authority else 5 <= observation_minutes <= 90 if operational else observation_minutes == 90)):
         raise ValueError("invalid_operational_observation_duration")
-    short_observation = observation_minutes < 60
+    short_observation = not persistent and observation_minutes < 60
     if start_after_minutes is not None and (start is not None
             or type(start_after_minutes) is not int or not 5 <= start_after_minutes <= 30):
         raise ValueError('invalid_relative_execution_window')
@@ -72,8 +112,8 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
             raise ValueError("operational_predictions_require_existing_campaign")
         if prediction_root is not None:
             from race_collection.freshness_campaign import Campaign
-            campaign = Campaign(campaign_root, development_authority=development_authority, **incident_args)
-            approved = getattr(campaign, "incident", None) or campaign.development or campaign.programme
+            campaign = Campaign(campaign_root, development_authority=development_authority, **profile_args)
+            approved = getattr(campaign, "persistent", None) or getattr(campaign, "incident", None) or campaign.development or campaign.programme
             if (not approved or str(prediction_root) != approved.get('prediction_root')
                     or not prediction_root.is_absolute() or prediction_root.resolve() != prediction_root):
                 raise ValueError('prediction_root_not_in_approved_programme')
@@ -184,11 +224,12 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
     if campaign_root is not None:
         from race_collection.freshness_campaign import Campaign
         campaign = (Campaign(campaign_root, engineering_authority=engineering_authority)
-                    if engineering_authority is not None else Campaign(campaign_root, development_authority=development_authority, **incident_args))
+                    if engineering_authority is not None else Campaign(campaign_root, development_authority=development_authority, **profile_args))
     from utils.sportsbet_access import state_path
 
     plan = {
-        **incident_args,
+        **profile_args,
+        **({"racing_date": persistent["racing_date"]} if persistent else {}),
         **({'development_authority': development_authority} if development_authority is not None else {}),
         **({'engineering_authority': engineering_authority} if engineering_authority is not None else {}),
         **({"prediction_root": str(prediction_root)} if prediction_root is not None else {}),
@@ -207,17 +248,17 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         "python": str(python),
         "python_sha256": hashlib.sha256(python.resolve().read_bytes()).hexdigest(),
         "runtime_sha256": digest(runtime_identity),
-        "cleanup_seconds": 600 if development_authority else 1860 if campaign else 1200,
+        "cleanup_seconds": int((stamp(persistent["cleanup_by"])-stamp(persistent["ends_at"])).total_seconds()) if persistent else 600 if development_authority else 1860 if campaign else 1200,
         "sample_period_seconds": 2,
         "max_sample_gap_seconds": 5,
         "readiness_warmup_seconds": 180 if short_observation else 1200,
         **({"minimum_completed_full_cycles": 1, "minimum_distinct_captures": 1}
            if short_observation else {}),
-        **({"minimum_completed_odds_cycles": 3} if observation_minutes < 10 else {}),
+        **({"minimum_completed_odds_cycles": 3} if not persistent and observation_minutes < 10 else {}),
         "first_index_deadline_seconds": 180,
         "profile": "bounded80-v1",
         "max_capture_attempts": campaign.value['max_capture_attempts'] if campaign else 1,
-        "max_logical_requests": campaign.incident.get("max_python_requests_per_window", campaign.value["max_logical_requests"]) if incident_authority else (16000 if getattr(campaign,"programme",None) else campaign.value['max_logical_requests']) if campaign else 24000,
+        "max_logical_requests": persistent["max_python_requests"] if persistent else campaign.incident.get("max_python_requests_per_window", campaign.value["max_logical_requests"]) if incident_authority else (16000 if getattr(campaign,"programme",None) else campaign.value['max_logical_requests']) if campaign else 24000,
         "capture_allowance": "PENDING_QUIESCENT_RECONCILIATION",
         "evidence_root": str(evidence),
         "lock_path": str(lock),
@@ -248,12 +289,12 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
             raise ValueError("operational_predictions_require_existing_campaign")
         from race_collection.operational_prediction import prepare_retention
         plan["operational_predictions"] = {
-            "authorization": (campaign.development["authority_reference"] if development_authority else "user:collection-to-prediction-20260924"),
+            "authorization": (persistent["authority_reference"] if persistent else campaign.development["authority_reference"] if development_authority else "user:collection-to-prediction-20260924"),
             "retention_config_sha256": prepare_retention(output, source, python),
             "operation": "operational_prediction",
             "history_db_path": str(history_db),
             "capture_db_path": str(db),
-            "max_jobs": (campaign.incident["max_capture_attempts_per_window"] if incident_authority else 6 if development_authority else campaign.value['max_capture_attempts'] - len(json.loads((campaign.root / "ledger.json").read_bytes())["attempts"])),
+            "max_jobs": (campaign.incident["max_capture_attempts_per_window"] if incident_authority else 6 if development_authority else remaining_capture_jobs(campaign)),
             "result_access": False, "research_activation": False,
         }
         if comparison_binding is not None:
@@ -268,7 +309,7 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
         start = utc_now() + timedelta(minutes=start_after_minutes)
     if start.utcoffset() is None:
         raise ValueError('ambiguous_execution_window')
-    end = start + timedelta(minutes=observation_minutes)
+    end = stamp(persistent["ends_at"]) if persistent else start + timedelta(minutes=observation_minutes)
     if engineering_authority is not None:
         campaign.check_programme_time()
         if (campaign.study_programme and end + timedelta(seconds=plan['cleanup_seconds'])
@@ -281,8 +322,16 @@ def prepare(*, output, start, python, db, lock, reconciliation_roots, installed_
             raise ValueError("incident_scope_window_changed")
     from zoneinfo import ZoneInfo
     zone = ZoneInfo('Australia/Melbourne')
-    if start.astimezone(zone).date() != (end + timedelta(seconds=plan['cleanup_seconds'])).astimezone(zone).date():
+    if not persistent and start.astimezone(zone).date() != end.astimezone(zone).date():
         raise ValueError('execution_window_crosses_source_date')
+    cleanup_at = end + timedelta(seconds=plan['cleanup_seconds'])
+    if persistent and cleanup_at != stamp(persistent['cleanup_by']):
+        raise ValueError('persistent_cleanup_window_changed')
+    if not persistent and start.astimezone(zone).date() != cleanup_at.astimezone(zone).date():
+        from race_collection.incident_engineering import late_cleanup_deadline
+        cutoff = late_cleanup_deadline(incident_authority) if incident_authority else None
+        if cutoff is None or cleanup_at > cutoff:
+            raise ValueError('execution_window_crosses_source_date')
     if development_authority and (start.astimezone(zone).date().isoformat() not in campaign.development['dates']
             or start.astimezone(zone).strftime('%H:%M:%S.%f') != '12:40:00.000000'):
         raise ValueError('development_scope_window_changed')
@@ -304,6 +353,9 @@ def main():
     parser.add_argument("--operational-predictions", action="store_true")
     parser.add_argument("--engineering-authority", help="Explicit separate pre-programme operational authority; uses existing engineering limits")
     parser.add_argument("--comparison-plan", type=Path, help="Explicit approved comparison binding; omitted by default")
+    parser.add_argument("--persistent-allocation", type=Path)
+    parser.add_argument("--persistent-allocation-sha256")
+    parser.add_argument("--prediction-root", type=Path)
     parser.add_argument("--observation-minutes", type=int, default=90)
     parser.add_argument("--output", type=Path, required=True)
     window = parser.add_mutually_exclusive_group(required=True)
@@ -315,6 +367,8 @@ def main():
     parser.add_argument("--reconciliation-roots", type=Path, required=True)
     parser.add_argument("--installed-dir", type=Path, default=Path.home() / ".config/systemd/user")
     args = parser.parse_args()
+    if (args.persistent_allocation is None) != (args.persistent_allocation_sha256 is None):
+        parser.error("persistent allocation path and checksum must be supplied together")
     print(
         json.dumps(
             prepare(
@@ -322,6 +376,9 @@ def main():
                 operational_predictions=args.operational_predictions,
                 engineering_authority=args.engineering_authority,
                 comparison_plan=args.comparison_plan,
+                prediction_root=args.prediction_root,
+                persistent_allocation=({"path": str(args.persistent_allocation), "sha256": args.persistent_allocation_sha256}
+                                       if args.persistent_allocation else None),
                 observation_minutes=args.observation_minutes,
                 output=args.output,
                 start=datetime.fromisoformat(args.start) if args.start else None,
