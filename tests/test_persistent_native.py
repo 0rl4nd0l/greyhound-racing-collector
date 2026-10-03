@@ -114,7 +114,7 @@ def test_reconciliation_failure_releases_only_owned_lock(backend):
     with pytest.raises(ValueError,match='incomplete_preserved'):run(backend)
 
 
-@pytest.mark.parametrize('change',['plan','contract','source','unit','configuration'])
+@pytest.mark.parametrize('change',['plan','contract','source','unit','configuration','reconciliation'])
 def test_restart_rejects_modified_bindings_without_repreparing(backend,change):
     first=run(backend);cfg,standing,ref,calls=backend
     if change=='plan':Path(first['plan_path']).write_text('{}')
@@ -122,6 +122,9 @@ def test_restart_rejects_modified_bindings_without_repreparing(backend,change):
     if change=='source':Path(first['plan']['source_root'],'fixture.py').write_text('# changed')
     if change=='unit':Path(first['output'],'units/fixture.service').write_text('changed')
     if change=='configuration':cfg['source_state']+='changed'
+    if change=='reconciliation':
+        receipt=json.loads(Path(first['receipt_ref']['path']).read_bytes())
+        Path(receipt['reconciliation']['path']).write_text('{}')
     with pytest.raises(ValueError):run(backend)
     assert len(calls)==1
 
@@ -138,3 +141,45 @@ def test_after_midnight_restart_keeps_previous_source_day_allocation(backend):
     resumed=run(backend,'2026-10-04T00:13:00+10:00')
     assert resumed==first and len(backend[3])==1
     assert resumed['contract']['source_date']=='2026-10-03'
+
+
+def test_large_real_reconciliation_preserves_consumption_on_prepare_and_restart(backend):
+    cfg,standing,ref,calls=backend
+    identities=[f'fixture-{index:05d}-2026-10-03' for index in range(3000)]
+    with sqlite3.connect(cfg['history_database']) as db:
+        db.executemany('INSERT INTO live_odds VALUES (?,?)',
+            [(identity,'autonomous_prejump_t2m') for identity in identities])
+    before=Path(cfg['campaign_root'],'ledger.json').read_bytes()
+    first=run(backend)
+    receipt=json.loads(Path(first['receipt_ref']['path']).read_bytes())
+    reconciliation=Path(receipt['reconciliation']['path'])
+    retained=reconciliation.read_bytes()
+    assert 262144<len(retained)<64*1024*1024
+    accounting=json.loads(retained)
+    assert accounting['complete'] is True
+    assert {row['race_id'] for row in accounting['consumed']}==set(identities)
+    assert all(row['capture_window_minutes']==2 for row in accounting['consumed'])
+    assert len(accounting['consumed'])==len(identities)
+    # Only native reconciliation may use the larger bound. Generic authority
+    # reference validation must continue rejecting exactly these larger bytes.
+    with pytest.raises(ValueError,match='persistent_reference_unsafe'):
+        native.checked(receipt['reconciliation'])
+    assert run(backend,'2026-10-03T13:00:00+10:00')==first
+    assert len(calls)==1 and reconciliation.read_bytes()==retained
+    assert Path(cfg['campaign_root'],'ledger.json').read_bytes()==before
+    assert not Path(cfg['source_state']).exists() and not Path(cfg['lock_path']).exists()
+
+
+def test_native_reconciliation_reader_keeps_path_hash_and_finite_size_checks(tmp_path):
+    path=tmp_path/'reconciliation.json'
+    path.write_text('{"fixture":true}')
+    ref=native._ref(path)
+    alias=tmp_path/'alias.json';alias.symlink_to(path)
+    with pytest.raises(ValueError,match='persistent_reconciliation_reference_unsafe'):
+        native._checked_reconciliation({**ref,'path':str(alias)})
+    path.write_text('{"fixture":false}')
+    with pytest.raises(ValueError,match='persistent_reconciliation_changed'):
+        native._checked_reconciliation(ref)
+    with path.open('wb') as stream:stream.truncate(64*1024*1024+1)
+    with pytest.raises(ValueError,match='persistent_reconciliation_reference_unsafe'):
+        native._checked_reconciliation(ref)
