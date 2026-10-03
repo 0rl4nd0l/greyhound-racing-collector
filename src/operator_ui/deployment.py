@@ -806,6 +806,9 @@ def generate_package(*, source_root: Path, pinned_python: Path, evidence_root: P
         f"ANALYTICS_DB_PATH={database}",
         f"MPLCONFIGDIR={operations / 'runtime/matplotlib'}",
         "DISABLE_SPORTSBET_INTEGRATOR=1", "OPERATOR_UI_DISABLE_LEGACY_STARTUP=1",
+        # Heap tracing magnifies full-chain audit work inside disclosure locks.
+        # Keep the integrity checks; omit legacy allocation profiling in the UI.
+        "TRACE_MALLOC=0",
         "ENABLE_SCRAPING_DEFAULT=0", "ENABLE_LIVE_SCRAPING=0", "ENABLE_RESULTS_SCRAPERS=0", "TGR_ENABLED=0", "PREDICTION_IMPORT_MODE=prediction_only", ""))
     service = "\n".join((
         "[Unit]", "Description=Greyhound Operator UI R3 (generated, private)", "After=network-online.target", "Wants=network-online.target", "",

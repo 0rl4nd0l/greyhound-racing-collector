@@ -17,3 +17,9 @@ UI deployment is coordinated with the collector owner, only during the authorize
 idle window with no source acquisition, children or collector lock. No collector
 restart or configuration mutation. Browser acceptance uses the established
 shared authenticated headed session, and never submits a prediction.
+
+Browser diagnosis found legacy heap profiling multiplied the mandatory full-chain
+access audit from0.29s to4.11s for3,857events, causing concurrent SQLite writers to
+exceed their10s lock wait. Generated UI packages set the existing TRACE_MALLOC=0
+control; audit validation, append-only stores and confirmation stay unchanged.
+This is a coordinated UI profiling change, never a collector/runtime-model change.

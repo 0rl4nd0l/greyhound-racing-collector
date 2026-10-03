@@ -1292,6 +1292,7 @@ def test_generated_connected_app_import_uses_no_source_runtime_directories(
     )
     values["source_root"].chmod(0o500)
     environment = os.environ.copy()
+    environment.pop("TRACE_MALLOC", None)
     environment.update(generated)
     environment.update(line.split("=", 1) for line in SECRET_LINES)
     environment["OPERATOR_UI_SECRET_KEY"] = "startup-test-" + "x" * 40
@@ -1314,6 +1315,7 @@ def test_generated_connected_app_import_uses_no_source_runtime_directories(
                 f"bootstrap._REPOSITORY_ROOT=Path({str(values['source_root'])!r}); "
                 "deployment.bound_operator_ui_log_dir.cache_clear(); "
                 f"runpy.run_path({str(values['source_root'] / 'app.py')!r}); "
+                "import tracemalloc; assert not tracemalloc.is_tracing(); "
                 "print('CONNECTED_APP_IMPORT_READY')"
             ),
         ],
@@ -1511,3 +1513,13 @@ def test_generated_retained_binding_is_default_off_and_exact(tmp_path, monkeypat
     monkeypatch.setattr(bootstrap_module, '_REPOSITORY_ROOT', values['source_root'])
     assert bootstrap_module._repository_layout()['retained_inputs'] == value
     assert 'OPERATOR_UI_R3_PROFILE=disabled' in (values['output_dir']/'operator-ui-r3.env').read_text()
+
+
+def test_enabled_ui_package_disables_expensive_heap_tracing(tmp_path, monkeypatch):
+    """Concurrent disclosure must not pay legacy25frame tracing inside audit locks."""
+    values = deployment_inputs(tmp_path)
+    git_identity(monkeypatch)
+    generate_package(**values, enabled=True)
+    environment = dict(line.split('=', 1) for line in
+                       (values['output_dir'] / 'operator-ui-r3.env').read_text().splitlines())
+    assert environment.get('TRACE_MALLOC') == '0'
