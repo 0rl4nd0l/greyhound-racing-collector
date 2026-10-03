@@ -23,6 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
     (False, "maitland"), (False, "grafton"), (False, "launceston"),
     (False, "grade_context_missing"),
     (False, "snapshot_superseded"),
+    (False, "snapshot_unproven"),
 ])
 def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, landing_missing, venue_case):
     from scripts.prepare_freshness_rehearsal import prepare, UNITS
@@ -160,13 +161,13 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     prepare(output=package, start=stamp-timedelta(seconds=5), python=Path(sys.executable), db=db,
         lock=tmp_path/'collector.lock', reconciliation_roots={}, installed_dir=installed,
         campaign_root=campaign.root, operational_predictions=True,
-        observation_minutes=15 if venue_case == 'snapshot_superseded' else 60,
+        observation_minutes=15 if venue_case.startswith('snapshot_') else 60,
         engineering_authority=authority,
         reduced_request_cap=6000 if venue_case == 'grade_context_missing' else None)
     plan = json.loads((package/'plan.json').read_bytes())
     if venue_case == 'grade_context_missing':
         assert plan['max_logical_requests'] == 6000
-    assert (datetime.fromisoformat(plan['ends_at']) - datetime.fromisoformat(plan['starts_at'])).total_seconds() == (900 if venue_case == 'snapshot_superseded' else 3600)
+    assert (datetime.fromisoformat(plan['ends_at']) - datetime.fromisoformat(plan['starts_at'])).total_seconds() == (900 if venue_case.startswith('snapshot_') else 3600)
     assert plan['max_capture_attempts'] == (12 if landing_missing else 64)
     from race_collection.synchronous_manual_capture import _atomic_replace_canonical
     from race_collection.live_phase_checkpoint import atomic_json
@@ -248,7 +249,7 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     assert inspection['paired_readiness'][-1]['paired_card_count'] == 4
     claims = allowance.claims()
     assert len(claims) == 1
-    if venue_case == "snapshot_superseded":
+    if venue_case.startswith('snapshot_'):
         from race_collection.synchronous_manual_capture import (
             publish_current_race_index, publish_current_race_index_lifecycle,
         )
@@ -272,6 +273,11 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
         new = json.loads(index.read_bytes())
         assert old['races'][0]['runners'] == new['races'][0]['runners']
         assert old['races'][0]['runner_set_sha256'] != new['races'][0]['runner_set_sha256']
+        if venue_case == 'snapshot_unproven':
+            old_publication = (evidence / old['source_refresh_report_path']).parent / 'current_race_index_publish.json'
+            damaged = json.loads(old_publication.read_bytes())
+            damaged['packet_sha256'] = 'a' * 64
+            old_publication.write_bytes(canonical_bytes(damaged))
     result = subprocess.run([sys.executable,'-B','-m','race_collection.operational_prediction',str(package/'plan.json'),str(claims[0])],
         cwd=cwd,env=env,capture_output=True,text=True,timeout=180)
     (tmp_path/'prediction.log').write_text(result.stdout+result.stderr)
@@ -286,20 +292,29 @@ def test_packaged_capture_retention_frozen_prediction(tmp_path, monkeypatch, lan
     terminal = json.loads(terminals[0].read_bytes())
     with sqlite3.connect(db) as history_conn:
         assert history_conn.execute('SELECT count(*) FROM live_odds').fetchone()[0] == initial_odds
-    if venue_case == 'snapshot_superseded':
-        assert terminal['status'] == 'REJECTED', terminal
-        assert terminal['preserved_rejection'] == 'CAPTURE_SNAPSHOT_SUPERSEDED'
+    if venue_case.startswith('snapshot_'):
+        verified = venue_case == 'snapshot_superseded'
+        assert terminal['status'] == ('REJECTED' if verified else 'FAILED'), terminal
+        if verified:
+            assert terminal['preserved_rejection'] == 'CAPTURE_SNAPSHOT_SUPERSEDED'
+            assert terminal['rejection_proof']['same_roster'] is True
+        else:
+            assert terminal['reason'] == 'capture_supersession_publication_changed'
+            assert 'preserved_rejection' not in terminal
         assert terminal['stage'] == 'job_admission'
-        assert terminal['rejection_proof']['same_roster'] is True
-        assert result.returncode == 3
+        assert result.returncode == (3 if verified else 2)
         assert not (campaign.root/'operational-predictions/jobs.sqlite3').exists()
         from race_collection.operational_prediction import Supervisor
         import io
         from types import SimpleNamespace
         supervisor = Supervisor(package, {}, None)
-        supervisor.child = SimpleNamespace(poll=lambda: 3, returncode=3)
+        supervisor.child = SimpleNamespace(poll=lambda: result.returncode, returncode=result.returncode)
         supervisor.log = io.StringIO()
-        supervisor.tick()
+        if verified:
+            supervisor.tick()
+        else:
+            with pytest.raises(ValueError, match='operational_prediction_failed_preserved_consumption'):
+                supervisor.tick()
         assert supervisor.child is None and not (scope.session/'STOP.json').exists()
         before = terminals[0].read_bytes()
         repeated = subprocess.run([sys.executable,'-B','-m','race_collection.operational_prediction',
