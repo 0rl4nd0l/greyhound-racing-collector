@@ -3191,3 +3191,29 @@ def test_race_first_discovery_does_not_fallback_past_invalid_target_capture(
             evidence_roots=[tmp_path],
             score_timestamp=SCORE_TIME,
         )
+
+
+def test_overnight_sidecar_retains_canonical_source_day_identity(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = json.loads(paths['sidecar'].read_bytes())
+    sidecar['race_info'].update(scheduled_jump_datetime='2026-07-17T00:13:00+10:00',
+        race_time='12:13 AM', race_time_source='canonical_race_url', race_time_mapping_status='exact_url_match')
+    sidecar['prejump_shadow_metadata'].update(jump_datetime='2026-07-17T00:13:00+10:00', jump_time='12:13 AM')
+    context = manual._sidecar_context(sidecar)
+    assert context['target_race_date'].isoformat() == '2026-07-16'
+    assert context['expected_race_id'] == RACE_ID
+    assert context['jump_timestamp'] == datetime.fromisoformat('2026-07-17T00:13:00+10:00')
+    _write_json(paths['sidecar'], sidecar)
+    output = _score_paths(paths)
+    assert output['race_id'] == RACE_ID
+    assert datetime.fromisoformat(output['jump_timestamp']) == context['jump_timestamp']
+
+
+def test_overnight_sidecar_cannot_rebase_source_race_identity(tmp_path):
+    paths = _write_fixture(tmp_path)
+    sidecar = json.loads(paths['sidecar'].read_bytes())
+    sidecar['race_info'].update(date='2026-07-17', scheduled_jump_datetime='2026-07-17T00:13:00+10:00',
+        race_time='12:13 AM', race_time_source='canonical_race_url', race_time_mapping_status='exact_url_match')
+    sidecar['prejump_shadow_metadata'].update(race_date='2026-07-17', jump_datetime='2026-07-17T00:13:00+10:00', jump_time='12:13 AM')
+    with pytest.raises(ManualPredictionError, match='target_grade_proof_mismatch'):
+        manual._sidecar_context(sidecar)
