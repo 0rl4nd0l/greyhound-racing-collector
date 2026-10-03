@@ -243,6 +243,87 @@ def recovery_baseline(prepared, cfg):
         attempt_count=len(ledger['attempts']), attempts_sha256=digest(ledger['attempts']))
 
 
+
+
+def _checked_recovery_refresh_report(ref):
+    """Bounded acquisition metadata, distinct from the 256 KiB authority reader."""
+    if not isinstance(ref, dict) or set(ref) != {'path', 'sha256'}:
+        raise ValueError('persistent_recovery_report_reference_invalid')
+    path = Path(ref['path'])
+    limit = 4 * 1024 * 1024
+    if (not path.is_absolute() or path.resolve() != path or not path.is_file()
+            or path.stat().st_size > limit):
+        raise ValueError('persistent_recovery_report_reference_unsafe')
+    raw = path.read_bytes()
+    if len(raw) > limit or hashlib.sha256(raw).hexdigest() != ref['sha256']:
+        raise ValueError('persistent_recovery_report_changed')
+    return json.loads(raw)
+
+
+def _reviewed_refresh_failure(selection, prior, halt, stop):
+    """Authenticate explicit prospective repair; old refresh remains failed.
+
+    A bare schedule-change error cannot prove that a race-local exclusion was
+    safe. Only a separately reviewed selection may restart a corrected package;
+    the old terminal, checkpoint and incomplete publication remain immutable.
+    """
+    review = checked(selection['reviewed_failure'])
+    if (review.get('schema_version') != 'persistent_reviewed_refresh_failure_v1'
+            or review.get('disposition') != 'PROSPECTIVE_CORRECTION_OLD_FAILURE_UNRESOLVED'
+            or not review.get('authority_reference')
+            or review.get('source_commit') != selection['source_commit']
+            or review.get('cleanup') != selection['cleanup']
+            or halt.get('reason') != 'persistent_native_terminal_failure:LIVE_PHASE_FAILED'
+            or stop.get('reason') != 'LIVE_PHASE_FAILED'):
+        raise ValueError('persistent_recovery_refresh_review_invalid')
+    terminal, lifecycle, checkpoint, phase = (
+        checked(review[key]) for key in
+        ('service_terminal','service_lifecycle','checkpoint','phase_result'))
+    report = _checked_recovery_refresh_report(review['refresh_report'])
+    invocation = terminal.get('invocation_id', '')
+    evidence = Path(prior['plan']['evidence_root'])
+    runtime = evidence/'shadow_autopilot_daemon_runtime'
+    cycle = Path(terminal['output_dir'])
+    state = checked(selection['baseline']['prior_owner_state'])
+    failed = [row for row in state['dispatches'] if row.get('native_disposition') == 'FAILED_OR_UNVERIFIED']
+    if (len(invocation) != 32 or any(c not in '0123456789abcdef' for c in invocation)
+            or len(failed) != 1 or failed[0].get('invocation_id') != invocation
+            or failed[0].get('returncode') != 2
+            or terminal.get('allocation_sha256') != prior['allocation_ref']['sha256']
+            or terminal.get('status') != 'FAILED' or terminal.get('runtime_action') != 'LIVE_PHASE_FAILED'
+            or terminal.get('final_verdict') != 'NEEDS_MORE_AUTOMATION'
+            or lifecycle.get('invocation_id') != invocation or lifecycle.get('status') != 'COMPLETE'
+            or lifecycle.get('returncode') != 2 or lifecycle.get('children_reaped') is not True
+            or lifecycle.get('interrupted', False) is not False
+            or Path(review['service_terminal']['path']) != runtime/'service-terminals'/(invocation+'.json')
+            or Path(review['service_lifecycle']['path']) != runtime/'service-lifecycles'/(invocation+'.json')
+            or cycle.parent != evidence or cycle.name != 'shadow_autopilot_daemonization_v1_'+terminal['run_id']
+            or Path(review['checkpoint']['path']) != cycle/'phase-checkpoint.json'
+            or checkpoint.get('schema_version') != 'collector_live_phase_checkpoint_v1'
+            or checkpoint.get('status') != 'LIVE_PHASE_FAILED'
+            or checkpoint.get('cycle_id') != terminal['run_id'] or checkpoint.get('output_dir') != str(cycle)):
+        raise ValueError('persistent_recovery_refresh_terminal_unverified')
+    phases = checkpoint['phases']
+    if (len(phases) != 1 or phases[0].get('number') != 0 or phases[0].get('kind') != 'refresh'
+            or phases[0].get('status') != 'COMPLETE' or phases[0].get('budget_exceeded') is not False
+            or {'path':phases[0]['result_path'], 'sha256':phases[0]['result_sha256']} != review['phase_result']
+            or Path(review['phase_result']['path']) != cycle/'phase-0-result.json'
+            or phase.get('status') != 'FAIL' or phase.get('collection_phase') != 'refresh'
+            or phase.get('final_verdict') != 'COLLECTION_PHASE_BLOCKED'
+            or phase.get('run_id') != terminal['run_id']+'_phase_0'
+            or Path(phase['output_dir']) != evidence/('shadow_autopilot_v1_'+phase['run_id'])
+            or Path(review['refresh_report']['path']) != Path(phase['output_dir'])/'odds_capture_refresh_report.json'
+            or phase.get('current_race_index_publish', {}).get('status') != 'REJECTED'
+            or phase['current_race_index_publish'].get('reason') != 'CURRENT_INDEX_SOURCE_INVALID'
+            or phase['current_race_index_publish'].get('source_refresh_report_path') != review['refresh_report']['path']
+            or report.get('status') != 'ACQUISITION_INCOMPLETE'
+            or report.get('reason') != 'unisolated_selected_race_acquisition_failure'
+            or not any(row.get('success') is False and row.get('result', {}).get('success') is False
+                and row['result'].get('error') == 'discovery_canonical_jump_changed'
+                for row in report.get('downloads', []))):
+        raise ValueError('persistent_recovery_refresh_checkpoint_unverified')
+
+
 def prepare_recovery(cfg, standing_ref, racing_date, now):
     """Select one explicitly reviewed successor package under the SAME grant.
 
@@ -278,7 +359,11 @@ def prepare_recovery(cfg, standing_ref, racing_date, now):
             or cleanup.get('source_active') is not False
             or cleanup['halt']['path'] != str(prior_output/'HALT.json')
             or selection['prior_stop']['path'] != str(old_scope.session/'STOP.json')
-            or halt.get('reason') != 'operational_prediction_failed_preserved_consumption'
+            ):
+        raise ValueError('persistent_recovery_cleanup_unverified')
+    if selection.get('reviewed_failure') is not None:
+        _reviewed_refresh_failure(selection, prior, halt, stop)
+    elif (halt.get('reason') != 'operational_prediction_failed_preserved_consumption'
             or stop.get('reason') != 'PERSISTENT_OWNER_FAILURE'):
         raise ValueError('persistent_recovery_cleanup_unverified')
     allocation = load_persistent_allocation(prior['allocation_ref'])
