@@ -31,7 +31,9 @@ def test_retained_source_labels_and_distinct_verified_timestamps(engineering):
         'model': {'identity': 'market_form_residual_v1', 'sha256': 'a' * 64},
         'manifest_sha256': 'b' * 64,
         'runners': [{'box': 1, 'name': 'Fixture runner', 'win_odds': 2.5,
-                     'market_probability': 0.4, 'model_probability': 0.5, 'model_rank': 1}],
+                     'market_probability': 0.4, 'model_probability': 0.5, 'model_rank': 1},
+                    {'box': 2, 'name': 'Second runner', 'win_odds': 1.67,
+                     'market_probability': 0.6, 'model_probability': 0.5, 'model_rank': 2}],
     }
     sources = [{'source': kind, 'state': 'EMPTY', 'forecasts': [], 'errors': []}
                for kind in ['operational', 'programme']]
@@ -79,7 +81,15 @@ def test_retained_source_labels_and_distinct_verified_timestamps(engineering):
             'Verified: 01/10/2026, 16:00:04 AEST')
         playwright.expect(card).to_contain_text('Independent verification: 01/10/2026, 16:00:03 AEST')
         playwright.expect(card.locator('tbody td')).to_have_text(
-            ['1', 'Fixture runner', '2.50', '40.0000%', '50.0000%', '1'])
+            ['1', 'Fixture runner', '2.50', '40.0000%', '50.0000%', '1', '10.00 pp',
+             '2', 'Second runner', '1.67', '60.0000%', '50.0000%', '2', '-10.00 pp'])
+        playwright.expect(card.locator('.forecast-leader')).to_contain_text('Highest model probability: Fixture runner')
+        playwright.expect(card.locator('details')).not_to_have_attribute('open', '')
+        playwright.expect(page.locator('#forecast-system')).not_to_have_attribute('open', '')
+        page.get_by_role('link', name='System', exact=True).click()
+        playwright.expect(page.locator('#forecast-system')).to_have_attribute('open', '')
+        page.set_viewport_size({'width': 390, 'height': 844})
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
         playwright.expect(page.locator('#programme-status')).to_contain_text('CANARY NOT VERIFIED')
         assert not errors
         assert all(method == 'GET' for method, _ in requests)

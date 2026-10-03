@@ -1007,3 +1007,23 @@ footer strong {
 .race-dashboard .resource-detail summary { font-size: .85rem; }
 @media (max-width: 900px) { .today-layout { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 560px) { .forecast-history-entry { flex-direction: column; align-items: stretch; gap: 1rem; } }
+
+.forecast-intro { display: flex; align-items: flex-start; gap: 2rem; }
+.forecast-intro h2 { margin-bottom: .5rem; font-size: 1.5rem; }
+.forecast-intro p { color: var(--muted); }
+.forecast-intro .primary-button { flex: 0 0 auto; margin-top: 0; }
+#forecast-sources { display: grid; gap: 2rem; }
+#forecast-sources > section > h2 { font-size: 1.25rem; }
+.retained-forecast { margin-block: 1rem; }
+.retained-forecast h3 { font-size: 1.3rem; }
+.forecast-leader { padding: .85rem; border-left: 3px solid var(--accent); background: #12243a; font-weight: 700; }
+.retained-forecast table { font-variant-numeric: tabular-nums; }
+.retained-forecast td:last-child { white-space: nowrap; font-weight: 750; }
+@media (max-width: 560px) { .forecast-intro { flex-direction: column; gap: .5rem; } .forecast-intro .primary-button { width: 100%; } }
+.forecast-page main { grid-template-columns: minmax(0, 1fr); }
+#forecast-sources { grid-template-columns: minmax(0, 1fr); }
+#forecast-sources > section { min-width: 0; }
+
+.probability-meter { display: block; height: .3rem; margin-top: .35rem; border-radius: .2rem; background: linear-gradient(to right, var(--meter-color) var(--probability), #26364a var(--probability)); }
+.probability-meter--market { --meter-color: #8da0b8; }
+.probability-meter--model { --meter-color: var(--accent); }

@@ -1,1 +1,46 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Verified forecasts · Greyhound</title><link rel="stylesheet" href="/static/css/operator-ui.css?v={{ config.get('OPERATOR_UI_DEPLOYED_COMMIT', 'development') }}"><script src="/static/js/operator-ui-forecasts.js?v={{ config.get('OPERATOR_UI_DEPLOYED_COMMIT', 'development') }}" defer></script></head><body><main class="workspace forecast-page"><header><h1>Verified production forecasts</h1><p>Retained forecasts from the frozen production model. Historical forecasts remain valid when collection is idle or inputs are stale.</p><p><a href="/operator-ui#upcoming-races">Upcoming races</a> · <a href="/operator-ui#manual-prediction">Run prediction</a> · <a href="/operator-ui">Operator console</a> · <a href="/operator-ui/sign-in">Sign in</a></p></header><p id="forecast-status" role="status">Loading authenticated forecasts…</p><button id="refresh-forecasts" class="primary-button">Refresh display</button><section class="panel"><h2>October programme</h2><div id="programme-status"></div></section><section class="panel"><h2>Collector freshness and readiness</h2><div id="collector-status">Checking current collector evidence…</div></section><div id="forecast-sources"></div><footer><p>Research only — not for betting. Private results, study metrics and challenger outputs are withheld.</p></footer></main></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Verified forecasts · Greyhound</title>
+  <link rel="stylesheet" href="/static/css/operator-ui.css?v={{ config.get('OPERATOR_UI_DEPLOYED_COMMIT', 'development') }}">
+  <script src="/static/js/operator-ui-forecasts.js?v={{ config.get('OPERATOR_UI_DEPLOYED_COMMIT', 'development') }}" defer></script>
+</head>
+<body class="race-dashboard">
+  <a class="skip-link" href="#forecast-content">Skip to forecasts</a>
+  <div class="console-shell">
+    <aside class="sidebar" aria-label="Console navigation">
+      <div class="brand"><span class="brand__mark" aria-hidden="true">GH</span><span><strong>Greyhound</strong><small>Forecast console</small></span></div>
+      <nav aria-label="Console sections"><ul class="nav-list nav-list--primary">
+        <li><a href="/operator-ui#upcoming-races">Today</a></li>
+        <li><a href="/operator-ui/forecasts" aria-current="page">Forecasts</a></li>
+        <li><a href="#forecast-system">System</a></li>
+      </ul></nav>
+      <p class="sidebar__note">Private console. Historical forecasts remain available when current inputs are out of date.</p>
+    </aside>
+    <div class="workspace forecast-page">
+      <header class="topbar"><div><p class="eyebrow">Retained and verified</p><h1>Forecasts</h1></div><strong class="research-warning">RESEARCH ONLY — NOT FOR BETTING</strong></header>
+      <main id="forecast-content">
+        <section class="forecast-intro" aria-labelledby="forecast-intro-title">
+          <div><h2 id="forecast-intro-title">Understand the race probabilities</h2>
+          <p>Compare the model with the captured WIN market for each runner. Market probabilities are normalized to add up to 100% within the race. A positive difference means the model assigns a higher probability than the market; it does not establish an advantage or explain why.</p>
+          <p><a href="/operator-ui#upcoming-races">Upcoming races</a> · <a href="/operator-ui#manual-prediction">Run prediction</a></p></div>
+          <button id="refresh-forecasts" class="primary-button" type="button">Refresh display</button>
+        </section>
+        <p id="forecast-status" role="status" aria-live="polite">Loading authenticated forecasts…</p>
+        <div id="forecast-sources"></div>
+        <details class="system-details" id="forecast-system">
+          <summary><span>Collection status and technical evidence</span><small>Current readiness and programme schedule</small></summary>
+          <div class="system-details__content">
+            <section class="panel"><h2>October programme</h2><div id="programme-status"></div></section>
+            <section class="panel"><h2>Collector freshness and readiness</h2><div id="collector-status">Checking current collector evidence…</div></section>
+          </div>
+        </details>
+      </main>
+      <footer><strong>RESEARCH ONLY — NOT FOR BETTING</strong><span>Historical forecasts describe the inputs captured before the scheduled jump.</span></footer>
+    </div>
+  </div>
+</body>
+</html>
