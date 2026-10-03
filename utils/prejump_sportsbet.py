@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 from utils.csv_metadata import normalize_track_condition_text
 from utils.http_client import get_shared_session
 from utils.prejump_weather import (
+    _explicit_jump_datetime,
     _parse_race_datetime as _parse_prejump_race_datetime,
     venue_weather_location,
 )
@@ -102,6 +103,9 @@ def _candidate_venue_names(race_info: Mapping[str, Any]) -> set[str]:
 
 
 def _parse_race_datetime(race_info: Mapping[str, Any], timezone_name: str) -> datetime | None:
+    if "scheduled_jump_datetime" in race_info:
+        jump = _explicit_jump_datetime(race_info)
+        return jump.astimezone(ZoneInfo(timezone_name)) if jump else None
     race_date = str(
         race_info.get("date") or race_info.get("race_date") or ""
     ).strip()[:10]

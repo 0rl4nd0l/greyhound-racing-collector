@@ -8,7 +8,7 @@ capture timestamp is before the race jump time.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Mapping
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
@@ -207,6 +207,44 @@ def _parse_race_datetime(
     return None
 
 
+def _explicit_jump_datetime(race_info: Mapping[str, Any]) -> datetime | None:
+    """Validate the official instant against its racing day and displayed clock.
+
+    TheDogs display clocks use Melbourne time; the racing date may own a race
+    after Melbourne midnight. Invalid explicit evidence must never use the
+    legacy date-plus-clock fallback.
+    """
+    try:
+        jump = datetime.fromisoformat(
+            str(race_info["scheduled_jump_datetime"]).replace("Z", "+00:00")
+        )
+        if jump.utcoffset() is None:
+            return None
+        jump = jump.astimezone(ZoneInfo(DEFAULT_PREJUMP_DISPLAY_TIMEZONE))
+        source_day = datetime.strptime(
+            str(race_info.get("date") or race_info.get("race_date") or ""), "%Y-%m-%d"
+        ).date()
+        if jump.date() not in (source_day, source_day + timedelta(days=1)):
+            return None
+        for key in ("race_time_timezone", "jump_time_timezone", "display_timezone"):
+            if race_info.get(key) and race_info[key] != DEFAULT_PREJUMP_DISPLAY_TIMEZONE:
+                return None
+        clocks = [
+            race_info[key] for key in ("race_time", "jump_time") if race_info.get(key)
+        ]
+        if not clocks:
+            return None
+        for value in clocks:
+            clock = _parse_race_datetime(
+                jump.date().isoformat(), value, DEFAULT_PREJUMP_DISPLAY_TIMEZONE,
+            )
+            if clock != jump:
+                return None
+        return jump
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return None
+
+
 def _nearest_hour_index(times: list[Any], race_dt: datetime) -> int | None:
     best: tuple[float, int] | None = None
     for idx, item in enumerate(times):
@@ -253,12 +291,16 @@ def collect_open_meteo_weather_metadata(
         return {
             "rejected_weather_track_metadata_sources": ["weather_venue_not_mapped"],
         }
-    race_dt = _parse_race_datetime(
-        race_date,
-        race_time,
-        location.timezone,
-        source_timezone=race_time_timezone,
-    )
+    if "scheduled_jump_datetime" in race_info:
+        jump = _explicit_jump_datetime(race_info)
+        race_dt = jump.astimezone(ZoneInfo(location.timezone)) if jump else None
+    else:
+        race_dt = _parse_race_datetime(
+            race_date,
+            race_time,
+            location.timezone,
+            source_timezone=race_time_timezone,
+        )
     if race_dt is None:
         return {
             "rejected_weather_track_metadata_sources": ["weather_race_time_unparseable"],
