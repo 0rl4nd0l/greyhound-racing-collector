@@ -57,14 +57,18 @@ def load_incident_authority(ref):
     try:
         value = checked(ref)
         late = value.get('schema_version') == 'collector_incident_engineering_authority_20261002_late_v1'
-        single = late or value.get('schema_version') == 'collector_incident_engineering_authority_20261002_v2'
-        october2 = single or value.get('schema_version') == 'collector_incident_engineering_authority_20261002_v1'
-        caps = OCTOBER2_CAPS if october2 else CAPS
-        day = '2026-10-02' if october2 else '2026-10-01'
+        october3 = value.get('schema_version') == 'collector_incident_engineering_authority_20261003_v1'
+        october2_single = late or value.get('schema_version') == 'collector_incident_engineering_authority_20261002_v2'
+        single = october3 or october2_single
+        october2 = october2_single or value.get('schema_version') == 'collector_incident_engineering_authority_20261002_v1'
+        renewed_day = october2 or october3
+        caps = OCTOBER2_CAPS if renewed_day else CAPS
+        day = '2026-10-03' if october3 else ('2026-10-02' if october2 else '2026-10-01')
         if (value['schema_version'] not in {'collector_incident_engineering_authority_v1',
                                             'collector_incident_engineering_authority_20261002_v1',
                                             'collector_incident_engineering_authority_20261002_v2',
-                                            'collector_incident_engineering_authority_20261002_late_v1'}
+                                            'collector_incident_engineering_authority_20261002_late_v1',
+                                            'collector_incident_engineering_authority_20261003_v1'}
                 or value['status'] != 'AUTHORIZED_INCIDENT_ENGINEERING'
                 or not all(isinstance(value[k],str) and value[k].strip()
                            for k in ('incident_id','authority_reference','campaign_id'))
@@ -74,7 +78,7 @@ def load_incident_authority(ref):
                 or value['reservation_disposition'] != DISPOSITION
                 or any(type(value[k]) is not int or value[k] != cap for k,cap in caps.items())):
             raise ValueError()
-        if october2:
+        if renewed_day:
             if (type(value.get('max_python_requests_per_window')) is not int
                     or type(value.get('max_browser_navigations_per_window')) is not int
                     or value.get('max_python_requests_per_window') != 24000
@@ -82,6 +86,9 @@ def load_incident_authority(ref):
                     or (not single and value.get('second_window_requires_demonstrated_correction') is not True)
                     or not isinstance(value.get('limits_basis'), dict) or not value['limits_basis']):
                 raise ValueError()
+        if october3 and (value['authority_reference'] != 'user:20261003-recovery-continuation'
+                         or value.get('local_request_caps_are_provider_permission') is not False):
+            raise ValueError()
         zone = ZoneInfo('Australia/Melbourne')
         issued = stamp(value['issued_at'])
         stop_bound = stamp(day+'T21:00:00+10:00')
@@ -97,7 +104,7 @@ def load_incident_authority(ref):
                 raise ValueError()
             stop_bound = stamp(renewed['collection_stop_at'])
             cleanup_bound = stamp(renewed['cleanup_deadline'])
-        if single:
+        if october2_single:
             amendment_ref = value['live_first_amendment']
             amendment = checked(amendment_ref)
             if (amendment_ref['sha256'] != LIVE_FIRST_AMENDMENT_SHA256
@@ -113,7 +120,7 @@ def load_incident_authority(ref):
         deadline = stamp(value['result_deadline'])
         if (stop != stop_bound
                 or cleanup != cleanup_bound
-                or not cleanup <= deadline <= stamp('2026-10-04T12:00:00+11:00' if october2 else '2026-10-02T12:00:00+10:00')
+                or not cleanup <= deadline <= stamp('2026-10-04T12:00:00+11:00' if renewed_day else '2026-10-02T12:00:00+10:00')
                 or issued.astimezone(zone).date().isoformat() != day):
             raise ValueError()
         slots = value['slots']
