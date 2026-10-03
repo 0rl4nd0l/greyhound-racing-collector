@@ -87,7 +87,9 @@ def programme_source_usage(value, baseline_count, programme_start):
         used -= max(0, end-max(start, baseline_count))
     from race_collection.development_source_authority import development_source_usage
     from race_collection.incident_engineering import incident_source_usage
-    return used - development_source_usage(value, baseline_count) - incident_source_usage(value, baseline_count)
+    from race_collection.persistent_authority import persistent_source_usage
+    return (used - development_source_usage(value, baseline_count) - incident_source_usage(value, baseline_count)
+            - persistent_source_usage(value, baseline_count))
 
 
 def renew_source(cfg, slot, *, now):
