@@ -2,6 +2,7 @@
 from datetime import datetime, timedelta
 import hashlib
 import json
+import re
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -86,7 +87,9 @@ def load_incident_authority(ref):
                     or (not single and value.get('second_window_requires_demonstrated_correction') is not True)
                     or not isinstance(value.get('limits_basis'), dict) or not value['limits_basis']):
                 raise ValueError()
-        if october3 and (value['authority_reference'] != 'user:20261003-recovery-continuation'
+        if october3 and (re.fullmatch(
+                         r'user:20261003-recovery-continuation(?::window:(?!000)[0-9]{3})?',
+                         value['authority_reference']) is None
                          or value.get('local_request_caps_are_provider_permission') is not False):
             raise ValueError()
         zone = ZoneInfo('Australia/Melbourne')
