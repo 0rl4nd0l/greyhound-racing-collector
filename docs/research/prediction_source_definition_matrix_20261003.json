@@ -1,0 +1,278 @@
+{
+  "activation": {
+    "model_change_authorized_by_this_artifact": false,
+    "network_authorized_by_this_artifact": false,
+    "raw_record_census_authorized_by_this_artifact": false
+  },
+  "consumption": {
+    "browser_navigations": 0,
+    "capture_attempts": 0,
+    "fits": 0,
+    "python_provider_requests": 0,
+    "result_requests": 0,
+    "source_operations": 0
+  },
+  "consumption_scope": "This retained-document subaudit only; excludes parent research. Parent separately reports four public web-search queries, with no newly qualified source definition; these are not runtime Python/browser provider acquisition counters.",
+  "cross_cutting": {
+    "as_of_provenance": {
+      "evidence": [
+        "utils/expert_form_metadata.py:273-286"
+      ],
+      "supported": "Expert-form metadata rejects capture at/after target jump and records capture time.",
+      "unknown": "Source publication/revision time of each historical timing measurement and timing-definition version; capture time cannot establish those separately."
+    },
+    "comparison_scope": "No TheDogs/FastTrack field equivalence established; retain separate source and definition IDs.",
+    "event_identity": {
+      "evidence": [
+        "src/collectors/fasttrack_scraper.py:343-353",
+        "src/collectors/adapters/fasttrack_adapter.py:44-73"
+      ],
+      "supported": "FastTrack parser can extract race ID from page attributes; expert-form metadata retains source URL and capture time.",
+      "unknown": "Historical timing row native race/dog identity chain; adapter currently resolves base race by race_name and dog by name, not a verified cross-source native-ID join."
+    },
+    "safe_next_lookup": "First locate one official field/export dictionary per source, then only missing track-distance/era definitions. Do not probe results endpoints or expand to historical payloads."
+  },
+  "fields": [
+    {
+      "evidence": [
+        "csv_ingestion.py:182-186"
+      ],
+      "field": "1 SEC",
+      "local_mapping": "first_sectional",
+      "lookup_performed": false,
+      "lookup_scope": "Versioned source-owned field glossary/export specification and applicable track timing definition only; no race/result values",
+      "missing": [
+        "units_and_precision",
+        "clock_origin_and_physical_call",
+        "runner_or_leader_or_winner",
+        "layout_distance_era_validity",
+        "special_and_missing_codes",
+        "native_historical_event_runner_binding",
+        "source_publication_time"
+      ],
+      "qualification": "UNQUALIFIED",
+      "smallest_official_question": "For TheDogs exported 1 SEC, is the value this runner\u2019s elapsed time or the leader\u2019s, in what units, from which start trigger to which physical call for each layout/distance, and from what effective dates?",
+      "source": "TheDogs export",
+      "source_definition_verified": false,
+      "supported_local_facts": [
+        "Literal header and accepted aliases are mapped; no source-owned timing dictionary is cited."
+      ]
+    },
+    {
+      "evidence": [
+        "csv_ingestion.py:163-168"
+      ],
+      "field": "TIME",
+      "local_mapping": "time",
+      "lookup_performed": false,
+      "lookup_scope": "Versioned source-owned field glossary/export specification and applicable track timing definition only; no race/result values",
+      "missing": [
+        "units_and_precision",
+        "clock_origin_and_physical_call",
+        "runner_or_leader_or_winner",
+        "layout_distance_era_validity",
+        "special_and_missing_codes",
+        "native_historical_event_runner_binding",
+        "source_publication_time"
+      ],
+      "qualification": "UNQUALIFIED",
+      "smallest_official_question": "Does exported TIME identify the individual runner\u2019s measured or derived total time, or the winning time; what are its units, trigger, precision and treatment of non-finishers?",
+      "source": "TheDogs export",
+      "source_definition_verified": false,
+      "supported_local_facts": [
+        "Aliases include Individual_Time; aliases are local implementation choices."
+      ]
+    },
+    {
+      "evidence": [
+        "csv_ingestion.py:170-174"
+      ],
+      "field": "WIN",
+      "local_mapping": "win_time",
+      "lookup_performed": false,
+      "lookup_scope": "Versioned source-owned field glossary/export specification and applicable track timing definition only; no race/result values",
+      "missing": [
+        "units_and_precision",
+        "clock_origin_and_physical_call",
+        "runner_or_leader_or_winner",
+        "layout_distance_era_validity",
+        "special_and_missing_codes",
+        "native_historical_event_runner_binding",
+        "source_publication_time"
+      ],
+      "qualification": "UNQUALIFIED",
+      "smallest_official_question": "What precisely does WIN represent in this export and how does it differ from TIME and W/2G; what is its unit and event identity?",
+      "source": "TheDogs export",
+      "source_definition_verified": false,
+      "supported_local_facts": [
+        "Local aliases say winning/winner time; source-owned semantics were not found."
+      ]
+    },
+    {
+      "evidence": [
+        "csv_ingestion.py:176-180",
+        "docs/fasttrack_field_map.md:56"
+      ],
+      "field": "BON",
+      "local_mapping": "bonus",
+      "lookup_performed": false,
+      "lookup_scope": "Versioned source-owned field glossary/export specification and applicable track timing definition only; no race/result values",
+      "missing": [
+        "units_and_precision",
+        "clock_origin_and_physical_call",
+        "runner_or_leader_or_winner",
+        "layout_distance_era_validity",
+        "special_and_missing_codes",
+        "native_historical_event_runner_binding",
+        "source_publication_time"
+      ],
+      "qualification": "UNQUALIFIED",
+      "smallest_official_question": "Does TheDogs BON mean best-of-meeting/night time, and over what exact layout/distance/meeting grouping; when is that reference first published and can it change after a runner\u2019s race?",
+      "source": "TheDogs export; distinct local FastTrack note",
+      "source_definition_verified": false,
+      "supported_local_facts": [
+        "CSV mapping calls BON bonus; FastTrack local note calls BON best of night time. Neither proves TheDogs semantics."
+      ]
+    },
+    {
+      "evidence": [
+        "csv_ingestion.py:200-204",
+        "docs/fasttrack_field_map.md:39",
+        "docs/fasttrack_field_map.md:60",
+        "docs/schema_diff_fasttrack.md:97"
+      ],
+      "field": "PIR",
+      "local_mapping": "pir / Performance_Rating alias",
+      "lookup_performed": false,
+      "lookup_scope": "Versioned source-owned field glossary/export specification and applicable track timing definition only; no race/result values",
+      "missing": [
+        "source_specific_codebook",
+        "call_sequence_and_physical_locations",
+        "single_digit_and_special_code_meanings",
+        "layout_era_validity",
+        "native_historical_event_runner_binding",
+        "source_publication_time"
+      ],
+      "qualification": "UNQUALIFIED",
+      "smallest_official_question": "What is the source-specific PIR codebook, including each character/call, track-dependent call positions, special/missing codes and effective versions; can a single digit be final placing only?",
+      "source": "TheDogs export; distinct local FastTrack notes",
+      "source_definition_verified": false,
+      "supported_local_facts": [
+        "Local descriptions conflict: Performance Index Rating, Points in running and Position In Running."
+      ]
+    },
+    {
+      "evidence": [
+        "src/collectors/adapters/fasttrack_adapter.py:80-85",
+        "docs/schema_diff_fasttrack.md:98",
+        "src/collectors/fasttrack_scraper.py:318-414"
+      ],
+      "field": "split1",
+      "local_mapping": "split_1_time",
+      "lookup_performed": false,
+      "lookup_scope": "Versioned source-owned field glossary/export specification and applicable track timing definition only; no race/result values",
+      "missing": [
+        "units_and_precision",
+        "clock_origin_and_physical_call",
+        "runner_or_leader_or_winner",
+        "layout_distance_era_validity",
+        "special_and_missing_codes",
+        "native_historical_event_runner_binding",
+        "source_publication_time"
+      ],
+      "qualification": "UNQUALIFIED",
+      "smallest_official_question": "In the specific FastTrack form/export, does Split1 measure this dog or the first dog at the marker, with what units/start trigger and track-distance call location/version?",
+      "source": "FastTrack",
+      "source_definition_verified": false,
+      "supported_local_facts": [
+        "Adapter reads dog_perf.get(split1); schema calls it individual first sectional.",
+        "Inspected race parser emits race_time but does not populate split1; this adapter interface is not proof of field acquisition."
+      ]
+    },
+    {
+      "evidence": [
+        "utils/expert_form_metadata.py:107-114"
+      ],
+      "field": "Best 1st Split",
+      "local_mapping": "best_first_split",
+      "lookup_performed": false,
+      "lookup_scope": "Versioned source-owned field glossary/export specification and applicable track timing definition only; no race/result values",
+      "missing": [
+        "units_and_precision",
+        "clock_origin_and_physical_call",
+        "runner_or_leader_or_winner",
+        "layout_distance_era_validity",
+        "special_and_missing_codes",
+        "native_historical_event_runner_binding",
+        "source_publication_time"
+      ],
+      "qualification": "UNQUALIFIED",
+      "smallest_official_question": "Which historical event and definition produced Best 1st Split, what is the selection window and update/publication time, and is the historical event ID available?",
+      "source": "TheDogs expert form",
+      "source_definition_verified": false,
+      "supported_local_facts": [
+        "Parser extracts a numeric value but no event date for best_first_split; best_time has a separate date."
+      ]
+    }
+  ],
+  "local_document_origin": {
+    "docs/fasttrack_field_map.md": "b7431891a25eb565c310c6bf1ce3f46fa632a374",
+    "docs/schema_diff_fasttrack.md": "b7431891a25eb565c310c6bf1ce3f46fa632a374",
+    "origin_kind": "Repository automated-backup commit, not a provider publication/version"
+  },
+  "no_global_archive_absence_claim": true,
+  "parent_reported_research": {
+    "evidence_basis": "Parent message; independently unverified here",
+    "included_in_this_subaudit_counters": false,
+    "new_qualified_definitions": 0,
+    "opened_result_pages": 0,
+    "public_web_search_queries": 4
+  },
+  "provenance": {
+    "csv_ingestion.py": {
+      "kind": "local_code",
+      "sha256": "3aabead63064235517e972ebbf6f9218826d5ea5f6e2666a979448fada85c527",
+      "source_owned_definition": false
+    },
+    "docs/FASTTRACK_INTEGRATION_GUIDE.md": {
+      "kind": "local_documentation",
+      "sha256": "a64587add1dad83aadca2c12964eb07ca448b005b82c1737edc3358af391c8e8",
+      "source_owned_definition": false
+    },
+    "docs/fasttrack_field_map.md": {
+      "kind": "local_documentation",
+      "sha256": "5fe291b30dc9411db84f64b6ba949e7386bd51f5bcc5cbbfc0ef6ab3cd8e77ac",
+      "source_owned_definition": false
+    },
+    "docs/fasttrack_reverse_engineering_summary.md": {
+      "kind": "local_documentation",
+      "sha256": "1e4b7ab845f4a042f3026242ba024b3a6429f6e6df00b7cdfbe9421114ec11a6",
+      "source_owned_definition": false
+    },
+    "docs/schema_diff_fasttrack.md": {
+      "kind": "local_documentation",
+      "sha256": "1b48510efc663625d0e3efd5529f09127539a5cf62337b81ce0ca4e86fba6459",
+      "source_owned_definition": false
+    },
+    "src/collectors/adapters/fasttrack_adapter.py": {
+      "kind": "local_code",
+      "sha256": "be628eac5bfc8d8283394fea12243994fd24baba2ced308f4a90ab420494e984",
+      "source_owned_definition": false
+    },
+    "src/collectors/fasttrack_scraper.py": {
+      "kind": "local_code",
+      "sha256": "61deec3b3d066ac04cbeb5df537bce8dd8f3d539d6963b8c15161668203d3761",
+      "source_owned_definition": false
+    },
+    "utils/expert_form_metadata.py": {
+      "kind": "local_code",
+      "sha256": "dfb8d3cf2aff99ce351f56dff39bd7995539024d407f514aed4951c97c8b4f47",
+      "source_owned_definition": false
+    }
+  },
+  "schema_version": "prediction_source_definition_matrix_v1",
+  "scope": "Targeted local documentation and parser/adapter code only; no provider access or raw data reads",
+  "source_code_commit": "a6f861ea9277d215f51bd61d7d0b361506bd3b02",
+  "source_owned_definitions_found": 0,
+  "status": "PREPARATION_ONLY_SOURCE_MEANINGS_UNQUALIFIED"
+}
