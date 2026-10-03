@@ -9,6 +9,9 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
+from itertools import islice
+from zoneinfo import ZoneInfo
 from datetime import date, datetime, timezone
 
 if __package__:
@@ -59,7 +62,7 @@ def control_status(pointer_path, output, health, now):
 
 
 def validate_binding(binding):
-    if set(binding) != {'config', 'config_sha256', 'source', 'source_commit', 'python'}:
+    if set(binding)-{'producer_packages'} != {'config', 'config_sha256', 'source', 'source_commit', 'python'}:
         raise ValueError('invalid_persistent_binding')
     for name in ('config', 'source', 'python'):
         path = Path(binding[name])
@@ -68,6 +71,12 @@ def validate_binding(binding):
     for name, size in (('config_sha256', 64), ('source_commit', 40)):
         if re.fullmatch('[0-9a-f]{'+str(size)+'}', binding[name]) is None:
             raise ValueError('invalid_persistent_identity')
+    if 'producer_packages' in binding:
+        if __package__:
+            from .native_verification import validate_packages
+        else:
+            from native_verification import validate_packages
+        validate_packages(binding['producer_packages'])
     return binding
 
 
@@ -167,7 +176,50 @@ def project_forecast(native, admission, manifest_sha, checked_at):
             'evidence_class': 'ENGINEERING', 'scientific_admission': 'CANARY_NOT_VERIFIED'}
 
 
-def snapshot(binding, now, *, clock=None):
+def verified_attempts(plan_sha, plan, allocation, *, remaining=255, deadline=None, selected=None):
+    value = {'forecasts': [], 'failed_forecasts': [], 'forecast_errors': []}
+    attempts = Path(plan['programme_root'])/plan_sha/'attempts'
+    admissions = sorted(attempts.glob('*/admission.json'))
+    if len(admissions) > min(allocation['max_capture_attempts'], 255):
+        raise ValueError('persistent_admission_bound')
+    if selected is not None:
+        requested=set(selected)
+        if not requested.issubset({str(path) for path in admissions}):
+            raise ValueError('persistent_selected_admission_outside_plan')
+        admissions=[path for path in admissions if str(path) in requested]
+    from src.predictor.future_comparison import verify_comparison
+    bundles = Path(allocation['prediction_root'])/'bundles'
+    limited = False
+    processed = 0
+    for index, path in enumerate(admissions):
+        if index >= remaining or (deadline is not None and time.monotonic() >= deadline):
+            limited = True
+            break
+        processed = index+1
+        if not path.with_name('completion.json').exists():
+            continue
+        try:
+            admission = read(path)
+            completion = read(path.with_name('completion.json'))
+            directory = bound_path(str(bundles/completion['bundle_entry']['directory']), bundles)
+            manifest_sha = completion['bundle_entry']['manifest_sha256']
+            read(directory/'bundle_manifest.json', manifest_sha)
+            fingerprint = hashlib.sha256(path.read_bytes()+path.with_name('completion.json').read_bytes()).hexdigest()
+            native = verify_comparison(bundles, path, expected_plan_sha256=plan_sha)
+            if fingerprint != hashlib.sha256(path.read_bytes()+path.with_name('completion.json').read_bytes()).hexdigest():
+                raise ValueError('persistent_completion_changed_during_verification')
+            read(directory/'bundle_manifest.json', manifest_sha)
+            checked_at = datetime.now(timezone.utc)
+            if any(row['status'] == 'FAILED' for row in native['records'].values()):
+                value['failed_forecasts'].append(project_failed_attempt(native, admission, manifest_sha, checked_at))
+            else:
+                value['forecasts'].append(project_forecast(native, admission, manifest_sha, checked_at))
+        except Exception:
+            value['forecast_errors'].append({'attempt': path.parent.name, 'reason': 'Sealed comparison could not be verified.'})
+    return value, limited, processed
+
+
+def current_snapshot(binding, now, *, clock=None):
     cfg, pointer_path, pointer, output, plan_sha, plan, allocation = daily_bindings(binding)
     preparation = pointer.get('preparation')
     receipt = read(preparation['path'], preparation['sha256']) if preparation else read(output.parent/'native-prepared.json')
@@ -207,38 +259,158 @@ def snapshot(binding, now, *, clock=None):
              'race_count': inventory['race_count'], 'upcoming': upcoming,
              'forecasts': [], 'failed_forecasts': [], 'forecast_errors': [], 'scientific_admission': 'CANARY_NOT_VERIFIED',
              'result_access': False, 'engineering_only': True}
-    attempts = Path(plan['programme_root'])/plan_sha/'attempts'
-    admissions = sorted(attempts.glob('*/admission.json'))
-    if len(admissions) > min(allocation['max_capture_attempts'], 255):
-        raise ValueError('persistent_admission_bound')
-    from src.predictor.future_comparison import verify_comparison
-    bundles = Path(allocation['prediction_root'])/'bundles'
-    for path in admissions:
-        if not path.with_name('completion.json').exists():
-            continue
-        try:
-            admission = read(path)
-            completion = read(path.with_name('completion.json'))
-            directory = bound_path(str(bundles/completion['bundle_entry']['directory']), bundles)
-            manifest_sha = completion['bundle_entry']['manifest_sha256']
-            read(directory/'bundle_manifest.json', manifest_sha)
-            fingerprint = hashlib.sha256(path.read_bytes()+path.with_name('completion.json').read_bytes()).hexdigest()
-            native = verify_comparison(bundles, path, expected_plan_sha256=plan_sha)
-            if fingerprint != hashlib.sha256(path.read_bytes()+path.with_name('completion.json').read_bytes()).hexdigest():
-                raise ValueError('persistent_completion_changed_during_verification')
-            read(directory/'bundle_manifest.json', manifest_sha)
-            checked_at = datetime.now(timezone.utc)
-            if any(row['status'] == 'FAILED' for row in native['records'].values()):
-                value['failed_forecasts'].append(project_failed_attempt(native, admission, manifest_sha, checked_at))
-            else:
-                value['forecasts'].append(project_forecast(native, admission, manifest_sha, checked_at))
-        except Exception:
-            value['forecast_errors'].append({'attempt': path.parent.name, 'reason': 'Sealed comparison could not be verified.'})
+    comparisons, _, _ = package_attempts(binding,receipt,output,plan_sha,plan,allocation)
+    value.update(comparisons)
     if read(pointer_path) != pointer:
         raise ValueError('persistent_day_changed_during_read')
     value['forecasts'].sort(key=lambda forecast: stamp(forecast['race']['jump_timestamp']), reverse=True)
     return value
 
+
+def package_attempts(binding,receipt,output,plan_sha,plan,allocation,*,remaining=255,deadline=None):
+    if 'producer_packages' not in binding:
+        return verified_attempts(plan_sha,plan,allocation,remaining=remaining,deadline=deadline)
+    if __package__:
+        from .native_verification import replay
+    else:
+        from native_verification import replay
+    return replay(binding,receipt,output,receipt['comparison'],remaining=remaining,deadline=deadline)
+
+
+
+def preparation_reference(path):
+    value = read(path)
+    with Path(path).open('rb') as handle:
+        raw = handle.read(4*1024*1024+1)
+    if len(raw) > 4*1024*1024:
+        raise ValueError('persistent_preparation_bound')
+    reference = {'path': str(path), 'sha256': hashlib.sha256(raw).hexdigest()}
+    if read(path, reference['sha256']) != value:
+        raise ValueError('persistent_preparation_changed')
+    return reference, value
+
+
+def retained_history(binding, now, current=None):
+    """Verified artifact history never establishes collector or input freshness."""
+    cfg = read(binding['config'], binding['config_sha256'])
+    if cfg['source_commit'] != binding['source_commit'] or cfg['python'] != binding['python']:
+        raise ValueError('persistent_config_identity_changed')
+    authority = cfg['standing_authority']
+    standing = read(authority['path'], authority['sha256'])
+    if standing['engineering_only'] is not True or standing['human_outcome_access'] is not False:
+        raise ValueError('persistent_scope_changed')
+    days = Path(standing['state_root'])/'days'
+    cutoff = current['racing_date'] if current else now.astimezone(ZoneInfo('Australia/Melbourne')).date().isoformat()
+    value = {'forecasts': [], 'failed_forecasts': [], 'forecast_errors': [], 'history_limited': False}
+    if not days.exists():
+        return value
+    children = list(islice(days.iterdir(),513))
+    if len(children) > 512:
+        value['history_limited'] = True
+        value['forecast_errors'].append({'reason':'Retained native history directory bound exceeded.'})
+        return value
+    directories = [path for path in children if re.fullmatch(r'\d{4}-\d{2}-\d{2}', path.name) and path.name <= cutoff]
+    directories.sort(key=lambda path:path.name, reverse=True)
+    value['history_limited'] = len(directories) > 32
+    deadline = time.monotonic()+15
+    remaining = 255
+    seen = set()
+    if current:
+        pointer = read(Path(standing['state_root'])/'current-day.json')
+        ref = pointer.get('preparation')
+        receipt = read(ref['path'], ref['sha256']) if ref else read(Path(pointer['output']).parent/'native-prepared.json')
+        seen.add((current['racing_date'],receipt['comparison']['sha256']))
+    from src.predictor.future_comparison import load_plan
+    from race_collection.persistent_comparison import validate_persistent_plan
+    for day in directories[:32]:
+        try:
+            bound_path(str(day), days)
+            racing_date = date.fromisoformat(day.name).isoformat()
+            receipts = [day/'native-prepared.json', *sorted(islice(day.glob('recoveries/*/native-prepared.json'),32))]
+            if len(receipts) > 32:
+                value['history_limited'] = True
+        except Exception:
+            value['forecast_errors'].append({'racing_date':day.name,'reason':'Retained native comparison could not be verified.'})
+            continue
+        for path in receipts[:32]:
+            if not path.exists():
+                continue
+            if remaining <= 0 or time.monotonic() >= deadline:
+                value['history_limited'] = True
+                return value
+            try:
+                bound_path(str(path),day)
+                preparation, receipt = preparation_reference(path)
+                if receipt['standing_authority'] != authority or receipt['racing_date'] != racing_date:
+                    raise ValueError('persistent_history_authority_changed')
+                output = bound_path(receipt['output'],day)
+                if not output.name.startswith('native-'):
+                    raise ValueError('persistent_history_package_changed')
+                reference = receipt['comparison']
+                identity = (racing_date,reference['sha256'])
+                if identity in seen:
+                    continue
+                bound_path(reference['path'],day)
+                plan, _ = load_plan(Path(reference['path']),reference['sha256'])
+                allocation = validate_persistent_plan(plan)
+                if allocation['racing_date'] != racing_date or allocation['standing_authority'] != authority:
+                    raise ValueError('persistent_history_allocation_changed')
+                bound_path(plan['programme_root'],day)
+                comparisons, limited, used = package_attempts(binding,receipt,output,reference['sha256'],plan,allocation,remaining=remaining,deadline=deadline)
+                remaining -= used
+                value['history_limited'] |= limited
+                read(path,preparation['sha256'])
+                read(reference['path'],reference['sha256'])
+                seen.add(identity)
+                for category in ('forecasts','failed_forecasts'):
+                    for forecast in comparisons[category]:
+                        forecast.update(retained_history=True,provenance={'racing_date':racing_date,'preparation':preparation,'comparison':reference})
+                    value[category].extend(comparisons[category])
+                value['forecast_errors'].extend(comparisons['forecast_errors'])
+            except Exception:
+                value['forecast_errors'].append({'racing_date':day.name,'reason':'Retained native comparison could not be verified.'})
+    return value
+
+
+def merge_forecasts(value, history):
+    """Exact duplicates collapse; conflicting identities are withheld together."""
+    combined={}; conflicts=set()
+    for category in ('forecasts','failed_forecasts'):
+        for forecast in [*value[category],*history[category]]:
+            job=forecast['job_id']
+            identity=(category,forecast['manifest_sha256'],forecast['race'])
+            if job in combined and combined[job][0] != identity:
+                conflicts.add(job)
+            else:
+                combined.setdefault(job,(identity,forecast))
+    for category in ('forecasts','failed_forecasts'):
+        value[category]=[forecast for job,(identity,forecast) in combined.items() if job not in conflicts and identity[0]==category]
+        value[category].sort(key=lambda forecast:stamp(forecast['race']['jump_timestamp']),reverse=True)
+    value['forecast_errors'].extend(history['forecast_errors'])
+    value['forecast_errors'].extend({'reason':'Conflicting retained comparison identities were withheld.'} for _ in conflicts)
+    value['history_limited']=history['history_limited']
+    return value
+
+
+def snapshot(binding, now, *, clock=None):
+    current_error=None
+    try:
+        value=current_snapshot(binding,now,clock=clock)
+    except Exception as error:
+        current_error=error
+        value={'schema':SCHEMA,'state':'UNAVAILABLE','observed_at':now.isoformat(),'upcoming':[],
+               'forecasts':[],'failed_forecasts':[],'forecast_errors':[],
+               'reason':'Current collector evidence could not be verified. Retained forecasts do not establish readiness.',
+               'scientific_admission':'CANARY_NOT_VERIFIED','result_access':False,'engineering_only':True}
+    try:
+        history=retained_history(binding,now,None if current_error else value)
+    except Exception:
+        if current_error:
+            raise current_error
+        history={'forecasts':[],'failed_forecasts':[],'forecast_errors':[{'reason':'Retained native history could not be verified.'}],'history_limited':False}
+    if current_error and not history['forecasts'] and not history['failed_forecasts']:
+        raise current_error
+    return merge_forecasts(value,history)
 
 def service_status(value):
     """Observe the installed owner without changing its state."""
