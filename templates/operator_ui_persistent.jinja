@@ -1,0 +1,11 @@
+{% if config.get('OPERATOR_UI_PERSISTENT_DISPLAY') %}
+<section class="workflow-section" id="persistent-collection" aria-labelledby="persistent-title">
+  <div class="section-heading today-heading">
+    <div><p class="eyebrow">Persistent collector · engineering</p><h2 id="persistent-title">{{ 'Upcoming races' if persistent_today else 'New collector forecasts' }}</h2></div>
+    <button id="refresh-persistent" class="primary-button" type="button">Refresh collection display</button>
+  </div>
+  <p id="persistent-status" role="status" aria-live="polite">Checking persistent collection…</p>
+  <div id="persistent-data" data-today="{{ 'true' if persistent_today else 'false' }}"></div>
+</section>
+<script src="/static/js/operator-ui-persistent.js?v={{ config.get('OPERATOR_UI_DEPLOYED_COMMIT', 'development') }}" defer></script>
+{% endif %}

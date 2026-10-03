@@ -4,8 +4,6 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-import os
-import stat
 import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -15,33 +13,13 @@ from flask import render_template
 from src.predictor.on_demand import verify_indexed_prediction_bundle, verify_prediction_bundle_index
 from .foundation import EvidenceStatus
 from .security import PreparedDisclosure
+from .readonly_json import read
 
 SCHEMA = 'operator_ui_retained_forecasts_v1'
 
 
 def canonical(value):
     return json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False).encode()
-
-
-def read(path, expected=None, limit=4 * 1024 * 1024):
-    path = Path(path)
-    if not path.is_absolute() or path.resolve() != path:
-        raise ValueError('unsafe_retained_path')
-    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
-    try:
-        before = os.fstat(fd)
-        if not stat.S_ISREG(before.st_mode) or before.st_size > limit:
-            raise ValueError('retained_file_bound')
-        raw = os.read(fd, limit + 1)
-        after = os.fstat(fd)
-        identity = lambda st: (st.st_dev, st.st_ino, st.st_size, st.st_mtime_ns, st.st_ctime_ns)
-        if identity(before) != identity(after) or identity(path.stat()) != identity(after) or len(raw) != before.st_size:
-            raise ValueError('retained_file_changed')
-    finally:
-        os.close(fd)
-    if expected is not None and hashlib.sha256(raw).hexdigest() != expected:
-        raise ValueError('retained_identity_mismatch')
-    return json.loads(raw)
 
 
 def stamp(value):
@@ -52,8 +30,11 @@ def stamp(value):
 
 
 def validate_config(value):
-    if set(value) != {'schema', 'roots', 'model_sha256', 'model_manifest_sha256', 'config_sha256', 'schedule', 'schedule_sha256', 'independent_audits', 'operational_job_ids'} or value['schema'] != SCHEMA:
+    if set(value) - {'persistent_collector'} != {'schema', 'roots', 'model_sha256', 'model_manifest_sha256', 'config_sha256', 'schedule', 'schedule_sha256', 'independent_audits', 'operational_job_ids'} or value['schema'] != SCHEMA:
         raise ValueError('invalid_forecast_display_config')
+    if 'persistent_collector' in value:
+        from .persistent_collector import validate_binding
+        validate_binding(value['persistent_collector'])
     if set(value['roots']) not in ({'operational', 'programme'}, {'operational', 'programme', 'engineering'}):
         raise ValueError('invalid_forecast_roots')
     for path in [*value['roots'].values(), value['schedule']]:
@@ -245,6 +226,9 @@ def forecasts(config, now):
 def install_forecast_display(app, config):
     validate_config(config)
     protected = app.extensions['operator_ui_operational_get']
+    if 'persistent_collector' in config:
+        from .persistent_collector import install_display
+        install_display(app, config['persistent_collector'], protected)
 
     @app.after_request
     def private_forecast_cache(response):

@@ -30,6 +30,8 @@
           <button id="refresh-forecasts" class="primary-button" type="button">Refresh display</button>
         </section>
         <p id="forecast-status" role="status" aria-live="polite">Loading authenticated forecasts…</p>
+        {% set persistent_today = false %}
+        {% include "operator_ui_persistent.jinja" %}
         <div id="forecast-sources"></div>
         <details class="system-details" id="forecast-system">
           <summary><span>Collection status and technical evidence</span><small>Current readiness and programme schedule</small></summary>
