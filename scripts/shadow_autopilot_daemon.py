@@ -4151,6 +4151,8 @@ def run_odds_capture_once(args: argparse.Namespace) -> dict[str, Any]:
             refresh_command_mode=args.refresh_command_mode,
             require_safe_refresh_metadata=args.require_safe_refresh_metadata,
         )
+        from race_collection.daily_race_inventory import inventory_cli_args
+        command.extend(inventory_cli_args(args))
         write_json(
             output_dir / "odds_capture_only_daemon_report.json",
             {
@@ -10053,6 +10055,8 @@ def run_once(args: argparse.Namespace) -> dict[str, Any]:
             "--step-timeout-seconds",
             str(args.timeout_seconds),
         ]
+        from race_collection.daily_race_inventory import inventory_cli_args
+        autopilot_command.extend(inventory_cli_args(args))
         autopilot_command.extend(shadow_model_cli_args(args.shadow_model))
         if args.refresh_dry_run:
             autopilot_command.append("--refresh-dry-run")
@@ -13660,6 +13664,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
     run_parser = subparsers.add_parser("run-once", help="Run one timer-safe daemon cycle")
     run_parser.add_argument("--run-id")
+    from race_collection.daily_race_inventory import add_inventory_arguments
+    add_inventory_arguments(run_parser)
     run_parser.add_argument("--live-freshness", action="store_true")
     run_parser.add_argument("--verify-live-runtime", action="store_true")
     run_parser.add_argument("--live-freshness-profile", choices=("bounded80-v1",))
@@ -13755,6 +13761,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Run one locked autonomous live-odds capture cycle",
     )
     odds_parser.add_argument("--run-id")
+    add_inventory_arguments(odds_parser)
     odds_parser.add_argument("--live-freshness", action="store_true")
     odds_parser.add_argument("--verify-live-runtime", action="store_true")
     odds_parser.add_argument("--live-freshness-profile", choices=("bounded80-v1",))

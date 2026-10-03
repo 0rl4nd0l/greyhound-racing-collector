@@ -1488,14 +1488,31 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
     os.environ["UPCOMING_RACES_DIR"] = str(upcoming_dir)
 
     timing = RefreshRequestTiming(upcoming_dir) if getattr(args, "trace_requests", False) else None
-    browser_type = _timed_call(timing, "browser_import", _browser_type)
     now = parse_current_time(getattr(args, "current_time", None))
+    inventory_path = getattr(args, "discovery_inventory", None)
+    inventory_sha = getattr(args, "discovery_inventory_sha256", None)
+    inventory = None
+    inventory_source_date = getattr(args, "discovery_inventory_source_date", None) or now.date().isoformat()
+    if inventory_path or inventory_sha or getattr(args, "discovery_inventory_source_date", None):
+        from race_collection.daily_race_inventory import InventoryError, load_daily_inventory
+        if not inventory_path or not inventory_sha:
+            raise InventoryError("INVENTORY_REFERENCE_INCOMPLETE")
+        max_inventory_age = getattr(args, "discovery_inventory_max_age_seconds", 900)
+        if not isinstance(max_inventory_age, (int, float)) or max_inventory_age > 900:
+            raise InventoryError("INVENTORY_ACTIVE_MAX_AGE_INVALID")
+        inventory = load_daily_inventory(
+            inventory_path, inventory_sha, source_date=inventory_source_date, now=now,
+            max_age_seconds=max_inventory_age,
+        )
+    browser_type = _timed_call(timing, "browser_import", _browser_type)
     if getattr(args, "live_freshness_contract", None):
         from race_collection.live_freshness_contract import FreshnessContract, install_request_guard
         scope = FreshnessContract.load(args.live_freshness_contract)
         scope.admit(datetime.now().astimezone(), seconds=80)
         if now.date().isoformat() != scope.value["source_date"] or now.utcoffset() != datetime.now().astimezone().utcoffset():
             raise ValueError("discovery_clock_scope_mismatch")
+        if inventory is not None and inventory_source_date != scope.value["source_date"]:
+            raise ValueError("discovery_inventory_contract_date_mismatch")
         install_request_guard(scope)  # This CLI process exits after the refresh.
     browser = _refresh_browser(timing, browser_type)
     browser.bounded_meeting_discovery = budget is not None
@@ -1509,9 +1526,14 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
         )
     if getattr(args, "live_freshness_contract", None) and discovery_days_ahead != 0:
         raise ValueError("two_date_refresh_not_authorized")
-    races = _timed_call(
-        timing, "discovery", browser.get_upcoming_races, days_ahead=discovery_days_ahead
-    )
+    if inventory is None:
+        races = _timed_call(
+            timing, "discovery", browser.get_upcoming_races, days_ahead=discovery_days_ahead
+        )
+    else:
+        if discovery_days_ahead != 0:
+            raise ValueError("discovery_inventory_single_date_only")
+        races = inventory["races"]
     discovery_finished = time.monotonic()
     discovery_failures = list(getattr(browser, 'discovery_failures', []))
     unusable_discovered_count = len(races) if discovery_failures else 0
@@ -1621,6 +1643,13 @@ def refresh_prejump_upcoming(args: argparse.Namespace) -> dict[str, Any]:
         "upcoming_dir": str(upcoming_dir),
         "days_ahead": int(args.days_ahead),
         "discovery_days_ahead": discovery_days_ahead,
+        "discovery_observed_at": inventory["observed_at"] if inventory is not None else now.isoformat(),
+        "discovery_inventory": ({
+            "path": str(Path(inventory_path).absolute()), "sha256": inventory_sha,
+            "source_date": inventory["source_date"], "observed_at": inventory["observed_at"],
+            "age_seconds": (now - datetime.fromisoformat(inventory["observed_at"])).total_seconds(),
+            "mode": "RETAINED_DISCOVERY_FRESH_SELECTED_INPUTS",
+        } if inventory is not None else None),
         "window": {
             "min_minutes": float(args.min_minutes),
             "max_minutes": float(args.max_minutes),
@@ -1733,6 +1762,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--upcoming-dir", default="upcoming_races")
     parser.add_argument("--days-ahead", type=int, default=0)
+    from race_collection.daily_race_inventory import add_inventory_arguments
+    add_inventory_arguments(parser)
     parser.add_argument("--min-minutes", type=float, default=20.0)
     parser.add_argument("--max-minutes", type=float, default=160.0)
     parser.add_argument("--limit", type=int, default=16)
