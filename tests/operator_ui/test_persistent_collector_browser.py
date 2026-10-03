@@ -26,7 +26,7 @@ def test_persistent_display_is_readonly_and_truthful(today,case):
       'job_id':'fixture','race':{'race_id':'Fixture race','jump_timestamp':'2026-10-03T06:50:00Z'},
       'runners':[{'box':1,'name':'First runner','probabilities':probabilities},
       {'box':2,'name':'Second runner','probabilities':{name:1-p for name,p in probabilities.items()}}],
-      'models':{name:'a'*64 for name in probabilities},'published_at':'2026-10-03T06:45:00Z',
+      'models':{name:None if name=='market' else 'a'*64 for name in probabilities},'published_at':'2026-10-03T06:45:00Z',
       'verified_at':'2026-10-03T06:46:00Z','manifest_sha256':'b'*64}]}
     if case=='empty':payload['forecasts']=[]
     if case=='unavailable':payload={'schema':payload['schema'],'state':'UNAVAILABLE','reason':'Evidence unavailable.'}
@@ -55,5 +55,6 @@ def test_persistent_display_is_readonly_and_truthful(today,case):
             for label in ['Production model','Normalized WIN market','Residual + box','Residual half']:
                 playwright.expect(page.get_by_role('columnheader',name=label,exact=True)).to_have_count(1)
             playwright.expect(page.locator('.persistent-forecast')).to_contain_text('60.0000%')
+            playwright.expect(page.locator('.persistent-forecast')).to_contain_text('derived from the verified captured WIN market')
         assert not errors
         browser.close()

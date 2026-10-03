@@ -20,7 +20,7 @@
     const rows=value.runners.map(runner=>[runner.box,runner.name,...models.map(model=>percent(runner.probabilities[model]))]);
     article.append(table(['Box','Runner',...models.map(model=>names[model])],rows));
     const evidence=node('details');evidence.append(node('summary','Forecast evidence'),node('p',`Published ${time(value.published_at)} · Verified ${time(value.verified_at)}`),node('p',`Manifest SHA-256 ${value.manifest_sha256}`));
-    models.forEach(model=>evidence.append(node('p',`${names[model]} SHA-256 ${value.models[model]}`)));article.append(evidence);return article;
+    models.forEach(model=>evidence.append(node('p',value.models[model]?`${names[model]} SHA-256 ${value.models[model]}`:`${names[model]}: derived from the verified captured WIN market`)));article.append(evidence);return article;
   }
   let loading=false;
   async function load(){
