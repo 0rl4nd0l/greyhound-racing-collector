@@ -230,3 +230,112 @@ def test_unavailable_evidence_still_reports_failed_installed_service(daily,monke
     value=pc.observe(binding)
     assert value['state']=='UNAVAILABLE' and value['forecasts']==[]
     assert value['service']['state']=='failed' and value['service']['exit_status']==78
+
+
+@pytest.fixture
+def native_history(daily,monkeypatch):
+    binding,publish,output,sha,root=daily
+    for attempt,failed in [('verified',False),('failed',True)]:
+        admission=output.parent/'admission'/sha/'attempts'/attempt/'admission.json'
+        put(admission,{'race':{'race_id':attempt,'jump_timestamp':NOW.isoformat()},'job_id':attempt})
+        directory=root.parent/'predictions/2026-10-03/bundles'/attempt
+        manifest=put(directory/'bundle_manifest.json',{'fixture':attempt})
+        put(admission.with_name('completion.json'),{'bundle_entry':{'directory':attempt,'manifest_sha256':manifest}})
+    def verify(_bundles,path,**kwargs):
+        failed=path.parent.name=='failed'
+        records={name:{'status':'FAILED' if failed else 'SEALED','failure':'RESIDUAL_SCORER_FAILED' if failed else None,'model_sha256':name,
+                      'predictions':None if failed else [{'box_number':1,'identity':'dog1','dog_name':'Dog 1','probability':.6},
+                                                       {'box_number':2,'identity':'dog2','dog_name':'Dog 2','probability':.4}]} for name in pc.MODELS}
+        return {'evidence_class':'AUTHORIZED_ENGINEERING','engineering_evidence':not failed,'future_race_evidence':False,
+                'eligible_common_race':not failed,'records':records,'completion':{'published_complete_at':NOW.isoformat()}}
+    monkeypatch.setattr(sys.modules['src.predictor.future_comparison'],'verify_comparison',verify)
+    return daily
+
+
+def test_rollover_keeps_verified_native_forecast_and_failure_separate_from_current_hold(native_history):
+    binding,publish,output,sha,root=native_history
+    publish('2026-10-04','Next day race')
+    put(root/'health.json',{'at':NOW.isoformat(),'status':'HOLD','reason':'temporary'})
+    value=pc.snapshot(binding,NOW+timedelta(days=1))
+    assert value['state']=='HOLD' and value['racing_date']=='2026-10-04'
+    assert len(value['forecasts'])==1 and value['forecasts'][0]['job_id']=='verified'
+    assert value['forecasts'][0]['retained_history'] is True
+    assert value['forecasts'][0]['provenance']['racing_date']=='2026-10-03'
+    assert len(value['failed_forecasts'])==1 and value['failed_forecasts'][0]['job_id']=='failed'
+    assert value['result_access'] is False and value['scientific_admission']=='CANARY_NOT_VERIFIED'
+
+
+
+def test_unavailable_current_inventory_keeps_independently_verified_native_history(native_history):
+    binding,_,output,_,_=native_history
+    put(output/'inventories/test.json',{})
+    value=pc.snapshot(binding,NOW)
+    assert value['state']=='UNAVAILABLE'
+    assert [forecast['job_id'] for forecast in value['forecasts']]==['verified']
+    assert value['forecasts'][0]['retained_history'] is True
+    assert len(value['failed_forecasts'])==1 and value['result_access'] is False
+
+
+def test_tampered_archived_manifest_is_withheld_without_hiding_current_status(native_history):
+    binding,publish,output,_,root=native_history
+    publish('2026-10-04','Next day race')
+    put(root/'health.json',{'at':NOW.isoformat(),'status':'HOLD','reason':'temporary'})
+    put(root.parent/'predictions/2026-10-03/bundles/verified/bundle_manifest.json',{'changed':True})
+    value=pc.snapshot(binding,NOW+timedelta(days=1))
+    assert value['state']=='HOLD' and value['forecasts']==[]
+    assert len(value['failed_forecasts'])==1 and len(value['forecast_errors'])==1
+
+
+def test_multiple_recovery_receipts_do_not_duplicate_retained_forecasts(native_history):
+    binding,publish,output,_,root=native_history
+    receipt=pc.read(output.parent/'native-prepared.json')
+    put(output.parent/'recoveries/recovery-01/native-prepared.json',receipt)
+    put(output.parent/'recoveries/recovery-02/native-prepared.json',receipt)
+    publish('2026-10-04','Next day race')
+    value=pc.snapshot(binding,NOW+timedelta(days=1))
+    assert len(value['forecasts'])==1 and len(value['failed_forecasts'])==1
+    assert value['forecast_errors']==[]
+
+
+def test_unrelated_standing_authority_does_not_disclose_prior_day_native_history(native_history):
+    binding,publish,output,_,root=native_history
+    receipt=pc.read(output.parent/'native-prepared.json')
+    receipt['standing_authority']={'path':str(root/'unrelated.json'),'sha256':'f'*64}
+    put(output.parent/'native-prepared.json',receipt)
+    publish('2026-10-04','Next day race')
+    value=pc.snapshot(binding,NOW+timedelta(days=1))
+    assert value['forecasts']==[] and value['failed_forecasts']==[]
+    assert value['state']=='STATUS_STALE' and len(value['forecast_errors'])==1
+
+
+def test_invalid_original_preparation_does_not_hide_valid_recovery_history(native_history):
+    binding,publish,output,_,_=native_history
+    receipt=pc.read(output.parent/'native-prepared.json')
+    put(output.parent/'recoveries/recovery-01/native-prepared.json',receipt)
+    put(output.parent/'native-prepared.json',{'rejected':True})
+    publish('2026-10-04','Next day race')
+    value=pc.snapshot(binding,NOW+timedelta(days=1))
+    assert len(value['forecasts'])==1 and len(value['failed_forecasts'])==1
+    assert '/recoveries/recovery-01/' in value['forecasts'][0]['provenance']['preparation']['path']
+    assert len(value['forecast_errors'])==1
+
+
+def test_changed_preparation_during_verification_does_not_hide_valid_recovery(native_history,monkeypatch):
+    binding,publish,output,_,_=native_history
+    path=output.parent/'native-prepared.json'
+    put(output.parent/'recoveries/recovery-01/native-prepared.json',pc.read(path))
+    publish('2026-10-04','Next day race')
+    module=sys.modules['src.predictor.future_comparison']
+    original=module.verify_comparison
+    changed=False
+    def verify(*args,**kwargs):
+        nonlocal changed
+        if not changed:
+            put(path,{'changed_during_verification':True})
+            changed=True
+        return original(*args,**kwargs)
+    monkeypatch.setattr(module,'verify_comparison',verify)
+    value=pc.snapshot(binding,NOW+timedelta(days=1))
+    assert len(value['forecasts'])==1 and len(value['failed_forecasts'])==1
+    assert '/recoveries/recovery-01/' in value['forecasts'][0]['provenance']['preparation']['path']
+    assert len(value['forecast_errors'])==1

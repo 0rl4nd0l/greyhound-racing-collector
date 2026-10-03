@@ -16,10 +16,11 @@
   function forecast(value){
     if(value.evidence_class!=='ENGINEERING'||value.scientific_admission!=='CANARY_NOT_VERIFIED'||!Array.isArray(value.runners)||!value.runners.length)throw new Error('Unverified comparison');
     const article=node('article');article.className='panel persistent-forecast';article.dataset.jobId=value.job_id;
-    article.append(node('h3',value.race.race_id),node('p',`Verified four-candidate engineering forecast · Jump ${time(value.race.jump_timestamp)}`));
+    article.append(node('h3',value.race.race_id),node('p',`${value.retained_history?'Verified retained engineering forecast · Racing day '+value.provenance.racing_date:'Verified four-candidate engineering forecast'} · Jump ${time(value.race.jump_timestamp)}`));
     const rows=value.runners.map(runner=>[runner.box,runner.name,...models.map(model=>percent(runner.probabilities[model]))]);
     article.append(table(['Box','Runner',...models.map(model=>names[model])],rows));
     const evidence=node('details');evidence.append(node('summary','Forecast evidence'),node('p',`Published ${time(value.published_at)} · Verified ${time(value.verified_at)}`),node('p',`Manifest SHA-256 ${value.manifest_sha256}`));
+    if(value.provenance){for(const [label,ref] of [['Preparation',value.provenance.preparation],['Comparison plan',value.provenance.comparison]]){const identity=node('p',`${label} SHA-256 ${ref.sha256}`);identity.className='mono';evidence.append(identity);}}
     models.forEach(model=>evidence.append(node('p',value.models[model]?`${names[model]} SHA-256 ${value.models[model]}`:`${names[model]}: derived from the verified captured WIN market`)));article.append(evidence);return article;
   }
   let loading=false;
@@ -38,20 +39,22 @@
       if(response.status===401){status.textContent='Sign in to view persistent collection. ';const link=node('a','Sign in');link.href='/operator-ui/sign-in';status.append(link);return;}
       if(!response.ok)throw new Error('Collection unavailable');const data=await response.json();
       if(data.schema!=='operator_ui_persistent_collector_v1')throw new Error('Invalid collection response');
-      if(data.state==='UNAVAILABLE'){
+      const unavailable=data.state==='UNAVAILABLE';
+      if(unavailable){
         status.textContent=data.reason;
         if(data.service)status.append(node('span',` Installed service: ${data.service.state}${data.service.exit_status?`; exit ${data.service.exit_status}`:''}.`));
-        return;
-      }
-      status.textContent=`Collector: ${data.state.replaceAll('_',' ')} · Status ${time(data.status_at)} · Inventory ${time(data.inventory_at)} (${data.inventory_state.replaceAll('_',' ').toLowerCase()}).`;
-      if(data.status_reason)status.append(node('span',` Stop reason: ${data.status_reason.replaceAll('_',' ').toLowerCase()}.`));
-      if(data.service)status.append(node('span',` Installed service: ${data.service.state}; ${data.service.substate||'status unavailable'}${data.service.exit_status?`; exit ${data.service.exit_status}`:''}.`));
-      target.append(node('p',`${data.race_count} races discovered · ${data.upcoming.length} still upcoming. Discovery does not establish fresh runner inputs or forecast readiness.`));
+        if(!data.forecasts?.length&&!data.failed_forecasts?.length)return;
+      }else status.textContent=`Collector: ${data.state.replaceAll('_',' ')} · Status ${time(data.status_at)} · Inventory ${time(data.inventory_at)} (${data.inventory_state.replaceAll('_',' ').toLowerCase()}).`;
+      if(!unavailable&&data.status_reason)status.append(node('span',` Stop reason: ${data.status_reason.replaceAll('_',' ').toLowerCase()}.`));
+      if(!unavailable&&data.service)status.append(node('span',` Installed service: ${data.service.state}; ${data.service.substate||'status unavailable'}${data.service.exit_status?`; exit ${data.service.exit_status}`:''}.`));
+      if(!unavailable)target.append(node('p',`${data.race_count} races discovered · ${data.upcoming.length} still upcoming. Discovery does not establish fresh runner inputs or forecast readiness.`));
       target.append(node('p','Engineering evidence only. Scientific admission remains CANARY_NOT_VERIFIED.'));
+      if(data.forecasts?.some(value=>value.retained_history)||(data.failed_forecasts||[]).some(value=>value.retained_history))target.append(node('p','Retained history does not establish current input freshness or forecast readiness.'));
+      if(data.history_limited)target.append(node('p','Some older forecasts are not shown in this view.'));
       for(const value of data.failed_forecasts||[])target.append(failure(value));
       if(target.dataset.today==='true'){
-        const rows=data.upcoming.map(race=>[`${race.venue} R${race.race_number}`,time(race.jump_at),'Readiness not established by discovery']);
-        target.append(table(['Race','Scheduled jump (Melbourne)','Forecast readiness'],rows.slice(0,10)));
+        const rows=(unavailable?[]:data.upcoming).map(race=>[`${race.venue} R${race.race_number}`,time(race.jump_at),'Readiness not established by discovery']);
+        if(!unavailable)target.append(table(['Race','Scheduled jump (Melbourne)','Forecast readiness'],rows.slice(0,10)));
         if(rows.length>10){const more=node('details');more.append(node('summary',`Show ${rows.length-10} more upcoming races`),table(['Race','Scheduled jump (Melbourne)','Forecast readiness'],rows.slice(10)));target.append(more);}
         const link=node('a','Open verified forecasts');link.href='/operator-ui/forecasts';const paragraph=node('p');paragraph.append(link);target.append(paragraph);
       }else{

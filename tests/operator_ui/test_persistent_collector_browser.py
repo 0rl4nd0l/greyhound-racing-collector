@@ -11,7 +11,7 @@ ROOT=Path(__file__).parents[2]
 
 
 @pytest.mark.parametrize('today',[True,False])
-@pytest.mark.parametrize('case',['valid','empty','failed','unavailable','unauthenticated'])
+@pytest.mark.parametrize('case',['valid','empty','failed','retained','unavailable_history','unavailable','unauthenticated'])
 def test_persistent_display_is_readonly_and_truthful(today,case):
     executable=shutil.which('google-chrome') or shutil.which('chromium')
     if executable is None:pytest.skip('Local Chromium required')
@@ -28,6 +28,10 @@ def test_persistent_display_is_readonly_and_truthful(today,case):
       {'box':2,'name':'Second runner','probabilities':{name:1-p for name,p in probabilities.items()}}],
       'models':{name:None if name=='market' else 'a'*64 for name in probabilities},'published_at':'2026-10-03T06:45:00Z',
       'verified_at':'2026-10-03T06:46:00Z','manifest_sha256':'b'*64}]}
+    if case in ('retained','unavailable_history'):
+        payload['forecasts'][0].update(retained_history=True,provenance={'racing_date':'2026-10-03',
+            'preparation':{'sha256':'c'*64},'comparison':{'sha256':'d'*64}})
+        if case=='unavailable_history':payload.update(state='UNAVAILABLE',reason='Current evidence unavailable; retained forecasts do not establish readiness.')
     if case=='empty':payload['forecasts']=[]
     if case=='failed':
         payload.update(state='HOLD',status_reason='OPERATIONAL_PREDICTION_FAILED_PRESERVED_CONSUMPTION',forecasts=[],failed_forecasts=[{
@@ -57,6 +61,14 @@ def test_persistent_display_is_readonly_and_truthful(today,case):
             playwright.expect(page.locator('.persistent-forecast')).to_have_count(0)
             assert 'COMPLETE_BEFORE_CUTOFF' not in page.inner_text('body')
             assert '%' not in page.locator('.persistent-failure').inner_text()
+        elif case in ('retained','unavailable_history'):
+            playwright.expect(page.locator('#persistent-data')).to_contain_text('Retained history does not establish current input freshness')
+            if not today:
+                playwright.expect(page.locator('.persistent-forecast')).to_contain_text('Racing day 2026-10-03')
+                playwright.expect(page.locator('.persistent-forecast')).to_contain_text('60.0000%')
+            if case=='unavailable_history':
+                playwright.expect(page.locator('#persistent-status')).to_contain_text('Current evidence unavailable')
+                playwright.expect(page.get_by_role('columnheader',name='Forecast readiness',exact=True)).to_have_count(0)
         elif today:
             playwright.expect(page.locator('#persistent-data')).to_contain_text('Fixture venue R1')
             playwright.expect(page.locator('#persistent-data')).to_contain_text('Discovery does not establish')
