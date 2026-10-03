@@ -1183,6 +1183,82 @@ def has_unisolated_refresh_failure(report: Mapping[str, Any]) -> bool:
         return True
 
 
+def complete_empty_timing_selection(report: Mapping[str, Any]) -> bool:
+    """Recognize complete discovery with every race outside the capture window.
+
+    An empty selection is fresh evidence of no eligible work, not race inputs.
+    Recompute timing exclusions so missing, failed or partial discovery cannot
+    acquire a successful empty index merely by setting selected_count to zero.
+    """
+    import math
+
+    try:
+        if (report.get("status") != "SUCCESS" or report.get("dry_run") is not False
+                or has_unisolated_refresh_failure(report)
+                or any(report.get(key) for key in (
+                    "reason", "source_http_status", "source_retry_after",
+                    "source_rate_limit_reset", "source_retry_headers", "discovery_failures"))):
+            return False
+        if any(type(report.get(key)) is not int or report[key] != 0 for key in (
+                "selected_count", "accepted_csv_count", "sidecar_count",
+                "raw_export_count", "quarantine_count", "current_index_race_count")):
+            return False
+        if any(report.get(key) != [] for key in (
+                "selected_races", "downloads", "current_index_races")):
+            return False
+        if report.get("artifact_counts") != {key: 0 for key in (
+                "accepted_csv_count", "sidecar_count", "raw_export_count", "quarantine_count")}:
+            return False
+        records = report["considered_races"]
+        count = report["total_races_found"]
+        if (not isinstance(records, list) or not records or type(count) is not int
+                or count != len(records)):
+            return False
+        observed = datetime.fromisoformat(report["generated_at"])
+        if observed.utcoffset() is None:
+            return False
+        lower, upper = (report["window"][key] for key in ("min_minutes", "max_minutes"))
+        if (any(type(v) not in (int, float) or not math.isfinite(v) for v in (lower, upper))
+                or not 0 <= lower <= upper):
+            return False
+        buckets = Counter()
+        identities = set()
+        race_ids = set()
+        for row in records:
+            if (not isinstance(row, Mapping) or row.get("selected") is not False
+                    or row.get("excluded_reason") or not row.get("race_id")
+                    or not row.get("race_url") or row["race_url"] in identities
+                    or row["race_id"] in race_ids or stable_race_id(row) != row["race_id"]):
+                return False
+            identities.add(row["race_url"])
+            race_ids.add(row["race_id"])
+            jump = datetime.fromisoformat(row["jump_datetime"])
+            if jump.utcoffset() is None or _parse_race_jump_datetime(row, now=observed) != jump:
+                return False
+            minutes = (jump - observed).total_seconds() / 60
+            bucket = ("past_or_too_close" if minutes < lower else
+                      "future_outside_preferred_window" if minutes > upper else None)
+            if (bucket is None or row.get("bucket") != bucket
+                    or row.get("selection_decision") != bucket
+                    or row.get("minutes_to_jump") != minutes):
+                return False
+            buckets[bucket] += 1
+        if report.get("bucket_counts") != dict(buckets):
+            return False
+        coverage = report["sidecar_metadata_coverage"]
+        if (coverage.get("status") != "NOT_REQUESTED_NO_SELECTED_RACES"
+                or coverage.get("reason") != "no_selected_races"
+                or coverage.get("races") != []
+                or any(type(coverage.get(k)) is not int or coverage[k] != 0 for k in (
+                    "selected_race_count", "accepted_selected_csv_count"))
+                or report.get("metadata_collection_status") != "NOT_REQUESTED_NO_SELECTED_RACES"):
+            return False
+        rows, selection = current_index_metadata_selection([], coverage, source_generated_at=observed)
+        return not rows and report.get("current_index_metadata_selection") == selection
+    except (KeyError, TypeError, ValueError, AttributeError, OverflowError):
+        return False
+
+
 def complete_empty_metadata_selection(report: Mapping[str, Any]) -> bool:
     """Authenticate a completed refresh whose candidates are all ineligible or locally quarantined.
 

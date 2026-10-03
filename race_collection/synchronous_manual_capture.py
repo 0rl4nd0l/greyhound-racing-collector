@@ -698,6 +698,7 @@ def _normalize_current_index_rows(
 ) -> list[dict[str, Any]]:
     from scripts.refresh_prejump_upcoming import (
         complete_empty_metadata_selection,
+        complete_empty_timing_selection,
         has_unisolated_refresh_failure,
         current_index_metadata_selection,
         stable_race_id,
@@ -771,6 +772,10 @@ def _normalize_current_index_rows(
                 "CURRENT_INDEX_SOURCE_INVALID",
                 reason="current_index_metadata_selection_invalid",
             )
+    if selected == [] and source.get("selected_count") == 0 and not complete_empty_timing_selection(source):
+        raise CaptureOneRejected(
+            "CURRENT_INDEX_SOURCE_INVALID", reason="empty_timing_selection_incomplete"
+        )
     if (
         not isinstance(selected, list)
         or isinstance(selected_count, bool)
@@ -1313,11 +1318,13 @@ def publish_current_race_index(
             source = json.loads(source_raw)
             if not isinstance(source, Mapping):
                 raise CaptureOneRejected("CURRENT_INDEX_SOURCE_INVALID")
-            from scripts.refresh_prejump_upcoming import complete_empty_metadata_selection
+            from scripts.refresh_prejump_upcoming import (
+                complete_empty_metadata_selection, complete_empty_timing_selection,
+            )
 
-            empty_eligible = source.get(
-                "status"
-            ) == "NO_QUALIFIED_RACES" and complete_empty_metadata_selection(source)
+            empty_eligible = (
+                source.get("status") == "NO_QUALIFIED_RACES" and complete_empty_metadata_selection(source)
+            ) or complete_empty_timing_selection(source)
             if (source.get("status") != "SUCCESS" and not empty_eligible) or source.get(
                 "dry_run"
             ) is True:
