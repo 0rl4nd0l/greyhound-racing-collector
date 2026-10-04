@@ -134,7 +134,7 @@ def authorized_case(tmp_path):
 def test_isolated_claim_common_denominator_and_private_metrics(authorized_case, monkeypatch):
     membership, authority, root = authorized_case
     ref = put(root/'authority.json', authority)
-    def reader(member, closure, protocol, cutoff):
+    def reader(member, closure, protocol, cutoff, **kwargs):
         if closure['state'] == 'QUARANTINED': return None, 'QUARANTINED'
         return {'probabilities': {m: [.8, .2] for m in baseline.MODELS}, 'outcome': [1., 0.]}, closure['state']
     monkeypatch.setattr(baseline, 'read_member', reader)
@@ -169,7 +169,7 @@ def test_invalid_authority_never_constructs_protected_reader(authorized_case, mo
 
 def test_reader_failure_preserves_claim_without_partial_success(authorized_case, monkeypatch):
     membership, authority, root = authorized_case
-    def reader(*args): raise ValueError('synthetic private detail must never escape to status')
+    def reader(*args, **kwargs): raise ValueError('synthetic private detail must never escape to status')
     monkeypatch.setattr(baseline, 'read_member', reader)
     with pytest.raises(ValueError):
         baseline.run_baseline(membership, put(root/'authority.json', authority), execute=True, now=NOW)
@@ -347,3 +347,20 @@ def test_unknown_closure_verification_blocks_before_any_reader(authorized_case, 
     with pytest.raises(ValueError, match='baseline_closure_verification_invalid'):
         baseline.run_baseline(membership, put(root/'authority.json', authority), execute=True, now=NOW)
     assert not called and (root/'proposal/evaluation_claim.json').exists()
+
+
+def test_expiry_after_opaque_verification_stops_before_forecast_or_result_decode(sealed_member, monkeypatch):
+    member, protocol, closure, *_ = sealed_member
+    checked_paths = []
+    original = baseline.checked
+    def tracked(ref):
+        checked_paths.append(ref['path']);return original(ref)
+    monkeypatch.setattr(baseline, 'checked', tracked)
+    calls = 0
+    def deadline():
+        nonlocal calls
+        calls += 1
+        if calls == 2: raise TimeoutError('expired_after_opaque_hashing')
+    with pytest.raises(TimeoutError):
+        baseline.read_member(member, closure, protocol, NOW, check_deadline=deadline)
+    assert not any('/comparison/' in p or p.endswith('.sqlite3') for p in checked_paths)

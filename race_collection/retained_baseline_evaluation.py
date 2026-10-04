@@ -228,10 +228,11 @@ def join_forecasts(member, admission, inputs, records, manifest):
         'source_native_runner_id': r.get('source_native_runner_id')} for r in field]
 
 
-def read_member(member, closure, protocol, cutoff):
+def read_member(member, closure, protocol, cutoff, *, check_deadline=lambda: None):
     """Protected seam: called only after authority/claim, for one fixed member."""
     from race_collection.retained_study_observer import metadata_candidate, opaque_hash
     from src.predictor.comparison_results import ComparisonResultSource
+    check_deadline()
     plan = checked(member['original_plan'])
     candidate = metadata_candidate(member['original_plan'], plan, Path(member['admission']['path']), protocol)
     if any(member.get(k) != v for k, v in candidate.items()):
@@ -239,12 +240,16 @@ def read_member(member, closure, protocol, cutoff):
     bundle_path = Path(member['bundle_manifest']['path']).parent
     manifest = checked(member['bundle_manifest']); admission = checked(member['admission'])
     def content(name):
+        check_deadline()
         return checked({'path': str(bundle_path/name), 'sha256': manifest['files'][name]['sha256']})
     inputs = content('comparison/inputs.json')
     request = content('request.json')
     if request['runners'] != inputs['runners']:
         raise ValueError('baseline_request_field_changed')
-    records = {m: checked(member['original_forecasts'][m]) for m in MODELS}
+    records = {}
+    for model in MODELS:
+        check_deadline()
+        records[model] = checked(member['original_forecasts'][model])
     probabilities, field = join_forecasts(member, admission, inputs, records, manifest)
     if closure['state'] in {'QUARANTINED', 'PENDING', 'UNRESOLVED'}:
         return None, closure['state']
@@ -263,13 +268,16 @@ def read_member(member, closure, protocol, cutoff):
             raise ValueError('baseline_result_snapshot_busy')
         if opaque_hash(database, closure['bytes']) != ref['sha256']:
             raise ValueError('baseline_result_snapshot_changed')
+        check_deadline()
         value = ComparisonResultSource(database).read(job, bundle, now=cutoff)
+        check_deadline()
         if opaque_hash(database, closure['bytes']) != ref['sha256']:
             raise ValueError('baseline_result_snapshot_changed')
         if value['state'] != 'RESULT_AVAILABLE': return None, 'RESULT_IDENTITY_OR_COMPLETENESS_UNRESOLVED'
         evidence = {'race_id': member['race_id'], 'identity_verified': True,
             'runner_results': value['evidence']['runner_rows']}
     elif closure['state'] == 'CLOSED_NON_FINISH':
+        check_deadline()
         evidence = checked(ref)
         unsigned = {k: v for k, v in evidence.items() if k != 'evidence_sha256'}
         if (evidence.get('schema_version') != 'comparison_known_nonfinish_result_v1'
@@ -288,6 +296,7 @@ def read_member(member, closure, protocol, cutoff):
         # The separately pinned closure receipt attests its independently verified
         # parser result. Recheck exact retained HTTP evidence, without a new fetch.
         for source_ref in source.values():
+            check_deadline()
             if reference(source_ref['path']) != source_ref:
                 raise ValueError('baseline_nonfinish_source_changed')
         request, response = checked(source['request']), checked(source['response'])
@@ -303,6 +312,7 @@ def read_member(member, closure, protocol, cutoff):
             raise ValueError('baseline_nonfinish_source_invalid')
     else:
         raise ValueError('baseline_closure_state_invalid')
+    check_deadline()
     try:
         target, category = win_target(member['race_id'], field, evidence)
     except (ValueError, KeyError, TypeError):
@@ -318,6 +328,10 @@ def run_baseline(manifest_ref, authority_ref, *, execute=False, now=None):
     now = now or datetime.now(timezone.utc)
     authority, manifest = authorize(manifest_ref, authority_ref, now)
     began = time.monotonic(); output = root_path(authority['output_root'])
+    def check_deadline():
+        elapsed = time.monotonic()-began
+        if elapsed > authority['limits']['max_wall_seconds'] or now.timestamp()+elapsed >= stamp(authority['expires_at']).timestamp():
+            raise TimeoutError('baseline_deadline')
     # A manifest has ONE claim regardless of authority reissue or output choice.
     claim = Path(manifest_ref['path']).parent/'evaluation_claim.json'
     _write(claim, {'claimed_at': now.isoformat(), 'membership': manifest_ref,
@@ -326,6 +340,7 @@ def run_baseline(manifest_ref, authority_ref, *, execute=False, now=None):
     token = BUDGET.set([authority['limits']['max_files'], authority['limits']['max_bytes']])
     try:
         protocol = checked(manifest['protocol'])
+        check_deadline()
         closure = checked(authority['closure_manifest'])
         if (closure['schema_version'] != 'sealed_baseline_closure_manifest_v1'
                 or closure['membership'] != manifest_ref or closure['status'] != 'SEALED_INDEPENDENTLY_VERIFIED'
@@ -343,16 +358,14 @@ def run_baseline(manifest_ref, authority_ref, *, execute=False, now=None):
         closures = {r['race_id']: r for r in closure['records']}
         counts = Counter(); races = []
         for member in manifest['members']:
-            elapsed = time.monotonic()-began
-            if elapsed > authority['limits']['max_wall_seconds'] or now.timestamp()+elapsed >= stamp(authority['expires_at']).timestamp():
-                raise TimeoutError('baseline_deadline')
-            race, category = read_member(member, closures[member['race_id']], protocol, stamp(authority['result_cutoff']))
+            check_deadline()
+            race, category = read_member(member, closures[member['race_id']], protocol,
+                stamp(authority['result_cutoff']), check_deadline=check_deadline)
             counts[category] += 1
             if race is not None: races.append(race)
-        if (time.monotonic()-began > authority['limits']['max_wall_seconds']
-                or now.timestamp()+time.monotonic()-began >= stamp(authority['expires_at']).timestamp()):
-            raise TimeoutError('baseline_deadline')
+        check_deadline()
         metrics = summarize(races)
+        check_deadline()
         _write(output/'private_metrics.json', {'status': 'RETROSPECTIVE_DESCRIPTIVE_ONLY',
             'membership': manifest_ref, 'authority': authority_ref, 'eligible_races': len(races),
             'metrics': metrics, 'promotion': False})
