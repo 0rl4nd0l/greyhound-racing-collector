@@ -604,6 +604,8 @@ def run_live_collection_cycle(args, *, odds_only: bool):
         if not scope or not scope.value.get("operational_predictions") or timing_failed():
             return False
         from race_collection.live_freshness_contract import classify_refresh_outage, create_once
+        from race_collection.refresh_deferral_policy import (
+            limit_for, record_fields, verify_record, index_allows_scheduled_wait)
         from utils.sportsbet_access import SportsbetAccess
         try:
             scope.admit(daemon.wall_clock_now(), seconds=0)
@@ -626,8 +628,8 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                 return False
             # Verify the previous publication while still owning the collector
             # lock. This runs no provider/systemd work and holds no writer mutex.
-            view_now()
-            if not 0 <= budget.age(last_observed, daemon.wall_clock_now()) < 270 or timing_failed():
+            if (not index_allows_scheduled_wait(view_now, daemon.wall_clock_now(),
+                    persistent=bool(scope.value.get('persistent_allocation'))) or timing_failed()):
                 return False
             directory = Path(args.live_freshness_contract).resolve().parent / "refresh-deferrals"
             with native_publication_lock(evidence, exclusive=True):
@@ -635,10 +637,11 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                 records = list(directory.glob("*.json"))
                 if retained.exists():
                     value = json.loads(retained.read_bytes())
-                    return all(value.get(key) == item for key, item in classified.items())
-                if len(records) >= 2:
+                    verify_record(value, classified, allocation_sha=(scope.value.get('persistent_allocation') or {}).get('sha256'))
+                    return True
+                if len(records) >= limit_for(scope.value):
                     return False
-                create_once(retained, {**classified,
+                create_once(retained, {**record_fields(classified, scope.value),
                     "observed_at": daemon.wall_clock_now().isoformat(),
                     "failed_cycle_count": len(records) + 1})
             return True
@@ -777,7 +780,8 @@ def run_live_collection_cycle(args, *, odds_only: bool):
                     # Collector ownership serializes this check with the prior
                     # cycle's failure classification, before any next request.
                     with native_publication_lock(evidence, exclusive=True):
-                        exhausted = len(list(directory.glob("*.json"))) >= 2
+                        from race_collection.refresh_deferral_policy import limit_for
+                        exhausted = len(list(directory.glob("*.json"))) >= limit_for(scope.value)
                     if exhausted:
                         scope.stop("REFRESH_OUTAGE_LIMIT_REACHED")
                         raise ValueError("refresh_outage_limit_reached")

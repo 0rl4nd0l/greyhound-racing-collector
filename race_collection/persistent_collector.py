@@ -165,12 +165,11 @@ def classify_native_dispatch(evidence, record, allocation_sha, *, output=None):
 
 def _verified_refresh_deferral(ref, evidence, allocation_sha):
     from race_collection.live_freshness_contract import classify_refresh_outage
+    from race_collection.refresh_deferral_policy import verify_record
     value = checked(ref)
     classified = classify_refresh_outage(value.get('source_evidence_root', evidence), value.get('run_id'))
-    if (classified is None or any(value.get(key) != item for key, item in classified.items())
-            or value.get('allocation_sha256', allocation_sha) != allocation_sha
-            or type(value.get('failed_cycle_count')) is not int
-            or not 1 <= value['failed_cycle_count'] <= 2
+    verify_record(value, classified, allocation_sha=allocation_sha)
+    if (value.get('allocation_sha256', allocation_sha) != allocation_sha
             or stamp(value['observed_at']) > now()
             or Path(ref['path']).name != value['run_id']+'.json'):
         raise ValueError('persistent_refresh_deferral_unverified')
@@ -180,7 +179,9 @@ def _verified_refresh_deferral(ref, evidence, allocation_sha):
 def refresh_outage_pending(output, plan, references, allocation_sha):
     """A prior fresh index is retained history, never proof an outage recovered."""
     paths = list((Path(output)/'refresh-deferrals').glob('*.json'))
-    if len(paths) > 2 or len(references) > 2:
+    from race_collection.refresh_deferral_policy import limit_for
+    limit = limit_for(plan)
+    if len(paths) > limit or len(references) > limit:
         raise ValueError('persistent_refresh_outage_limit_exceeded')
     if not paths and not references:
         return False

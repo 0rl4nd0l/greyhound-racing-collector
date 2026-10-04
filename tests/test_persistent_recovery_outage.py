@@ -93,7 +93,7 @@ def test_typed_outage_accepts_exact_scope_stopped_pair(outage_recovery):
 
 
 @pytest.mark.parametrize('prior_count',[1,2])
-def test_prior_cycles_are_preserved_and_third_cycle_cannot_be_forgiven(outage_recovery,tmp_path,prior_count):
+def test_prior_cycles_are_preserved_under_authenticated_daily_policy(outage_recovery,tmp_path,prior_count):
     from tests.test_scheduled_refresh_outage import outage
     recovery,review=outage_recovery
     cfg,standing,old,now,item,terminal,calls=recovery
@@ -107,21 +107,20 @@ def test_prior_cycles_are_preserved_and_third_cycle_cannot_be_forgiven(outage_re
         originals.append((ref,Path(ref['path']).read_bytes()))
     selection=native.checked(cfg['recovery_selection']);selection['baseline']=native.recovery_baseline(old,cfg)
     rebind(outage_recovery,selection,review)
-    if prior_count==2:
-        with pytest.raises(ValueError,match='failed_refresh_budget_exhausted'):
-            native.prepare_day(cfg,standing,'2026-10-03',now)
-        assert len(calls)==1
-        return
     new=native.prepare_day(cfg,standing,'2026-10-03',now)
     directory=Path(new['output'])/'refresh-deferrals'
-    assert len(list(directory.glob('*.json')))==2
+    assert len(list(directory.glob('*.json')))==prior_count+1
     for ref,raw in originals:
         copied=json.loads((directory/Path(ref['path']).name).read_bytes())
         assert copied['inherited_from']==ref
         assert Path(copied['inherited_bytes']['path']).read_bytes()==raw
         assert Path(ref['path']).read_bytes()==raw
+        assert copied['maximum_failed_cycles']==2
     states=[json.loads(p.read_bytes())['failed_cycle_count'] for p in directory.glob('*.json')]
-    assert sorted(states)==[1,2]
+    assert sorted(states)==list(range(1,prior_count+2))
+    current=json.loads((directory/(native.checked(review['classified_outage'])['run_id']+'.json')).read_bytes())
+    from race_collection.refresh_deferral_policy import limit_for
+    assert current['maximum_failed_cycles']==limit_for(old['plan'])>2
 
 
 def test_completion_order_not_filename_and_already_charged_run_not_duplicated(outage_recovery,tmp_path):
