@@ -194,11 +194,89 @@ def authorize(manifest_ref, authority_ref, now):
     return authority, manifest
 
 
+
+def comparison_roster(rows):
+    """Validate future_comparison's sole enrichment, retaining the sealed roster."""
+    from src.predictor.on_demand import canonical_runner_set
+    fields = {'box_number', 'display_name', 'identity', 'source_native_runner_id', 'win_odds'}
+    if not isinstance(rows, list):
+        raise ValueError('baseline_comparison_runner_schema')
+    roster = []
+    for row in rows:
+        if not isinstance(row, dict) or set(row) != fields:
+            raise ValueError('baseline_comparison_runner_schema')
+        odds = row['win_odds']
+        if type(odds) not in (int, float) or not math.isfinite(odds) or odds <= 1:
+            raise ValueError('baseline_comparison_runner_odds')
+        roster.append({key: value for key, value in row.items() if key != 'win_odds'})
+    return canonical_runner_set(roster, 'baseline.runners')
+
+
+def evaluation_claim(manifest_ref, authority, now):
+    """One original claim, or one authenticated pre-metric compatibility repair."""
+    parent = root_path(str(Path(manifest_ref['path']).parent))
+    original = parent/'evaluation_claim.json'
+    if 'corrected_attempt' not in authority:
+        return original, {}
+    correction = authority['corrected_attempt']
+    keys = {'schema_version', 'predecessor_claim', 'predecessor_authority',
+            'predecessor_status', 'failure_diagnosis'}
+    if (not isinstance(correction, dict) or set(correction) != keys
+            or correction['schema_version'] != 'baseline_corrected_attempt_v1'
+            or correction['predecessor_claim']['path'] != str(original)):
+        raise ValueError('baseline_correction_scope')
+    claim = checked(correction['predecessor_claim'])
+    prior = checked(correction['predecessor_authority'])
+    terminal = checked(correction['predecessor_status'])
+    diagnosis = checked(correction['failure_diagnosis'])
+    if (set(claim) != {'claimed_at', 'membership', 'authority', 'output_root'}
+            or claim['membership'] != manifest_ref
+            or claim['authority'] != correction['predecessor_authority']
+            or claim['output_root'] != prior['output_root']
+            or 'corrected_attempt' in prior
+            or correction['predecessor_status']['path'] != str(Path(prior['output_root'])/'status.json')
+            or terminal != {'status': 'FAILED_PRESERVED_CLAIM', 'membership': manifest_ref}):
+        raise ValueError('baseline_correction_predecessor')
+    same = ('schema_version', 'status', 'performance_evaluation', 'membership',
+            'policy', 'closure_manifest', 'result_cutoff', 'provider_requests',
+            'result_requests', 'training', 'promotion', 'human_outcome_access',
+            'public_performance_outputs', 'limits')
+    if (any(prior[key] != authority[key] for key in same)
+            or prior['evaluation_id'] == authority['evaluation_id']
+            or not stamp(prior['issued_at']) <= stamp(claim['claimed_at']) < stamp(prior['expires_at'])
+            or not stamp(claim['claimed_at']) < stamp(authority['issued_at']) <= now):
+        raise ValueError('baseline_correction_scope')
+    adapter = 'race_collection/retained_baseline_evaluation.py'
+    old_pins, new_pins = prior['implementation_files'], authority['implementation_files']
+    if (set(old_pins) != set(new_pins) or old_pins.get(adapter) == new_pins[adapter]
+            or any(old_pins[key] != value for key, value in new_pins.items() if key != adapter)):
+        raise ValueError('baseline_correction_implementation')
+    old_output, new_output = root_path(prior['output_root']), root_path(authority['output_root'])
+    if (old_output == new_output or old_output.is_relative_to(new_output)
+            or new_output.is_relative_to(old_output)
+            or os.path.lexists(old_output/'private_metrics.json')):
+        raise ValueError('baseline_correction_output_or_metric_exists')
+    if (diagnosis.get('schema_version') != 'baseline_failed_execution_diagnosis_v1'
+            or diagnosis.get('status') != 'AUTHENTICATED_IMPLEMENTATION_FAILURE_BEFORE_RESULT_OR_METRIC_READS'
+            or diagnosis.get('failure_code') != 'baseline_request_field_changed'
+            or type(diagnosis.get('result_reads')) is not int or diagnosis['result_reads'] != 0
+            or diagnosis.get('metric_calculation') is not False
+            or diagnosis.get('metric_artifact_exists') is not False
+            or diagnosis.get('original_claim') != correction['predecessor_claim']
+            or diagnosis.get('original_authority') != correction['predecessor_authority']
+            or diagnosis.get('original_terminal_status') != correction['predecessor_status']
+            or diagnosis.get('private_output_root') != prior['output_root']
+            or any(diagnosis.get(key) != authority[key] for key in ('membership', 'closure_manifest', 'policy', 'result_cutoff'))
+            or not stamp(claim['claimed_at']) <= stamp(diagnosis['created_at']) <= stamp(authority['issued_at'])):
+        raise ValueError('baseline_correction_diagnosis')
+    return parent/'evaluation_claim.corrected-01.json', {'corrected_attempt': correction}
+
+
 def join_forecasts(member, admission, inputs, records, manifest):
     """Verify the original four stored records; never replay models or features."""
     if set(records) != set(MODELS): raise ValueError('baseline_four_models_required')
-    from src.predictor.on_demand import canonical_runner_set, sealed_runner_set_sha256
-    field = canonical_runner_set(inputs['runners'], 'baseline.runners')
+    from src.predictor.on_demand import sealed_runner_set_sha256
+    field = comparison_roster(inputs['runners'])
     if sealed_runner_set_sha256(admission['race'], field) != admission['runner_set_sha256']:
         raise ValueError('baseline_native_field_hash')
     expected = [(r['box_number'], r['identity'], r['display_name']) for r in field]
@@ -244,7 +322,8 @@ def read_member(member, closure, protocol, cutoff, *, check_deadline=lambda: Non
         return checked({'path': str(bundle_path/name), 'sha256': manifest['files'][name]['sha256']})
     inputs = content('comparison/inputs.json')
     request = content('request.json')
-    if request['runners'] != inputs['runners']:
+    from src.predictor.on_demand import canonical_runner_set
+    if canonical_runner_set(request['runners'], 'baseline.request.runners') != comparison_roster(inputs['runners']):
         raise ValueError('baseline_request_field_changed')
     records = {}
     for model in MODELS:
@@ -334,10 +413,11 @@ def run_baseline(manifest_ref, authority_ref, *, execute=False, now=None):
         if elapsed > authority['limits']['max_wall_seconds'] or now.timestamp()+elapsed >= stamp(authority['expires_at']).timestamp():
             raise TimeoutError('baseline_deadline')
     check_deadline()
-    # A manifest has ONE claim regardless of authority reissue or output choice.
-    claim = Path(manifest_ref['path']).parent/'evaluation_claim.json'
+    # Reissue/output changes never reset a claim. The single repair is explicit.
+    claim, linkage = evaluation_claim(manifest_ref, authority, now)
+    check_deadline()
     _write(claim, {'claimed_at': now.isoformat(), 'membership': manifest_ref,
-        'authority': authority_ref, 'output_root': str(output)})
+        'authority': authority_ref, 'output_root': str(output), **linkage})
     output.mkdir(mode=0o700, parents=True, exist_ok=False)
     token = BUDGET.set([authority['limits']['max_files'], authority['limits']['max_bytes']])
     try:

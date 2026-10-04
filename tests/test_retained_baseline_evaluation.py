@@ -205,7 +205,10 @@ def sealed_member(tmp_path):
     identity['captured_at'] = '2026-10-03T07:51:00+00:00'
     contents = {name: {'fabricated': True} for name in REQUIRED_INPUTS}
     contents.update({'model/model.json': {'fabricated': True}, 'model/manifest.json': {'fabricated': True},
-        'comparison/registry.json': {'fabricated': True}, 'comparison/inputs.json': {**identity, 'runners': field},
+        'comparison/registry.json': {'fabricated': True},
+        # Exact future_comparison producer shape: only comparison rows add win_odds.
+        'comparison/inputs.json': {**identity, 'runners': [{**r, 'win_odds': odds}
+            for r, odds in zip(field, [1.25, 5.0])]},
         'comparison/artifacts/residual_box.json': {'fabricated': True},
         'comparison/artifacts/residual_half.json': {'fabricated': True},
         'features/sealed/implementation_file_manifest.json': {'git_head': 'd'*40},
@@ -394,3 +397,163 @@ def test_slow_authorization_cannot_extend_read_deadline(authorized_case, monkeyp
     assert reads == []
     assert not (root/'private_output').exists()
     assert not (root/'proposal/evaluation_claim.json').exists()
+
+
+@pytest.mark.parametrize('defect', ['nan', 'infinite', 'zero', 'one', 'boolean', 'text', 'unknown', 'missing_odds'])
+def test_enriched_comparison_schema_rejects_invalid_values(sealed_member, defect):
+    member, _, _, admission, inputs, records, manifest = sealed_member
+    row = inputs['runners'][0]
+    invalid = {'nan': float('nan'), 'infinite': float('inf'), 'zero': 0, 'one': 1,
+               'boolean': True, 'text': '1.25'}
+    if defect in invalid: row['win_odds'] = invalid[defect]
+    elif defect == 'unknown': row['invented'] = 1
+    else: row.pop('win_odds')
+    with pytest.raises(ValueError, match='baseline_comparison_runner'):
+        baseline.join_forecasts(member, admission, inputs, records, manifest)
+
+
+@pytest.fixture
+def corrected_case(authorized_case, monkeypatch):
+    import copy
+    from datetime import timedelta
+    membership, authority, root = authorized_case
+    original_pins = baseline.implementation_pins()
+    old_pins = {**original_pins, 'race_collection/retained_baseline_evaluation.py': '0'*64}
+    authority['implementation_files'] = old_pins
+    old_ref = put(root/'original_authority.json', authority)
+    monkeypatch.setattr(baseline, 'implementation_pins', lambda: old_pins)
+    def failed(*args, **kwargs): raise ValueError('baseline_request_field_changed')
+    monkeypatch.setattr(baseline, 'read_member', failed)
+    with pytest.raises(ValueError, match='baseline_request_field_changed'):
+        baseline.run_baseline(membership, old_ref, execute=True, now=NOW)
+    monkeypatch.setattr(baseline, 'implementation_pins', lambda: original_pins)
+    claim = baseline.reference(root/'proposal/evaluation_claim.json')
+    status = baseline.reference(root/'private_output/status.json')
+    diagnosis = put(root/'root_diagnosis.json', {
+        'schema_version': 'baseline_failed_execution_diagnosis_v1',
+        'status': 'AUTHENTICATED_IMPLEMENTATION_FAILURE_BEFORE_RESULT_OR_METRIC_READS',
+        'created_at': (NOW+timedelta(seconds=1)).isoformat(),
+        'failure_code': 'baseline_request_field_changed', 'result_reads': 0,
+        'metric_calculation': False, 'metric_artifact_exists': False,
+        'original_claim': claim, 'original_authority': old_ref, 'original_terminal_status': status,
+        'membership': membership, 'closure_manifest': authority['closure_manifest'],
+        'policy': authority['policy'], 'result_cutoff': authority['result_cutoff'],
+        'private_output_root': authority['output_root']})
+    successor = copy.deepcopy(authority)
+    successor.update(evaluation_id='corrected', output_root=str(root/'corrected_output'),
+        issued_at=(NOW+timedelta(seconds=2)).isoformat(), implementation_files=original_pins,
+        corrected_attempt={'schema_version': 'baseline_corrected_attempt_v1',
+            'predecessor_claim': claim, 'predecessor_authority': old_ref,
+            'predecessor_status': status, 'failure_diagnosis': diagnosis})
+    monkeypatch.setattr(baseline, 'read_member', lambda *args, **kwargs: (None, 'QUARANTINED'))
+    return membership, successor, root, NOW+timedelta(seconds=3)
+
+
+def test_one_corrected_attempt_preserves_failed_original_and_exact_membership(corrected_case):
+    membership, authority, root, now = corrected_case
+    refs = authority['corrected_attempt']
+    before = {k: Path(refs[k]['path']).read_bytes() for k in ('predecessor_claim', 'predecessor_authority', 'predecessor_status')}
+    result = baseline.run_baseline(membership, put(root/'corrected_authority.json', authority), execute=True, now=now)
+    assert result['denominator'] == 3 and result['eligible_races'] == 0
+    newclaim = root/'proposal/evaluation_claim.corrected-01.json'
+    assert newclaim.is_file()
+    assert json.loads(newclaim.read_text())['corrected_attempt'] == refs
+    assert all(Path(refs[k]['path']).read_bytes() == v for k, v in before.items())
+    assert not (root/'private_output/private_metrics.json').exists()
+    authority['output_root'] = str(root/'third_output')
+    with pytest.raises(FileExistsError):
+        baseline.run_baseline(membership, put(root/'third_authority.json', authority), execute=True, now=now)
+    assert not (root/'third_output').exists()
+
+
+@pytest.mark.parametrize('defect', ['claim_hash', 'authority_hash', 'status_hash', 'diagnosis_hash',
+    'new_closure', 'new_cutoff', 'same_code', 'changed_dependency', 'same_id', 'old_issue',
+    'higher_limit', 'metrics', 'metric_symlink', 'wrong_claim_path', 'copied_manifest',
+    'wrong_failure', 'prior_metric_calculation', 'prior_result_read', 'successful_status', 'chained'])
+def test_invalid_correction_cannot_claim_or_read(corrected_case, monkeypatch, defect):
+    membership, authority, root, now = corrected_case
+    attempt = authority['corrected_attempt']
+    if defect.endswith('_hash'):
+        key = {'claim_hash': 'predecessor_claim', 'authority_hash': 'predecessor_authority',
+               'status_hash': 'predecessor_status', 'diagnosis_hash': 'failure_diagnosis'}[defect]
+        attempt[key] = {**attempt[key], 'sha256': 'f'*64}
+    elif defect == 'new_closure': authority['closure_manifest'] = {**authority['closure_manifest'], 'sha256': 'f'*64}
+    elif defect == 'new_cutoff': authority['result_cutoff'] = '2026-10-04T07:59:00+00:00'
+    elif defect == 'same_code':
+        current = baseline.implementation_pins()
+        authority['implementation_files'] = {**current, 'race_collection/retained_baseline_evaluation.py': '0'*64}
+        monkeypatch.setattr(baseline, 'implementation_pins', lambda: authority['implementation_files'])
+    elif defect == 'changed_dependency':
+        current = baseline.implementation_pins()
+        authority['implementation_files'] = {**current, 'src/predictor/on_demand.py': 'f'*64}
+        monkeypatch.setattr(baseline, 'implementation_pins', lambda: authority['implementation_files'])
+    elif defect == 'same_id': authority['evaluation_id'] = 'synthetic'
+    elif defect == 'old_issue': authority['issued_at'] = NOW.isoformat()
+    elif defect == 'higher_limit': authority['limits']['max_wall_seconds'] += 1
+    elif defect == 'metrics': (root/'private_output/private_metrics.json').write_text('{}')
+    elif defect == 'metric_symlink': (root/'private_output/private_metrics.json').symlink_to(root/'missing')
+    elif defect == 'wrong_claim_path':
+        copied = root/'copied_claim.json';copied.write_bytes(Path(attempt['predecessor_claim']['path']).read_bytes())
+        attempt['predecessor_claim'] = baseline.reference(copied)
+    elif defect == 'copied_manifest':
+        copied = root/'copied/membership.json';copied.parent.mkdir();copied.write_bytes(Path(membership['path']).read_bytes())
+        membership = baseline.reference(copied);authority['membership'] = membership
+    elif defect in {'wrong_failure', 'prior_metric_calculation', 'prior_result_read'}:
+        diagnosis = baseline.checked(attempt['failure_diagnosis'])
+        if defect == 'wrong_failure': diagnosis['failure_code'] = 'unknown'
+        elif defect == 'prior_metric_calculation': diagnosis['metric_calculation'] = True
+        else: diagnosis['result_reads'] = 1
+        attempt['failure_diagnosis'] = put(root/'bad_diagnosis.json', diagnosis)
+    elif defect == 'successful_status':
+        attempt['predecessor_status'] = put(root/'private_output/status.json', {'status': 'PRIVATE_BASELINE_COMPLETE', 'membership': membership})
+    else:
+        old = baseline.checked(attempt['predecessor_authority']);old['corrected_attempt'] = {}
+        attempt['predecessor_authority'] = put(root/'original_authority.json', old)
+    reads=[]
+    monkeypatch.setattr(baseline, 'read_member', lambda *args, **kwargs: reads.append(True))
+    with pytest.raises((ValueError, FileNotFoundError)):
+        baseline.run_baseline(membership, put(root/'bad_authority.json', authority), execute=True, now=now)
+    assert not reads
+    assert not (root/'proposal/evaluation_claim.corrected-01.json').exists()
+    assert not (root/'corrected_output').exists()
+
+
+@pytest.mark.parametrize('identity_field,value', [('source_native_runner_id', 'other'),
+    ('display_name', 'Other'), ('identity', 'OTHER'), ('box_number', 3)])
+def test_enrichment_never_weakens_native_field_hash(sealed_member, identity_field, value):
+    member, _, _, admission, inputs, records, manifest = sealed_member
+    inputs['runners'][-1][identity_field] = value
+    with pytest.raises(ValueError, match='baseline_native_field_hash'):
+        baseline.join_forecasts(member, admission, inputs, records, manifest)
+
+
+def test_failed_corrected_execution_is_consumed_not_reissued(corrected_case, monkeypatch):
+    membership, authority, root, now = corrected_case
+    def failure(*args, **kwargs): raise ValueError('another failure')
+    monkeypatch.setattr(baseline, 'read_member', failure)
+    ref = put(root/'corrected_authority.json', authority)
+    with pytest.raises(ValueError, match='another failure'):
+        baseline.run_baseline(membership, ref, execute=True, now=now)
+    assert json.loads((root/'corrected_output/status.json').read_text())['status'] == 'FAILED_PRESERVED_CLAIM'
+    assert not (root/'corrected_output/private_metrics.json').exists()
+    authority['output_root'] = str(root/'retry_output')
+    with pytest.raises(FileExistsError):
+        baseline.run_baseline(membership, put(root/'retry_authority.json', authority), execute=True, now=now)
+    assert not (root/'retry_output').exists()
+
+
+def test_correction_proof_time_cannot_extend_deadline(corrected_case, monkeypatch):
+    import time
+    membership, authority, root, now = corrected_case
+    clock = [100.0]
+    original = baseline.evaluation_claim
+    def slow(*args):
+        answer = original(*args)
+        clock[0] += authority['limits']['max_wall_seconds'] + 1
+        return answer
+    monkeypatch.setattr(time, 'monotonic', lambda: clock[0])
+    monkeypatch.setattr(baseline, 'evaluation_claim', slow)
+    with pytest.raises(TimeoutError, match='baseline_deadline'):
+        baseline.run_baseline(membership, put(root/'corrected_authority.json', authority), execute=True, now=now)
+    assert not (root/'proposal/evaluation_claim.corrected-01.json').exists()
+    assert not (root/'corrected_output').exists()

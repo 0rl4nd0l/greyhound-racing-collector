@@ -102,3 +102,69 @@ Controlled production full-versus-half derivation remains a separate task.
 The existing `residual_half` candidate has different preprocessing/history/
 coefficients and is not an isolated strength comparison. No such derivation
 is implemented here.
+
+## Documented comparison-row enrichment
+
+`future_comparison.py` writes `comparison/inputs.json` runners by adding
+`win_odds` to each canonical sealed roster row. The request retains the four
+canonical keys only: `box_number`, `display_name`, `identity`,
+`source_native_runner_id`. The baseline requires **exactly** those four keys
+plus `win_odds` in every comparison row; odds must be a finite numeric decimal
+strictly greater than one, excluding booleans. It removes only that known
+extra key before invoking the unchanged canonical roster and sealed field-hash
+validators, and comparing the exact ordered request roster. Unknown additions,
+missing odds, changed native ID/name/identity/box, duplicate or reordered
+participants remain rejected. No stored probabilities or forecasts are rebuilt.
+The fabricated end-to-end reader fixture now uses the native producer's actual
+five-key comparison/four-key request shape.
+
+## One failure-linked corrected execution
+
+The first execution and its `evaluation_claim.json` remain consumed. The
+specific pre-metric `baseline_request_field_changed` implementation failure can
+support **one** corrected attempt only, with a freshly issued ordinary
+`private_retained_baseline_authority_v1`. It adds:
+
+```json
+{
+  "corrected_attempt": {
+    "schema_version": "baseline_corrected_attempt_v1",
+    "predecessor_claim": {"path": "ABS/evaluation_claim.json", "sha256": "SHA"},
+    "predecessor_authority": {"path": "ABS/authority.json", "sha256": "SHA"},
+    "predecessor_status": {"path": "OLD_OUTPUT/status.json", "sha256": "SHA"},
+    "failure_diagnosis": {"path": "ABS/root-failure-diagnosis.json", "sha256": "SHA"}
+  }
+}
+```
+
+The exact membership path/hash, closure manifest, policy, historical cutoff,
+permissions and finite limits must be unchanged. New issue time must follow the
+original claim; a new evaluation ID and disjoint output directory are required.
+Only the baseline adapter implementation pin may change; all other pinned reader,
+model and original-input dependencies remain fixed. Model/input references are
+also retained through the identical membership and bundle seals.
+
+The predecessor claim must be the original fixed filename in the **same**
+membership directory, pin the predecessor authority and its output, and have no
+correction linkage. The terminal status must be exactly
+`FAILED_PRESERVED_CLAIM` for that membership at the predecessor output's
+`status.json`. `private_metrics.json` must not exist, even as a dangling symlink.
+No claim copying, new membership freeze, successful predecessor, changed closure,
+chained correction, output overlap or implicit ordinary retry is accepted.
+
+The root-issued diagnosis schema is `baseline_failed_execution_diagnosis_v1`,
+status `AUTHENTICATED_IMPLEMENTATION_FAILURE_BEFORE_RESULT_OR_METRIC_READS`,
+with failure code `baseline_request_field_changed`, `result_reads=0`,
+`metric_calculation=false`, `metric_artifact_exists=false`. Its `original_claim`,
+`original_authority`, `original_terminal_status`, membership, closure manifest,
+policy, result cutoff and private output root must match the exact predecessor;
+`created_at` is between the original claim and new authority issue. This uses the
+existing root metadata receipt without reading private diagnostic values.
+
+After these checks and another deadline check, exclusive creation of
+`evaluation_claim.corrected-01.json` in the original membership directory
+consumes the only correction, storing all linkage. It remains consumed on failure
+or ambiguous termination. The original claim, authority and output are never
+rewritten. Root should mount the original claim read-only within the otherwise
+writable claim directory. No correction is executable until root issues the new
+exact implementation authority; the original authority stays frozen.
