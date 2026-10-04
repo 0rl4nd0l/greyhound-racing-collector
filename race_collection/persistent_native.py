@@ -543,8 +543,10 @@ def _reviewed_refresh_failure(selection, prior, halt, stop):
             or phase.get('current_race_index_publish', {}).get('status') != 'REJECTED'
             or phase['current_race_index_publish'].get('reason') != 'CURRENT_INDEX_SOURCE_INVALID'
             or phase['current_race_index_publish'].get('source_refresh_report_path') != review['refresh_report']['path']
-            or (not metadata and (report.get('status') != 'ACQUISITION_INCOMPLETE'
-                or report.get('reason') != 'unisolated_selected_race_acquisition_failure'))
+            or (not metadata and (report.get('status'), report.get('reason')) not in (
+                {('ACQUISITION_INCOMPLETE', 'unisolated_selected_race_acquisition_failure'),
+                 ('METADATA_COVERAGE_INCOMPLETE', 'no_selected_race_csv_sidecars')}
+                if typed else {('ACQUISITION_INCOMPLETE', 'unisolated_selected_race_acquisition_failure')}))
             or (not typed and not metadata and not any(row.get('success') is False and row.get('result', {}).get('success') is False
                 and row['result'].get('error') == 'discovery_canonical_jump_changed'
                 for row in report.get('downloads', [])))):
