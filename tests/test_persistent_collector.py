@@ -106,14 +106,14 @@ def test_idle_start_acquires_first_inventory_then_waits_without_native_capture(o
 def test_active_inventory_reuses_pin_and_launches_only_native_selected_lanes(owner_case):
     c=owner_case;c.owner.activate();ref=retain_inventory(c)
     assert c.owner.tick()=='RUNNING'
-    assert len(c.children)==2
+    assert len(c.children)==1
     for child in c.children:
         assert '--discover' not in child.command
         assert child.command[child.command.index('--discovery-inventory')+1]==ref['path']
         assert child.command[child.command.index('--discovery-inventory-sha256')+1]==ref['sha256']
         assert child.kwargs['env']['GREYHOUND_SPORTSBET_ACCESS_STATE']==c.cfg['source_state']
     c.owner.tick()
-    assert len(c.children)==2  # Running lanes cannot acquire a duplicate owner.
+    assert len(c.children)==1  # A running publisher excludes the other wrapper.
 
 
 @pytest.mark.parametrize('age',[841,901,1801])
@@ -172,7 +172,7 @@ def test_after_midnight_terminal_inventory_closes_prior_racing_day(owner_case):
 
 def test_restart_keeps_consumed_lane_cadence_and_counts_only_verified_completion(owner_case):
     c=owner_case;c.owner.activate();retain_inventory(c);c.owner.tick()
-    finish_native(c,c.children[0])
+    finish_native(c,c.children[0]);c.owner.tick()
     finish_native(c,c.children[1],action='DEFERRED_FULL_LOCK_HANDOFF',
         status='SKIPPED_FULL_DAEMON_LOCK_HANDOFF',code=2)
     c.owner.drain(close=False)
@@ -193,10 +193,9 @@ def test_restart_keeps_consumed_lane_cadence_and_counts_only_verified_completion
 def test_zero_exit_without_native_terminal_never_counts_success(owner_case):
     c=owner_case;c.owner.activate();retain_inventory(c);c.owner.tick()
     c.children[0].returncode=0
-    finish_native(c,c.children[1])
     with pytest.raises(ValueError,match='terminal_missing'):
         c.owner.poll()
-    assert c.owner.state['completed_lanes']=={'full':0,'odds':1}
+    assert c.owner.state['completed_lanes']=={'full':0,'odds':0}
     assert c.owner.state['dispatches'][0]['native_disposition']=='FAILED_OR_UNVERIFIED'
     assert not c.owner.children
 
