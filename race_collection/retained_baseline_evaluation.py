@@ -212,10 +212,137 @@ def comparison_roster(rows):
     return canonical_runner_set(roster, 'baseline.runners')
 
 
+def label_provenance_claim(manifest_ref, authority, now):
+    """One new label version, anchored to both consumed original attempts."""
+    proof = authority['label_provenance_successor']
+    keys = {'schema_version', 'original_claim', 'original_authority', 'original_status',
+            'corrected_claim', 'corrected_authority', 'corrected_status',
+            'corrected_metrics', 'label_provenance'}
+    parent = root_path(str(Path(manifest_ref['path']).parent))
+    if (set(proof) != keys or proof['schema_version'] != 'baseline_label_provenance_successor_v1'
+            or 'corrected_attempt' in authority
+            or proof['original_claim']['path'] != str(parent/'evaluation_claim.json')
+            or proof['corrected_claim']['path'] != str(parent/'evaluation_claim.corrected-01.json')):
+        raise ValueError('baseline_label_successor_scope')
+    originals = {}
+    same = ('membership', 'policy', 'result_cutoff', 'provider_requests', 'result_requests',
+            'performance_evaluation', 'training', 'promotion', 'human_outcome_access',
+            'public_performance_outputs')
+    for kind in ('original', 'corrected'):
+        prior = checked(proof[kind+'_authority']); claim = checked(proof[kind+'_claim'])
+        status = checked(proof[kind+'_status'])
+        expected_claim_keys = {'claimed_at', 'membership', 'authority', 'output_root'}
+        if kind == 'corrected': expected_claim_keys.add('corrected_attempt')
+        old_output = root_path(prior['output_root']); output = root_path(authority['output_root'])
+        if (set(claim) != expected_claim_keys or claim['authority'] != proof[kind+'_authority']
+                or claim['membership'] != manifest_ref or claim['output_root'] != str(old_output)
+                or 'label_provenance_successor' in prior
+                or any(prior[k] != authority[k] for k in same)
+                or prior['schema_version'] != authority['schema_version'] or prior['status'] != authority['status']
+                or prior['evaluation_id'] == authority['evaluation_id']
+                or not stamp(prior['issued_at']) <= stamp(claim['claimed_at']) < stamp(prior['expires_at'])
+                or not stamp(claim['claimed_at']) < stamp(authority['issued_at']) <= now
+                or proof[kind+'_status']['path'] != str(old_output/'status.json')
+                or status['membership'] != manifest_ref
+                or output == old_output or output.is_relative_to(old_output) or old_output.is_relative_to(output)):
+            raise ValueError('baseline_label_predecessor')
+        originals[kind] = (prior, claim, status)
+    original, _, original_status = originals['original']
+    corrected, claim, status = originals['corrected']
+    correction = corrected.get('corrected_attempt', {})
+    if (original_status != {'status': 'FAILED_PRESERVED_CLAIM', 'membership': manifest_ref}
+            or 'corrected_attempt' in original
+            or claim['corrected_attempt'] != correction
+            or correction.get('predecessor_claim') != proof['original_claim']
+            or correction.get('predecessor_authority') != proof['original_authority']
+            or correction.get('predecessor_status') != proof['original_status']
+            or corrected['closure_manifest'] != original['closure_manifest']
+            or status['status'] != 'PRIVATE_BASELINE_COMPLETE'
+            or status['private_output'] != proof['corrected_metrics']
+            or proof['corrected_metrics']['path'] != str(Path(corrected['output_root'])/'private_metrics.json')
+            or reference(proof['corrected_metrics']['path']) != proof['corrected_metrics']
+            or authority['closure_manifest'] == original['closure_manifest']):
+        raise ValueError('baseline_label_consumed_attempts')
+    adapter = 'race_collection/retained_baseline_evaluation.py'
+    before, after = corrected['implementation_files'], authority['implementation_files']
+    if (set(before) != set(after) or before[adapter] == after[adapter]
+            or any(before[k] != after[k] for k in before if k != adapter)):
+        raise ValueError('baseline_label_implementation')
+    validate_label_provenance(manifest_ref, authority, original['closure_manifest'])
+    return parent/'evaluation_claim.label-provenance-v1.json', {'label_provenance_successor': proof}
+
+
+def validate_label_provenance(manifest_ref, authority, original_ref):
+    """Authenticate the separate verification; never self-certify repaired labels."""
+    provenance = authority['label_provenance_successor']['label_provenance']
+    ref_keys = {'original_closure_manifest', 'revalidation_authority', 'revalidation_claim',
+                'revalidation_status', 'proposed_manifest', 'proof_bindings',
+                'verification_authority', 'verification_claim', 'verification_status',
+                'verification_source', 'verification_helper', 'independent_review'}
+    if (set(provenance) != ref_keys | {'schema_version'}
+            or provenance['schema_version'] != 'baseline_label_provenance_v1'
+            or provenance['original_closure_manifest'] != original_ref):
+        raise ValueError('baseline_label_provenance_invalid')
+    # These are sealed provenance artifacts, not result values. Hash-only for
+    # opaque proof/source/helper files; decode just the terminal mapping below.
+    for key in ref_keys:
+        ref = provenance[key]
+        if set(ref) != {'path', 'sha256'} or reference(ref['path']) != ref:
+            raise ValueError('baseline_label_provenance_changed')
+    original = checked(original_ref); successor = checked(authority['closure_manifest'])
+    verification = checked(successor['verification_receipt'])
+    proposal = checked(provenance['proposed_manifest'])
+    revalidation_status = checked(provenance['revalidation_status'])
+    verification_status = checked(provenance['verification_status'])
+    records_hash = hashlib.sha256(canonical(successor['records'])).hexdigest()
+    if (original['schema_version'] != 'sealed_baseline_closure_manifest_v1'
+            or original['status'] != 'SEALED_INDEPENDENTLY_VERIFIED'
+            or successor['schema_version'] != 'sealed_baseline_closure_manifest_v1'
+            or successor['status'] != 'SEALED_INDEPENDENTLY_VERIFIED'
+            or original['membership'] != manifest_ref or successor['membership'] != manifest_ref
+            or verification['schema_version'] != 'baseline_closure_verification_v1'
+            or verification['independent_identity_verification'] is not True
+            or verification['membership'] != manifest_ref
+            or verification['result_cutoff'] != authority['result_cutoff']
+            or verification['records_sha256'] != records_hash
+            or verification.get('label_provenance') != provenance
+            or revalidation_status['status'] != 'RETAINED_IDENTITY_REVALIDATION_COMPLETE'
+            or verification_status['status'] != 'RETAINED_IDENTITY_VERIFICATION_COMPLETE'
+            or verification_status['membership'] != manifest_ref
+            or verification_status['result_cutoff'] != authority['result_cutoff']
+            or verification_status['records_sha256'] != records_hash
+            or proposal['status'] != 'REQUIRES_INDEPENDENT_VERIFICATION'
+            or proposal['evaluation_authority'] is not False
+            or len(original['records']) != len(successor['records'])):
+        raise ValueError('baseline_label_verification_invalid')
+    repairs = {r['race_id']: r for r in proposal['records']}
+    originals = [r['race_id'] for r in original['records'] if r['state'] == 'CLOSED']
+    if (len(repairs) != len(proposal['records']) or set(repairs) != set(originals)
+            or proposal['original_denominator'] != len(original['records'])
+            or proposal['revalidated_scope'] != len(originals)):
+        raise ValueError('baseline_label_repair_denominator')
+    for old, new in zip(original['records'], successor['records']):
+        if old['race_id'] != new['race_id']:
+            raise ValueError('baseline_label_member_order')
+        if old['state'] != 'CLOSED':
+            if new != old: raise ValueError('baseline_label_unchanged_exclusion')
+            continue
+        repair = repairs[old['race_id']]
+        if repair['status'] == 'IDENTITY_REVALIDATED':
+            expected = {**old, 'evidence': proposal['database'], 'bytes': proposal['database_bytes']}
+        else:
+            expected = {'race_id': old['race_id'], 'state': 'QUARANTINED',
+                        'prior_state_preserved': 'CLOSED', 'reason': repair['status']}
+        if new != expected:
+            raise ValueError('baseline_label_repair_mapping')
+
+
 def evaluation_claim(manifest_ref, authority, now):
-    """One original claim, or one authenticated pre-metric compatibility repair."""
+    """Original, pre-metric repair, or one explicit independently repaired label version."""
     parent = root_path(str(Path(manifest_ref['path']).parent))
     original = parent/'evaluation_claim.json'
+    if 'label_provenance_successor' in authority:
+        return label_provenance_claim(manifest_ref, authority, now)
     if 'corrected_attempt' not in authority:
         return original, {}
     correction = authority['corrected_attempt']

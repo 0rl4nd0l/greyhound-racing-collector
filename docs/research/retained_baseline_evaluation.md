@@ -168,3 +168,67 @@ or ambiguous termination. The original claim, authority and output are never
 rewritten. Root should mount the original claim read-only within the otherwise
 writable claim directory. No correction is executable until root issues the new
 exact implementation authority; the original authority stays frozen.
+
+## One separately versioned label-provenance evaluation
+
+A successful partial corrected evaluation consumes corrected-01. It cannot be
+retried with changed labels. An optional, explicit `label_provenance_successor`
+branch permits one new version while preserving the exact original membership
+reference (the deployed proposal has 82 members), forecasts, policy and result
+cutoff. It creates only `evaluation_claim.label-provenance-v1.json` beside that
+same membership. The original and corrected claims and their outputs remain
+untouched; a copied membership directory, chained label version, simultaneous
+correction mode, or already existing label claim is rejected.
+
+The new authority retains the ordinary schema/expiry/privacy/finite-limit
+requirements. It pins a changed reviewed adapter with unchanged other baseline
+implementation dependencies and adds `label_provenance_successor` with exactly:
+
+- `schema_version=baseline_label_provenance_successor_v1`.
+- `original_claim`, `original_authority`, `original_status`.
+- `corrected_claim`, `corrected_authority`, `corrected_status`, `corrected_metrics`.
+- `label_provenance`, described below.
+
+Both predecessor claim/authority/status linkages and timestamps are checked.
+The original status must be `FAILED_PRESERVED_CLAIM`; the corrected status must
+be `PRIVATE_BASELINE_COMPLETE` and point to the pinned private metric artifact.
+That artifact is hashed opaquely, never decoded by authorization. A fresh output
+must be disjoint from both old outputs. Failed execution consumes this new fixed
+claim; authority/output reissue cannot retry it.
+
+`label_provenance` has `schema_version=baseline_label_provenance_v1` plus exact
+file references named `original_closure_manifest`, `revalidation_authority`,
+`revalidation_claim`, `revalidation_status`, `proposed_manifest`, `proof_bindings`,
+`verification_authority`, `verification_claim`, `verification_status`,
+`verification_source`, `verification_helper`, and `independent_review`. A source
+reference means a pinned source-identity receipt, not a directory. All are
+hash-checked; opaque proofs, helpers and source references are not interpreted
+as result values. The verifier owns the independent source-identity replay.
+
+The separately sealed closure uses `sealed_baseline_closure_manifest_v1` and a
+`baseline_closure_verification_v1` receipt with the identical `label_provenance`
+object. Its complete ordered record list must preserve the original denominator.
+The revalidation status must be `RETAINED_IDENTITY_REVALIDATION_COMPLETE`; the
+verification terminal status must be `RETAINED_IDENTITY_VERIFICATION_COMPLETE`
+and bind `membership`, `records_sha256` and `result_cutoff`. The verifier writes
+that terminal status last, so an incomplete publication is unusable.
+
+The proposal must retain `status=REQUIRES_INDEPENDENT_VERIFICATION`,
+`evaluation_authority=false`, original denominator and every original CLOSED
+candidate (73 in this deployment). For each `IDENTITY_REVALIDATED` proposal entry,
+only the original record's `evidence` and `bytes` may be replaced with the exact
+new database reference and size. A failed entry must become exactly
+`{race_id, state:QUARANTINED, prior_state_preserved:CLOSED, reason:<proposal status>}`.
+Original known-nonfinish and quarantine records must stay byte-equivalent as
+JSON values. Neither an existing CLOSED label nor a proposed repair alone grants
+eligibility. The unchanged per-race reader still checks native identity,
+complete result semantics and unique/equal-mass winners before metrics.
+
+This code adds no authority or completed repair evidence. The original 82
+membership, 73 candidate repairs, one known non-finisher and eight quarantines
+remain the operational scope; focused fixtures use the same three state classes
+without opening those protected artifacts. Pre-claim metadata/proof validation
+uses fixed reference fields and the existing bounded two-MiB file reader;
+post-claim artifact operations retain the existing authority budget. Root must
+include that fixed bootstrap workload when calculating the finite process and
+resource limits. All actual historical evaluation remains a separate root action.
