@@ -1155,6 +1155,7 @@ def has_unisolated_refresh_failure(report: Mapping[str, Any]) -> bool:
             or len(downloads) != len(selected)
         ):
             return True
+        mixed_fields_complete = _complete_mixed_field_accounting(report)
         for number, (candidate, download) in enumerate(zip(selected, downloads)):
             result = download.get("result")
             if (
@@ -1173,8 +1174,9 @@ def has_unisolated_refresh_failure(report: Mapping[str, Any]) -> bool:
                 return True
             if download.get("success") is True and result.get("success") is True:
                 continue
-            if download.get("success") is not False or not _complete_local_acquisition_rejection(
-                candidate, result, report.get("upcoming_dir")
+            if download.get("success") is not False or not (
+                _complete_local_acquisition_rejection(candidate, result, report.get("upcoming_dir"))
+                or mixed_fields_complete
             ):
                 return True
             coverage = report["sidecar_metadata_coverage"]["races"]
@@ -1441,6 +1443,84 @@ def _completed_field_quarantine(candidate, result, root):
             source=normal['accepted_csv_path'])
         return replay == alignment
     except (KeyError, TypeError, ValueError, AttributeError, OSError):
+        return False
+
+
+def _complete_mixed_field_accounting(report):
+    """Prove all attempted fields and exclusions before isolating any one race."""
+    try:
+        count = report['selected_count']
+        accepted = report['accepted_csv_count']
+        if (type(count) is not int or type(accepted) is not int
+                or not 0 < accepted < count <= 16
+                or report.get('status') not in {'SUCCESS', 'ACQUISITION_INCOMPLETE'}
+                or (report['status'] == 'SUCCESS' and report.get('reason'))
+                or (report['status'] == 'ACQUISITION_INCOMPLETE'
+                    and report.get('reason') != 'unisolated_selected_race_acquisition_failure')
+                or report.get('dry_run') is not False or report.get('discovery_failures')
+                or any(report.get(k) for k in ('source_http_status', 'source_retry_after',
+                    'source_rate_limit_reset', 'source_failure_category'))):
+            return False
+        expected = {'accepted_csv_count': accepted, 'sidecar_count': accepted,
+            'raw_export_count': count, 'quarantine_count': count-accepted}
+        if (any(type(report.get(k)) is not int or report[k] != value for k,value in expected.items())
+                or report.get('artifact_counts') != expected):
+            return False
+        selected, downloads = report['selected_races'], report['downloads']
+        coverage = report['sidecar_metadata_coverage']
+        rows = coverage['races']
+        if (len(selected) != count or len(downloads) != count or len(rows) != count
+                or coverage.get('selected_race_count') != count
+                or coverage.get('accepted_selected_csv_count') != accepted):
+            return False
+        successes = 0
+        for candidate, download, row in zip(selected, downloads, rows):
+            result = download['result']
+            if (download['race_url'] != candidate['race_url']
+                    or row['race_url'] != candidate['race_url'] or row['race_id'] != candidate['race_id']
+                    or result.get('source_http_status') not in {None, 200}
+                    or any(result.get(k) for k in ('source_retry_after', 'source_rate_limit_reset',
+                        'source_failure_category'))):
+                return False
+            if download.get('success') is True and result.get('success') is True:
+                if (result.get('filepath') != row.get('csv_path') or not row.get('sidecar_path')):
+                    return False
+                successes += 1
+            elif (download.get('success') is not False or result.get('success') is not False
+                    or row.get('csv_path') or row.get('sidecar_path')
+                    or row.get('weather_track_rejected_reasons') != ['accepted_csv_missing']
+                    or not _completed_field_quarantine(candidate, result, report['upcoming_dir'])):
+                return False
+        eligible, selection = current_index_metadata_selection(
+            selected, coverage, source_generated_at=report['generated_at'])
+        return (successes == accepted and 0 < len(eligible) <= accepted
+            and report.get('current_index_race_count') == len(eligible)
+            and report.get('current_index_races') == eligible
+            and report.get('current_index_metadata_selection') == selection
+            and selection['status'] == 'READY_WITH_EXCLUSIONS'
+            and selection['candidate_race_count'] == count
+            and selection['excluded_race_count'] + len(eligible) == count)
+    except (KeyError, TypeError, ValueError, AttributeError, OSError):
+        return False
+
+
+def complete_mixed_field_exclusions(report):
+    """Verify a mixed cohort using the unchanged native index input contract.
+
+    Used only for prospective recovery review. This does not publish an index,
+    rewrite a failed report, or claim that its retained inputs are fresh now.
+    """
+    from race_collection.synchronous_manual_capture import (
+        CaptureOneRejected, _normalize_current_index_rows, _v2_runner_rows,
+    )
+    try:
+        if not _complete_mixed_field_accounting(report) or has_unisolated_refresh_failure(report):
+            return False
+        races = _normalize_current_index_rows(report, max_races=16)
+        for race in races:
+            _v2_runner_rows(race, report, evidence_root=Path(report['upcoming_dir']))
+        return bool(races)
+    except (CaptureOneRejected, KeyError, TypeError, ValueError, AttributeError, OSError):
         return False
 
 
