@@ -1,0 +1,209 @@
+{
+  "csv_mappings": {
+    "1 SEC": {
+      "aliases": [
+        "FIRST_SEC",
+        "Split",
+        "1ST_SEC",
+        "Sectional"
+      ],
+      "target_name": "first_sectional"
+    },
+    "BON": {
+      "aliases": [
+        "BONUS",
+        "Bonus"
+      ],
+      "target_name": "bonus"
+    },
+    "PIR": {
+      "aliases": [
+        "PIR",
+        "Performance_Rating"
+      ],
+      "target_name": "pir"
+    },
+    "TIME": {
+      "aliases": [
+        "Time",
+        "RACE_TIME",
+        "Individual_Time"
+      ],
+      "target_name": "time"
+    },
+    "WIN": {
+      "aliases": [
+        "WIN_TIME",
+        "Winning_Time",
+        "WINNER_TIME"
+      ],
+      "target_name": "win_time"
+    }
+  },
+  "current_feed_numeric_coverage": "NOT_MEASURED",
+  "current_feed_qualified_coverage": "NOT_MEASURED",
+  "definitions": [
+    {
+      "field": "1 SEC",
+      "missing": [
+        "units_and_precision",
+        "clock_origin_and_physical_call",
+        "runner_or_leader_or_winner",
+        "layout_distance_era_validity",
+        "special_and_missing_codes",
+        "native_historical_event_runner_binding",
+        "source_publication_time"
+      ],
+      "status": "UNQUALIFIED"
+    },
+    {
+      "field": "BON",
+      "missing": [
+        "units_and_precision",
+        "clock_origin_and_physical_call",
+        "runner_or_leader_or_winner",
+        "layout_distance_era_validity",
+        "special_and_missing_codes",
+        "native_historical_event_runner_binding",
+        "source_publication_time"
+      ],
+      "status": "UNQUALIFIED"
+    },
+    {
+      "field": "Best 1st Split",
+      "missing": [
+        "units_and_precision",
+        "clock_origin_and_physical_call",
+        "runner_or_leader_or_winner",
+        "layout_distance_era_validity",
+        "special_and_missing_codes",
+        "native_historical_event_runner_binding",
+        "source_publication_time"
+      ],
+      "status": "UNQUALIFIED"
+    },
+    {
+      "field": "PIR",
+      "missing": [
+        "source_specific_codebook",
+        "call_sequence_and_physical_locations",
+        "single_digit_and_special_code_meanings",
+        "layout_era_validity",
+        "native_historical_event_runner_binding",
+        "source_publication_time"
+      ],
+      "status": "UNQUALIFIED"
+    },
+    {
+      "field": "TIME",
+      "missing": [
+        "units_and_precision",
+        "clock_origin_and_physical_call",
+        "runner_or_leader_or_winner",
+        "layout_distance_era_validity",
+        "special_and_missing_codes",
+        "native_historical_event_runner_binding",
+        "source_publication_time"
+      ],
+      "status": "UNQUALIFIED"
+    },
+    {
+      "field": "WIN",
+      "missing": [
+        "units_and_precision",
+        "clock_origin_and_physical_call",
+        "runner_or_leader_or_winner",
+        "layout_distance_era_validity",
+        "special_and_missing_codes",
+        "native_historical_event_runner_binding",
+        "source_publication_time"
+      ],
+      "status": "UNQUALIFIED"
+    },
+    {
+      "field": "split1",
+      "missing": [
+        "units_and_precision",
+        "clock_origin_and_physical_call",
+        "runner_or_leader_or_winner",
+        "layout_distance_era_validity",
+        "special_and_missing_codes",
+        "native_historical_event_runner_binding",
+        "source_publication_time"
+      ],
+      "status": "UNQUALIFIED"
+    }
+  ],
+  "expert_track_distance_metadata_keys": [
+    "best_first_split",
+    "best_time",
+    "best_time_date"
+  ],
+  "fasttrack": {
+    "active_collector_usage_established": false,
+    "adapter_function_line": 39,
+    "adapter_keys_without_parser_literal_assignment": [
+      "comment",
+      "margin",
+      "pir",
+      "run_home",
+      "sp",
+      "split1"
+    ],
+    "adapter_runner_literal_gets": [
+      "comment",
+      "dog_name",
+      "margin",
+      "pir",
+      "run_home",
+      "sp",
+      "split1"
+    ],
+    "parser_function_line": 311,
+    "parser_runner_literal_assignments": [
+      "box_number",
+      "dog_name",
+      "finish_position",
+      "race_time"
+    ],
+    "timing_meaning_inferred": false
+  },
+  "requests": {
+    "browser": 0,
+    "captures": 0,
+    "python": 0,
+    "results": 0,
+    "source_operations": 0
+  },
+  "schema_version": "speed_source_contract_audit_v1",
+  "scope": "Static local code contract only; not a current-feed census or runtime dataflow proof.",
+  "sources": {
+    "adapter": {
+      "bytes": 5869,
+      "path": "src/collectors/adapters/fasttrack_adapter.py",
+      "sha256": "be628eac5bfc8d8283394fea12243994fd24baba2ced308f4a90ab420494e984"
+    },
+    "csv": {
+      "bytes": 30696,
+      "path": "csv_ingestion.py",
+      "sha256": "3aabead63064235517e972ebbf6f9218826d5ea5f6e2666a979448fada85c527"
+    },
+    "definitions": {
+      "bytes": 12653,
+      "path": "docs/research/prediction_source_definition_matrix_20261003.json",
+      "sha256": "8e69e2eb385a84bda6fdfa8b59ade335a542a56163967e3efca0d849579657be"
+    },
+    "expert": {
+      "bytes": 12607,
+      "path": "utils/expert_form_metadata.py",
+      "sha256": "dfb8d3cf2aff99ce351f56dff39bd7995539024d407f514aed4951c97c8b4f47"
+    },
+    "parser": {
+      "bytes": 14955,
+      "path": "src/collectors/fasttrack_scraper.py",
+      "sha256": "61deec3b3d066ac04cbeb5df537bce8dd8f3d539d6963b8c15161668203d3761"
+    }
+  },
+  "status": "SOURCE_SEMANTICS_NOT_QUALIFIED",
+  "training_or_feature_use_authorized": false
+}

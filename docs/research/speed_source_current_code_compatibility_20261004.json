@@ -1,0 +1,13 @@
+{
+  "reviewed_source_commit": "8f33f1eaa86ec8af1815ed353b3c69d95107ed98",
+  "note": "Read-only source compatibility; no runtime health claim.",
+  "unchanged_files": {
+    "csv_ingestion.py": "3aabead63064235517e972ebbf6f9218826d5ea5f6e2666a979448fada85c527",
+    "src/collectors/fasttrack_scraper.py": "61deec3b3d066ac04cbeb5df537bce8dd8f3d539d6963b8c15161668203d3761",
+    "src/collectors/adapters/fasttrack_adapter.py": "be628eac5bfc8d8283394fea12243994fd24baba2ced308f4a90ab420494e984",
+    "docs/fasttrack_field_map.md": "5fe291b30dc9411db84f64b6ba949e7386bd51f5bcc5cbbfc0ef6ab3cd8e77ac",
+    "docs/schema_diff_fasttrack.md": "1b48510efc663625d0e3efd5529f09127539a5cf62337b81ce0ca4e86fba6459"
+  },
+  "expert_track_distance_parser_ast_unchanged": true,
+  "expert_full_file_diff": "Previously reviewed explicit target-jump datetime handling; no timing definition added."
+}
