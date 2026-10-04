@@ -350,6 +350,133 @@ def _reviewed_publication_failure(selection, prior, halt, stop, review):
     return None
 
 
+def _checked_publisher_stderr(ref):
+    """Read only a small, hash-bound native failure trace, never provider bodies."""
+    if not isinstance(ref, dict) or set(ref) != {'path', 'sha256'}:
+        raise ValueError('persistent_recovery_stderr_reference_invalid')
+    path = Path(ref['path'])
+    limit = 256 * 1024
+    if (not path.is_absolute() or path.resolve() != path or not path.is_file()
+            or path.stat().st_size > limit):
+        raise ValueError('persistent_recovery_stderr_reference_unsafe')
+    raw = path.read_bytes()
+    if len(raw) > limit or hashlib.sha256(raw).hexdigest() != ref['sha256']:
+        raise ValueError('persistent_recovery_stderr_changed')
+    return raw.decode('utf-8')
+
+
+def _reviewed_publisher_overlap_failure(selection, prior, halt, stop, review):
+    """Authorize a reviewed successor, never a successful reading of failed work.
+
+    A complete acquisition was followed by a failed atomic publication while an
+    owned second wrapper created a sibling directory. Directory identity history
+    was not retained; correlation plus the exact offline owner reproduction
+    supports serialization, without weakening any normal publication guard.
+    """
+    if (review.get('schema_version') != 'persistent_reviewed_publisher_overlap_failure_v1'
+            or review.get('disposition') != 'PROSPECTIVE_SERIALIZED_NATIVE_PUBLISHERS_CORRECTION'
+            or not review.get('authority_reference')
+            or review.get('source_commit') != selection['source_commit']
+            or review.get('cleanup') != selection['cleanup']
+            or review.get('live_directory_identity_history') != 'NOT_RETAINED'
+            or review.get('correlation_only') is not True
+            or halt.get('reason') != 'persistent_native_terminal_failure:LIVE_PHASE_FAILED'
+            or stop.get('reason') != 'LIVE_PHASE_FAILED'):
+        raise ValueError('persistent_recovery_publisher_review_invalid')
+    terminal, lifecycle, other, other_lifecycle, checkpoint, phase, overlap, diagnosis, cleanup = (
+        checked(review[key]) for key in ('service_terminal', 'service_lifecycle',
+            'overlap_terminal', 'overlap_lifecycle', 'checkpoint', 'phase_result',
+            'overlap_directory_metadata', 'diagnosis', 'cleanup'))
+    evidence = Path(prior['plan']['evidence_root'])
+    runtime = evidence/'shadow_autopilot_daemon_runtime'
+    state = checked(selection['baseline']['prior_owner_state'])
+    dispatches = state['dispatches']
+    pairs = []
+    for service, life, lane, disposition, action, status, key in (
+        (terminal, lifecycle, 'full', 'FAILED_OR_UNVERIFIED', 'LIVE_PHASE_FAILED', 'NEEDS_MORE_AUTOMATION', 'service'),
+        (other, other_lifecycle, 'odds', 'DEFERRED', 'DEFERRED_LOCK_HELD', 'SKIPPED_LOCK_HELD', 'overlap')):
+        invocation = service.get('invocation_id', '')
+        rows = [row for row in dispatches if row.get('invocation_id') == invocation]
+        if (len(invocation) != 32 or any(c not in '0123456789abcdef' for c in invocation)
+                or len(rows) != 1 or rows[0].get('lane') != lane
+                or rows[0].get('returncode') != 2 or rows[0].get('native_disposition') != disposition
+                or service.get('allocation_sha256') != prior['allocation_ref']['sha256']
+                or service.get('status') != status or service.get('runtime_action') != action
+                or life.get('invocation_id') != invocation or life.get('status') != 'COMPLETE'
+                or life.get('returncode') != 2 or life.get('children_reaped') is not True
+                or life.get('interrupted', False) is not False
+                or Path(review[key+'_terminal']['path']) != runtime/'service-terminals'/(invocation+'.json')
+                or Path(review[key+'_lifecycle']['path']) != runtime/'service-lifecycles'/(invocation+'.json')
+                or Path(service['output_dir']) != evidence/('shadow_autopilot_daemonization_v1_'+service['run_id'])):
+            raise ValueError('persistent_recovery_publisher_owner_unverified')
+        pairs.append(rows[0])
+    full, odds = pairs
+    cycle = Path(terminal['output_dir'])
+    if (len([row for row in dispatches if row.get('native_disposition') == 'FAILED_OR_UNVERIFIED']) != 1
+            or terminal.get('final_verdict') != 'NEEDS_MORE_AUTOMATION'
+            or other.get('final_verdict') != 'PARTIAL_DAEMONIZATION'
+            or terminal['run_id'].endswith('_odds_capture') or not other['run_id'].endswith('_odds_capture')
+            or Path(review['checkpoint']['path']) != cycle/'phase-checkpoint.json'
+            or checkpoint.get('schema_version') != 'collector_live_phase_checkpoint_v1'
+            or checkpoint.get('status') != 'LIVE_PHASE_FAILED'
+            or checkpoint.get('cycle_id') != terminal['run_id'] or checkpoint.get('output_dir') != str(cycle)):
+        raise ValueError('persistent_recovery_publisher_checkpoint_unverified')
+    phases = checkpoint['phases']
+    step = phase.get('step', {})
+    if (len(phases) != 1 or phases[0].get('number') != 0 or phases[0].get('kind') != 'refresh'
+            or phases[0].get('status') != 'COMPLETE' or phases[0].get('budget_exceeded') is not False
+            or {'path':phases[0]['result_path'], 'sha256':phases[0]['result_sha256']} != review['phase_result']
+            or Path(review['phase_result']['path']) != cycle/'phase-0-result.json'
+            or phase.get('status') != 'FAIL' or phase.get('reason') != 'phase_output_missing'
+            or step.get('name') != 'autopilot_cycle' or step.get('status') != 'FAIL'
+            or step.get('returncode') != 1 or step.get('timed_out') is not False
+            or step.get('interrupted') is not False
+            or step.get('stderr_path') != review['stderr']['path']
+            or Path(review['stderr']['path']) != cycle/'phase-0/logs/autopilot_cycle.stderr.txt'):
+        raise ValueError('persistent_recovery_publisher_phase_unverified')
+    trace = _checked_publisher_stderr(review['stderr'])
+    if (not trace.rstrip().endswith('race_collection.synchronous_manual_capture.CaptureOneRejected: CURRENT_INDEX_PATH_UNSAFE')
+            or 'in _atomic_replace_canonical' not in trace or 'in _recheck_directory_chain' not in trace
+            or 'reason="publish_root_replaced"' not in trace
+            or str(Path(prior['plan']['source_root'])/'race_collection/synchronous_manual_capture.py') not in trace):
+        raise ValueError('persistent_recovery_publisher_trace_unverified')
+    report = _checked_recovery_refresh_report(review['refresh_report'])
+    if (Path(review['refresh_report']['path']) != evidence/('shadow_autopilot_v1_'+terminal['run_id']+'_phase_0')/'refresh_prejump_report.json'
+            or report.get('status') != 'SUCCESS' or report.get('metadata_collection_status') != 'READY'
+            or type(report.get('selected_count')) is not int or report['selected_count'] <= 0
+            or report.get('accepted_csv_count') != report['selected_count']
+            or report.get('current_index_race_count') != report['selected_count']
+            or report.get('shared_sportsbet_snapshot', {}).get('status') != 'VALIDATED'
+            or len(report.get('downloads', [])) != report['selected_count']
+            or any(row.get('success') is not True or row.get('result', {}).get('success') is not True
+                   or row['result'].get('source_http_status') not in (None, 200)
+                   for row in report['downloads'])):
+        raise ValueError('persistent_recovery_publisher_acquisition_unverified')
+    directory = Path(other['output_dir'])
+    stat_value = directory.stat()
+    fields = {'path':str(directory), 'device':stat_value.st_dev, 'inode':stat_value.st_ino,
+              'mtime_ns':stat_value.st_mtime_ns, 'ctime_ns':stat_value.st_ctime_ns}
+    changed = datetime.fromtimestamp(stat_value.st_mtime_ns/1e9, timezone.utc)
+    if (directory.resolve() != directory or not directory.is_dir()
+            or any(overlap.get(k) != v for k,v in fields.items())
+            or not stamp(full['started_at']) <= stamp(step['started_at']) <= stamp(odds['started_at']) <= changed <= stamp(other['at']) <= stamp(step['finished_at']) <= stamp(terminal['at'])
+            or not stamp(terminal['at']) <= stamp(full['completed_at']) <= stamp(halt['at']) <= stamp(cleanup['at'])
+            or not stamp(other['at']) <= stamp(odds['completed_at']) <= stamp(halt['at'])
+            or stamp(overlap['observed_at']) < stamp(cleanup['at'])
+            or (stamp(step['finished_at'])-changed).total_seconds() > 1):
+        raise ValueError('persistent_recovery_publisher_overlap_unverified')
+    if (diagnosis.get('schema_version') != 'persistent_publisher_overlap_diagnosis_v1'
+            or diagnosis.get('status') != 'REPRODUCED_OWNED_SIBLING_CREATION'
+            or diagnosis.get('prospective_fix') != 'SERIALIZE_NATIVE_PUBLISHERS_UNTIL_REAPED'
+            or diagnosis.get('strict_atomic_guard_unchanged') is not True
+            or diagnosis.get('failure_code') != 'CURRENT_INDEX_PATH_UNSAFE'
+            or diagnosis.get('failure_reason') != 'publish_root_replaced'
+            or diagnosis.get('owner_regression_red_then_green') is not True
+            or diagnosis.get('source_commit') != selection['source_commit']):
+        raise ValueError('persistent_recovery_publisher_diagnosis_unverified')
+    return None  # No retries or outage allowance are created by this correction.
+
+
 def _reviewed_refresh_failure(selection, prior, halt, stop):
     """Authenticate explicit prospective repair; old refresh remains failed.
 
@@ -358,6 +485,8 @@ def _reviewed_refresh_failure(selection, prior, halt, stop):
     the old terminal, checkpoint and incomplete publication remain immutable.
     """
     review = checked(selection['reviewed_failure'])
+    if review.get('schema_version') == 'persistent_reviewed_publisher_overlap_failure_v1':
+        return _reviewed_publisher_overlap_failure(selection, prior, halt, stop, review)
     if review.get('schema_version') == 'persistent_reviewed_publication_failure_v1':
         return _reviewed_publication_failure(selection, prior, halt, stop, review)
     typed = review.get('disposition') == 'PROSPECTIVE_TYPED_UPSTREAM_OUTAGE_RECOVERY'

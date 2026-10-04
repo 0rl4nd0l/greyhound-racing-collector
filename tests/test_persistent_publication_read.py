@@ -129,4 +129,5 @@ def test_owned_prediction_finishes_index_admission_before_due_publishers_launch(
     child.returncode=0
     assert c.owner.tick()=='RUNNING'
     assert c.owner.predictions.child is None
-    assert {row['lane'] for row in c.owner.state['dispatches']}=={'full','odds'}
+    assert [row['lane'] for row in c.owner.state['dispatches']]==['full']
+    assert c.owner.state['next_due_at'].get('odds') is None

@@ -448,13 +448,22 @@ class DailyOwner:
                 if future and max(future)+timedelta(minutes=10) < current and not any(row['jump'] is None for row in opportunities):
                     return 'DAY_ENDED'
             if active and (current-stamp(inventory['observed_at'])).total_seconds() <= 840:
-                for lane, unit in (('full', 'shadow-autopilot.service'),
-                                   ('odds', 'shadow-autopilot-odds-capture.service')):
+                lanes = [('full', 'shadow-autopilot.service'),
+                         ('odds', 'shadow-autopilot-odds-capture.service')]
+                # Oldest due lane goes first, so a long full refresh cannot
+                # repeatedly outrank an odds refresh that has been waiting.
+                lanes.sort(key=lambda item: stamp(self.state['next_due_at'][item[0]])
+                    if self.state['next_due_at'].get(item[0]) else self.scope.start)
+                for lane, unit in lanes:
                     due = self.state['next_due_at'].get(lane)
-                    # Prediction workers read the mutable index after retaining
-                    # history. Keep the ownership exclusion bidirectional.
+                    # Native wrappers create evidence directories before their
+                    # lane lock. Do not start a second wrapper while the first
+                    # owns publication: sibling creation changes directory
+                    # mutation witnesses in the strict atomic writer. Prediction
+                    # workers also retain the index, so exclusion is bidirectional.
                     if (self.predictions.child is not None or (due and current < stamp(due))
-                            or lane in self.children or (self.scope.end-current).total_seconds() <= 600):
+                            or any(name in self.children for name in ('full', 'odds'))
+                            or (self.scope.end-current).total_seconds() <= 600):
                         continue
                     command, cwd, env = service_command(self.output/'units'/unit)
                     command += ['--discovery-inventory', ref['path'], '--discovery-inventory-sha256', ref['sha256'],
