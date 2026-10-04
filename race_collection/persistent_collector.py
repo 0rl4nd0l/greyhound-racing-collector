@@ -136,7 +136,10 @@ def classify_native_dispatch(evidence, record, allocation_sha, *, output=None):
             and record['returncode'] in (0, 2)):
         return {'disposition': 'DEFERRED', 'runtime_action': action,
                 'terminal': reference(terminal_path), 'lifecycle': reference(lifecycle_path)}
-    if (output is not None and action == 'LIVE_PHASE_FAILED' and status == 'FAILED'
+    full_phase_failed = (status == 'NEEDS_MORE_AUTOMATION' and record.get('lane') == 'full'
+        and isinstance(terminal.get('run_id'), str)
+        and not terminal['run_id'].endswith('_odds_capture'))
+    if (output is not None and action == 'LIVE_PHASE_FAILED' and (status == 'FAILED' or full_phase_failed)
             and terminal.get('final_verdict') == 'NEEDS_MORE_AUTOMATION'
             and record['returncode'] == 2 and lifecycle.get('interrupted', False) is False):
         run_id = terminal.get('run_id')
@@ -152,7 +155,7 @@ def classify_native_dispatch(evidence, record, allocation_sha, *, output=None):
                         'terminal': reference(terminal_path), 'lifecycle': reference(lifecycle_path),
                         'metadata_exclusion': ref}
             retained = Path(output)/'refresh-deferrals'/(run_id+'.json')
-            if (retained.is_file() and Path(terminal.get('output_dir', '')) ==
+            if (not full_phase_failed and retained.is_file() and Path(terminal.get('output_dir', '')) ==
                     Path(evidence)/('shadow_autopilot_daemonization_v1_'+run_id)):
                 ref = reference(retained)
                 _verified_refresh_deferral(ref, evidence, allocation_sha)

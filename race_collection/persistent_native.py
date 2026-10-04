@@ -511,11 +511,16 @@ def _reviewed_refresh_failure(selection, prior, halt, stop):
     cycle = Path(terminal['output_dir'])
     state = checked(selection['baseline']['prior_owner_state'])
     failed = [row for row in state['dispatches'] if row.get('native_disposition') == 'FAILED_OR_UNVERIFIED']
+    full_metadata_failure = (metadata and terminal.get('status') == 'NEEDS_MORE_AUTOMATION'
+        and len(failed) == 1 and failed[0].get('lane') == 'full'
+        and isinstance(terminal.get('run_id'), str)
+        and not terminal['run_id'].endswith('_odds_capture'))
     if (len(invocation) != 32 or any(c not in '0123456789abcdef' for c in invocation)
             or len(failed) != 1 or failed[0].get('invocation_id') != invocation
             or failed[0].get('returncode') != 2
             or terminal.get('allocation_sha256') != prior['allocation_ref']['sha256']
-            or terminal.get('status') != 'FAILED' or terminal.get('runtime_action') != 'LIVE_PHASE_FAILED'
+            or (terminal.get('status') != 'FAILED' and not full_metadata_failure)
+            or terminal.get('runtime_action') != 'LIVE_PHASE_FAILED'
             or terminal.get('final_verdict') != 'NEEDS_MORE_AUTOMATION'
             or lifecycle.get('invocation_id') != invocation or lifecycle.get('status') != 'COMPLETE'
             or lifecycle.get('returncode') != 2 or lifecycle.get('children_reaped') is not True

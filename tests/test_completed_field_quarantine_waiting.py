@@ -14,7 +14,7 @@ from tests.test_empty_eligible_refresh import publish
 from utils.runner_completeness import extract_canonical_runner_set_from_html, align_csv_text_to_canonical_final_runner_set
 
 
-def field_case(tmp_path):
+def field_case(tmp_path, *, full=False):
     output, plan, rid, phase, path, report = fixture(tmp_path)
     worker = Path(plan['evidence_root'])/'worker';worker.mkdir()
     raw_dir = worker/'raw_exports';raw_dir.mkdir()
@@ -42,6 +42,18 @@ def field_case(tmp_path):
     report['sidecar_metadata_coverage']['races']=[local['sidecar_metadata_coverage']['races'][1]]
     report['current_index_races'],report['current_index_metadata_selection']=refresh.current_index_metadata_selection(
         report['selected_races'],report['sidecar_metadata_coverage'],source_generated_at=report['generated_at'])
+    if full:
+        old_rid=rid;rid=rid.removesuffix('_odds_capture')
+        new_phase=phase.with_name(phase.name.replace(old_rid,rid));phase.rename(new_phase);phase=new_phase
+        new_parent=path.parent.with_name(path.parent.name.replace(old_rid,rid));path.parent.rename(new_parent)
+        path=new_parent/'refresh_prejump_report.json'
+        from tests.test_persistent_metadata_exclusion import failed_phase
+        phase_result=phase/'phase-0-result.json'
+        phase_result.write_text(json.dumps(failed_phase(path,Path(plan['evidence_root']),rid)))
+        checkpoint=json.loads((phase/'phase-checkpoint.json').read_bytes())
+        checkpoint['cycle_id']=rid
+        checkpoint['phases'][0]['result_sha256']=hashlib.sha256(phase_result.read_bytes()).hexdigest()
+        (phase/'phase-checkpoint.json').write_text(json.dumps(checkpoint))
     path.write_text(json.dumps(report))
     return plan,rid,path,report,worker,ref
 
@@ -86,17 +98,20 @@ def test_unproved_field_exclusion_is_terminal(tmp_path,defect):
     assert classify(plan['evidence_root'],rid) is None
 
 
-def test_real_terminal_owner_holds_until_a_later_verified_fresh_index(tmp_path,monkeypatch):
+@pytest.mark.parametrize('full',[False,True])
+def test_real_terminal_owner_holds_until_a_later_verified_fresh_index(tmp_path,monkeypatch,full):
     from types import SimpleNamespace
     from race_collection import persistent_collector as owner,synchronous_manual_capture as capture
     from race_collection.metadata_exclusion import metadata_exclusion_pending
     from tests.test_persistent_dispatch_verdict import evidence
     from race_collection.live_freshness_contract import create_once
-    plan,rid,path,report,worker,ref=field_case(tmp_path)
+    plan,rid,path,report,worker,ref=field_case(tmp_path,full=full)
     record,runtime=evidence(Path(plan['evidence_root']),action='LIVE_PHASE_FAILED',status='FAILED',code=2)
     terminal=runtime/'service-terminals'/('a'*32+'.json')
     value=json.loads(terminal.read_bytes());value.update(run_id=rid,
         output_dir=str(Path(plan['evidence_root'])/('shadow_autopilot_daemonization_v1_'+rid)),final_verdict='NEEDS_MORE_AUTOMATION')
+    if full:
+        value['status']='NEEDS_MORE_AUTOMATION';record['lane']='full'
     terminal.write_text(json.dumps(value))
     output=tmp_path/'owner';retained=output/'metadata-exclusions'/(rid+'.json')
     observed=datetime.fromisoformat(report['generated_at'])
