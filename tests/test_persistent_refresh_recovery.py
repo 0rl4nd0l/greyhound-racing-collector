@@ -64,8 +64,11 @@ def test_mixed_recovery_never_excuses_unknown_denied_or_incomplete_proof(tmp_pat
     assert classify_refresh_outage(plan['evidence_root'],rid) is None
 
 
-def deferred_fixture(tmp_path):
+def deferred_fixture(tmp_path, *, empty_mixed=False):
     output,plan,rid,root,refresh=outage(tmp_path)
+    if empty_mixed:
+        from tests.test_mixed_empty_refresh_outage import empty_mixed as build_report
+        refresh.write_text(json.dumps(build_report(tmp_path)))
     record,runtime=evidence(Path(plan['evidence_root']),action='LIVE_PHASE_FAILED',status='FAILED',code=2)
     path=runtime/'service-terminals'/('a'*32+'.json')
     terminal=json.loads(path.read_bytes());terminal.update(run_id=rid,output_dir=str(root),final_verdict='NEEDS_MORE_AUTOMATION')
@@ -159,9 +162,10 @@ from tests.test_persistent_collector import owner_case, retain_inventory, finish
 from tests.test_persistent_native import backend
 
 
-def test_daily_owner_holds_health_preserves_cadence_and_restarts_without_reset(owner_case,monkeypatch):
+@pytest.mark.parametrize('empty_mixed', [False, True])
+def test_daily_owner_holds_health_preserves_cadence_and_restarts_without_reset(owner_case,monkeypatch,empty_mixed):
     c=owner_case
-    retained_output,plan,_,retained=deferred_fixture(c.output/'failure-fixture')
+    retained_output,plan,_,retained=deferred_fixture(c.output/'failure-fixture', empty_mixed=empty_mixed)
     c.owner.plan['evidence_root']=plan['evidence_root']
     value=json.loads(retained.read_bytes());value['observed_at']=c.clock[0].isoformat()
     target=c.output/'refresh-deferrals'/retained.name
@@ -170,8 +174,10 @@ def test_daily_owner_holds_health_preserves_cadence_and_restarts_without_reset(o
     assert c.owner.outage_pending()
     c.owner.activate();retain_inventory(c)
     c.owner.tick()
-    assert len(c.children)==2
+    assert len(c.children)==1  # The installed owner serializes publishers.
     finish_native(c,c.children[0])
+    c.owner.tick()
+    assert len(c.children)==2
     native_runtime=Path(plan['evidence_root'])/'shadow_autopilot_daemon_runtime'
     invocation=c.children[1].kwargs['env']['INVOCATION_ID']
     for category in ('service-terminals','service-lifecycles'):

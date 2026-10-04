@@ -34,7 +34,10 @@ def _mixed_refresh_outage_statuses(refresh):
     selected, downloads = refresh["selected_races"], refresh["downloads"]
     coverage = refresh["sidecar_metadata_coverage"]["races"]
     snapshot = refresh.get("shared_sportsbet_snapshot") or {}
-    if (refresh.get("reason") != "unisolated_selected_race_acquisition_failure"
+    empty = refresh.get("status") == "METADATA_COVERAGE_INCOMPLETE"
+    if ((refresh.get("status"), refresh.get("reason")) not in {
+                ("ACQUISITION_INCOMPLETE", "unisolated_selected_race_acquisition_failure"),
+                ("METADATA_COVERAGE_INCOMPLETE", "no_selected_race_csv_sidecars")}
             or refresh.get("discovery_failures") or refresh.get("dry_run") is not False
             or type(refresh.get("selected_count")) is not int
             or not 0 < refresh["selected_count"] == len(selected) == len(downloads) == len(coverage)
@@ -73,7 +76,10 @@ def _mixed_refresh_outage_statuses(refresh):
                 or any(race.get("race_url") == candidate.get("race_url")
                        for race in refresh.get("current_index_races", []))):
             return None
-    if (not statuses or any(type(refresh.get(key)) is not int or refresh[key] != successful
+    if (not statuses or (empty and (successful != 0
+            or refresh.get("current_index_race_count") != 0
+            or refresh.get("current_index_races") != []))
+            or any(type(refresh.get(key)) is not int or refresh[key] != successful
                            for key in ("accepted_csv_count", "sidecar_count"))):
         return None
     return statuses
@@ -128,7 +134,9 @@ def classify_refresh_outage(evidence, run_id):
                         or failure["source_url"] != "https://www.thedogs.com.au/racing/" + failure["source_date"]):
                     return None
                 errors.append(failure["error_type"])
-        elif refresh.get("status") == "ACQUISITION_INCOMPLETE":
+        elif (refresh.get("status") == "ACQUISITION_INCOMPLETE"
+                or (refresh.get("status") == "METADATA_COVERAGE_INCOMPLETE"
+                    and "selected_races" in refresh)):
             statuses = _mixed_refresh_outage_statuses(refresh)
             if statuses is None:
                 return None

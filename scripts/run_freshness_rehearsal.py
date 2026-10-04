@@ -491,7 +491,7 @@ def verify_claim_receipt(claim, handoff, evidence, source_root):
 
 
 def record_refresh_outage(output, plan, run_id, failures):
-    """Allow two typed scheduled refresh misses; never retry requests or accept data.
+    """Account typed scheduled refresh misses; never retry requests or accept data.
 
     The native failed state remains visible. Observation may continue only while
     its independently read, previously published index stays fresh.
@@ -504,6 +504,7 @@ def record_refresh_outage(output, plan, run_id, failures):
     if access.get("phase") != "OPEN" or access["access_basis"]["status"] != "permitted":
         return False
     from race_collection.live_freshness_contract import classify_refresh_outage
+    from race_collection.refresh_deferral_policy import limit_for, record_fields, verify_record
     from race_collection.live_phase_checkpoint import native_publication_lock
     evidence = Path(plan["evidence_root"])
     classified = classify_refresh_outage(evidence, run_id)
@@ -517,12 +518,15 @@ def record_refresh_outage(output, plan, run_id, failures):
         records = list(directory.glob("*.json"))
         if retained.exists():
             value = json.loads(retained.read_bytes())
-            if any(value.get(key) != item for key, item in classified.items()):
+            try:
+                verify_record(value, classified, allocation_sha=(plan.get('persistent_allocation') or {}).get('sha256'))
+            except ValueError:
                 return False
         else:
-            if len(records) >= 2 or len(failures) >= 2:
+            limit = limit_for(plan)
+            if len(records) >= limit or len(failures) >= limit:
                 return False
-            create_once(retained, {**classified, "observed_at": now().isoformat(),
+            create_once(retained, {**record_fields(classified, plan), "observed_at": now().isoformat(),
                                    "failed_cycle_count": len(records) + 1})
         failures.add(run_id)
     return True

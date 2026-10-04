@@ -543,8 +543,10 @@ def _reviewed_refresh_failure(selection, prior, halt, stop):
             or phase.get('current_race_index_publish', {}).get('status') != 'REJECTED'
             or phase['current_race_index_publish'].get('reason') != 'CURRENT_INDEX_SOURCE_INVALID'
             or phase['current_race_index_publish'].get('source_refresh_report_path') != review['refresh_report']['path']
-            or (not metadata and (report.get('status') != 'ACQUISITION_INCOMPLETE'
-                or report.get('reason') != 'unisolated_selected_race_acquisition_failure'))
+            or (not metadata and (report.get('status'), report.get('reason')) not in (
+                {('ACQUISITION_INCOMPLETE', 'unisolated_selected_race_acquisition_failure'),
+                 ('METADATA_COVERAGE_INCOMPLETE', 'no_selected_race_csv_sidecars')}
+                if typed else {('ACQUISITION_INCOMPLETE', 'unisolated_selected_race_acquisition_failure')}))
             or (not typed and not metadata and not any(row.get('success') is False and row.get('result', {}).get('success') is False
                 and row['result'].get('error') == 'discovery_canonical_jump_changed'
                 for row in report.get('downloads', [])))):
@@ -570,6 +572,7 @@ def _reviewed_refresh_failure(selection, prior, halt, stop):
         return None
     if typed:
         from race_collection.live_freshness_contract import classify_refresh_outage
+        from race_collection.refresh_deferral_policy import record_fields
         classified = classify_refresh_outage(evidence, terminal['run_id'])
         if (classified is None or classified != checked(review['classified_outage'])
                 or classified['refresh_sha256'] != review['refresh_report']['sha256']
@@ -578,7 +581,7 @@ def _reviewed_refresh_failure(selection, prior, halt, stop):
                 or classified['request_retries_added'] != 0 or classified['maximum_failed_cycles'] != 2):
             raise ValueError('persistent_recovery_typed_outage_unverified')
         stamp(terminal['at'])
-        return {**classified, 'observed_at':terminal['at'],
+        return {**record_fields(classified, prior['plan']), 'observed_at':terminal['at'],
             'source_evidence_root':str(evidence), 'inherited_review':selection['reviewed_failure'],
             'allocation_sha256':prior['allocation_ref']['sha256']}
     return None
@@ -587,6 +590,7 @@ def _reviewed_refresh_failure(selection, prior, halt, stop):
 def _recovery_refresh_records(selection, prior, inherited):
     """Preserve each classified failed cycle exactly once across packages."""
     from race_collection.live_freshness_contract import classify_refresh_outage
+    from race_collection.refresh_deferral_policy import limit_for, verify_record
     records = []
     runs = set()
     prior_records = [(reference, checked(reference)) for reference in
@@ -598,8 +602,8 @@ def _recovery_refresh_records(selection, prior, inherited):
             raise ValueError('persistent_recovery_refresh_record_outside_prior')
         evidence = value.get('source_evidence_root', prior['plan']['evidence_root'])
         classified = classify_refresh_outage(evidence, value['run_id'])
-        if (classified is None or any(value.get(k) != v for k,v in classified.items())
-                or value['run_id'] in runs or value.get('failed_cycle_count') != len(records)+1
+        verify_record(value, classified, allocation_sha=prior['allocation_ref']['sha256'])
+        if (value['run_id'] in runs or value.get('failed_cycle_count') != len(records)+1
                 or Path(reference['path']).name != value['run_id']+'.json'
                 or value.get('allocation_sha256',prior['allocation_ref']['sha256']) != prior['allocation_ref']['sha256']):
             raise ValueError('persistent_recovery_prior_refresh_unverified')
@@ -614,7 +618,7 @@ def _recovery_refresh_records(selection, prior, inherited):
                 raise ValueError('persistent_recovery_refresh_duplicate_changed')
         else:
             records.append((None,{**inherited,'failed_cycle_count':len(records)+1}))
-    if len(records) > 2:
+    if len(records) > limit_for(prior['plan']):
         raise ValueError('persistent_recovery_failed_refresh_budget_exhausted')
     return records
 
