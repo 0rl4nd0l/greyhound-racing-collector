@@ -492,8 +492,10 @@ def _reviewed_refresh_failure(selection, prior, halt, stop):
     typed = review.get('disposition') == 'PROSPECTIVE_TYPED_UPSTREAM_OUTAGE_RECOVERY'
     metadata = (review.get('schema_version') == 'persistent_reviewed_metadata_exclusion_v1'
         and review.get('disposition') == 'PROSPECTIVE_ALL_SELECTED_METADATA_EXCLUSION_CORRECTION')
-    if ((not metadata and review.get('schema_version') != 'persistent_reviewed_refresh_failure_v1')
-            or (not typed and not metadata and review.get('disposition') != 'PROSPECTIVE_CORRECTION_OLD_FAILURE_UNRESOLVED')
+    mixed = (review.get('schema_version') == 'persistent_reviewed_mixed_field_exclusion_v1'
+        and review.get('disposition') == 'PROSPECTIVE_MIXED_FIELD_EXCLUSION_CORRECTION')
+    if ((not metadata and not mixed and review.get('schema_version') != 'persistent_reviewed_refresh_failure_v1')
+            or (not typed and not metadata and not mixed and review.get('disposition') != 'PROSPECTIVE_CORRECTION_OLD_FAILURE_UNRESOLVED')
             or not review.get('authority_reference')
             or review.get('source_commit') != selection['source_commit']
             or review.get('cleanup') != selection['cleanup']
@@ -511,11 +513,16 @@ def _reviewed_refresh_failure(selection, prior, halt, stop):
     cycle = Path(terminal['output_dir'])
     state = checked(selection['baseline']['prior_owner_state'])
     failed = [row for row in state['dispatches'] if row.get('native_disposition') == 'FAILED_OR_UNVERIFIED']
+    full_metadata_failure = (metadata and terminal.get('status') == 'NEEDS_MORE_AUTOMATION'
+        and len(failed) == 1 and failed[0].get('lane') == 'full'
+        and isinstance(terminal.get('run_id'), str)
+        and not terminal['run_id'].endswith('_odds_capture'))
     if (len(invocation) != 32 or any(c not in '0123456789abcdef' for c in invocation)
             or len(failed) != 1 or failed[0].get('invocation_id') != invocation
             or failed[0].get('returncode') != 2
             or terminal.get('allocation_sha256') != prior['allocation_ref']['sha256']
-            or terminal.get('status') != 'FAILED' or terminal.get('runtime_action') != 'LIVE_PHASE_FAILED'
+            or (terminal.get('status') != 'FAILED' and not full_metadata_failure)
+            or terminal.get('runtime_action') != 'LIVE_PHASE_FAILED'
             or terminal.get('final_verdict') != 'NEEDS_MORE_AUTOMATION'
             or lifecycle.get('invocation_id') != invocation or lifecycle.get('status') != 'COMPLETE'
             or lifecycle.get('returncode') != 2 or lifecycle.get('children_reaped') is not True
@@ -547,10 +554,35 @@ def _reviewed_refresh_failure(selection, prior, halt, stop):
                 {('ACQUISITION_INCOMPLETE', 'unisolated_selected_race_acquisition_failure'),
                  ('METADATA_COVERAGE_INCOMPLETE', 'no_selected_race_csv_sidecars')}
                 if typed else {('ACQUISITION_INCOMPLETE', 'unisolated_selected_race_acquisition_failure')}))
-            or (not typed and not metadata and not any(row.get('success') is False and row.get('result', {}).get('success') is False
+            or (not typed and not metadata and not mixed and not any(row.get('success') is False and row.get('result', {}).get('success') is False
                 and row['result'].get('error') == 'discovery_canonical_jump_changed'
                 for row in report.get('downloads', [])))):
         raise ValueError('persistent_recovery_refresh_checkpoint_unverified')
+    if mixed:
+        from scripts.refresh_prejump_upcoming import complete_mixed_field_exclusions
+        publication = phase['current_race_index_publish']
+        expected = dict(schema_version='verified_mixed_field_exclusions_v1',
+            disposition='VERIFIED_MIXED_FIELD_EXCLUSIONS', run_id=terminal['run_id'],
+            failed_phase_number=0, phase_result_sha256=review['phase_result']['sha256'],
+            refresh_sha256=review['refresh_report']['sha256'], selected_count=report.get('selected_count'),
+            eligible_count=report.get('current_index_race_count'),
+            excluded_count=report.get('current_index_metadata_selection', {}).get('excluded_race_count'),
+            request_retries_added=0, current_index_published=False)
+        if (publication.get('schema_version') != 'collector_current_race_index_publish_v2'
+                or publication.get('failure_detail') != {'reason':'refresh_not_accepted_success'}
+                or publication.get('run_id') != terminal['run_id']
+                or publication.get('index_path') != str(runtime/'manual_prediction_current_race_index.json')
+                or not complete_mixed_field_exclusions(report)
+                or type(expected['selected_count']) is not int
+                or type(expected['eligible_count']) is not int
+                or type(expected['excluded_count']) is not int
+                or not 0 < expected['eligible_count'] < expected['selected_count']
+                or expected['eligible_count'] + expected['excluded_count'] != expected['selected_count']
+                or checked(review['classified_mixed_field_exclusion']) != expected):
+            raise ValueError('persistent_recovery_mixed_field_exclusion_unverified')
+        # The old report/index remain failed/rejected. Verified retained inputs
+        # authorize only a reviewed future package, not retrospective publication.
+        return None
     if metadata:
         from race_collection.metadata_exclusion import classify_metadata_exclusion
         classified = classify_metadata_exclusion(evidence, terminal['run_id'])

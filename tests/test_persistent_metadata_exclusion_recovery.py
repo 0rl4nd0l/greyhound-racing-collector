@@ -107,3 +107,26 @@ def test_metadata_recovery_rejects_unverified_exception(metadata_recovery,change
     with pytest.raises((ValueError,KeyError)):
         native.prepare_day(cfg,standing,'2026-10-03',now)
     assert ledger.read_bytes()==before and len(calls)==1
+
+
+@pytest.mark.parametrize('status,lane,accepted', [
+    ('NEEDS_MORE_AUTOMATION','full',True),
+    ('NEEDS_MORE_AUTOMATION','odds',False),
+    ('UNKNOWN','full',False),
+])
+def test_exact_full_lane_metadata_terminal_status(metadata_recovery,status,lane,accepted):
+    recovery,review=metadata_recovery
+    cfg,standing,old,now,item,terminal,calls=recovery
+    selection=native.checked(cfg['recovery_selection'])
+    service=native.checked(review['service_terminal']);service['status']=status
+    review['service_terminal']=put(Path(review['service_terminal']['path']),service)
+    state=native.checked(selection['baseline']['prior_owner_state'])
+    state['dispatches'][0]['lane']=lane
+    selection['baseline']['prior_owner_state']=put(Path(selection['baseline']['prior_owner_state']['path']),state)
+    selection['reviewed_failure']=put(Path(selection['reviewed_failure']['path']),review)
+    halt=json.loads((Path(old['output'])/'HALT.json').read_bytes());stop=native.checked(selection['prior_stop'])
+    if accepted:
+        assert native._reviewed_refresh_failure(selection,old,halt,stop) is None
+    else:
+        with pytest.raises(ValueError,match='terminal_unverified'):
+            native._reviewed_refresh_failure(selection,old,halt,stop)
