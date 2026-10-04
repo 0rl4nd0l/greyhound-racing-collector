@@ -325,13 +325,15 @@ def run_baseline(manifest_ref, authority_ref, *, execute=False, now=None):
         return {'status': 'DEFAULT_OFF', 'provider_requests': 0, 'result_reads': 0}
     import time
     from race_collection.retained_study_observer import BUDGET
+    began = time.monotonic()
     now = now or datetime.now(timezone.utc)
     authority, manifest = authorize(manifest_ref, authority_ref, now)
-    began = time.monotonic(); output = root_path(authority['output_root'])
+    output = root_path(authority['output_root'])
     def check_deadline():
         elapsed = time.monotonic()-began
         if elapsed > authority['limits']['max_wall_seconds'] or now.timestamp()+elapsed >= stamp(authority['expires_at']).timestamp():
             raise TimeoutError('baseline_deadline')
+    check_deadline()
     # A manifest has ONE claim regardless of authority reissue or output choice.
     claim = Path(manifest_ref['path']).parent/'evaluation_claim.json'
     _write(claim, {'claimed_at': now.isoformat(), 'membership': manifest_ref,

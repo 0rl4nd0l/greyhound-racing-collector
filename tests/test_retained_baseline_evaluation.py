@@ -364,3 +364,33 @@ def test_expiry_after_opaque_verification_stops_before_forecast_or_result_decode
     with pytest.raises(TimeoutError):
         baseline.read_member(member, closure, protocol, NOW, check_deadline=deadline)
     assert not any('/comparison/' in p or p.endswith('.sqlite3') for p in checked_paths)
+
+
+@pytest.mark.parametrize('bound', ['expiry', 'wall_time'])
+def test_slow_authorization_cannot_extend_read_deadline(authorized_case, monkeypatch, bound):
+    import time
+    from datetime import timedelta
+    membership, authority, root = authorized_case
+    if bound == 'expiry':
+        authority['expires_at'] = (NOW + timedelta(seconds=5)).isoformat()
+    else:
+        authority['limits']['max_wall_seconds'] = 5
+    ref = put(root/'authority.json', authority)
+    elapsed = [100.0]
+    original = baseline.authorize
+    def delayed_authorize(*args):
+        value = original(*args)
+        elapsed[0] += 10
+        return value
+    monkeypatch.setattr(time, 'monotonic', lambda: elapsed[0])
+    monkeypatch.setattr(baseline, 'authorize', delayed_authorize)
+    reads = []
+    def reader(*args, **kwargs):
+        reads.append(True)
+        return None, 'QUARANTINED'
+    monkeypatch.setattr(baseline, 'read_member', reader)
+    with pytest.raises(TimeoutError, match='baseline_deadline'):
+        baseline.run_baseline(membership, ref, execute=True, now=NOW)
+    assert reads == []
+    assert not (root/'private_output').exists()
+    assert not (root/'proposal/evaluation_claim.json').exists()
