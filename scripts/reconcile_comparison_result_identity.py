@@ -94,7 +94,8 @@ def observed_queue_commit(root, original_job, original_event, output, *,
 def evidence_rows(job, bundle, body, url, captured, now, *, deadline, prediction_bundles=None):
     """Keep values inside native machine validators; return no public outcomes."""
     from scripts import ingest_results_for_date as ingest
-    from scripts.autonomous_official_result_capture import build_artifact_rows, comparison_runner_identity_error
+    from scripts.autonomous_official_result_capture import (build_artifact_rows,
+        comparison_runner_identity_error, comparison_native_identity_projection)
     deadline.check_deadline()
     race = bundle.result['race']
     from src.predictor.comparison_runner_identity import frozen_result_participants
@@ -123,8 +124,7 @@ def evidence_rows(job, bundle, body, url, captured, now, *, deadline, prediction
         'status': selected.status, 'source_url': url, 'winner_box': selected.winner_box,
         'winner_name': expected[selected.winner_box], 'box_order': selected.raw_order,
         'participants': participants, 'participant_source': 'verified_r3_prediction',
-        'positions': [{'box_number': box, 'dog_name': expected[box], 'finish_position': position}
-                      for box, position in selected.positions_by_box.items()]}
+        **deadline.call(comparison_native_identity_projection, candidate, selected)}
     artifacts = deadline.call(build_artifact_rows, {'ingested': [item], 'failed': [], 'scope': {
         'candidate_source': 'authorized_retained_comparison_identity_reconciliation'}}, generated_at=captured)
     deadline.call(ComparisonResultSource._validate, job, bundle, artifacts['race_rows'], artifacts['runner_rows'],
