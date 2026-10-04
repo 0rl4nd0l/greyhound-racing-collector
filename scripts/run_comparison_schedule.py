@@ -353,7 +353,7 @@ def main():
         result=tick(args.config);result['outcomes_released']=False
         health(args.config,result)
         print(json.dumps(result))
-        return 0 if result['status'] in {'NO_SLOT_DUE','ADMISSIONS_PAUSED','ADMISSION_ENDPOINT_REACHED','SESSION_COMPLETED'} else 2
+        return 0 if result['status'] in {'NO_SLOT_DUE','ADMISSIONS_PAUSED','ADMISSION_ENDPOINT_REACHED','SESSION_COMPLETED','RETAINED_STUDY_OBSERVER_READY'} else 2
     except Exception as exc:
         result={'status':'SCHEDULE_FAILED','failure_class':type(exc).__name__,'outcomes_released':False}
         health(args.config,result)
