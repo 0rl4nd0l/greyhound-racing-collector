@@ -19,6 +19,7 @@ import sqlite3
 import subprocess
 import sys
 from collections import Counter, defaultdict
+from copy import deepcopy
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -102,6 +103,77 @@ def comparison_runner_identity_error(candidate, result):
             or any(not actual[box] for box in extras)):
         return error
     return None
+
+
+def comparison_native_identity_projection(candidate, result):
+    """Pure projection; never infer a native ID from a name/box-only closure.
+
+    Callers still own admission, transport, time and result validation. Proof
+    hashes preserve the already checked source chain; they do not authorize
+    reading or relabelling historical evidence.
+    """
+    participants = candidate.participants
+    by_box = {row['box_number']: row for row in participants}
+    positions = [{'box_number': int(box), 'finish_position': int(position),
+                  'dog_name': by_box.get(box, {}).get('dog_name')}
+                 for box, position in sorted(result.positions_by_box.items(),
+                                             key=lambda item: (item[1], item[0]))]
+
+    def incomplete(reason):
+        return {'native_identity_status': 'IDENTITY_INCOMPLETE',
+                'native_identity_reason': reason, 'positions': positions}
+
+    if (result.source != OFFICIAL_SOURCE or result.status != RESULTED_STATUS
+            or result.runner_profile_identity_complete is not True
+            or comparison_runner_identity_error(candidate, result) is not None):
+        return incomplete('OFFICIAL_PROFILE_IDENTITY_UNRESOLVED')
+    if (not participants or len(by_box) != len(participants)
+            or set(result.positions_by_box) != set(by_box)
+            or not ingest.finish_positions_follow_competition_ranking(result.positions_by_box.values())):
+        return incomplete('COMPLETE_FIELD_REQUIRED')
+    if re.fullmatch(r'[0-9a-f]{64}', result.official_markup_sha256 or '') is None:
+        return incomplete('OFFICIAL_MARKUP_PROOF_MISSING')
+    entries, profiles, evidence_hashes = set(), set(), set()
+    for row in participants:
+        entry, profile = row.get('source_native_runner_id'), row.get('source_native_dog_id')
+        if (type(row['box_number']) is not int or row['box_number'] not in range(1, 9)
+                or any(not isinstance(value, str) or re.fullmatch(r'[1-9][0-9]*', value) is None
+                       for value in (entry, profile))
+                or entry in entries or profile in profiles
+                or (result.dog_ids_by_box or {}).get(row['box_number']) != profile):
+            return incomplete('ENTRY_PROFILE_BRIDGE_INCOMPLETE')
+        proof = row.get('native_identity_proof')
+        expected_keys = {'schema_version', 'metadata_sha256', 'native_evidence_sha256',
+                         'race_page_body_sha256', 'race_url', 'box_number', 'dog_name',
+                         'source_native_runner_id', 'source_native_dog_id'}
+        if 'original_box_number' in row:
+            expected_keys.add('original_box_number')
+        if (not isinstance(proof, dict) or set(proof) != expected_keys
+                or proof['schema_version'] != 'verified_prejump_runner_bridge_v1'
+                or any(proof.get(key) != row.get(key) for key in
+                       ('box_number', 'dog_name', 'source_native_runner_id',
+                        'source_native_dog_id', 'original_box_number'))
+                or any(re.fullmatch(r'[0-9a-f]{64}', str(proof.get(key) or '')) is None
+                       for key in ('metadata_sha256', 'native_evidence_sha256', 'race_page_body_sha256'))
+                or not isinstance(proof.get('race_url'), str)
+                or result.source_url not in {proof['race_url'], proof['race_url'] + '?trial=false'}):
+            return incomplete('PREJUMP_BRIDGE_PROOF_MISSING_OR_CHANGED')
+        entries.add(entry)
+        profiles.add(profile)
+        evidence_hashes.add((proof['metadata_sha256'], proof['native_evidence_sha256'],
+                            proof['race_page_body_sha256'], proof['race_url']))
+    if len(evidence_hashes) != 1:
+        return incomplete('PREJUMP_BRIDGE_PROOF_MIXED')
+    for position in positions:
+        row = by_box[position['box_number']]
+        position.update(source_native_runner_id=row['source_native_runner_id'],
+            source_native_dog_id=row['source_native_dog_id'],
+            native_identity_proof={'schema_version': 'verified_official_runner_bridge_v1',
+                'prejump': deepcopy(row['native_identity_proof']),
+                'official_source_url': result.source_url,
+                'official_markup_sha256': result.official_markup_sha256})
+    return {'native_identity_status': 'IDENTITY_VERIFIED',
+            'native_identity_reason': None, 'positions': positions}
 
 
 def now_id(now: datetime | None = None) -> str:
@@ -1618,6 +1690,12 @@ def build_artifact_rows(
             continue
         official = item.get("source") == OFFICIAL_SOURCE and item.get("status") == RESULTED_STATUS
         positions = _position_rows(item)
+        identity_status = item.get('native_identity_status', 'IDENTITY_INCOMPLETE')
+        identity_reason = item.get('native_identity_reason', 'BRIDGE_PROJECTION_MISSING')
+        if identity_status == 'IDENTITY_VERIFIED' and not all(
+                _serialized_native_bridge_valid(position, item.get('source_url')) for position in positions):
+            identity_status = 'IDENTITY_INCOMPLETE'
+            identity_reason = 'SERIALIZED_BRIDGE_PROOF_MISSING_OR_CHANGED'
         if not official or not positions:
             quarantine_rows.append(
                 {
@@ -1648,6 +1726,8 @@ def build_artifact_rows(
             "position_count": len(positions),
             "participant_count": len(_participant_rows(item)),
             "scope": dict(scope),
+            'native_identity_status': identity_status,
+            'native_identity_reason': identity_reason,
         }
         race_rows.append(race_row)
         for position in positions:
@@ -1665,6 +1745,11 @@ def build_artifact_rows(
                     "dog_name": position.get("dog_name"),
                     "finish_position": position.get("finish_position"),
                     "is_winner": position.get("finish_position") == 1,
+                    'native_identity_status': identity_status,
+                    'native_identity_reason': identity_reason,
+                    **({key: deepcopy(position[key]) for key in
+                        ('source_native_runner_id', 'source_native_dog_id', 'native_identity_proof')}
+                       if identity_status == 'IDENTITY_VERIFIED' else {}),
                 }
             )
 
@@ -1692,6 +1777,29 @@ def build_artifact_rows(
         "runner_rows": runner_rows,
         "quarantine_rows": quarantine_rows,
     }
+
+
+def _serialized_native_bridge_valid(position, source_url):
+    """Do not preserve a claimed verified status after projection fields change."""
+    proof = position.get('native_identity_proof')
+    if not isinstance(proof, dict) or proof.get('schema_version') != 'verified_official_runner_bridge_v1':
+        return False
+    prejump = proof.get('prejump')
+    if not isinstance(prejump, dict) or prejump.get('schema_version') != 'verified_prejump_runner_bridge_v1':
+        return False
+    if (proof.get('official_source_url') != source_url
+            or not isinstance(prejump.get('race_url'), str)
+            or source_url not in {prejump['race_url'], prejump['race_url']+'?trial=false'}
+            or any(prejump.get(key) != position.get(key) for key in
+                   ('box_number', 'dog_name', 'source_native_runner_id', 'source_native_dog_id'))
+            or any(re.fullmatch(r'[1-9][0-9]*', str(position.get(key) or '')) is None
+                   for key in ('source_native_runner_id', 'source_native_dog_id'))):
+        return False
+    hashes = [proof.get('official_markup_sha256')]
+    hashes.extend(prejump.get(key) for key in
+                  ('metadata_sha256', 'native_evidence_sha256', 'race_page_body_sha256'))
+    return all(isinstance(value, str) and re.fullmatch(r'[0-9a-f]{64}', value) is not None
+               for value in hashes)
 
 
 def summarize_quarantine_rows(

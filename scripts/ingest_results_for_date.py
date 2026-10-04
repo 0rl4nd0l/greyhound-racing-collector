@@ -16,6 +16,7 @@ fallback rows are marked as partial_sportsbet_results rather than complete.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import html
 import json
 import os
@@ -875,6 +876,8 @@ class SourceResult:
     dog_ids_by_box: Optional[Dict[int, str]] = None
     runner_profile_identity_complete: bool = False
     runner_profile_identity_conflict: bool = False
+    # Hash of the parsed Unicode markup encoded as UTF-8, not an HTTP receipt.
+    official_markup_sha256: Optional[str] = None
 
     @property
     def winner_box(self) -> Optional[int]:
@@ -1188,6 +1191,7 @@ class TheDogsResultFetcher:
                 dog_ids_by_box=dog_ids_by_box,
                 runner_profile_identity_complete=profiles_complete,
                 runner_profile_identity_conflict=profile_conflict,
+                official_markup_sha256=hashlib.sha256(markup.encode('utf-8')).hexdigest(),
             )
         if thedogs_result_rows_present(markup):
             return SourceResult(
@@ -1986,6 +1990,8 @@ def write_result(
     data_quality_note = "; ".join(note_parts)
 
     if dry_run:
+        from scripts.autonomous_official_result_capture import comparison_native_identity_projection
+        identity_projection = comparison_native_identity_projection(candidate, result)
         summary = {
             "race_id": candidate.race_id,
             "venue": candidate.venue,
@@ -1999,17 +2005,7 @@ def write_result(
             "winner_name": winner_name,
             "winner_box": winner_box,
             "box_order": result.raw_order,
-            "positions": [
-                {
-                    "box_number": int(box),
-                    "finish_position": int(position),
-                    "dog_name": box_to_name.get(int(box)),
-                }
-                for box, position in sorted(
-                    result.positions_by_box.items(),
-                    key=lambda item: (item[1], item[0]),
-                )
-            ],
+            **identity_projection,
             "participants": [
                 {
                     "box_number": int(participant["box_number"]),

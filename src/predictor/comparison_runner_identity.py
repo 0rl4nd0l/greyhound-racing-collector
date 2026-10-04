@@ -90,6 +90,16 @@ def frozen_result_participants(job, bundle, prediction_bundles):
         original = by_box[participant['box_number']].get('original_box_number')
         if original is not None:
             member['original_box_number'] = original
+        # This projection is created only after the sealed metadata, transport
+        # chain, canonical field and same-row entry/profile bridge pass above.
+        member['native_identity_proof'] = {
+            'schema_version': 'verified_prejump_runner_bridge_v1',
+            'metadata_sha256': entry['sha256'],
+            'native_evidence_sha256': evidence['evidence_sha256'],
+            'race_page_body_sha256': evidence['race_page_http']['body_sha256'],
+            'race_url': race['url'],
+            **member,
+        }
         enriched.append(member)
     profiles = [r['source_native_dog_id'] for r in enriched if r.get('source_native_dog_id') is not None]
     if len(set(profiles)) != len(profiles):
