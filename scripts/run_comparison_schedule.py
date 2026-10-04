@@ -151,6 +151,18 @@ def child(command, log):
 
 def verify_canary(cfg, result_cfg, root, now):
     import sqlite3
+    if cfg.get('study_amendment'):
+        from race_collection.retained_study_readiness import verify_retained_readiness
+        evidence=verify_retained_readiness(cfg,now)
+        if evidence is None:return False
+        receipt=root/'canary-amendments'/(cfg['study_amendment']['sha256']+'.json')
+        value={'status':'RETAINED_STUDY_OBSERVER_READINESS_VERIFIED','plan_sha256':cfg['comparison_plan_sha256'],
+            'readiness_dimensions':evidence,'outcomes_released':False,'original_membership_changed':False}
+        if receipt.exists():
+            if json.loads(receipt.read_bytes())!=value:raise ValueError('study_canary_amendment_changed')
+        else:
+            receipt.parent.mkdir(parents=True,exist_ok=True);create_once(receipt,value)
+        return True
     if cfg.get('incident_acceptance'):
         from race_collection.incident_acceptance import verified_incident_acceptance
         evidence = verified_incident_acceptance(cfg, cfg['incident_acceptance'], now, seal=True)
@@ -234,10 +246,18 @@ def tick(config_path):
     with (root/'scheduler.lock').open('a') as lock:
         fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         identity = root/'config-identity.json'
+        now = datetime.now(timezone.utc)
+        if cfg.get('study_amendment'):
+            from race_collection.retained_study_readiness import bind_configuration
+            bind_configuration(cfg,root,now)
+            # This explicitly amended mode only qualifies an outcome-blind
+            # observer. It cannot renew a source lease or launch a collector.
+            ready=verify_canary(cfg,None,root,now)
+            return {'status':'RETAINED_STUDY_OBSERVER_READY' if ready else 'CANARY_NOT_VERIFIED',
+                'source_owning_schedule_superseded':True,'provider_requests':0,'outcomes_released':False}
         if identity.exists():
             if json.loads(identity.read_bytes())['sha256'] != digest(cfg): raise ValueError('schedule_changed')
         else: create_once(identity, {'sha256':digest(cfg)})
-        now = datetime.now(timezone.utc)
         # Recovery precedes expiry/pause checks: already owed cleanup is not
         # cancelled by stopping future admissions. Unknown boot/PID stays held.
         for claim in sorted((root/'slots').glob('*')):
