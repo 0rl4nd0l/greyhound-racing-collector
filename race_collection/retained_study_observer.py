@@ -324,6 +324,8 @@ def _observe(cfg, protocol, now):
                 try:
                     candidate = metadata_candidate(plan_ref, plan, path, protocol)
                     race = candidate['race_id']
+                    if stamp(candidate['original_published_complete_at']) > now:
+                        raise ValueError('NATIVE_COMPLETION_AFTER_OBSERVATION')
                     if race in members:
                         if members[race]['admission'] != candidate['admission']:
                             raise ValueError('DUPLICATE_RACE_DIFFERENT_ADMISSION')

@@ -228,3 +228,11 @@ def test_corrupt_journal_never_restarts_or_resets(case):
     with pytest.raises(ValueError):
         observer.observe(cfg, now=now)
     assert journal.read_bytes() == before
+
+
+def test_completion_cannot_be_selected_before_its_original_publication(case):
+    observer, cfg, protocol, now, claim, bundle = case
+    rebind(case, issued_at='2026-10-02T00:00:00+00:00', effective_at='2026-10-02T01:00:00+00:00')
+    now = datetime(2026, 10, 3, 7, 51, tzinfo=timezone.utc)
+    assert observer.observe(cfg, now=now)['members'] == 0
+    assert 'NATIVE_COMPLETION_AFTER_OBSERVATION' in (Path(protocol['state_root'])/'events.jsonl').read_text()
