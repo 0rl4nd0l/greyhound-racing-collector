@@ -1274,6 +1274,80 @@ def complete_empty_metadata_selection(report: Mapping[str, Any]) -> bool:
     return _complete_empty_metadata_selection(report)
 
 
+def _completed_local_native_identity_rejection(candidate, download, row, root):
+    """Authenticate an acquired race-local exclusion, never a usable identity.
+
+    The rejected odds body is not retained by the old producer. We therefore
+    prove only the retained typed rejection and the primary page's missing race
+    ID, not the correctness of any odds or a reconstructed native race ID.
+    """
+    from scripts.capture_thedogs_market_history import verify_primary_race_page_evidence
+    from utils.runner_completeness import extract_canonical_runner_set_from_html
+
+    try:
+        result = download['result']
+        normal = result['normalization']
+        alignment = normal['canonical_runner_alignment']
+        reason = ['native_identity_evidence_rejected:scratched_runner_has_active_price']
+        directory = Path(root)
+        csv = Path(row['csv_path'])
+        sidecar = Path(row['sidecar_path'])
+        if (not directory.is_absolute() or directory.resolve() != directory
+                or not csv.is_relative_to(directory) or sidecar != _sidecar_path_for_csv(csv)
+                or any(p.resolve() != p or not p.is_file() or p.stat().st_size > 16*1024*1024
+                       for p in (csv, sidecar))
+                or result.get('success') is not True or download.get('success') is not True
+                or result.get('filepath') != str(csv)
+                or normal.get('normalization_status') != 'verified'
+                or alignment.get('status') != 'aligned'
+                or alignment.get('canonical_runner_set_status') != 'available'
+                or alignment.get('native_identity_status') != 'unavailable'
+                or alignment.get('source_native_race_id') is not None
+                or alignment.get('native_identity_reasons') != reason
+                or row.get('source_native_race_id') is not None
+                or row.get('native_identity_evidence_status') != 'not_required_direct_source_identity'
+                or row.get('native_identity_evidence_reason') is not None):
+            return False
+        metadata = json.loads(sidecar.read_bytes())
+        raw = csv.read_bytes()
+        if (metadata.get('canonical_runner_alignment') != alignment
+                or metadata.get('content_sha256') != hashlib.sha256(raw).hexdigest()
+                or metadata.get('content_length') != len(raw)
+                or _sidecar_race_url(metadata) != candidate['race_url']
+                or alignment.get('canonical_source_url') != candidate['race_url']
+                or metadata.get('native_identity_evidence') is not None):
+            return False
+        ref = metadata['primary_race_page_evidence']
+        for key in ('raw_path', 'receipt_path'):
+            path = csv.parent / ref[key]
+            if (not path.is_relative_to(csv.parent) or path.resolve() != path
+                    or not path.is_file() or path.stat().st_size > 16*1024*1024):
+                return False
+        page = verify_primary_race_page_evidence(artifact_root=csv.parent, reference=ref)
+        observed = datetime.fromisoformat(page['request_end_utc'].replace('Z', '+00:00'))
+        jump = datetime.fromisoformat(candidate['jump_datetime'])
+        if (page.get('status_code') != 200 or page.get('requested_url') != candidate['race_url']
+                or page.get('final_url') != candidate['race_url']
+                or page.get('race_discovery_key') != candidate['race_id']
+                or observed.utcoffset() is None or jump.utcoffset() is None or observed >= jump):
+            return False
+        canonical = extract_canonical_runner_set_from_html(
+            (csv.parent/ref['raw_path']).read_text(encoding='utf-8'),
+            source_url=candidate['race_url'], expected_race_number=int(candidate['race_number']),
+            extraction_timestamp=page['request_end_utc'])
+        ids = [p.get('source_native_runner_id') for p in canonical['final_runner_participants']]
+        return (canonical.get('canonical_runner_set_status') == 'available'
+                and canonical.get('source_native_race_id') is None
+                and canonical.get('native_identity_reasons') == ['source_native_race_id_missing']
+                and len(ids) >= 2 and len(ids) == len(set(ids))
+                and all(isinstance(x, str) and x.isascii() and x.isdecimal() for x in ids)
+                and ids == row.get('source_native_runner_ids')
+                and len(ids) == alignment.get('canonical_runner_count')
+                and len(ids) == alignment.get('prediction_runner_count'))
+    except (KeyError, TypeError, ValueError, AttributeError, OSError):
+        return False
+
+
 def complete_unavailable_metadata_selection(report: Mapping[str, Any]) -> bool:
     """Classify completed exclusions for waiting only, never index publication."""
     try:
@@ -1281,7 +1355,10 @@ def complete_unavailable_metadata_selection(report: Mapping[str, Any]) -> bool:
         return (
             report.get("status") == "METADATA_COVERAGE_INCOMPLETE"
             and report.get("accepted_csv_count") == report.get("selected_count")
-            and all(row.get("native_identity_evidence_status") == "verified" for row in rows)
+            and len(rows) == len(report['selected_races']) == len(report['downloads'])
+            and all(row.get("native_identity_evidence_status") == "verified"
+                    or _completed_local_native_identity_rejection(candidate, download, row, report['upcoming_dir'])
+                    for candidate, download, row in zip(report['selected_races'], report['downloads'], rows))
             and _complete_empty_metadata_selection(report, allow_rejected_expert=True)
         )
     except (KeyError, TypeError, AttributeError):
@@ -1408,6 +1485,9 @@ def _complete_empty_metadata_selection(report: Mapping[str, Any], *, allow_rejec
             allowed_missing = {"weather", "track_condition"}
             if allow_rejected_expert:
                 allowed_missing.add("expert_form")
+                if _completed_local_native_identity_rejection(
+                        selected[number], downloads[number], row, report.get('upcoming_dir')):
+                    allowed_missing.add("native_source_identity")
             if number in local_quarantines:
                 allowed_missing.update(
                     {
