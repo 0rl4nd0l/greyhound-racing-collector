@@ -34,7 +34,7 @@ The expert parent sort control provides direct source-owned key mappings:
 | DIST / TRACK / GRADE | `race_distance` / `track` / `grade` |
 | MGN / SP | `winner_margin` / `starting_price` |
 
-PIR cells use `runner-form__in-running-places`. This resolves the local interpretation as a generic “rating” at the schema-label level, just as BON is explicitly a best-of-night field rather than a “bonus” field. Neither class names nor sort keys establish exact call positions, runner-versus-leader clock semantics, units, timing equipment, era/layout comparability, or how missing values and averaging are defined.
+PIR cells use `runner-form__in-running-places`. This corrects the earlier local interpretation of PIR as a generic “rating” at the schema-label level. BON likewise maps to a best-of-night field; the earlier “bonus” interpretation was incorrect. Neither class names nor sort keys establish exact call positions, runner-versus-leader clock semantics, units, timing equipment, era/layout comparability, or how missing values and averaging are defined.
 
 TIME, WIN and BON are numeric in all six normal rows and all five expert rows. **1 SEC is missing in every one of those rendered rows**; early-pace coverage is not demonstrated by this sample. PIR is nonmissing in all rows, but is not accepted as an early-position measure. The selected history rows had no timing-cell or header tooltip definitions. All four inspected bodies have six script elements and no standalone `application/json` or `application/ld+json` script; this is not a claim about arbitrary external JavaScript or every site endpoint.
 
