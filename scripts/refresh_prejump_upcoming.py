@@ -1007,7 +1007,8 @@ def _replay_semantic_runner_shortfall(
 
 
 def _complete_local_runner_quarantine(
-    candidate: Mapping[str, Any], result: Mapping[str, Any], root: Any
+    candidate: Mapping[str, Any], result: Mapping[str, Any], root: Any,
+    *, allow_identity_rejection: bool = False,
 ) -> bool:
     """Authenticate the observed local CSV/canonical-field mismatch; admit no rows."""
     normalization = result.get("normalization", {})
@@ -1088,8 +1089,10 @@ def _complete_local_runner_quarantine(
     elif not (
         alignment.get("native_identity_status") == "unavailable"
         and alignment.get("source_native_race_id") is None
-        and alignment.get("native_identity_reasons")
-        == ["native_identity_evidence_rejected:expected_active_runner_boxes_invalid"]
+        and (alignment.get("native_identity_reasons")
+             == ["native_identity_evidence_rejected:expected_active_runner_boxes_invalid"]
+             or (allow_identity_rejection and alignment.get("native_identity_reasons")
+                 == ["native_identity_evidence_rejected:scratched_runner_has_active_price"]))
     ):
         return False
     size = normalization.get("raw_content_length")
@@ -1348,17 +1351,114 @@ def _completed_local_native_identity_rejection(candidate, download, row, root):
         return False
 
 
+def _completed_field_quarantine(candidate, result, root):
+    """Replay received raw CSV against its retained pre-jump page; admit no inputs.
+
+    A rejected native identity response remains unverified. The independently
+    retained primary page proves only why the received CSV cannot supply the
+    complete field. This proof is used for unavailable waiting, not publication.
+    """
+    from scripts.capture_thedogs_market_history import verify_primary_race_page_evidence
+    from utils.runner_completeness import (
+        align_csv_text_to_canonical_final_runner_set,
+        extract_canonical_runner_set_from_html,
+    )
+
+    try:
+        if not _complete_local_runner_quarantine(
+                candidate, result, root, allow_identity_rejection=True):
+            return False
+        normal = result['normalization']
+        if not _replay_semantic_runner_shortfall(
+                candidate, result, Path(result['raw_export_path']).read_bytes()):
+            return False
+        worker = Path(result['raw_export_path']).parent.parent
+        directory = worker / 'source_evidence' / 'primary_race_pages'
+        if directory.resolve() != directory or not directory.is_dir():
+            return False
+        receipts = list(directory.glob('*.race-page.receipt.json'))
+        if len(receipts) != 1:
+            return False
+        receipt_path = receipts[0]
+        if (receipt_path.resolve() != receipt_path or not receipt_path.is_file()
+                or receipt_path.stat().st_size > 256 * 1024):
+            return False
+        receipt_bytes = receipt_path.read_bytes()
+        receipt = json.loads(receipt_bytes)
+        raw_path = worker / receipt['raw_path']
+        if (not raw_path.is_relative_to(directory) or raw_path.resolve() != raw_path
+                or not raw_path.is_file() or raw_path.stat().st_size > 16 * 1024 * 1024
+                or receipt_path.name != receipt['receipt_core_sha256'] + '.race-page.receipt.json'
+                or raw_path.name != receipt['body_sha256'] + '.race-page.html'):
+            return False
+        page = verify_primary_race_page_evidence(artifact_root=worker, reference={
+            'raw_path': receipt['raw_path'],
+            'receipt_path': receipt_path.relative_to(worker).as_posix(),
+            'body_sha256': receipt['body_sha256'],
+            'receipt_sha256': hashlib.sha256(receipt_bytes).hexdigest(),
+        })
+        observed = datetime.fromisoformat(page['request_end_utc'].replace('Z', '+00:00'))
+        started = datetime.fromisoformat(page['request_start_utc'].replace('Z', '+00:00'))
+        jump = datetime.fromisoformat(candidate['jump_datetime'])
+        normalized = datetime.fromisoformat(normal['normalization_timestamp'])
+        if (any(value.utcoffset() is None for value in (started, observed, jump, normalized))
+                or not started <= observed <= normalized < jump
+                or page['status_code'] != 200
+                or page['requested_url'] != candidate['race_url']
+                or page['final_url'] != candidate['race_url']
+                or page['race_discovery_key'] != candidate['race_id']):
+            return False
+        canonical = extract_canonical_runner_set_from_html(
+            raw_path.read_text(), source_url=candidate['race_url'],
+            expected_race_number=int(candidate['race_number']),
+            extraction_timestamp=observed.isoformat())
+        alignment = normal['canonical_runner_alignment']
+        if canonical['canonical_runner_set_status'] != 'available':
+            return False
+        # Native API evidence may resolve the page's absent race ID. Preserve
+        # its recorded rejection or resolution; never manufacture an identity.
+        if canonical['native_identity_status'] == 'available':
+            if canonical['source_native_race_id'] != alignment['source_native_race_id']:
+                return False
+        elif canonical['native_identity_reasons'] != ['source_native_race_id_missing']:
+            return False
+        if (canonical['native_identity_status'] != 'available'
+                and alignment['native_identity_status'] == 'available'):
+            from scripts.capture_thedogs_market_history import validate_primary_native_identity_evidence
+            valid, _ = validate_primary_native_identity_evidence(
+                normal.get('native_identity_evidence'),
+                expected_race_url=candidate['race_url'],
+                expected_native_race_id=alignment['source_native_race_id'],
+                expected_active_runner_boxes=[(row['source_native_runner_id'], row['box_number'])
+                    for row in canonical['final_runner_participants']],
+                metadata_captured_at=normal['normalization_timestamp'])
+            if not valid:
+                return False
+        canonical.update({key: alignment[key] for key in (
+            'native_identity_status', 'native_identity_reasons', 'source_native_race_id')})
+        _, replay = align_csv_text_to_canonical_final_runner_set(
+            Path(result['raw_export_path']).read_text(), canonical,
+            source=normal['accepted_csv_path'])
+        return replay == alignment
+    except (KeyError, TypeError, ValueError, AttributeError, OSError):
+        return False
+
+
 def complete_unavailable_metadata_selection(report: Mapping[str, Any]) -> bool:
     """Classify completed exclusions for waiting only, never index publication."""
     try:
         rows = report["sidecar_metadata_coverage"]["races"]
         return (
             report.get("status") == "METADATA_COVERAGE_INCOMPLETE"
-            and report.get("accepted_csv_count") == report.get("selected_count")
             and len(rows) == len(report['selected_races']) == len(report['downloads'])
-            and all(row.get("native_identity_evidence_status") == "verified"
-                    or _completed_local_native_identity_rejection(candidate, download, row, report['upcoming_dir'])
-                    for candidate, download, row in zip(report['selected_races'], report['downloads'], rows))
+            and all(
+                (download.get('success') is False
+                 and _completed_field_quarantine(candidate, download['result'], report['upcoming_dir']))
+                or (download.get('success') is True and (
+                    row.get("native_identity_evidence_status") == "verified"
+                    or _completed_local_native_identity_rejection(
+                        candidate, download, row, report['upcoming_dir'])))
+                for candidate, download, row in zip(report['selected_races'], report['downloads'], rows))
             and _complete_empty_metadata_selection(report, allow_rejected_expert=True)
         )
     except (KeyError, TypeError, AttributeError):
@@ -1414,8 +1514,10 @@ def _complete_empty_metadata_selection(report: Mapping[str, Any], *, allow_rejec
                 return False
             if download.get("success") is True and result.get("success") is True:
                 continue
-            if download.get("success") is not False or not _complete_local_acquisition_rejection(
-                candidate, result, report.get("upcoming_dir")
+            if download.get("success") is not False or not (
+                _complete_local_acquisition_rejection(candidate, result, report.get("upcoming_dir"))
+                or (allow_rejected_expert and _completed_field_quarantine(
+                    candidate, result, report.get("upcoming_dir")))
             ):
                 return False
             local_quarantines.add(number)
