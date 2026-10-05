@@ -130,7 +130,9 @@ class BoundedReader:
             self.charge(before.st_size)
             raw=stream.read(limit+1)
             after=os.fstat(stream.fileno())
-        if (before != after or len(raw)!=before.st_size
+        def identity(value):
+            return (value.st_dev,value.st_ino,value.st_mode,value.st_size,value.st_mtime_ns,value.st_ctime_ns)
+        if (identity(before)!=identity(after) or identity(after)!=identity(path.stat()) or len(raw)!=before.st_size
                 or time.monotonic()-self.began>self.max_seconds):
             raise ValueError('controlled_input_changed_during_read')
         if expected is not None and hashlib.sha256(raw).hexdigest()!=expected:
