@@ -296,7 +296,7 @@ def _reviewed_publication_failure(selection, prior, halt, stop, review):
     output = Path(prior['output'])
     runtime = evidence/'shadow_autopilot_daemon_runtime'
     invocation = terminal.get('invocation_id', '')
-    state = checked(selection['baseline']['prior_owner_state'])
+    state = _checked_recovery_owner_state(selection['baseline']['prior_owner_state'])
     rows = [row for row in state['dispatches'] if row.get('invocation_id') == invocation]
     if (len(invocation) != 32 or any(c not in '0123456789abcdef' for c in invocation)
             or len(rows) != 1 or rows[0].get('lane') not in ('full','odds')
@@ -389,7 +389,7 @@ def _reviewed_publisher_overlap_failure(selection, prior, halt, stop, review):
             'overlap_directory_metadata', 'diagnosis', 'cleanup'))
     evidence = Path(prior['plan']['evidence_root'])
     runtime = evidence/'shadow_autopilot_daemon_runtime'
-    state = checked(selection['baseline']['prior_owner_state'])
+    state = _checked_recovery_owner_state(selection['baseline']['prior_owner_state'])
     dispatches = state['dispatches']
     pairs = []
     for service, life, lane, disposition, action, status, key in (
@@ -477,7 +477,136 @@ def _reviewed_publisher_overlap_failure(selection, prior, halt, stop, review):
     return None  # No retries or outage allowance are created by this correction.
 
 
-def _reviewed_refresh_failure(selection, prior, halt, stop):
+def _checked_recovery_owner_state(ref):
+    """A full day's dispatch journal is evidence, not a small authority file."""
+    if not isinstance(ref, dict) or set(ref) != {'path', 'sha256'}:
+        raise ValueError('persistent_recovery_owner_reference_invalid')
+    path = Path(ref['path'])
+    if (not path.is_absolute() or path.resolve() != path or not path.is_file()
+            or path.stat().st_size > 4 * 1024 * 1024):
+        raise ValueError('persistent_recovery_owner_reference_unsafe')
+    raw = path.read_bytes()
+    if len(raw) > 4 * 1024 * 1024 or hashlib.sha256(raw).hexdigest() != ref['sha256']:
+        raise ValueError('persistent_recovery_owner_changed')
+    return json.loads(raw)
+
+
+def _reviewed_native_identity_retention_gap(selection, prior, review, terminal, phase, report, now):
+    """A reviewed archival gap permits future work, never old publication."""
+    proof = checked(review['retention_gap_proof'])
+    diagnosis = checked(review['diagnosis'])
+    original_source = checked(selection['prior_configuration'])['source_commit']
+    publication = phase['current_race_index_publish']
+    runtime = Path(prior['plan']['evidence_root'])/'shadow_autopilot_daemon_runtime'
+    successor = selection['source_commit']
+    if (not isinstance(successor, str) or len(successor) != 40
+            or any(c not in '0123456789abcdef' for c in successor) or successor == original_source
+            or proof.get('schema_version') != 'persistent_native_identity_retention_gap_proof_v1'
+            or proof.get('source_commit') != selection['source_commit']
+            or proof.get('original_source_commit') != original_source
+            or proof.get('diagnosis') != review['diagnosis']
+            or proof.get('invocation_id') != terminal['invocation_id']
+            or proof.get('refresh_report') != review['refresh_report']
+            or proof.get('failed_phase_number') != 0
+            or proof.get('missing_odds_body') is not True
+            or proof.get('mismatch_worker_odds_api_requested') is not False
+            or proof.get('current_index_published') is not False
+            or proof.get('request_retries_added') != 0
+            or proof.get('old_failure_disposition') != 'FAILED_UNRESOLVED'
+            or diagnosis.get('schema_version') != 'native_identity_failure_diagnosis_v1'
+            or diagnosis.get('status') != 'CLASSIFIED_RETENTION_GAP_NO_SAFE_RECLASSIFICATION'
+            or diagnosis.get('source_commit') != original_source
+            or diagnosis.get('invocation_id') != terminal['invocation_id']
+            or diagnosis.get('dispatch_returncode') != 2
+            or diagnosis.get('refresh_status') != report['status']
+            or diagnosis.get('refresh_reason') != report['reason']
+            or diagnosis.get('refs', {}).get('refresh_report') != review['refresh_report']
+            or diagnosis.get('transport_evidence', {}).get('all_completed_status200') is not True
+            or diagnosis['transport_evidence'].get('odds_html_requested') is not True
+            or diagnosis['transport_evidence'].get('odds_api_requested') is not False
+            or publication.get('schema_version') != 'collector_current_race_index_publish_v2'
+            or publication.get('failure_detail') != {'reason':'refresh_not_accepted_success'}
+            or publication.get('run_id') != terminal['run_id']
+            or publication.get('index_path') != str(runtime/'manual_prediction_current_race_index.json')):
+        raise ValueError('persistent_recovery_identity_retention_review_unverified')
+    selected, downloads = report['selected_races'], report['downloads']
+    timings = proof['worker_request_timings']
+    if (not selected or len(selected) != report.get('selected_count')
+            or len(downloads) != len(selected) or len(timings) != len(selected)
+            or len({r['race_id'] for r in selected}) != len(selected)
+            or len({r['race_url'] for r in selected}) != len(selected)):
+        raise ValueError('persistent_recovery_identity_retention_selection_unverified')
+    affected, mismatch_refs, diagnosed = [], [], []
+    for index, (race, download, timing) in enumerate(zip(selected, downloads, timings)):
+        url = race['race_url']
+        result = download['result']
+        if (download.get('race_url') != url or timing.get('race_url') != url
+                or type(download.get('success')) is not bool
+                or result.get('success') is not download['success']
+                or result.get('source_http_status') not in (None, 200)):
+            raise ValueError('persistent_recovery_identity_retention_download_unverified')
+        ref = timing['request_timing']; path = Path(ref['path'])
+        expected_path = Path(report['upcoming_dir'])/'workers'/str(index)/'refresh-request-timing.jsonl'
+        if (set(ref) != {'path','sha256'} or path != expected_path
+                or path.resolve() != path or not path.is_file() or path.stat().st_size > 262144
+                or not path.is_relative_to(Path(phase['output_dir']))):
+            raise ValueError('persistent_recovery_identity_retention_transport_unsafe')
+        raw = path.read_bytes()
+        if len(raw) > 262144 or hashlib.sha256(raw).hexdigest() != ref['sha256']:
+            raise ValueError('persistent_recovery_identity_retention_transport_changed')
+        events = [json.loads(line) for line in raw.splitlines() if line.strip()]
+        requests = [row for row in events if row.get('kind') == 'request']
+        starts, ends = {}, {}
+        for event in requests:
+            key = (event.get('pid'), event.get('id'))
+            target = starts if event.get('event') == 'start' else ends
+            if (event.get('schema_version') != 'refresh_request_timing_v1'
+                    or event.get('event') not in ('start','end') or key in target
+                    or event.get('method') != 'GET' or event.get('error')
+                    or event.get('event') == 'end' and event.get('status_code') != 200):
+                raise ValueError('persistent_recovery_identity_retention_transport_failed')
+            target[key] = event
+        if (not starts or starts.keys() != ends.keys()
+                or any(starts[k]['endpoint'] != ends[k]['endpoint']
+                       or stamp(starts[k]['utc']) > stamp(ends[k]['utc']) for k in starts)):
+            raise ValueError('persistent_recovery_identity_retention_transport_incomplete')
+        if download['success']:
+            continue
+        normalization = result['normalization']
+        alignment = normalization['canonical_runner_alignment']
+        reasons = alignment.get('native_identity_reasons')
+        mismatch = reasons == ['native_identity_evidence_rejected:expected_native_runner_set_mismatch']
+        if (result.get('error') != 'Downloaded CSV failed canonical final runner-set alignment gate'
+                or normalization.get('normalization_failure_reason') !=
+                    'final_runner_set_not_aligned:canonical_participant_missing_from_source_csv'
+                or not (mismatch and alignment.get('native_identity_status') == 'unavailable'
+                        or reasons == [] and alignment.get('native_identity_status') == 'available')):
+            raise ValueError('persistent_recovery_identity_retention_shared_failure')
+        affected.append(dict(race_id=race['race_id'],race_url=url,jump=race['jump_datetime']))
+        diagnosed.append(dict(race_id=race['race_id'],jump=race['jump_datetime'],
+            native_identity_status=alignment['native_identity_status'],native_identity_reasons=reasons))
+        if stamp(race['jump_datetime']) >= now:
+            raise ValueError('persistent_recovery_identity_retention_race_not_past')
+        if mismatch:
+            odds_url = url.split('?')[0].rstrip('/')+'/odds'
+            allowed = {url.split('?')[0], odds_url, url.split('?')[0]+'/expert-form',
+                url.split('?')[0]+'/export-expert-form', 'https://api.open-meteo.com/v1/forecast'}
+            if (normalization.get('native_identity_evidence') is not None
+                    or normalization.get('native_identity_failure_evidence') is not None
+                    or any(row['endpoint'] not in allowed for row in requests)
+                    or sum(row['endpoint'] == odds_url for row in ends.values()) != 1
+                    or max(ends.values(), key=lambda row:stamp(row['utc']))['endpoint'] != odds_url):
+                raise ValueError('persistent_recovery_identity_retention_pre_api_unverified')
+            mismatch_refs.append(ref)
+    expected_diagnosed = [{k:row[k] for k in ('race_id','jump','native_identity_status','native_identity_reasons')}
+                          for row in diagnosis['failed_candidates']]
+    if (len(mismatch_refs) != 1 or diagnosis['refs'].get('request_timing') != mismatch_refs[0]
+            or affected != proof['affected_races'] or diagnosed != expected_diagnosed):
+        raise ValueError('persistent_recovery_identity_retention_affected_races_changed')
+    return None  # No outage retry is granted; old failure remains unresolved.
+
+
+def _reviewed_refresh_failure(selection, prior, halt, stop, now=None):
     """Authenticate explicit prospective repair; old refresh remains failed.
 
     A bare schedule-change error cannot prove that a race-local exclusion was
@@ -494,8 +623,10 @@ def _reviewed_refresh_failure(selection, prior, halt, stop):
         and review.get('disposition') == 'PROSPECTIVE_ALL_SELECTED_METADATA_EXCLUSION_CORRECTION')
     mixed = (review.get('schema_version') == 'persistent_reviewed_mixed_field_exclusion_v1'
         and review.get('disposition') == 'PROSPECTIVE_MIXED_FIELD_EXCLUSION_CORRECTION')
-    if ((not metadata and not mixed and review.get('schema_version') != 'persistent_reviewed_refresh_failure_v1')
-            or (not typed and not metadata and not mixed and review.get('disposition') != 'PROSPECTIVE_CORRECTION_OLD_FAILURE_UNRESOLVED')
+    retention_gap = (review.get('schema_version') == 'persistent_reviewed_native_identity_retention_gap_v1'
+        and review.get('disposition') == 'PROSPECTIVE_NATIVE_IDENTITY_RETENTION_CORRECTION')
+    if ((not metadata and not mixed and not retention_gap and review.get('schema_version') != 'persistent_reviewed_refresh_failure_v1')
+            or (not typed and not metadata and not mixed and not retention_gap and review.get('disposition') != 'PROSPECTIVE_CORRECTION_OLD_FAILURE_UNRESOLVED')
             or not review.get('authority_reference')
             or review.get('source_commit') != selection['source_commit']
             or review.get('cleanup') != selection['cleanup']
@@ -511,7 +642,7 @@ def _reviewed_refresh_failure(selection, prior, halt, stop):
     evidence = Path(prior['plan']['evidence_root'])
     runtime = evidence/'shadow_autopilot_daemon_runtime'
     cycle = Path(terminal['output_dir'])
-    state = checked(selection['baseline']['prior_owner_state'])
+    state = _checked_recovery_owner_state(selection['baseline']['prior_owner_state'])
     failed = [row for row in state['dispatches'] if row.get('native_disposition') == 'FAILED_OR_UNVERIFIED']
     full_metadata_failure = (metadata and terminal.get('status') == 'NEEDS_MORE_AUTOMATION'
         and len(failed) == 1 and failed[0].get('lane') == 'full'
@@ -554,10 +685,13 @@ def _reviewed_refresh_failure(selection, prior, halt, stop):
                 {('ACQUISITION_INCOMPLETE', 'unisolated_selected_race_acquisition_failure'),
                  ('METADATA_COVERAGE_INCOMPLETE', 'no_selected_race_csv_sidecars')}
                 if typed else {('ACQUISITION_INCOMPLETE', 'unisolated_selected_race_acquisition_failure')}))
-            or (not typed and not metadata and not mixed and not any(row.get('success') is False and row.get('result', {}).get('success') is False
+            or (not typed and not metadata and not mixed and not retention_gap and not any(row.get('success') is False and row.get('result', {}).get('success') is False
                 and row['result'].get('error') == 'discovery_canonical_jump_changed'
                 for row in report.get('downloads', [])))):
         raise ValueError('persistent_recovery_refresh_checkpoint_unverified')
+    if retention_gap:
+        return _reviewed_native_identity_retention_gap(selection, prior, review, terminal, phase, report,
+            now if now is not None else datetime.now(timezone.utc))
     if mixed:
         from scripts.refresh_prejump_upcoming import complete_mixed_field_exclusions
         publication = phase['current_race_index_publish']
@@ -694,7 +828,7 @@ def prepare_recovery(cfg, standing_ref, racing_date, now):
         raise ValueError('persistent_recovery_cleanup_unverified')
     inherited_outage = None
     if selection.get('reviewed_failure') is not None:
-        inherited_outage = _reviewed_refresh_failure(selection, prior, halt, stop)
+        inherited_outage = _reviewed_refresh_failure(selection, prior, halt, stop, now)
     elif (halt.get('reason') != 'operational_prediction_failed_preserved_consumption'
             or stop.get('reason') != 'PERSISTENT_OWNER_FAILURE'):
         raise ValueError('persistent_recovery_cleanup_unverified')
@@ -709,7 +843,7 @@ def prepare_recovery(cfg, standing_ref, racing_date, now):
         raise ValueError('persistent_recovery_closed_lease_changed')
     source = json.loads(Path(cfg['source_state']).read_bytes())
     ledger = json.loads((Path(cfg['campaign_root'])/'ledger.json').read_bytes())
-    checked(baseline['prior_owner_state'])
+    _checked_recovery_owner_state(baseline['prior_owner_state'])
     for reference_to_preserve in baseline['preserved_prediction_records']:
         checked(reference_to_preserve)
     if (live['source_grant_sha256'] != baseline['source_grant_sha256']

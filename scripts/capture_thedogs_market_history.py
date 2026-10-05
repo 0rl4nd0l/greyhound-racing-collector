@@ -709,6 +709,7 @@ def capture_native_identity_from_retained_race_page(
     expected_jump_utc: datetime,
     current_time: datetime,
     clock: Callable[[], datetime] = utc_now,
+    rejection_artifact_root: Path | None = None,
 ) -> dict[str, Any]:
     """Bind a retained primary race page to native identity in two requests."""
 
@@ -755,7 +756,12 @@ def capture_native_identity_from_retained_race_page(
         runner.native_runner_id for runner in source_runners if runner.active
     }
     if observed_active_ids != expected_ids:
-        raise CaptureError("expected_native_runner_set_mismatch")
+        error = CaptureError("expected_native_runner_set_mismatch")
+        if rejection_artifact_root is not None:
+            from utils.native_roster_rejection import persist_native_roster_rejection
+            error.native_roster_rejection = persist_native_roster_rejection(
+                rejection_artifact_root, race_page, odds, expected_boxes, jump_utc)
+        raise error
 
     api_url = _api_url(source_runners)
     api = timed_get(

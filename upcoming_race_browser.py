@@ -2446,6 +2446,7 @@ class UpcomingRaceBrowser:
                         expected_active_runner_boxes=expected_native_runner_boxes,
                         expected_jump_utc=expected_jump,
                         current_time=datetime.now(timezone.utc),
+                        rejection_artifact_root=Path(self.upcoming_dir),
                     )
                 except (NativeIdentityCaptureError, UnicodeError, ValueError) as exc:
                     if os.environ.get("GREYHOUND_LIVE_EXECUTION") and getattr(exc, "source_http_status", None) is not None:
@@ -2453,6 +2454,8 @@ class UpcomingRaceBrowser:
                     canonical_runner_set["native_identity_reasons"] = [
                         f"native_identity_evidence_rejected:{exc}"
                     ]
+                    if getattr(exc, "native_roster_rejection", None) is not None:
+                        race_info["native_roster_rejection"] = exc.native_roster_rejection
                 else:
                     canonical_runner_set.update(
                         {
@@ -2477,6 +2480,9 @@ class UpcomingRaceBrowser:
                 for key, value in normalization.items()
                 if key != "normalized_content"
             }
+
+            if race_info.get("native_roster_rejection") is not None:
+                normalization_metadata["native_roster_rejection"] = race_info["native_roster_rejection"]
 
             if normalization.get("normalization_status") != "verified":
                 reason = str(
