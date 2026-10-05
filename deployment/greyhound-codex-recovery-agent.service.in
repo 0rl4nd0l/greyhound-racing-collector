@@ -1,0 +1,16 @@
+[Unit]
+Description=Codex investigation and reviewed recovery of a stopped Greyhound collector
+After=network-online.target
+
+[Service]
+Type=exec
+WorkingDirectory=@SOURCE@
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PATH=/home/l4nd0/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=@PYTHON@ -B -m scripts.run_codex_recovery_watch --config @CONFIG@ run-incident
+RuntimeMaxSec=3600
+TimeoutStopSec=60
+KillMode=control-group
+Restart=no
+UMask=0077
+Nice=10
