@@ -1006,6 +1006,22 @@ def _replay_semantic_runner_shortfall(
     )
 
 
+def _verified_native_roster_rejection(candidate, normalization, root, primary_sha256=None):
+    from utils.native_roster_rejection import verify_native_roster_rejection
+    try:
+        raw = Path(normalization['raw_export_path'])
+        directory = Path(root)
+        worker = raw.parent.parent
+        if (directory.resolve() != directory or not directory.is_absolute()
+                or not worker.is_relative_to(directory) or worker.resolve() != worker):
+            return False
+        verify_native_roster_rejection(worker, normalization['native_roster_rejection'],
+            candidate, primary_sha256=primary_sha256)
+        return True
+    except (KeyError, TypeError, ValueError, AttributeError, OSError):
+        return False
+
+
 def _complete_local_runner_quarantine(
     candidate: Mapping[str, Any], result: Mapping[str, Any], root: Any,
     *, allow_identity_rejection: bool = False,
@@ -1092,7 +1108,10 @@ def _complete_local_runner_quarantine(
         and (alignment.get("native_identity_reasons")
              == ["native_identity_evidence_rejected:expected_active_runner_boxes_invalid"]
              or (allow_identity_rejection and alignment.get("native_identity_reasons")
-                 == ["native_identity_evidence_rejected:scratched_runner_has_active_price"]))
+                 == ["native_identity_evidence_rejected:scratched_runner_has_active_price"])
+             or (allow_identity_rejection and alignment.get("native_identity_reasons")
+                 == ["native_identity_evidence_rejected:expected_native_runner_set_mismatch"]
+                 and _verified_native_roster_rejection(candidate, normalization, root)))
     ):
         return False
     size = normalization.get("raw_content_length")
@@ -1294,6 +1313,12 @@ def _completed_local_native_identity_rejection(candidate, download, row, root):
         normal = result['normalization']
         alignment = normal['canonical_runner_alignment']
         reason = ['native_identity_evidence_rejected:scratched_runner_has_active_price']
+        roster_mismatch = alignment.get('native_identity_reasons') == [
+            'native_identity_evidence_rejected:expected_native_runner_set_mismatch']
+        if roster_mismatch:
+            if not _verified_native_roster_rejection(candidate, normal, root):
+                return False
+            reason = alignment['native_identity_reasons']
         directory = Path(root)
         csv = Path(row['csv_path'])
         sidecar = Path(row['sidecar_path'])
@@ -1329,6 +1354,9 @@ def _completed_local_native_identity_rejection(candidate, download, row, root):
                     or not path.is_file() or path.stat().st_size > 16*1024*1024):
                 return False
         page = verify_primary_race_page_evidence(artifact_root=csv.parent, reference=ref)
+        if roster_mismatch and not _verified_native_roster_rejection(
+                candidate, normal, root, page['body_sha256']):
+            return False
         observed = datetime.fromisoformat(page['request_end_utc'].replace('Z', '+00:00'))
         jump = datetime.fromisoformat(candidate['jump_datetime'])
         if (page.get('status_code') != 200 or page.get('requested_url') != candidate['race_url']
@@ -1399,6 +1427,10 @@ def _completed_field_quarantine(candidate, result, root):
             'body_sha256': receipt['body_sha256'],
             'receipt_sha256': hashlib.sha256(receipt_bytes).hexdigest(),
         })
+        if normal['canonical_runner_alignment'].get('native_identity_reasons') == [
+                'native_identity_evidence_rejected:expected_native_runner_set_mismatch']:
+            if not _verified_native_roster_rejection(candidate, normal, root, page['body_sha256']):
+                return False
         observed = datetime.fromisoformat(page['request_end_utc'].replace('Z', '+00:00'))
         started = datetime.fromisoformat(page['request_start_utc'].replace('Z', '+00:00'))
         jump = datetime.fromisoformat(candidate['jump_datetime'])
