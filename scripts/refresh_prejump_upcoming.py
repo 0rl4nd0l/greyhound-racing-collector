@@ -820,7 +820,8 @@ def current_index_metadata_selection(
 
 
 def _replay_final_runner_field(
-    candidate: Mapping[str, Any], result: Mapping[str, Any], content: str
+    candidate: Mapping[str, Any], result: Mapping[str, Any], content: str,
+    *, excluded_field: Mapping[str, Any] | None = None,
 ) -> bool:
     """Replay the identity-bound canonical field, without changing its eligibility."""
     from scripts.capture_thedogs_market_history import (
@@ -856,36 +857,48 @@ def _replay_final_runner_field(
         or normal["normalization_verification"].get("runner_set_status") != after["status"]
     ):
         return False
-    evidence = normal.get("native_identity_evidence")
-    valid, _ = validate_primary_native_identity_evidence(
-        evidence,
-        expected_race_url=candidate["race_url"],
-        expected_native_race_id=alignment["source_native_race_id"],
-        expected_active_runner_boxes=[
-            (row["source_native_runner_id"], row["box_number"]) for row in after["participants"]
-        ],
-        metadata_captured_at=normal["normalization_timestamp"],
-    )
-    if not valid:
-        return False
-    page = _stored_response(
-        evidence["race_page_http"],
-        field="race_page_http",
-        exact_url=candidate["race_url"],
-        content_type_prefix="text/html",
-        require_body=True,
-    )
-    canonical = extract_canonical_runner_set_from_html(
-        page.body.decode("utf-8"),
-        source_url=candidate["race_url"],
-        expected_race_number=identity["race_number"],
-        extraction_timestamp=page.request_end_utc.isoformat(),
-    )
-    canonical.update(
-        source_native_race_id=alignment["source_native_race_id"],
-        native_identity_status="available",
-        native_identity_reasons=[],
-    )
+    if excluded_field is None:
+        evidence = normal.get("native_identity_evidence")
+        valid, _ = validate_primary_native_identity_evidence(
+            evidence,
+            expected_race_url=candidate["race_url"],
+            expected_native_race_id=alignment["source_native_race_id"],
+            expected_active_runner_boxes=[
+                (row["source_native_runner_id"], row["box_number"]) for row in after["participants"]
+            ],
+            metadata_captured_at=normal["normalization_timestamp"],
+        )
+        if not valid:
+            return False
+        page = _stored_response(
+            evidence["race_page_http"],
+            field="race_page_http",
+            exact_url=candidate["race_url"],
+            content_type_prefix="text/html",
+            require_body=True,
+        )
+        canonical = extract_canonical_runner_set_from_html(
+            page.body.decode("utf-8"),
+            source_url=candidate["race_url"],
+            expected_race_number=identity["race_number"],
+            extraction_timestamp=page.request_end_utc.isoformat(),
+        )
+        canonical.update(
+            source_native_race_id=alignment["source_native_race_id"],
+            native_identity_status="available",
+            native_identity_reasons=[],
+        )
+    else:
+        # Only the complete quarantine proof supplies this field, after checking
+        # the retained primary page, pre-jump receipt and exact CSV alignment.
+        # It does not resolve native identity or authorize this race for inputs.
+        if (not _local_target_metadata_components(candidate, normal)
+                or alignment.get("native_identity_status") != "unavailable"
+                or alignment.get("source_native_race_id") is not None
+                or alignment.get("native_identity_reasons") != [
+                    "native_identity_evidence_rejected:scratched_runner_has_active_price"]):
+            return False
+        canonical = excluded_field
     aligned, replay_alignment = align_csv_text_to_canonical_final_runner_set(
         content, canonical, source=normal["accepted_csv_path"]
     )
@@ -946,7 +959,8 @@ def _local_target_metadata_components(
 
 
 def _replay_semantic_runner_shortfall(
-    candidate: Mapping[str, Any], result: Mapping[str, Any], raw: bytes
+    candidate: Mapping[str, Any], result: Mapping[str, Any], raw: bytes,
+    *, excluded_field: Mapping[str, Any] | None = None,
 ) -> bool:
     """Replay the export before accepting any local field or metadata rejection.
 
@@ -990,7 +1004,7 @@ def _replay_semantic_runner_shortfall(
     ):
         return False
     if normal["canonical_runner_alignment"].get("status") == "aligned":
-        return _replay_final_runner_field(candidate, result, content)
+        return _replay_final_runner_field(candidate, result, content, excluded_field=excluded_field)
     if replay["status"] == "COMPLETE":
         return (
             count >= MIN_COMPLETE_RUNNERS
@@ -1025,6 +1039,7 @@ def _verified_native_roster_rejection(candidate, normalization, root, primary_sh
 def _complete_local_runner_quarantine(
     candidate: Mapping[str, Any], result: Mapping[str, Any], root: Any,
     *, allow_identity_rejection: bool = False,
+    excluded_field: Mapping[str, Any] | None = None,
 ) -> bool:
     """Authenticate the observed local CSV/canonical-field mismatch; admit no rows."""
     normalization = result.get("normalization", {})
@@ -1141,7 +1156,7 @@ def _complete_local_runner_quarantine(
         if len(raw) != size or hashlib.sha256(raw).hexdigest() != expected:
             return False
     return not (shortfall or metadata_components) or _replay_semantic_runner_shortfall(
-        candidate, result, raw
+        candidate, result, raw, excluded_field=excluded_field
     )
 
 
@@ -1395,14 +1410,15 @@ def _completed_field_quarantine(candidate, result, root):
     )
 
     try:
-        if not _complete_local_runner_quarantine(
-                candidate, result, root, allow_identity_rejection=True):
-            return False
         normal = result['normalization']
-        if not _replay_semantic_runner_shortfall(
-                candidate, result, Path(result['raw_export_path']).read_bytes()):
+        raw_export = Path(result['raw_export_path'])
+        root_path = Path(root)
+        if (not root_path.is_absolute() or root_path.resolve() != root_path
+                or not raw_export.is_absolute() or not raw_export.is_relative_to(root_path)
+                or any(p.is_symlink() for p in (raw_export, *raw_export.parents))
+                or not raw_export.is_file() or raw_export.stat().st_size > 16 * 1024 * 1024):
             return False
-        worker = Path(result['raw_export_path']).parent.parent
+        worker = raw_export.parent.parent
         directory = worker / 'source_evidence' / 'primary_race_pages'
         if directory.resolve() != directory or not directory.is_dir():
             return False
@@ -1473,7 +1489,19 @@ def _completed_field_quarantine(candidate, result, root):
         _, replay = align_csv_text_to_canonical_final_runner_set(
             Path(result['raw_export_path']).read_text(), canonical,
             source=normal['accepted_csv_path'])
-        return replay == alignment
+        if replay != alignment:
+            return False
+        excluded_field = canonical if (
+            alignment.get('status') == 'aligned'
+            and alignment.get('native_identity_status') == 'unavailable'
+            and alignment.get('native_identity_reasons') == [
+                'native_identity_evidence_rejected:scratched_runner_has_active_price']
+            and _local_target_metadata_components(candidate, normal)
+        ) else None
+        return (_complete_local_runner_quarantine(candidate, result, root,
+                    allow_identity_rejection=True, excluded_field=excluded_field)
+                and _replay_semantic_runner_shortfall(candidate, result,
+                    Path(result['raw_export_path']).read_bytes(), excluded_field=excluded_field))
     except (KeyError, TypeError, ValueError, AttributeError, OSError):
         return False
 
