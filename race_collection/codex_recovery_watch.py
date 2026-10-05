@@ -317,7 +317,9 @@ def _exercise_events(path):
         turn_completed=any(row.get('type') == 'turn.completed' for row in events),
         command_completed=any(row.get('type') == 'item.completed'
             and row.get('item',{}).get('type') == 'command_execution'
-            and row['item'].get('exit_code') == 0 for row in events))
+            and row['item'].get('exit_code') == 0
+            and row['item'].get('aggregated_output','').strip() == 'CODEX_RECOVERY_EXERCISE_COMMAND_OK'
+            for row in events))
 
 
 def _recovered(cfg, observation):
@@ -377,7 +379,7 @@ def run_incident(cfg, host=None, *, exercise=False):
                         exercise_directory=str(directory))
                 answer = _read(directory/'last-message.txt',limit=4096).decode().strip()
                 events = _exercise_events(directory/'events.private.jsonl')
-                status = ('EXERCISE_COMPLETE' if code == 0 and answer == 'CODEX_RECOVERY_EXERCISE_OK'
+                status = ('EXERCISE_COMPLETE' if code == 0 and answer in ('CODEX_RECOVERY_EXERCISE_OK','CODEX_RECOVERY_EXERCISE_OK.')
                     and events['thread_started'] and events['turn_completed'] and events['command_completed'] else 'AGENT_FAILED')
                 return _status(directory,status,agent_exit_code=code,action_mode='read_only',
                     exercise_directory=str(directory),verified_events=events)

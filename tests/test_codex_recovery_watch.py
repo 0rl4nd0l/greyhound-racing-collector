@@ -34,7 +34,7 @@ class Host:
         self.agents.append(dict(mode=mode,prompt=prompt,working=working))
         if self.failure=='agent':raise OSError('sensitive failure must not be echoed')
         (directory/'last-message.txt').write_text('CODEX_RECOVERY_EXERCISE_OK')
-        events=[{'type':'thread.started'},{'type':'item.completed','item':{'type':'command_execution','exit_code':0}},{'type':'turn.completed'}]
+        events=[{'type':'thread.started'},{'type':'item.completed','item':{'type':'command_execution','exit_code':0,'aggregated_output':'CODEX_RECOVERY_EXERCISE_COMMAND_OK\n'}},{'type':'turn.completed'}]
         (directory/'events.private.jsonl').write_text('\n'.join(map(json.dumps,events)))
         if self.after:self.after(cfg)
         return self.exit_code
@@ -285,3 +285,21 @@ def test_rechecks_current_stop_and_hold_immediately_before_service_start(case,ch
     host.show=changing_show
     assert trigger(cfg,host)['status']=='SUPPRESSED'
     assert host.starts==0
+
+
+@pytest.mark.parametrize('answer,output,expected',[
+    ('CODEX_RECOVERY_EXERCISE_OK.','CODEX_RECOVERY_EXERCISE_COMMAND_OK\n','EXERCISE_COMPLETE'),
+    ('CODEX_RECOVERY_EXERCISE_OK','prefix CODEX_RECOVERY_EXERCISE_COMMAND_OK','AGENT_FAILED'),
+    ('CODEX_RECOVERY_EXERCISE_OK','CODEX_RECOVERY_EXERCISE_COMMAND_OK suffix','AGENT_FAILED'),
+    ('CODEX_RECOVERY_EXERCISE_OK extra','CODEX_RECOVERY_EXERCISE_COMMAND_OK','AGENT_FAILED')])
+def test_exercise_requires_exact_command_marker_and_optional_final_period(case,answer,output,expected):
+    cfg,host,package=case;original=host.agent
+    def agent(cfg,directory,prompt,mode,working):
+        result=original(cfg,directory,prompt,mode,working)
+        (directory/'last-message.txt').write_text(answer)
+        events=[{'type':'thread.started'},{'type':'turn.completed'},
+            {'type':'item.completed','item':{'type':'command_execution','exit_code':0,'aggregated_output':output}}]
+        (directory/'events.private.jsonl').write_text('\n'.join(map(json.dumps,events)))
+        return result
+    host.agent=agent
+    assert watch.run_incident(cfg,host,exercise=True)['status']==expected
