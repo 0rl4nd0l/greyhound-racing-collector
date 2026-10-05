@@ -99,9 +99,12 @@ The runner creates an exclusive claim before derivation. A local full-arm
 mismatch remains an explicit exclusion while unrelated members continue.
 Shared integrity, runtime, read-budget or deadline failures preserve the
 claim, already-created private artifacts and remaining member dispositions;
-they do not publish a successful inventory. Successful status is written
-only after all 82 dispositions and their private artifact references are
-durable. No previous claim, forecast, result quarantine, model or service is
+they do not publish a successful inventory. Only exact full-arm numerical mismatch is currently an allowlisted local
+exclusion; unknown and integrity categories stop the run. Expiry and wall/read
+bounds are checked after exclusions and before terminal publication. The
+inventory itself is labelled `DISPOSITIONS_RECORDED`, not completion. Successful
+`status.json` is written only after all 82 dispositions and their private
+artifact references are durable and the final deadline check passes. No previous claim, forecast, result quarantine, model or service is
 modified.
 
 Focused fabricated validation covers native producer/serializer replay, exact

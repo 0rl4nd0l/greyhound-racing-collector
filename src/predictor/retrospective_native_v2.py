@@ -20,6 +20,9 @@ from src.predictor.controlled_adjustment_pair import PARENT_MODEL_SHA256,PARENT_
 
 SCOPE_SHA256='f4a0464fdc11b80301fd542bd5ae4865c6a752dd5047fba3a0f54705077c5932'
 SERIALIZATION='EXACT_NATIVE_V2_CANONICAL_FULL_ROWS_NO_ROUNDING_OR_TOLERANCE'
+# Only a completed, authenticated full-arm numerical mismatch is isolated.
+# Shared integrity/runtime failures and unclassified errors stop the whole run.
+LOCAL_EXCLUSIONS=frozenset({'FULL_ARM_EXACT_REPLAY_MISMATCH'})
 ROOT=Path(__file__).resolve().parents[2]
 WORKER=ROOT/'scripts/derive_retrospective_native_v2_pairs.py'
 
@@ -259,6 +262,9 @@ def run(authority_path,authority_sha256):
         reader.charge(0);output.mkdir(mode=0o700,exist_ok=False)
         put(output/'claim.json',{'authority_sha256':authority_sha256,'membership_sha256':MEMBERSHIP_SHA256,
             'at':datetime.now(timezone.utc).isoformat()});claim=True
+        def check_deadline():
+            require(datetime.now(timezone.utc)<stamp(authority['expires_at']),'EXECUTION_AUTHORITY_EXPIRED')
+            reader.charge(0)
         cache={}
         for index,member in enumerate(members):
             require(datetime.now(timezone.utc)<stamp(authority['expires_at']),'EXECUTION_AUTHORITY_EXPIRED')
@@ -274,19 +280,23 @@ def run(authority_path,authority_sha256):
                 records.append({'race_id':member['race_id'],'status':'EXACT_FULL_ARM_VERIFIED_PAIR_DERIVED',
                     'artifact':{'path':str(path),'sha256':digest(pair)}})
             except QualificationFailure as exc:
-                if str(exc).startswith('EXECUTION_'):raise
+                check_deadline()
+                if str(exc) not in LOCAL_EXCLUSIONS:raise
                 records.append({'race_id':member['race_id'],'status':'EXCLUDED','reason':str(exc)})
             except (ValueError,KeyError,TypeError,OSError,subprocess.TimeoutExpired) as exc:
                 # Budget/path/hash failures are global integrity stops, not ordinary exclusions.
                 raise QualificationFailure('RETAINED_INPUT_OR_EXECUTION_FAILURE') from exc
-        summary={'schema_version':'retrospective_native_v2_derivation_inventory_v1','status':'COMPLETE',
+        check_deadline()
+        summary={'schema_version':'retrospective_native_v2_derivation_inventory_v1','status':'DISPOSITIONS_RECORDED',
             'membership_sha256':MEMBERSHIP_SHA256,'denominator':82,'records':records,
             'categories':dict(Counter(r.get('reason',r['status']) for r in records)),
             'guarded_evidence_read_bytes':reader.bytes,'guarded_evidence_read_operations':reader.files,
             'accounting_scope':'application evidence reads and precharged native verifier/producer passes; excludes interpreter imports and distribution census',
             'wall_seconds':time.monotonic()-began,'source_commit':commit,'authority_sha256':authority_sha256,
             'provider_requests':0,'official_result_reads':0,'performance_metrics':False}
+        check_deadline()
         put(output/'inventory.json',summary)
+        check_deadline()
         put(output/'status.json',{'status':'RETROSPECTIVE_NATIVE_V2_DERIVATION_COMPLETE','denominator':82,
             'categories':summary['categories'],'inventory_sha256':digest(summary)})
         print(json.dumps({'status':'RETROSPECTIVE_NATIVE_V2_DERIVATION_COMPLETE','denominator':82,

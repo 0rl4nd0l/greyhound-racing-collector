@@ -308,3 +308,54 @@ def test_loader_metadata_to_original_worker_to_exact_native_rows(tmp_path,monkey
         derived_at=values['derived_at'],worker_seconds=10)
     assert called==[(bundle.parent,entry)]
     assert pair['verified_original_full_rows_sha256']==values['result']['evidence']['prediction_output_sha256']
+
+
+@pytest.mark.parametrize('category', ['ORIGINAL_SCORER_CHANGED', 'ORIGINAL_PACKAGE_IDENTITY_CHANGED',
+    'WORKER_IMPORTED_SOURCE_CHANGED', 'UNCLASSIFIED_FAILURE'])
+def test_shared_source_failure_cannot_publish_complete(tmp_path, monkeypatch, category):
+    authority = execution(tmp_path, monkeypatch)
+    def changed(*args, **kwargs):
+        raise QualificationFailure(category)
+    monkeypatch.setattr(retro, "load_and_derive", changed)
+    ref = write(tmp_path/"authority.json", authority)
+    assert retro.run(Path(ref["path"]), ref["sha256"]) == 2
+    assert not (tmp_path/"new-output/inventory.json").exists()
+
+
+def test_final_local_exclusion_after_expiry_cannot_publish_complete(tmp_path, monkeypatch):
+    authority = execution(tmp_path, monkeypatch)
+    expired = retro.datetime.fromisoformat(authority["expires_at"]) + timedelta(seconds=1)
+    class Expired(retro.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return expired
+    def derive(member, *args, **kwargs):
+        if member["race_id"] == "Race81":
+            monkeypatch.setattr(retro, "datetime", Expired)
+            raise QualificationFailure("FULL_ARM_EXACT_REPLAY_MISMATCH")
+        return {"race_id": member["race_id"]}
+    monkeypatch.setattr(retro, "load_and_derive", derive)
+    ref = write(tmp_path/"authority.json", authority)
+    assert retro.run(Path(ref["path"]), ref["sha256"]) == 2
+    assert not (tmp_path/"new-output/inventory.json").exists()
+
+
+def test_expiry_during_inventory_write_cannot_publish_success_status(tmp_path, monkeypatch):
+    authority = execution(tmp_path, monkeypatch)
+    expired = retro.datetime.fromisoformat(authority['expires_at']) + timedelta(seconds=1)
+    class Expired(retro.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return expired
+    monkeypatch.setattr(retro, 'load_and_derive', lambda member, *args, **kw: {'race_id':member['race_id']})
+    original_put = retro.put
+    def put_then_expire(path, value):
+        original_put(path, value)
+        if path.name == 'inventory.json':
+            monkeypatch.setattr(retro, 'datetime', Expired)
+    monkeypatch.setattr(retro, 'put', put_then_expire)
+    ref = write(tmp_path/'authority.json', authority)
+    assert retro.run(Path(ref['path']), ref['sha256']) == 2
+    output = tmp_path/'new-output'
+    assert json.loads((output/'inventory.json').read_bytes())['status'] == 'DISPOSITIONS_RECORDED'
+    assert json.loads((output/'status.json').read_bytes())['status'] == 'FAILED_PRESERVED_DERIVATION_CLAIM'
