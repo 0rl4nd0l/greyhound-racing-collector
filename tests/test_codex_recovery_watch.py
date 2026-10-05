@@ -34,7 +34,10 @@ class Host:
         self.agents.append(dict(mode=mode,prompt=prompt,working=working))
         if self.failure=='agent':raise OSError('sensitive failure must not be echoed')
         (directory/'last-message.txt').write_text('CODEX_RECOVERY_EXERCISE_OK')
-        events=[{'type':'thread.started'},{'type':'item.completed','item':{'type':'command_execution','exit_code':0,'aggregated_output':'CODEX_RECOVERY_EXERCISE_COMMAND_OK\n'}},{'type':'turn.completed'}]
+        incident=json.loads((directory/'incident.json').read_bytes()) if (directory/'incident.json').exists() else {}
+        marker='CODEX_RECOVERY_CONTEXT_OK:'+hashlib.sha256((directory/'incident.json').read_bytes()).hexdigest() if mode=='exercise' else ''
+        command=watch._exercise_command(cfg,incident) if mode=='exercise' else ''
+        events=[{'type':'thread.started'},{'type':'item.completed','item':{'type':'command_execution','exit_code':0,'aggregated_output':marker,'command':command}},{'type':'turn.completed'}]
         (directory/'events.private.jsonl').write_text('\n'.join(map(json.dumps,events)))
         if self.after:self.after(cfg)
         return self.exit_code
@@ -48,10 +51,17 @@ def case(tmp_path):
         codex_binary='/usr/bin/true',systemctl_binary='/usr/bin/true',runbook_path=str(runbook),
         runbook_sha256=hashlib.sha256(runbook.read_bytes()).hexdigest(),exercise_working_directory=str(tmp_path),
         debounce_seconds=30,health_max_age_seconds=120,codex_model='gpt-6.1-sol',codex_reasoning_effort='high')
+    context=tmp_path/'agent';context.mkdir();(context/'AGENTS.md').write_text('Current Matt guidance')
+    cfg.update(agent_working_directory=str(context),agent_guidance_sha256=hashlib.sha256((context/'AGENTS.md').read_bytes()).hexdigest())
+    installed=tmp_path/'installed';(installed/'race_collection').mkdir(parents=True)
+    (installed/'AGENTS.md').write_text('Old source guidance remains evidence')
+    (installed/'race_collection/persistent_collector.py').write_text('# source identity')
+    config=tmp_path/'collector.json';config.write_text('{}')
+    host=Host();host.collector.update(WorkingDirectory=str(installed),ExecStart=f'/python collector --config {config}')
     root=Path(cfg['runtime_root']);package=root/'days/today/native'
     write(root/'current-day.json',{'output':str(package)})
     write(root/'health.json',{'status':'HOLD','output':str(package),'at':datetime.now(timezone.utc).isoformat()})
-    return cfg,Host(),package
+    return cfg,host,package
 
 
 def trigger(cfg,host):
@@ -208,7 +218,7 @@ def test_actual_command_is_pinned_readonly_or_repair_without_real_execution(case
     monkeypatch.setattr(subprocess,'run',fake)
     for mode in ('repair','diagnostic_only','exercise'):
         directory=Path(cfg['state_root'])/mode;directory.mkdir(parents=True)
-        assert watch.Host().agent(cfg,directory,'private prompt',mode,str(package))==0
+        assert watch.Host().agent(cfg,directory,'private prompt',mode,cfg['agent_working_directory'])==0
         command,kwargs=commands[-1]
         assert command[:3]==[cfg['codex_binary'],'exec','--ignore-user-config']
         assert command[command.index('--sandbox')+1]==('danger-full-access' if mode=='repair' else 'read-only')
@@ -297,8 +307,11 @@ def test_exercise_requires_exact_command_marker_and_optional_final_period(case,a
     def agent(cfg,directory,prompt,mode,working):
         result=original(cfg,directory,prompt,mode,working)
         (directory/'last-message.txt').write_text(answer)
+        incident=json.loads((directory/'incident.json').read_bytes())
+        marker='CODEX_RECOVERY_CONTEXT_OK:'+hashlib.sha256((directory/'incident.json').read_bytes()).hexdigest()
+        actual_output=output.replace('CODEX_RECOVERY_EXERCISE_COMMAND_OK',marker)
         events=[{'type':'thread.started'},{'type':'turn.completed'},
-            {'type':'item.completed','item':{'type':'command_execution','exit_code':0,'aggregated_output':output}}]
+            {'type':'item.completed','item':{'type':'command_execution','exit_code':0,'aggregated_output':actual_output,'command':watch._exercise_command(cfg,incident)}}]
         (directory/'events.private.jsonl').write_text('\n'.join(map(json.dumps,events)))
         return result
     host.agent=agent

@@ -6,6 +6,36 @@ requested that a Codex agent investigate a collector fault, safely fix it and
 resume collection promptly. This runbook records that standing authorization;
 do not request the same permission again for an in-scope repair.
 
+## Recovery workspace and retired workflow
+
+Launch from the dedicated watcher/recovery checkout using its hash-pinned current
+Matt Pocock `AGENTS.md`. `actual_source` is the collector's installed source and
+repair base, not the agent's working directory. Read that source as evidence and
+create an isolated repair worktree from its verified installed commit. Its legacy
+Tenn V2 hooks, task cards and guard instructions are dormant historical evidence;
+do not execute them or restore the retired global guard. A new Git worktree may
+inherit those old tracked files. Apply the current user-provided Matt guidance in
+the isolated repair workspace before launching tools there; preserve the original
+files in Git and retained evidence. This does not relax provider, ownership,
+privacy, allocation, review or installation controls below.
+
+Primary retirement evidence is the file
+`/mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound_racing_collector/.git/tenn-agent-registry`,
+SHA256 `c5f44360731fafb099e57f9f2ce9cc8acfcaaa642a17d9c2c01b356c9224981b`.
+It records retirement on August 18 and the archived registry location. The current
+user's project guidance replaces that retired control-plane workflow.
+
+`watcher_configuration_sha256` identifies watcher configuration semantics.
+`collector_configuration.sha256` separately identifies raw installed collector
+configuration bytes discovered from `ExecStart`. Old incident
+`configuration_sha256` is the former watcher digest; never compare it with the
+collector's raw file hash or rewrite old receipts.
+
+The read-only exercise must execute the exact generated context-verification
+command against its pinned incident/service snapshot, installed source metadata,
+collector configuration and current guidance. A printf marker alone is not a
+successful exercise. Exercise mode never authorizes recovery or provider access.
+
 ## Authority and ownership
 
 - The wrapper holds the recovery lock for your entire run. You are the sole live

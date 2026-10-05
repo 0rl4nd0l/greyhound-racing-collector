@@ -7,6 +7,8 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import shlex
+import sys
 import time
 import uuid
 
@@ -74,7 +76,7 @@ def load_config(path):
             or cfg.get('collector_unit') != COLLECTOR_UNIT
             or cfg.get('recovery_unit') != RECOVERY_UNIT):
         raise ValueError('watch_configuration_invalid')
-    for key in ('state_root', 'runtime_root', 'codex_binary', 'runbook_path', 'exercise_working_directory'):
+    for key in ('state_root', 'runtime_root', 'codex_binary', 'runbook_path', 'agent_working_directory'):
         value = Path(cfg[key])
         if not value.is_absolute() or value.resolve() != value:
             raise ValueError('watch_configuration_path_invalid')
@@ -96,9 +98,35 @@ def load_config(path):
     for key in ('codex_model','codex_reasoning_effort'):
         if key in cfg and (not isinstance(cfg[key], str) or not cfg[key] or len(cfg[key]) > 128):
             raise ValueError('watch_model_configuration_invalid')
-    if not Path(cfg['exercise_working_directory']).is_dir():
-        raise ValueError('watch_exercise_directory_missing')
+    _agent_context(cfg)
     return cfg
+
+
+def _agent_context(cfg):
+    """Pin the current workflow, not the failed release's dormant agent hooks."""
+    root = Path(cfg['agent_working_directory'])
+    if not root.is_absolute() or root.resolve() != root or not root.is_dir():
+        raise ValueError('watch_agent_directory_invalid')
+    if (root/'.codex/hooks.json').exists() or (root/'.codex/hooks.json').is_symlink():
+        raise ValueError('watch_agent_legacy_hook_present')
+    guidance = root/'AGENTS.md'
+    if hashlib.sha256(_read(guidance)).hexdigest() != cfg.get('agent_guidance_sha256'):
+        raise ValueError('watch_agent_guidance_changed')
+    return str(root)
+
+
+def _collector_configuration(service):
+    """Identify raw collector bytes separately from the watcher-config digest."""
+    try:
+        words = shlex.split(service['ExecStart'])
+        paths = [words[i+1] for i, word in enumerate(words[:-1]) if word == '--config']
+        paths += [word.split('=', 1)[1] for word in words if word.startswith('--config=')]
+        if len(paths) != 1:
+            return {'status':'UNRESOLVED'}
+        raw = _read(paths[0])
+        return {'status':'AVAILABLE', 'path':paths[0], 'sha256':hashlib.sha256(raw).hexdigest()}
+    except (OSError, ValueError):
+        return {'status':'UNRESOLVED'}
 
 
 @contextmanager
@@ -137,6 +165,8 @@ class Host:
             capture_output=True, timeout=15, check=True)
 
     def agent(self, cfg, directory, prompt, action_mode, working_directory):
+        if working_directory != _agent_context(cfg):
+            raise ValueError('watch_agent_working_directory_changed')
         sandbox = 'danger-full-access' if action_mode == 'repair' else 'read-only'
         command = [cfg['codex_binary'], 'exec', '--ignore-user-config', '--json', '--output-last-message',
             str(directory/'last-message.txt'), '--sandbox', sandbox, '-c', 'approval_policy="never"',
@@ -178,7 +208,9 @@ def snapshot(cfg, host):
         if candidate.is_absolute() and candidate.resolve() == candidate and candidate.is_relative_to(runtime):
             package = output
             halt = _document(candidate/'HALT.json', runtime)
-    return dict(at=_stamp(), service=host.show(cfg, COLLECTOR_UNIT), health=health,
+    service = host.show(cfg, COLLECTOR_UNIT)
+    return dict(at=_stamp(), service=service, health=health,
+                collector_configuration=_collector_configuration(service),
                 pointer=pointer, package=package, halt=halt)
 
 
@@ -218,9 +250,12 @@ def _suppressed(cfg):
 
 def _prompt(cfg, incident, *, exercise=False):
     if exercise:
-        return ('Read-only recovery watcher exercise. Run exactly one harmless shell command: '
-            "printf 'CODEX_RECOVERY_EXERCISE_COMMAND_OK\\n'. Do not run any other commands, read files, "
-            'access providers or services, or modify anything. Then reply exactly: CODEX_RECOVERY_EXERCISE_OK.\n')
+        command = _exercise_command(cfg, incident)
+        return ('Read-only recovery context exercise. Run exactly this local metadata verification command: '
+            +command+'\nIt reads the pinned exercise incident, service snapshot, actual installed source metadata, '
+            'collector configuration and current recovery guidance; it does not contact services/providers or write files. '
+            'Do not execute the installed legacy hooks or any other command. '
+            'Reply CODEX_RECOVERY_EXERCISE_OK only if the command succeeds; otherwise report failure.\n')
     raw = _read(cfg['runbook_path'], limit=524288)
     if hashlib.sha256(raw).hexdigest() != cfg['runbook_sha256']:
         raise ValueError('watch_runbook_changed')
@@ -279,7 +314,9 @@ def check(cfg, host=None, *, clock=time.time):
                 action_mode=mode, created_at=_stamp(), incident_directory=str(directory),
                 snapshot_path=str(directory/'snapshot.json'), prompt_path=str(directory/'prompt.txt'),
                 actual_source=observation['service']['WorkingDirectory'],
-                configuration_sha256=_configuration_sha(cfg),runbook_sha256=cfg['runbook_sha256'])
+                watcher_configuration_sha256=_configuration_sha(cfg),
+                collector_configuration=observation['collector_configuration'],
+                agent_working_directory=_agent_context(cfg),runbook_sha256=cfg['runbook_sha256'])
             _json(directory/'incident.json', incident, exclusive=True)
             _json(directory/'snapshot.json', observation, exclusive=True)
             prompt = _prompt(cfg, incident)
@@ -311,14 +348,42 @@ def _incident_directory(root, pointer):
     return directory
 
 
-def _exercise_events(path):
+def _exercise_command(cfg, incident):
+    return shlex.join([sys.executable, '-B', str(Path(__file__).resolve().parents[1]/'scripts/run_codex_recovery_watch.py'),
+        'verify-exercise-context', '--exercise-directory', incident['incident_directory'],
+        '--incident-sha256', hashlib.sha256(_read(Path(incident['incident_directory'])/'incident.json')).hexdigest()])
+
+
+def verify_exercise_context(directory, expected_sha256):
+    """Read-only command exercised by the real agent, with no service operations."""
+    directory = Path(directory)
+    raw = _read(directory/'incident.json')
+    if hashlib.sha256(raw).hexdigest() != expected_sha256:
+        raise ValueError('exercise_incident_changed')
+    incident = json.loads(raw)
+    if incident['action_mode'] != 'exercise' or incident['incident_directory'] != str(directory):
+        raise ValueError('exercise_scope_changed')
+    for ref in incident['context_files']:
+        if hashlib.sha256(_read(ref['path'], limit=2*1024*1024)).hexdigest() != ref['sha256']:
+            raise ValueError('exercise_context_changed')
+    if str(Path.cwd().resolve()) != _agent_context(incident['agent_context']):
+        raise ValueError('exercise_wrong_working_directory')
+    snapshot_ref = incident['snapshot']
+    observation = json.loads(_read(snapshot_ref['path']))
+    if observation['service']['WorkingDirectory'] != incident['actual_source']:
+        raise ValueError('exercise_installed_source_changed')
+    return 'CODEX_RECOVERY_CONTEXT_OK:'+expected_sha256
+
+
+def _exercise_events(path, expected_output, expected_command):
     events = [json.loads(line) for line in _read(path,limit=4*1024*1024).splitlines() if line.strip()]
     return dict(thread_started=any(row.get('type') == 'thread.started' for row in events),
         turn_completed=any(row.get('type') == 'turn.completed' for row in events),
         command_completed=any(row.get('type') == 'item.completed'
             and row.get('item',{}).get('type') == 'command_execution'
             and row['item'].get('exit_code') == 0
-            and row['item'].get('aggregated_output','').strip() == 'CODEX_RECOVERY_EXERCISE_COMMAND_OK'
+            and row['item'].get('aggregated_output','').strip() == expected_output
+            and expected_command in row['item'].get('command','')
             for row in events))
 
 
@@ -346,8 +411,26 @@ def run_incident(cfg, host=None, *, exercise=False):
             return {'status':'RECOVERY_BUSY'}
         if exercise:
             directory = root/'exercises'/uuid.uuid4().hex
+            observation = snapshot(cfg, host)
+            actual_source = Path(observation['service']['WorkingDirectory'])
+            # These are exact local inputs the previous printf-only exercise missed.
+            paths = [Path(_agent_context(cfg))/'AGENTS.md', Path(cfg['runbook_path']),
+                     actual_source/'AGENTS.md', actual_source/'race_collection/persistent_collector.py']
+            if observation['collector_configuration']['status'] != 'AVAILABLE':
+                raise ValueError('exercise_collector_configuration_unresolved')
+            paths.append(Path(observation['collector_configuration']['path']))
+            if (actual_source/'.codex/hooks.json').exists():
+                paths.append(actual_source/'.codex/hooks.json')
+            refs = [{'path':str(path),'sha256':hashlib.sha256(_read(path,limit=2*1024*1024)).hexdigest()} for path in paths]
+            _json(directory/'snapshot.json',observation,exclusive=True)
+            snapshot_ref = {'path':str(directory/'snapshot.json'),
+                'sha256':hashlib.sha256(_read(directory/'snapshot.json')).hexdigest()}
             incident = dict(schema_version='codex_recovery_incident_v1',action_mode='exercise',
-                actual_source=cfg['exercise_working_directory'],incident_directory=str(directory))
+                actual_source=str(actual_source),incident_directory=str(directory),snapshot=snapshot_ref,
+                watcher_configuration_sha256=_configuration_sha(cfg),
+                collector_configuration=observation['collector_configuration'],
+                agent_context={key:cfg[key] for key in ('agent_working_directory','agent_guidance_sha256')},
+                context_files=refs+[snapshot_ref])
             _json(directory/'incident.json',incident,exclusive=True)
             prompt = _prompt(cfg, incident, exercise=True)
             _private_prompt(directory/'prompt.txt', prompt)
@@ -364,21 +447,24 @@ def run_incident(cfg, host=None, *, exercise=False):
             if _mode(current) in ('RUNNING','EXPECTED_STOP'):
                 return _status(directory,'COLLECTOR_ALREADY_RUNNING')
             if (_identity(current) != incident['incident_id']
-                    or _configuration_sha(cfg) != incident['configuration_sha256']
+                    or _configuration_sha(cfg) != incident.get('watcher_configuration_sha256', incident.get('configuration_sha256'))
+                    or ('collector_configuration' in incident and current['collector_configuration'] != incident['collector_configuration'])
                     or _mode(current) != incident['action_mode']):
                 return _status(directory,'SUPPRESSED',reason='incident_or_configuration_changed')
             prompt = _read(directory/'prompt.txt',limit=1048576,root=directory).decode()
         _status(directory,'RUNNING',action_mode=incident['action_mode'])
         try:
             code = host.agent(cfg,directory,prompt,incident['action_mode'],
-                incident['actual_source'] or cfg['exercise_working_directory'])
+                _agent_context(cfg))
             _json(directory/'agent-exit.json',dict(at=_stamp(),exit_code=code),exclusive=True)
             if exercise:
                 if code != 0:
                     return _status(directory,'AGENT_FAILED',agent_exit_code=code,action_mode='read_only',
                         exercise_directory=str(directory))
                 answer = _read(directory/'last-message.txt',limit=4096).decode().strip()
-                events = _exercise_events(directory/'events.private.jsonl')
+                events = _exercise_events(directory/'events.private.jsonl',
+                    'CODEX_RECOVERY_CONTEXT_OK:'+hashlib.sha256(_read(directory/'incident.json')).hexdigest(),
+                    _exercise_command(cfg, incident))
                 status = ('EXERCISE_COMPLETE' if code == 0 and answer in ('CODEX_RECOVERY_EXERCISE_OK','CODEX_RECOVERY_EXERCISE_OK.')
                     and events['thread_started'] and events['turn_completed'] and events['command_completed'] else 'AGENT_FAILED')
                 return _status(directory,status,agent_exit_code=code,action_mode='read_only',
