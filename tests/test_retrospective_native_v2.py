@@ -38,7 +38,7 @@ def fixture(tmp_path):
         'sidecar_sha256':artifact['input_hashes']['sidecar_sha256'],
         'capture_sha256':artifact['input_hashes']['capture_artifact_sha256'],
         'production_feature_rows_sha256':artifact['input_hashes']['feature_rows_sha256'],
-        'captured_at':artifact['odds_capture_timestamp']}
+        'captured_at':artifact['odds_append_timestamp']}
     inputs={**identity,'runners':[{**r,'win_odds':prices[r['box_number']]} for r in roster]}
     by_box={r['box']:r for r in artifact['predictions']}
     production={'completed_at':(SCORE_TIME+timedelta(seconds=2)).isoformat(),
@@ -49,7 +49,8 @@ def fixture(tmp_path):
         'jump_at':artifact['jump_timestamp'],'bundle_manifest':{'path':'/sealed/bundle_manifest.json','sha256':'f'*64},
         'retained_input_manifest_sha256':'e'*64}
     replay={key:artifact[key] for key in ('race_id','jump_timestamp','model_sha256','manifest_sha256',
-        'effective_state_sha256','variants','predictions','input_hashes','feature_freeze_timestamp','odds_capture_timestamp')}
+        'effective_state_sha256','variants','predictions','input_hashes','feature_freeze_timestamp',
+        'odds_capture_timestamp','odds_append_timestamp')}
     return dict(member=member,result=result,request={'runners':roster},production=production,
         inputs=inputs,replay=replay,provenance={'source_commit':'c'*40},derived_at=SCORE_TIME+timedelta(days=1)),paths
 
@@ -66,6 +67,45 @@ def test_actual_native_serialization_and_same_parent_pair(tmp_path):
     native_order=sorted(values['request']['runners'],key=lambda r:r['source_native_runner_id'])
     expected={r['box']:r['half_probability'] for r in values['replay']['predictions']}
     assert pair['candidates'][1]['probabilities']==[expected[r['box_number']] for r in native_order]
+
+
+def test_distinct_fetch_and_append_retain_exact_native_timing(tmp_path):
+    values,_=fixture(tmp_path)
+    assert values['replay']['odds_capture_timestamp'] != values['inputs']['captured_at']
+    assert values['replay']['odds_append_timestamp'] == values['inputs']['captured_at']
+    pair=pair_from_replay(**values)
+    timing=pair['capture_timing']
+    assert timing['fetch_at']==values['replay']['odds_capture_timestamp']
+    assert timing['append_at']==values['inputs']['captured_at']
+    assert timing['freshness_basis']=='NATIVE_RECEIPT_APPEND_TIME'
+    assert timing['fetch_lead_seconds']>timing['append_lead_seconds']
+
+
+@pytest.mark.parametrize('change',['reversed','append_mismatch','append_after_anchor','stale_append'])
+def test_distinct_timing_rejects_changed_order_binding_or_freshness(tmp_path,change):
+    values,_=fixture(tmp_path)
+    if change=='reversed':
+        values['replay']['odds_capture_timestamp']=values['production']['completed_at']
+    elif change=='append_mismatch':
+        values['replay']['odds_append_timestamp']=values['replay']['odds_capture_timestamp']
+    elif change=='append_after_anchor':
+        late=(SCORE_TIME+timedelta(seconds=3)).isoformat()
+        values['replay']['odds_append_timestamp']=values['inputs']['captured_at']=late
+    else:
+        stale=(retro.stamp(values['member']['jump_at'])-timedelta(seconds=601)).isoformat()
+        values['replay']['odds_capture_timestamp']=stale
+        values['replay']['odds_append_timestamp']=values['inputs']['captured_at']=stale
+    with pytest.raises(QualificationFailure,match='HISTORICAL_TIMING_INVALID'):
+        pair_from_replay(**values)
+
+
+def test_native_freshness_window_stays_on_append_not_fetch(tmp_path):
+    values,_=fixture(tmp_path)
+    values['replay']['odds_capture_timestamp']=(retro.stamp(values['member']['jump_at'])
+        -timedelta(seconds=601)).isoformat()
+    pair=pair_from_replay(**values)
+    assert pair['capture_timing']['fetch_lead_seconds']==601
+    assert 120<=pair['capture_timing']['append_lead_seconds']<=600
 
 
 def test_one_ulp_full_probability_mismatch_is_not_tolerated(tmp_path):

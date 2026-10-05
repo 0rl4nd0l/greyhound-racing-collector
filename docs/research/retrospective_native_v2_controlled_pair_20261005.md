@@ -40,6 +40,17 @@ the existing native comparison verifier. It must remain after admission and
 all inputs, no later than the original durable completion, and before the
 native two-minute cutoff. It is never moved to make a replay pass.
 
+The unchanged original producer supplies two distinct capture timestamps:
+`odds_capture_timestamp` is fetch start; `odds_append_timestamp` is durable
+append. The latter must equal the authenticated receipt/comparison
+`captured_at`. Require recorded fetch <= append <= historical validation
+anchor, retaining the native 120–600 second pre-jump freshness window on
+append. Preserve both recorded times and their pre-jump leads; no equality
+between fetch and append, guessed time, or new fetch-age eligibility rule is
+introduced. The original producer selects and validates the unique accepted
+capture attempt, and its capture-content hash remains bound to the sealed
+input hash before a pair can be accepted.
+
 The unchanged original producer may construct an ephemeral scoring record
 internally. The worker discards its key, checksum and score timestamp. The new
 artifact carries the actual derivation invocation time and labels its anchor

@@ -54,9 +54,10 @@ def pair_from_replay(*,member,result,request,production,inputs,replay,provenance
         'REPLAY_RACE_IDENTITY_CHANGED')
     jump=stamp(member['jump_at']);sealed=stamp(member['original_published_complete_at'])
     anchor=stamp(production['completed_at']);capture=stamp(inputs['captured_at'])
+    fetch=stamp(replay['odds_capture_timestamp']);append=stamp(replay['odds_append_timestamp'])
     require(stamp(member['original_admitted_at'])<=anchor<=sealed<jump-timedelta(seconds=120)
         and stamp(replay['feature_freeze_timestamp'])<=anchor
-        and stamp(replay['odds_capture_timestamp'])==capture<=anchor
+        and fetch<=append==capture<=anchor
         and 120<=(jump-capture).total_seconds()<=600 and derived_at>=sealed,'HISTORICAL_TIMING_INVALID')
     roster=request['runners'];boxes={r['box_number']:r for r in roster}
     native_ids=[r['source_native_runner_id'] for r in roster]
@@ -96,6 +97,10 @@ def pair_from_replay(*,member,result,request,production,inputs,replay,provenance
         'race_id':member['race_id'],'derived_at':derived_at.isoformat(),'original_score_timestamp':None,
         'historical_validation_anchor':{'at':production['completed_at'],
             'role':'RECORDED_PRODUCTION_COMPLETION_NOT_ORIGINAL_SCORE_TIME'},
+        'capture_timing':{'fetch_at':replay['odds_capture_timestamp'],
+            'append_at':replay['odds_append_timestamp'],'freshness_basis':'NATIVE_RECEIPT_APPEND_TIME',
+            'fetch_lead_seconds':(jump-fetch).total_seconds(),
+            'append_lead_seconds':(jump-append).total_seconds()},
         'original_published_complete_at':member['original_published_complete_at'],
         'parent_model_sha256':PARENT_MODEL_SHA256,'parent_manifest_sha256':PARENT_MANIFEST_SHA256,
         'serialization_contract':SERIALIZATION,'verified_original_full_rows_sha256':digest(rebuilt),

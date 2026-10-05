@@ -48,7 +48,7 @@ def replay_worker():
         # Deliberately discard the temporary v3 record commitments and timestamp.
         response={key:artifact[key] for key in ('race_id','jump_timestamp','model_sha256',
             'manifest_sha256','effective_state_sha256','variants','predictions','input_hashes',
-            'feature_freeze_timestamp','odds_capture_timestamp')}
+            'feature_freeze_timestamp','odds_capture_timestamp','odds_append_timestamp')}
         response['worker_status']='REPLAYED_WITH_HISTORICAL_VALIDATION_ANCHOR'
         response['loaded_source_files']={}
         for module in tuple(sys.modules.values()):
