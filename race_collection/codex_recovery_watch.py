@@ -195,8 +195,7 @@ def _mode(observation):
     halt = observation.get('halt') or {}
     matching_halt = (halt.get('status') == 'AVAILABLE'
         and bool(halt['value'].get('reason')) and observation.get('package') == health.get('output'))
-    return 'repair' if (service['ActiveState'] == 'failed' or int(service['ExecMainStatus']) == 78
-                        or matching_halt) else 'diagnostic_only'
+    return 'repair' if (int(service['ExecMainStatus']) == 78 or matching_halt) else 'diagnostic_only'
 
 
 def _identity(observation):
@@ -288,6 +287,9 @@ def check(cfg, host=None, *, clock=time.time):
             _status(directory, 'SPAWN_REQUESTED', action_mode=mode)
             _json(root/'incident.json', {'incident_id':identity, 'directory':str(directory)})
         try:
+            latest = snapshot(cfg, host)
+            if (_suppressed(cfg) or _identity(latest) != identity or _mode(latest) != mode):
+                return _status(directory, 'SUPPRESSED', reason='incident_or_interlock_changed_before_service_start')
             host.start(cfg)
         except Exception as exc:
             return _status(directory, 'SPAWN_FAILED', failure_class=type(exc).__name__)

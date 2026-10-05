@@ -262,3 +262,26 @@ def test_second_worker_cannot_enter_while_recovery_lock_held(case):
     with watch._lock(Path(cfg['state_root'])/'recovery.lock'):
         assert watch.run_incident(cfg,host)['status']=='RECOVERY_BUSY'
     assert not host.agents
+
+
+def test_generic_failed_service_without_native_evidence_only_diagnoses(case):
+    cfg,host,package=case;host.collector['ExecMainStatus']='9'
+    assert trigger(cfg,host)['action_mode']=='diagnostic_only'
+
+
+@pytest.mark.parametrize('change',['resumed','hold','new_fault'])
+def test_rechecks_current_stop_and_hold_immediately_before_service_start(case,change):
+    cfg,host,package=case
+    original=host.show;reads=0
+    def changing_show(cfg,unit):
+        nonlocal reads
+        if unit==watch.COLLECTOR_UNIT:
+            reads+=1
+            if reads==3:
+                if change=='resumed':host.collector['ActiveState']='active'
+                elif change=='hold':write(Path(cfg['state_root'])/'operator-hold.json',{'reason':'maintenance'})
+                else:host.collector['InvocationID']='b'*32
+        return original(cfg,unit)
+    host.show=changing_show
+    assert trigger(cfg,host)['status']=='SUPPRESSED'
+    assert host.starts==0
