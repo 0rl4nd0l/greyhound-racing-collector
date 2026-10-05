@@ -1,0 +1,11 @@
+[Unit]
+Description=Detect stopped Greyhound collection faults for Codex investigation
+
+[Service]
+Type=oneshot
+WorkingDirectory=@SOURCE@
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=@PYTHON@ -B -m scripts.run_codex_recovery_watch --config @CONFIG@ check
+TimeoutStartSec=25
+UMask=0077
+Nice=10
