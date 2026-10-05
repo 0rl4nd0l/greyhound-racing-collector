@@ -1,0 +1,52 @@
+{
+  "max_cards": 1,
+  "max_runners": 1,
+  "schema_version": "retained_speed_history_scope_v1",
+  "surfaces": {
+    "expert": {
+      "body": {
+        "path": "/home/l4nd0/greyhound-recovery-20261003/persistent-operation/thedogs-live-form-inspection-20261004/expert.html",
+        "sha256": "be3a92645bf6264286d0ab241a0db2d69e1d359f64b2bae60c9f0879bc4de0ea"
+      },
+      "receipt": {
+        "path": "/home/l4nd0/greyhound-recovery-20261003/persistent-operation/thedogs-live-form-inspection-20261004/0-receipt.json",
+        "sha256": "342b97aa4e38ec587836647f558b32d3cc662a8bce252ae526bfffbb9c4c7e55"
+      },
+      "url": "https://www.thedogs.com.au/racing/temora/2026-10-04/8/hutcheon-pearce/expert-form"
+    },
+    "runner": {
+      "body": {
+        "path": "/home/l4nd0/greyhound-recovery-20261003/persistent-operation/thedogs-runner-inspection-20261004/runner.html",
+        "sha256": "a9750a21093058426ed316dd5c691dc27b59954e6ffd703ee624ac4badaa0364"
+      },
+      "receipt": {
+        "path": "/home/l4nd0/greyhound-recovery-20261003/persistent-operation/thedogs-runner-inspection-20261004/0-receipt.json",
+        "sha256": "d40317ddeef6544e1319b157edfe559f91c979f3cb59191a3dcf726c3882920e"
+      },
+      "url": "https://www.thedogs.com.au/dogs/runner/7625289"
+    },
+    "runner_expert": {
+      "body": {
+        "path": "/home/l4nd0/greyhound-recovery-20261003/persistent-operation/thedogs-runner-inspection-20261004/runner_expert.html",
+        "sha256": "6ecbee5c0a9392dad1df10619fe7074169ba2fa348b30d1f376a3474ea4ae440"
+      },
+      "receipt": {
+        "path": "/home/l4nd0/greyhound-recovery-20261003/persistent-operation/thedogs-runner-inspection-20261004/1-receipt.json",
+        "sha256": "4db645bd3a96e637075321f1dcd40fa325a0ae149fd386d52d93803958a153db"
+      },
+      "url": "https://www.thedogs.com.au/dogs/runner/7625289/expert-form"
+    },
+    "standard": {
+      "body": {
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-persistent-engineering-20261003-02/runtime/days/2026-10-04/recoveries/a68bf1b688775f484a5515c8c1e468e0989107420eb9aeb9cf58e82892a0925b/native-recovery-2026-10-04-a68bf1b68877/collector/evidence/shadow_autopilot_v1_20261004T202539+1100_odds_capture_phase_0/odds_capture_refreshed_upcoming/workers/3/source_evidence/primary_race_pages/3755a5fa7698a63d43a3f2372cec4b73ae1000808cd141e41dc97afd2360241a.race-page.html",
+        "sha256": "3755a5fa7698a63d43a3f2372cec4b73ae1000808cd141e41dc97afd2360241a"
+      },
+      "receipt": {
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-persistent-engineering-20261003-02/runtime/days/2026-10-04/recoveries/a68bf1b688775f484a5515c8c1e468e0989107420eb9aeb9cf58e82892a0925b/native-recovery-2026-10-04-a68bf1b68877/collector/evidence/shadow_autopilot_v1_20261004T202539+1100_odds_capture_phase_0/odds_capture_refreshed_upcoming/workers/3/source_evidence/primary_race_pages/c1a510c4fbc9db9eb63c9fa159810fe84776d08b5c2a08ef086c15a7707c8676.race-page.receipt.json",
+        "sha256": "48983dab583e4c3de56f7acc6616f0fb2bf24fa58f00fd62285fd953e8d5519b"
+      },
+      "url": "https://www.thedogs.com.au/racing/temora/2026-10-04/8/hutcheon-pearce?trial=false"
+    }
+  },
+  "target_jump": "2026-10-04T20:42:00+11:00"
+}
