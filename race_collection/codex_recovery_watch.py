@@ -375,6 +375,20 @@ def verify_exercise_context(directory, expected_sha256):
     return 'CODEX_RECOVERY_CONTEXT_OK:'+expected_sha256
 
 
+def _exact_exercise_command(actual, expected):
+    """Accept the exact argv or one explicit Codex shell wrapper, never a substring."""
+    if not isinstance(actual, str):
+        return False
+    try:
+        words = shlex.split(actual)
+        if actual == expected:
+            return True
+        return (len(words) == 3 and words[0] in ('/bin/bash', '/usr/bin/bash', '/bin/sh', '/usr/bin/sh')
+            and words[1] in ('-lc', '-c') and words[2] == expected)
+    except ValueError:
+        return False
+
+
 def _exercise_events(path, expected_output, expected_command):
     events = [json.loads(line) for line in _read(path,limit=4*1024*1024).splitlines() if line.strip()]
     return dict(thread_started=any(row.get('type') == 'thread.started' for row in events),
@@ -383,7 +397,7 @@ def _exercise_events(path, expected_output, expected_command):
             and row.get('item',{}).get('type') == 'command_execution'
             and row['item'].get('exit_code') == 0
             and row['item'].get('aggregated_output','').strip() == expected_output
-            and expected_command in row['item'].get('command','')
+            and _exact_exercise_command(row['item'].get('command'), expected_command)
             for row in events))
 
 

@@ -105,3 +105,34 @@ def test_printf_marker_without_context_command_is_not_an_exercise(case):
         return rc
     host.agent = fake
     assert watch.run_incident(cfg, host, exercise=True)['status'] == 'AGENT_FAILED'
+
+
+@pytest.mark.parametrize('wrapper', [None, '/bin/bash', '/bin/sh'])
+def test_exact_exercise_command_accepts_direct_or_single_shell(wrapper):
+    import shlex
+    expected = '/python -B /watch/check.py verify-exercise-context --incident-sha256 abc'
+    actual = expected if wrapper is None else shlex.join([wrapper, '-lc', expected])
+    assert watch._exact_exercise_command(actual, expected)
+
+
+def test_exercise_command_mentioned_after_printf_does_not_prove_execution(case):
+    import shlex
+    cfg, host, package = case
+    original = host.agent
+    def fake(cfg, directory, prompt, mode, working):
+        rc = original(cfg, directory, prompt, mode, working)
+        p = directory/'events.private.jsonl'
+        events = [json.loads(line) for line in p.read_text().splitlines()]
+        item = events[1]['item']
+        item['command'] = 'printf ' + shlex.quote(item['aggregated_output']) + '; : ' + shlex.quote(item['command'])
+        p.write_text('\n'.join(map(json.dumps, events)))
+        return rc
+    host.agent = fake
+    assert watch.run_incident(cfg, host, exercise=True)['status'] == 'AGENT_FAILED'
+
+
+@pytest.mark.parametrize('suffix', ['; true', ' && true', ' # claimed execution'])
+def test_shell_exercise_rejects_extra_statements(suffix):
+    import shlex
+    expected = '/python -B /watch/check.py verify-exercise-context'
+    assert not watch._exact_exercise_command(shlex.join(['/bin/bash', '-lc', expected+suffix]), expected)
