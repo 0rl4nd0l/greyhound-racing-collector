@@ -792,9 +792,20 @@ def capture_native_identity_from_retained_race_page(
         raise CaptureError("odds_api_json_invalid") from exc
     if not isinstance(api_payload, Mapping):
         raise CaptureError("odds_api_json_invalid")
-    rows, provider, native_race_id = normalize_api_snapshot(
-        api_payload, source_runners
-    )
+    try:
+        rows, provider, native_race_id = normalize_api_snapshot(
+            api_payload, source_runners
+        )
+    except CaptureError as error:
+        if str(error) == "scratched_runner_has_active_price" and rejection_artifact_root is not None:
+            from utils.native_price_rejection import persist_native_price_rejection
+            try:
+                error.native_price_rejection = persist_native_price_rejection(
+                    rejection_artifact_root, race_page, odds, api, expected_boxes, jump_utc)
+            except (OSError, ValueError):
+                # Diagnostic retention cannot replace the original identity rejection.
+                error.native_price_rejection_retention_status = "FAILED_NO_REJECTION_EVIDENCE"
+        raise
     observed_boxes = {
         row["native_runner_id"]: row["effective_box"]
         for row in rows

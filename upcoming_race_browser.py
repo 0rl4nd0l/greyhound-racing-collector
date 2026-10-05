@@ -2456,6 +2456,10 @@ class UpcomingRaceBrowser:
                     ]
                     if getattr(exc, "native_roster_rejection", None) is not None:
                         race_info["native_roster_rejection"] = exc.native_roster_rejection
+                    if getattr(exc, "native_price_rejection", None) is not None:
+                        race_info["native_price_rejection"] = exc.native_price_rejection
+                    if getattr(exc, "native_price_rejection_retention_status", None) is not None:
+                        race_info["native_price_rejection_retention_status"] = exc.native_price_rejection_retention_status
                 else:
                     canonical_runner_set.update(
                         {
@@ -2483,6 +2487,9 @@ class UpcomingRaceBrowser:
 
             if race_info.get("native_roster_rejection") is not None:
                 normalization_metadata["native_roster_rejection"] = race_info["native_roster_rejection"]
+            for evidence_key in ("native_price_rejection", "native_price_rejection_retention_status"):
+                if race_info.get(evidence_key) is not None:
+                    normalization_metadata[evidence_key] = race_info[evidence_key]
 
             if normalization.get("normalization_status") != "verified":
                 reason = str(
