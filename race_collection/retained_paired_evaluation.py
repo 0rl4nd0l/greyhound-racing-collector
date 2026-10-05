@@ -34,7 +34,8 @@ def require(condition, reason):
 
 
 def digest(value):
-    return hashlib.sha256(observer.canonical(value)).hexdigest()
+    """Exact native-pair producer contract; baseline canonical bytes stay unchanged."""
+    return hashlib.sha256(observer.canonical(value)+b'\n').hexdigest()
 
 
 def implementation_pins():

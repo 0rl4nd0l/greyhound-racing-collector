@@ -10,6 +10,27 @@ import pytest
 from race_collection import retained_paired_evaluation as p
 
 
+def producer_digest(value):
+    # Independent exact contract from controlled_retained_inputs.canonical:
+    # the producer appends one newline before every digest, unlike baseline JSON.
+    data = (json.dumps(value, sort_keys=True, separators=(',', ':'), allow_nan=False)+'\n').encode()
+    return hashlib.sha256(data).hexdigest()
+
+
+def test_native_pair_digest_matches_independent_producer_contract():
+    value = {'fixture': [1.0, 0.5]}
+    assert p.digest(value) == producer_digest(value)
+    assert p.digest(value) != hashlib.sha256(p.observer.canonical(value)).hexdigest()
+
+
+def test_no_newline_pair_digest_remains_rejected():
+    pair, member, inputs, production = fixture_pair()
+    unsigned = {k: v for k, v in pair.items() if k != 'derivation_sha256'}
+    pair['derivation_sha256'] = hashlib.sha256(p.observer.canonical(unsigned)).hexdigest()
+    with pytest.raises(ValueError, match='paired_artifact_invalid'):
+        p.align_pair(pair, member, inputs, production)
+
+
 def fixture_pair():
     member = {'race_id': 'synthetic', 'jump_at': '2026-10-01T20:00:00+10:00',
         'original_published_complete_at': '2026-10-01T19:54:20+10:00',
@@ -24,7 +45,7 @@ def fixture_pair():
     common = {'membership_sha256': p.MEMBERSHIP_SHA, 'bundle_manifest': member['bundle_manifest'],
         'retained_input_manifest_sha256': 'c'*64, 'input_hashes': {'form_csv_sha256': '1'*64,
         'sidecar_sha256': '2'*64, 'capture_artifact_sha256': '3'*64, 'feature_rows_sha256': '4'*64},
-        'native_roster_sha256': p.digest(roster), 'parent_effective_state_sha256': 'd'*64, 'provenance': {'fixture': True}}
+        'native_roster_sha256': producer_digest(roster), 'parent_effective_state_sha256': 'd'*64, 'provenance': {'fixture': True}}
     pair = {'schema_version': 'retrospective_native_v2_controlled_pair_v1',
         'status': 'RETROSPECTIVE_COMPUTATION_NOT_ORIGINAL_PREJUMP_OR_SCIENTIFIC', 'race_id': 'synthetic',
         'derived_at': '2026-10-05T20:00:00+11:00', 'original_score_timestamp': None,
@@ -34,8 +55,8 @@ def fixture_pair():
         'original_published_complete_at': member['original_published_complete_at'],
         'parent_model_sha256': p.MODEL_SHA, 'parent_manifest_sha256': p.MODEL_MANIFEST_SHA,
         'serialization_contract': 'EXACT_NATIVE_V2_CANONICAL_FULL_ROWS_NO_ROUNDING_OR_TOLERANCE',
-        'common_inputs': common, 'common_input_sha256': p.digest(common), 'native_runner_ids': ['a', 'z'],
-        'candidates': [{'candidate_id': arm, 'strength': strength, 'common_input_sha256': p.digest(common), 'probabilities': values}
+        'common_inputs': common, 'common_input_sha256': producer_digest(common), 'native_runner_ids': ['a', 'z'],
+        'candidates': [{'candidate_id': arm, 'strength': strength, 'common_input_sha256': producer_digest(common), 'probabilities': values}
             for arm, strength, values in [(p.ARMS[0], 1., [.2, .8]), (p.ARMS[1], .5, [.35, .65])]],
         **{k: False for k in ('training', 'performance_evaluation', 'outcomes_present', 'original_forecasts_modified', 'scientific_membership_created')}}
     seal(pair)
@@ -43,7 +64,7 @@ def fixture_pair():
 
 
 def seal(pair):
-    pair['derivation_sha256'] = p.digest({k: v for k, v in pair.items() if k != 'derivation_sha256'})
+    pair['derivation_sha256'] = producer_digest({k: v for k, v in pair.items() if k != 'derivation_sha256'})
 
 
 def test_native_id_permutation_and_exact_full_arm():
@@ -178,7 +199,7 @@ def execution_case(tmp_path, monkeypatch):
         br = put(base/'bundle_manifest.json', {'files': {'comparison/inputs.json': {'sha256': ir['sha256']}}})
         member['bundle_manifest'] = br; member['original_forecasts'] = {'production': pr}
         pair['common_inputs']['bundle_manifest'] = br
-        pair['common_input_sha256'] = p.digest(pair['common_inputs'])
+        pair['common_input_sha256'] = producer_digest(pair['common_inputs'])
         for c in pair['candidates']: c['common_input_sha256'] = pair['common_input_sha256']
         seal(pair)
         members.append(member)
