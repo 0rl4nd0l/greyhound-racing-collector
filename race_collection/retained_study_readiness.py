@@ -18,6 +18,7 @@ ALLOWED_SOURCE_CHANGES={
     'race_collection/retained_study_readiness.py','race_collection/scientific_request_amendment.py',
     'race_collection/freshness_campaign.py','utils/sportsbet_access.py',
     'race_collection/retained_study_observer.py','scripts/run_retained_study_observer.py',
+    'race_collection/retained_study_reservations.py',
 }
 
 
@@ -52,7 +53,7 @@ def validate_amendment(cfg,now):
             or user['protected_outcomes_decoded'] is not False
             or not stamp(user['recorded_at'])<=issued<=now or issued>=effective):
         raise ValueError('study_amendment_invalid')
-    allowed={'source_commit','slots','source_operations_per_session','max_source_operations','study_amendment','retained_study_protocol'}
+    allowed={'source_commit','slots','source_operations_per_session','max_source_operations','study_amendment','retained_study_protocol','development_reservations'}
     if {k:v for k,v in old.items() if k not in allowed}!={k:v for k,v in cfg.items() if k not in allowed}:
         raise ValueError('study_immutable_configuration_changed')
     historical=[(i+1,s) for i,s in enumerate(old['slots']) if stamp(s)<effective]
