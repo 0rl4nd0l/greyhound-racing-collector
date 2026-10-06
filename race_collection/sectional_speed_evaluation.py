@@ -246,12 +246,20 @@ def _report(rows):
         'uncertainty': {key: _uncertainty(rows, key) for key in ('baseline', 'market')}}
 
 
-def evaluate_experiment(records, protocol):
+def evaluate_experiment(records, protocol, *, progress_sink=None):
     """Fit one finite grid, validate once, evaluate once; retain every member.
 
 No supported-only selection enters fitting or the principal comparison. A
 quarantined label must be absent, not merely ignored after loading its value.
 """
+    # The orchestrator supplies a durable private sink. Start events precede
+    # each consumed fit/prediction; completed events preserve their values even
+    # when a later trial, report or independent oracle fails.
+    def emit(kind, **payload):
+        if progress_sink is not None:
+            progress_sink({'kind': kind, **payload})
+
+    emit('INPUT_VALIDATION_STARTED')
     _validate(records, protocol)
     ordered = sorted(records, key=lambda r: (r['race_date'], r['cutoff'], r['race_id']))
     eligible = [r for r in ordered if r['label_status'] in ELIGIBLE]
@@ -265,9 +273,11 @@ quarantined label must be absent, not merely ignored after loading its value.
         'supported_runner_appearances': sum(sum(r['speed_supported']) for r in records),
         'eligible_races_with_speed': sum(any(r['speed_supported']) for r in eligible),
         'eligible_races_with_exact_baseline_fallback': sum(not any(r['speed_supported']) for r in eligible),
-        'baseline_reproduced_races': len(records), 'market_reproduced_races': len(records),
-        'maximum_baseline_reproduction_absolute_error': max(abs(a - b) for row in records
+        'supplied_baseline_vectors_checked_races': len(records), 'market_reproduced_races': len(records),
+        'maximum_supplied_baseline_vector_absolute_error': max(abs(a - b) for row in records
             for a, b in zip(row['stored_baseline_probabilities'], row['reproduced_baseline_probabilities']))}
+    emit('INPUT_VALIDATED', accounting=accounting,
+         eligible_race_ids=[r['race_id'] for r in eligible])
     base = {'schema_version': 'sectional_speed_evaluation_v1', 'policy': POLICY,
         'protocol_sha256': _hash(protocol), 'input_packet_sha256': _hash(records),
         'accounting': accounting, 'recommendation': 'RETAIN_AS_EXPLORATORY',
@@ -280,42 +290,63 @@ quarantined label must be absent, not merely ignored after loading its value.
     if evaluation_days < 10:
         base['caveats'].append('FEWER_THAN_TEN_EVALUATION_DATES_LIMIT_CLUSTER_UNCERTAINTY')
     if not all(partitions.values()):
+        emit('EVALUATION_BLOCKED', reason='EMPTY_CHRONOLOGICAL_SPLIT', accounting=accounting)
         return {**base, 'status': 'BLOCKED_EMPTY_CHRONOLOGICAL_SPLIT', 'fit_trials': [],
             'records': [{'race_id': r['race_id'], 'race_date': r['race_date'], 'label_status': r['label_status']}
                         for r in ordered], 'selected_beta': None}
     def score(rows, beta):
         return _mean([_losses(adjusted_probabilities(r['stored_baseline_probabilities'], r['speed_estimates'],
             r['speed_supported'], beta), r['outcome'])['log_loss'] for r in rows])
-    trials = [{'beta': beta, 'training_log_loss': score(partitions['training'], beta),
-               'training_race_ids': [r['race_id'] for r in partitions['training']]} for beta in BETAS]
+    trials = []
+    for beta in BETAS:
+        training_ids = [r['race_id'] for r in partitions['training']]
+        emit('FIT_TRIAL_STARTED', beta=beta, training_race_ids=training_ids)
+        trial = {'beta': beta, 'training_log_loss': score(partitions['training'], beta),
+                 'training_race_ids': training_ids}
+        emit('FIT_TRIAL_COMPLETED', trial=trial)
+        trials.append(trial)
     trained = min(trials, key=lambda t: (t['training_log_loss'], t['beta']))['beta']
+    emit('TRAINING_SELECTION_COMPLETED', trained_beta=trained)
+    validation_ids = [r['race_id'] for r in partitions['validation']]
+    emit('VALIDATION_STARTED', trained_beta=trained, validation_race_ids=validation_ids)
     validation_baseline = score(partitions['validation'], 0.0)
+    emit('VALIDATION_BASELINE_SCORED', beta=0.0, log_loss=validation_baseline)
     validation_candidate = score(partitions['validation'], trained)
+    emit('VALIDATION_CANDIDATE_SCORED', beta=trained, log_loss=validation_candidate)
     accepted = trained != 0 and validation_candidate < validation_baseline
     selected = trained if accepted else 0.0
+    validation = {'baseline_log_loss': validation_baseline, 'trained_candidate_log_loss': validation_candidate,
+        'accepted_trained_candidate': accepted, 'validation_race_ids': validation_ids}
+    emit('VALIDATION_COMPLETED', selected_beta=selected, validation=validation)
     predictions = []
     for row in ordered:
+        emit('PREDICTION_STARTED', race_id=row['race_id'], coefficient=selected)
         probabilities = {'market': normalized_market(row['market_odds']),
             'baseline': list(row['stored_baseline_probabilities']),
             'baseline_speed': adjusted_probabilities(row['stored_baseline_probabilities'],
                 row['speed_estimates'], row['speed_supported'], selected)}
-        predictions.append({**row, 'split': next(role for role, days in splits.items() if row['race_date'] in days),
+        prediction = {**row, 'split': next(role for role, days in splits.items() if row['race_date'] in days),
             'probabilities': probabilities, 'coefficient': selected,
             'direct_logit_adjustments': [selected * v if supported else 0.0
                 for v, supported in zip(row['speed_estimates'], row['speed_supported'])],
             'losses': {method: _losses(p, row['outcome']) for method, p in probabilities.items()}
-                      if row['label_status'] in ELIGIBLE else None})
+                      if row['label_status'] in ELIGIBLE else None}
+        emit('PREDICTION_COMPLETED', record=prediction)
+        predictions.append(prediction)
     scored = [r for r in predictions if r['losses'] is not None]
     evaluated = [r for r in scored if r['split'] == 'evaluation']
-    return {**base, 'status': 'COMPLETE_RETROSPECTIVE_EXPLORATORY_EVALUATION',
+    emit('REPORTS_STARTED', predicted_race_ids=[r['race_id'] for r in predictions])
+    result = {**base, 'status': 'COMPLETE_RETROSPECTIVE_EXPLORATORY_EVALUATION',
         'fit_trials': trials, 'trained_beta': trained, 'selected_beta': selected,
-        'validation': {'baseline_log_loss': validation_baseline, 'trained_candidate_log_loss': validation_candidate,
-            'accepted_trained_candidate': accepted, 'validation_race_ids': [r['race_id'] for r in partitions['validation']]},
+        'validation': validation,
         'records': predictions, 'principal_evaluation': _report(evaluated),
         'supported_only_secondary_evaluation': {**_report([r for r in evaluated if any(r['speed_supported'])]),
             'selection_limitation': 'NONRANDOM_HISTORY_COVERAGE_NOT_PRINCIPAL_POPULATION'},
         'date_reports': {day: {'role': next(role for role, ds in splits.items() if day in ds),
             **_report([r for r in scored if r['race_date'] == day])} for day in sorted({r['race_date'] for r in ordered})},
         'pooled_descriptive_only': _report(scored),
-        'leave_one_date_out_descriptive_fixed_beta': {day: _report([r for r in scored if r['race_date'] != day])
-            for day in sorted({r['race_date'] for r in scored})}}
+        'evaluation_leave_one_date_out_fixed_beta': {day: _report([
+            r for r in evaluated if r['race_date'] != day])
+            for day in sorted({r['race_date'] for r in evaluated})}}
+    emit('REPORTS_COMPLETED', result_sha256=_hash(result))
+    return result

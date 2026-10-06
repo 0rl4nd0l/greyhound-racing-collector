@@ -48,11 +48,16 @@ fields:
 1. **Normalized market:** reciprocal decimal odds divided by their field sum.
    This is recomputed and checked against the stored market vector within
    `1e-12` absolute error.
-2. **Existing baseline:** the unchanged stored baseline vector. Root reproduces
-   it from the original fixed model first and provides the independently bound
-   replay vector. The prespecified reproduction tolerance is at most `1e-12`,
-   with the maximum observed error reported. The source baseline for the June
-   population is fixed before June 24; it is not retrained for this experiment.
+2. **Existing development baseline method:** root reproduces the 626 original
+   runner forecasts from the first 86 races against the retained fixed base16
+   model, with tolerance `1e-12`. That same model, trained before June 24, then
+   generates baseline probabilities for all 177 later races. The remaining 91
+   races are newly scored with the fixed earlier model, not independently
+   reproduced against their original later refits. The execution summary states
+   both counts. This is the historical development method, not a claim to replay
+   the currently installed live model. The evaluator separately checks supplied
+   baseline-vector consistency; it never labels all 177 as independent original
+   replay. The baseline is not retrained for this experiment.
 3. **Same baseline plus sectional feature:** multiply each baseline probability
    by `exp(beta * estimate)`, then normalize across the entire field.
 
@@ -111,10 +116,11 @@ artificial interval derived from treating individual races as independent.
 Six evaluation dates still provide weak cluster uncertainty: the report flags
 any evaluation with fewer than ten dates and makes no confirmatory claim.
 
-Leave-one-date-out tables use the already selected coefficient and never refit.
-The pooled three-partition table and its leave-one-date-out variants are
-descriptive sensitivity checks, not extra held-out evaluations. No ranking,
-track subgroup, or additional hypothesis is selected after looking at outcomes.
+Leave-one-date-out tables remove each **evaluation date from the evaluation
+population only**, use the already selected coefficient and never refit.
+Training or validation races do not enter this sensitivity analysis. The pooled
+three-partition table is separately labelled descriptive. No ranking, track
+subgroup, or additional hypothesis is selected after looking at outcomes.
 
 ## Packet contract and retained accounting
 
@@ -144,6 +150,20 @@ uncertainty limitations and source references. It recommends retaining the
 candidate as exploratory; root's final evidence-based decision may reject the
 variant or freeze it for genuinely fresh prospective testing. It never grants
 production promotion.
+
+Root supplies a durable private progress sink for empirical execution. It writes
+numbered records before and after each consumed coefficient trial, at training
+selection and validation, and before and after each final prediction. A sink
+failure stops the experiment. Label decoding reports each actual exposed row to
+the orchestrator, so an input failure cannot label already opened races as
+unattempted. Completed predictions and consumed trial values remain preserved if
+a later report or oracle fails.
+
+The complete private result is written with provisional status before the final
+probability oracle. Only after every oracle check passes is the final private
+result written; the successful summary is published last. A failure instead
+records the exact stage, exposed/remaining population, consumed trials,
+prediction count and independently verified races in `FAILED.json`.
 
 ## Focused validation
 

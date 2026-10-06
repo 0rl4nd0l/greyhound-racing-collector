@@ -69,9 +69,13 @@ def feature_stage(scope, reader, output, accounting):
     return {'status': summary['status'], 'coverage': {k: v['final'] for k, v in summaries.items()}}
 
 
-def _development_records(scope, reader, protocol, output):
+def _development_records(scope, reader, protocol, output, *, on_label_decoded=None, progress_sink=None):
     members = {m['race_id'] for m in protocol['members']}
-    rows = development.evaluation_rows(scope['legacy'], reader, members)
+    rows = development.evaluation_rows(scope['legacy'], reader, members, on_label_decoded=on_label_decoded)
+    if progress_sink is not None:
+        progress_sink({'kind': 'LABEL_LOADING_COMPLETED', 'label_rows': len(rows),
+                       'label_races': len({r['race_id'] for r in rows})})
+        progress_sink({'kind': 'BASELINE_REPRODUCTION_STARTED'})
     model = reader.json(scope['legacy']['baseline_model'])['base16']
     enriched_raw = reader.read(scope['legacy']['enriched'])
     # Enriched dataset has the same allowed development population. Check its
@@ -113,6 +117,11 @@ def _development_records(scope, reader, protocol, output):
         'later_original_models_intentionally_not_used': 'KEEP_BASELINE_TRAINED_BEFORE_SPEED_TRAINING',
         'historical_reference_class': 'EXISTING_DEVELOPMENT_BASE16_METHOD_NOT_LIVE_INSTALLED_ARTIFACT',
         'model': scope['legacy']['baseline_model'], 'forecasts': frozen_forecasts})
+    if progress_sink is not None:
+        progress_sink({'kind': 'BASELINE_REPRODUCTION_COMPLETED', 'proof': proof,
+                       'independent_original_races_checked': 86,
+                       'independent_original_runner_forecasts_checked': len(differences),
+                       'fixed_baseline_generated_races': len({r['race_id'] for r in rows})})
     inventory = reader.json(scope['feature_inventory'])['legacy']
     packet = reader.json(inventory['input'])
     targets = {p['target']['race_id']: p for p in packet['packets']}
@@ -142,22 +151,95 @@ def _development_records(scope, reader, protocol, output):
 
 def evaluation_stage(scope, reader, output, accounting):
     protocol = reader.json(scope['protocol'])
+    expected = {m['race_id'] for m in protocol['members']}
+    if expected != set(accounting['unattempted']):
+        raise ValueError('EXPECTED_EVALUATION_POPULATION_CHANGED')
+    accounting.update(execution_stage='RAW_CELL_PRECHECK', label_rows_decoded=0,
+        label_exposed_races=0, fit_trials_started=[], fit_trials_completed=[],
+        prediction_started_races=0, prediction_completed_races=0,
+        probability_oracle_checked_races=0, progress_events_persisted=0)
+    exposed = set()
+
+    def progress(event):
+        kind = event['kind']
+        accounting['execution_stage'] = kind
+        if kind == 'FIT_TRIAL_STARTED':
+            accounting['fit_trials_started'].append(event['beta'])
+        elif kind == 'FIT_TRIAL_COMPLETED':
+            accounting['fit_trials_completed'].append({key: event['trial'][key]
+                for key in ('beta', 'training_log_loss')})
+        elif kind == 'TRAINING_SELECTION_COMPLETED':
+            accounting['trained_beta'] = event['trained_beta']
+        elif kind == 'VALIDATION_COMPLETED':
+            accounting['selected_beta'] = event['selected_beta']
+            accounting['validation'] = {key: value for key, value in event['validation'].items()
+                                        if key != 'validation_race_ids'}
+        elif kind == 'PREDICTION_STARTED':
+            accounting['active'] = event['race_id']
+            accounting['prediction_started_races'] += 1
+        elif kind == 'PREDICTION_COMPLETED':
+            accounting['prediction_completed_races'] += 1
+            accounting['active'] = None
+        elif kind == 'LABEL_LOADING_COMPLETED':
+            accounting['active'] = None
+        elif kind == 'BASELINE_REPRODUCTION_COMPLETED':
+            accounting['baseline_verification_scope'] = {key: event[key] for key in (
+                'independent_original_races_checked', 'independent_original_runner_forecasts_checked',
+                'fixed_baseline_generated_races')}
+            accounting['baseline_verification_scope'][
+                'later_races_generated_with_same_fixed_model_not_independently_replayed'] = (
+                    event['fixed_baseline_generated_races'] - event['independent_original_races_checked'])
+        # Numbered exclusive fsynced artifacts preserve each consumed trial and
+        # prediction before a later stage can run. A sink failure stops work.
+        sequence = accounting['progress_events_persisted']
+        output.put(f'evaluation-progress-{sequence:05d}.private.json',
+                   {'sequence': sequence, **event})
+        accounting['progress_events_persisted'] += 1
+        reader.check()
+
+    def label_decoded(race_id):
+        if race_id not in expected:
+            raise ValueError('UNALLOCATED_LABEL_EXPOSURE')
+        accounting['label_rows_decoded'] += 1
+        accounting['active'] = race_id
+        if race_id not in exposed:
+            exposed.add(race_id)
+            accounting['label_exposed_races'] = len(exposed)
+            accounting['unattempted'].remove(race_id)
+            progress({'kind': 'LABEL_RACE_EXPOSED', 'race_id': race_id})
+
     # Completed raw-cell checks are required before decoding development labels.
     for ref in scope['raw_cell_checks']:
         if reader.json(ref)['status'] != 'VERIFIED':
             raise ValueError('RAW_CELL_VERIFICATION_REQUIRED')
-    records, proof = _development_records(scope, reader, protocol, output)
+    progress({'kind': 'LABEL_ACCESS_STARTED', 'allocated_race_ids': sorted(expected)})
+    records, proof = _development_records(scope, reader, protocol, output,
+        on_label_decoded=label_decoded, progress_sink=progress)
     output.put('evaluation-inputs.private.json', records)
-    result = evaluation.evaluate_experiment(records, protocol)
+    result = evaluation.evaluate_experiment(records, protocol, progress_sink=progress)
     if result['status'] != 'COMPLETE_RETROSPECTIVE_EXPLORATORY_EVALUATION':
         raise ValueError('EVALUATION_INCOMPLETE')
+    # Preserve all fits, probabilities and metrics before independent arithmetic
+    # checks. This artifact explicitly cannot be mistaken for accepted output.
+    provisional = output.put('evaluation.provisional.private.json', {**result,
+        'status': 'COMPUTED_PENDING_PROBABILITY_ORACLE', 'computed_status': result['status']})
+    accounting['provisional_result'] = provisional
+    progress({'kind': 'PROBABILITY_ORACLE_STARTED', 'provisional_result': provisional})
     for record in result['records']:
+        accounting['active'] = record['race_id']
         oracle.verify_adjustment(record['stored_baseline_probabilities'], record['speed_estimates'],
                                  record['coefficient'], record['probabilities']['baseline_speed'])
+        accounting['completed'].append(record['race_id'])
+        accounting['probability_oracle_checked_races'] += 1
+        accounting['active'] = None
+        progress({'kind': 'PROBABILITY_ORACLE_RACE_VERIFIED', 'race_id': record['race_id']})
+    progress({'kind': 'PROBABILITY_ORACLE_COMPLETED', 'verified_races': len(result['records'])})
     result_ref = output.put('evaluation.private.json', result)
     reader.check()
     summary = {'status': result['status'], 'result': result_ref, 'baseline_reproduction': proof,
         'accounting': result['accounting'], 'reads': reader.reads, 'read_bytes': reader.bytes,
+        'execution_accounting': dict(accounting),
+        'baseline_verification_scope': accounting['baseline_verification_scope'],
         'probability_oracle_checked_races': len(result['records']), 'provider_requests': 0,
         'production_changes': False, 'outcomes_public': False}
     output.put('summary.json', summary)

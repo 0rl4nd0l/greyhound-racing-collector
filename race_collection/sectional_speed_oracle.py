@@ -16,7 +16,7 @@ from statistics import median
 
 
 FIELDS = ('DATE', 'TRACK', 'DIST', 'TIME', 'WIN', 'BON', '1 SEC', 'PIR')
-CATEGORIES = ('supported', 'sparse_one', 'sparse_two', 'missing', 'conflict', 'alias')
+CATEGORIES = ('supported', 'sparse_one', 'sparse_two', 'missing', 'unsupported', 'conflict', 'alias')
 PARAMETERS = {'minimum_other_runners': 5, 'maximum_runner_observations': 5,
               'mad_scale': 1.4826, 'shrinkage_prior_count': 3, 'zscore_limit': 3.0}
 
@@ -110,32 +110,44 @@ class _Cells:
     def __init__(self, reader):
         self.reader = reader
         self.blocks = {}
+        self.rosters = {}
         self.reads = self.bytes = self.checked_bindings = 0
+
+    def load(self, reference):
+        key = (reference['path'], reference['sha256'])
+        if key not in self.blocks:
+            data = self.reader.read(reference) if hasattr(self.reader, 'read') else self.reader(reference)
+            _assert(hashlib.sha256(data).hexdigest() == reference['sha256'], 'ORACLE_SOURCE_HASH')
+            text = data.decode('utf-8-sig', errors='strict')
+            delimiter = '|' if text.splitlines()[0].count('|') > text.splitlines()[0].count(',') else ','
+            parsed = csv.DictReader(io.StringIO(text), delimiter=delimiter)
+            _assert({'Dog Name', *FIELDS} <= set(parsed.fieldnames or [])
+                and len(parsed.fieldnames) == len(set(parsed.fieldnames)), 'ORACLE_SOURCE_COLUMNS')
+            blocks, roster, token = defaultdict(list), [], None
+            for record in parsed:
+                _assert(None not in record and all(record.get(field) is not None for field in ('Dog Name', *FIELDS)),
+                    'ORACLE_SOURCE_COLUMNS')
+                label = record['Dog Name'].strip().strip('"')
+                if label:
+                    heading = re.fullmatch(r'\s*(\d+)\.\s*(.+)', label)
+                    _assert(heading is not None, 'ORACLE_SOURCE_BLOCK')
+                    token = re.sub('[^A-Z0-9]', '', heading[2].upper())
+                    _assert(token and token not in blocks, 'ORACLE_SOURCE_BLOCK')
+                    roster.append((int(heading[1]), token))
+                _assert(token is not None, 'ORACLE_SOURCE_BLOCK')
+                blocks[token].append({field: record[field].strip() for field in FIELDS})
+            _assert(len(roster) == len({box for box, _ in roster}), 'ORACLE_SOURCE_ROSTER')
+            self.blocks[key] = blocks
+            self.rosters[key] = sorted(roster)
+            self.reads += 1
+            self.bytes += len(data)
+        return self.blocks[key], self.rosters[key]
 
     def check(self, row):
         for binding in row['source_bindings']:
-            reference = binding['accepted_csv']
-            key = (reference['path'], reference['sha256'])
-            if key not in self.blocks:
-                data = self.reader.read(reference) if hasattr(self.reader, 'read') else self.reader(reference)
-                _assert(hashlib.sha256(data).hexdigest() == reference['sha256'], 'ORACLE_SOURCE_HASH')
-                text = data.decode('utf-8-sig', errors='strict')
-                delimiter = '|' if text.splitlines()[0].count('|') > text.splitlines()[0].count(',') else ','
-                parsed = csv.DictReader(io.StringIO(text), delimiter=delimiter)
-                _assert({'Dog Name', *FIELDS} <= set(parsed.fieldnames or []), 'ORACLE_SOURCE_COLUMNS')
-                blocks, token = defaultdict(list), None
-                for record in parsed:
-                    label = record['Dog Name'].strip().strip('"')
-                    if label:
-                        label = re.sub(r'^\s*\d+\.\s*', '', label)
-                        token = re.sub('[^A-Z0-9]', '', label.upper())
-                    _assert(token is not None, 'ORACLE_SOURCE_BLOCK')
-                    blocks[token].append({field: record[field].strip() for field in FIELDS})
-                self.blocks[key] = blocks
-                self.reads += 1
-                self.bytes += len(data)
+            blocks, _ = self.load(binding['accepted_csv'])
             try:
-                original = self.blocks[key][binding['block_token']][binding['block_row_index']]
+                original = blocks[binding['block_token']][binding['block_row_index']]
             except (KeyError, IndexError, TypeError):
                 raise OracleRejected('ORACLE_SOURCE_CELL_LOCATION') from None
             _assert(type(binding['block_row_index']) is int and binding['block_row_index'] >= 0,
@@ -149,6 +161,93 @@ class _Cells:
                     and _time(binding.get('identity_available_by', binding['available_by'])) <= _time(row['available_at']),
                     'ORACLE_SOURCE_AVAILABILITY')
             self.checked_bindings += 1
+
+
+def _source_rows(packet, cells):
+    """Enumerate the full independently bound raw card, including omitted rows."""
+    target = packet['target']
+    card = target.get('source_card')
+    _assert(isinstance(card, dict) and card.get('race_id') == target['race_id']
+        and card.get('racing_date') == target['date'], 'ORACLE_SOURCE_INVENTORY_REQUIRED')
+    declared = card['roster']
+    roster = {r['runner_id']: r for r in packet['roster']}
+    _assert(len(declared) == len(roster) and {r['runner_id'] for r in declared} == set(roster),
+        'ORACLE_SOURCE_ROSTER')
+    for item in declared:
+        _assert(all(item[key] == roster[item['runner_id']][key] for key in
+            ('identity_id', 'identity_available_at', 'box_number')), 'ORACLE_SOURCE_ROSTER')
+    blocks, raw_roster = cells.load(card['accepted_csv'])
+    _assert(raw_roster == sorted((r['box_number'], r['block_token']) for r in declared), 'ORACLE_SOURCE_ROSTER')
+    base = card['binding_base']
+    _assert(base['accepted_csv'] == card['accepted_csv']
+        and base['source_race_id'] == card['race_id']
+        and _time(base['available_by']) == _time(card['available_at']), 'ORACLE_SOURCE_INVENTORY')
+    day = date.fromisoformat(card['racing_date'])
+    captured = _time(card['available_at'])
+    cutoff = _time(target['cutoff'])
+    _assert(captured < cutoff, 'ORACLE_SOURCE_INVENTORY')
+    rows, missing = [], set()
+    aliases = card.get('aliases', {})
+    for runner in declared:
+        identity = runner['identity_id']
+        for index, raw in enumerate(blocks[runner['block_token']]):
+            try:
+                prior = date.fromisoformat(raw['DATE'])
+            except ValueError:
+                continue
+            distance = re.fullmatch(r'\s*([1-9][0-9]*)\s*m?\s*', raw['DIST'])
+            if prior >= day or not raw['TRACK'] or distance is None:
+                continue
+            # The independent source availability filter also covers legacy
+            # adapters that retain a later-dated source row for feature rejection.
+            if prior > captured.astimezone(cutoff.tzinfo).date():
+                continue
+            if _value(raw['1 SEC'])[1] == 'missing':
+                missing.add(runner['runner_id'])
+            if identity is None:
+                continue
+            _assert(_time(runner['identity_available_at']) <= captured
+                and _time(base.get('identity_available_by', card['available_at'])) <= captured,
+                'ORACLE_SOURCE_AVAILABILITY')
+            track, metres = raw['TRACK'], int(distance[1])
+            event = _hash([prior.isoformat(), track, metres])
+            fingerprint = _hash(raw)
+            binding = {**base, 'block_token': runner['block_token'], 'block_row_index': index,
+                'box_number': runner['box_number']}
+            if card['binding_native_runner_id']:
+                binding['target_native_runner_id'] = runner['runner_id']
+            row = {'observation_id': _hash([identity, event, fingerprint]), 'event_id': event,
+                'event_identity_kind': 'RUNNER_DATE_CONTEXT_PROXY', 'runner_identity_id': identity,
+                'date': prior.isoformat(), 'available_at': card['available_at'],
+                'source_track': track, 'canonical_track': track, 'distance_m': metres,
+                'first_sectional': raw['1 SEC'], 'observation_fingerprint': fingerprint,
+                'source_bindings': [binding]}
+            if track in aliases:
+                mapping = aliases[track]
+                _assert(set(mapping) == {'canonical_track', 'evidence'} and mapping['evidence'], 'ORACLE_ALIAS_INVENTORY')
+                row['canonical_track'] = mapping['canonical_track']
+                row['alias_evidence'] = mapping['evidence']
+            rows.append(row)
+    return rows, missing
+
+
+def _complete_rows(packet, raw_rows):
+    expected = _prior_rows({**packet, 'observations': raw_rows})
+    actual = _prior_rows(packet)
+    def copies(rows):
+        found = {}
+        for row in rows:
+            for binding in row['source_bindings']:
+                location = (binding['accepted_csv']['path'], binding['accepted_csv']['sha256'],
+                    binding['block_token'], binding['block_row_index'])
+                signature = _hash({**row, 'source_bindings': [binding]})
+                _assert(location not in found or found[location] == signature, 'ORACLE_SOURCE_COPY_CONFLICT')
+                found[location] = signature
+        return found
+    expected_copies, actual_copies = copies(expected), copies(actual)
+    _assert(expected_copies.keys() == actual_copies.keys(), 'ORACLE_SOURCE_ENUMERATION_MISMATCH')
+    _assert(expected_copies == actual_copies, 'ORACLE_SOURCE_CELL_MISMATCH')
+    return expected
 
 
 def _near(left, right, category):
@@ -268,7 +367,7 @@ def _sample_support_count(packet, roster, pool):
 
 
 def verify_sample(packets, outputs, reader):
-    """Verify up to six min-hash category representatives against raw cells.
+    """Verify complete raw-source enumeration and up to seven arithmetic samples.
 
     ``outputs`` is the matching list of ``build_sectional_candidate`` results.
     Sampling uses only feature-support and provenance categories, never labels,
@@ -278,6 +377,12 @@ def verify_sample(packets, outputs, reader):
     actuals = {o['race_id']: o for o in outputs}
     _assert(len(targets) == len(packets) == len(actuals) == len(outputs)
             and targets.keys() == actuals.keys(), 'ORACLE_POPULATION_MISMATCH')
+    cells = _Cells(reader)
+    source_rows, missing_cells = {}, {}
+    for race_id, packet in targets.items():
+        source_rows[race_id], missing_cells[race_id] = _source_rows(packet, cells)
+    global_rows = [row for rows in source_rows.values() for row in rows]
+    independent_rows = {}
     candidates = defaultdict(list)
     for race_id, packet in targets.items():
         output = actuals[race_id]
@@ -285,7 +390,10 @@ def verify_sample(packets, outputs, reader):
         _assert(len(output['runners']) == len(packet['roster'])
             and {r['runner_id'] for r in output['runners']} == {r['runner_id'] for r in packet['roster']},
             'ORACLE_ROSTER_MISMATCH')
-        prior = _prior_rows(packet)
+        scope = packet['target'].get('observation_pool_scope')
+        _assert(scope in ('CARD_LOCAL', 'ALL_SOURCE_CARDS'), 'ORACLE_SOURCE_POOL_SCOPE')
+        prior = _complete_rows(packet, global_rows if scope == 'ALL_SOURCE_CARDS' else source_rows[race_id])
+        independent_rows[race_id] = prior
         pool, conflicting = _pool(prior)
         for roster in packet['roster']:
             identity = roster['identity_id']
@@ -294,18 +402,19 @@ def verify_sample(packets, outputs, reader):
             flags = {'supported': count > 0,
                      'sparse_one': count == 1,
                      'sparse_two': count == 2,
-                     'missing': count == 0 or any(_value(r['first_sectional'])[1] for r in own),
+                     'missing': roster['runner_id'] in missing_cells[race_id]
+                         or any(_value(r['first_sectional'])[1] == 'missing' for r in own),
+                     'unsupported': count == 0,
                      'conflict': identity in conflicting,
                      'alias': any(r['canonical_track'] != r['source_track'] for r in own)}
             for category, present in flags.items():
                 if present:
                     candidates[category].append((_hash([race_id, roster['runner_id']]), race_id, roster['runner_id']))
     selections = {category: min(candidates[category])[1:] for category in CATEGORIES if candidates[category]}
-    cells = _Cells(reader)
     checked, race_pools, benchmark_count = [], {}, 0
     for race_id, runner_id in sorted(set(selections.values())):
         if race_id not in race_pools:
-            prior = _prior_rows(targets[race_id])
+            prior = independent_rows[race_id]
             for row in prior:
                 cells.check(row)
             race_pools[race_id], _ = _pool(prior)
@@ -313,12 +422,15 @@ def verify_sample(packets, outputs, reader):
         benchmark_count += contexts
         checked.append({'race_id': race_id, 'runner_id': runner_id, 'selected_count': count,
                         'categories': [c for c, pair in selections.items() if pair == (race_id, runner_id)]})
-    return {'schema_version': 'sectional_speed_independent_raw_cell_oracle_v1', 'status': 'VERIFIED',
-        'sampling': 'FIXED_CATEGORY_MIN_SHA256_RACE_AND_RUNNER', 'maximum_runners': 6,
+    return {'schema_version': 'sectional_speed_independent_raw_cell_oracle_v2', 'status': 'VERIFIED',
+        'sampling': 'FIXED_CATEGORY_MIN_SHA256_RACE_AND_RUNNER', 'maximum_runners': 7,
         'checked_runners': checked, 'observed_categories': sorted(selections),
         'absent_categories': [c for c in CATEGORIES if c not in selections],
         'benchmark_contexts_recomputed': benchmark_count, 'raw_csv_reads': cells.reads,
         'raw_csv_bytes': cells.bytes, 'raw_binding_checks': cells.checked_bindings,
+        'complete_source_cards_enumerated': len(source_rows),
+        'eligible_source_row_copies_enumerated': sum(len(rows) for rows in source_rows.values()),
+        'packet_source_enumerations_verified': len(independent_rows),
         'provider_requests': 0, 'result_payloads_opened': 0,
         'limits': ['Identity and alias proof remain authenticated adapter responsibilities',
                    'Representative sample rather than every runner arithmetic',

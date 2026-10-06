@@ -82,12 +82,15 @@ class PrivateOutput:
         self.files.append(ref)
         return ref
 
-    def failure(self, reason, completed, active, unattempted):
+    def failure(self, reason, completed, active, unattempted, **details):
         # Reserve accounting remains available after the normal output cap fails.
         payload = encoded({'status': 'FAILED_NO_SUCCESS', 'reason': reason,
-            'completed': completed, 'active': active, 'unattempted': unattempted})
+            'completed': completed, 'active': active, 'unattempted': unattempted,
+            'details': details})
         if len(payload) > 65536:
             raise ValueError('FAILURE_ACCOUNTING_LIMIT')
         with (self.path/'FAILED.json').open('xb') as f:
             os.fchmod(f.fileno(), 0o600)
             f.write(payload)
+            f.flush()
+            os.fsync(f.fileno())

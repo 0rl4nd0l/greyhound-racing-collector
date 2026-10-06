@@ -69,6 +69,9 @@ def load_inputs(scope, reader):
                 and metadata['content_length'] == len(payload)
                 and metadata.get('metadata_is_leakage_safe') is True
                 and metadata['runner_completeness']['status'] == 'COMPLETE', 'LEGACY_CARD_BINDING')
+        require(not any(metadata.get(key) for key in ('layout_id', 'layout_era', 'track_layout',
+            'target_layout_id', 'target_layout_era', 'clock_convention', 'sectional_endpoint')),
+            'SOURCE_CONTEXT_METADATA_REQUIRES_EXPLICIT_BINDING')
         capture = canonical.capture_timestamp(metadata, require_timezone=True)
         jump = canonical.sidecar_jump_timestamp(metadata, rid)
         require(jump is not None and (jump-capture).total_seconds() >= 3600, 'LEGACY_CAPTURE_TIMING')
@@ -118,6 +121,15 @@ def load_inputs(scope, reader):
         packet = {'target': {'race_id': rid, 'date': day, 'cutoff': cutoff.isoformat(),
             'source_track': rid.split(' - ')[1], 'distance_m': target_distance},
             'roster': runners, 'observations': observations}
+        packet['target']['observation_pool_scope'] = 'CARD_LOCAL'
+        packet['target']['source_card'] = {'race_id': rid, 'racing_date': day,
+            'accepted_csv': refs['accepted_csv'], 'available_at': capture.isoformat(),
+            'aliases': {}, 'binding_native_runner_id': False,
+            'binding_base': {'source_race_id': rid, 'accepted_csv': refs['accepted_csv'],
+                'sidecar': refs['sidecar'], 'available_by': capture.isoformat(),
+                'identity_available_by': capture.isoformat()},
+            'roster': [{key: runner[key] for key in ('runner_id', 'identity_id', 'identity_available_at', 'box_number')}
+                | {'block_token': token} for runner, (_, token) in zip(runners, roster)]}
         packets.append(packet)
         audits.append({'race_id': rid, 'runner_count': len(roster), 'source': refs,
             'row_exclusions': dict(counts), 'observation_copies': len(observations),
@@ -127,7 +139,7 @@ def load_inputs(scope, reader):
         'verified_aliases': [], 'records': audits, 'target_labels_decoded': 0}}
 
 
-def evaluation_rows(scope, reader, eligible_ids):
+def evaluation_rows(scope, reader, eligible_ids, *, on_label_decoded=None):
     """Caller must first authorize and freeze this exact development evaluation."""
     protection = reader.json(scope['protected'])
     payload = reader.read(scope['development'])
@@ -137,7 +149,10 @@ def evaluation_rows(scope, reader, eligible_ids):
     rows = []
     for line in payload.decode().splitlines():
         if scalar(line, 'race_id') in expected:
-            rows.append(json.loads(line))
+            row = json.loads(line)
+            if on_label_decoded is not None:
+                on_label_decoded(row['race_id'])
+            rows.append(row)
     require(all(r['y'] in (0, 1) and math.isfinite(r['odds']) and r['odds'] > 1 for r in rows),
             'DEVELOPMENT_LABEL_OR_ODDS_INVALID')
     return sorted(rows, key=lambda r: (r['race_date'], r['race_id'], r['box']))

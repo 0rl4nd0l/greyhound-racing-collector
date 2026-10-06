@@ -175,6 +175,15 @@ def construct_member(reader, member, original):
     packet = {'target': {'race_id': member['race_id'], 'date': member['source_race_date'],
         'cutoff': cutoff.isoformat(), 'source_track': member['venue'], 'distance_m': target_distance},
         'roster': runners}
+    packet['target']['observation_pool_scope'] = 'ALL_SOURCE_CARDS'
+    packet['target']['source_card'] = {'race_id': member['race_id'],
+        'racing_date': member['source_race_date'], 'accepted_csv': member['accepted_csv'],
+        'available_at': available.isoformat(), 'aliases': {}, 'binding_native_runner_id': True,
+        'binding_base': {'source_race_id': member['race_id'], 'accepted_csv': member['accepted_csv'],
+            'primary_page': member['primary_page'], 'primary_receipt': member['primary_receipt'],
+            'available_by': available.isoformat(), 'identity_available_by': available.isoformat()},
+        'roster': [{key: runner[key] for key in ('runner_id', 'identity_id', 'identity_available_at', 'box_number')}
+            | {'block_token': name} for runner, (_, name) in zip(runners, roster)]}
     audit = {'race_id': member['race_id'], 'runner_count': len(runners),
         'verified_profile_count': sum(r['identity_id'] is not None for r in runners),
         'profile_dispositions': dict(Counter(r['identity_status'] for r in runners)),

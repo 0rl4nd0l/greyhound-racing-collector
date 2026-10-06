@@ -65,6 +65,35 @@ def test_training_grid_validation_gate_and_evaluation_use_one_frozen_coefficient
     assert result['principal_evaluation']['paired_changes']['baseline_speed_minus_baseline']['log_loss'] > 0
 
 
+def test_progress_sink_preserves_completed_trials_and_stops_on_persistence_failure():
+    rows = [race(1), race(2), race(3)]
+    events = []
+
+    def sink(event):
+        if event['kind'] == 'FIT_TRIAL_STARTED' and event['beta'] == 0.25:
+            raise ValueError('FABRICATED_SINK_WRITE_FAILURE')
+        events.append(deepcopy(event))
+
+    with pytest.raises(ValueError, match='FABRICATED_SINK_WRITE_FAILURE'):
+        evaluate_experiment(rows, protocol(rows), progress_sink=sink)
+    completed = [event['trial'] for event in events if event['kind'] == 'FIT_TRIAL_COMPLETED']
+    assert [trial['beta'] for trial in completed] == [0.0, 0.1]
+    assert completed[0]['training_log_loss'] == pytest.approx(math.log(2))
+    assert not any(event['kind'].startswith('VALIDATION') for event in events)
+
+
+def test_progress_records_bind_selected_coefficient_and_every_final_prediction():
+    rows = [race(1), race(2), race(3)]
+    events = []
+    result = evaluate_experiment(rows, protocol(rows), progress_sink=events.append)
+    assert [event['trial'] for event in events if event['kind'] == 'FIT_TRIAL_COMPLETED'] == result['fit_trials']
+    validation = next(event for event in events if event['kind'] == 'VALIDATION_COMPLETED')
+    assert validation['selected_beta'] == result['selected_beta']
+    assert validation['validation'] == result['validation']
+    assert [event['record'] for event in events if event['kind'] == 'PREDICTION_COMPLETED'] == result['records']
+    assert events[-1]['kind'] == 'REPORTS_COMPLETED'
+
+
 def test_evaluation_outcome_cannot_change_fit_or_validation_choice():
     rows = [race(1), race(2), race(3)]
     first = evaluate_experiment(rows, protocol(rows))
@@ -138,12 +167,13 @@ def test_one_evaluation_date_has_no_spurious_independence_interval():
     assert result['pooled_descriptive_only']['uncertainty']['baseline']['status'] == 'INSUFFICIENT_DATE_CLUSTERS'
 
 
-def test_leave_one_date_out_is_descriptive_same_coefficient_no_refit():
+def test_one_evaluation_date_omission_is_not_replaced_by_training_or_validation_races():
     rows = [race(1), race(2), race(3, winner=1)]
     result = evaluate_experiment(rows, protocol(rows))
-    omitted = result['leave_one_date_out_descriptive_fixed_beta']['2026-10-03']
-    assert omitted['race_count'] == 2
-    assert omitted['metrics']['baseline_speed']['log_loss'] == pytest.approx(0.3132616875182228)
+    omitted = result['evaluation_leave_one_date_out_fixed_beta']['2026-10-03']
+    assert omitted['race_count'] == 0
+    assert omitted['metrics']['baseline_speed']['log_loss'] is None
+    assert set(result['evaluation_leave_one_date_out_fixed_beta']) == {'2026-10-03'}
     assert result['date_reports']['2026-10-01']['role'] == 'training'
     assert result['date_reports']['2026-10-02']['role'] == 'validation'
     assert result['date_reports']['2026-10-03']['role'] == 'evaluation'
@@ -231,6 +261,10 @@ def test_explicit_development_dates_cluster_uncertainty_is_deterministic_and_fix
     assert interval['log_loss_interval_95'][0] < interval['log_loss_interval_95'][1]
     assert first['accounting']['split_counts'] == {'training': 1, 'validation': 1, 'evaluation': 6}
     assert 'FEWER_THAN_TEN_EVALUATION_DATES_LIMIT_CLUSTER_UNCERTAINTY' in first['caveats']
+    omissions = first['evaluation_leave_one_date_out_fixed_beta']
+    assert set(omissions) == set(splits['evaluation'])
+    assert all(report['race_count'] == 5 for report in omissions.values())
+    assert omissions['2026-07-08']['metrics']['baseline_speed']['log_loss'] == pytest.approx(0.3132616875182228)
 
 
 def test_prespecified_tight_baseline_reproduction_tolerance_is_measured():
@@ -241,7 +275,7 @@ def test_prespecified_tight_baseline_reproduction_tolerance_is_measured():
         evaluate_experiment(rows, frozen)
     frozen['baseline_reproduction_max_absolute_tolerance'] = 1e-12
     result = evaluate_experiment(rows, frozen)
-    assert 0 < result['accounting']['maximum_baseline_reproduction_absolute_error'] < 1e-12
+    assert 0 < result['accounting']['maximum_supplied_baseline_vector_absolute_error'] < 1e-12
     assert result['records'][0]['probabilities']['baseline'] == [0.5, 0.5]
 
 
