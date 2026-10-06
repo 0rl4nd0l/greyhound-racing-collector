@@ -1,7 +1,7 @@
 """Read-only native producer consumer for the two reserved development dates.
 
-Activation requires the separately approved ownership amendment and verified
-observer exclusion. No collector, provider client, result client or study writer
+Activation requires the approved development allocation and verified observer
+exclusion. No collector, provider client, result client or study writer
 is invoked here. Configured source controls remain read-only under systemd/bwrap.
 """
 import hashlib
@@ -37,6 +37,16 @@ def _protected_snapshot(path):
         if row['event'].get('kind') == 'MEMBER':
             ids.append(row['event']['race_id'])
     return {'source': ref, 'race_ids': sorted(set(ids)), 'last_chain_sha256': previous}
+
+
+def _producer_view(producer, day):
+    pointer = Reader().json(runtime.reference(producer / 'current-day.json'))
+    preparation = _checked_local(pointer['preparation'], producer)
+    source_plan = _checked_local(preparation['plan'], producer)
+    comparison = _checked_local(source_plan['frozen_comparison'], producer)
+    if pointer['racing_date'] != day or preparation['racing_date'] != day:
+        raise ValueError('PRODUCER_DAY_UNAVAILABLE')
+    return preparation, source_plan, comparison
 
 
 def _without_forecast(state, race_id, status, reason, plan, population):
@@ -121,7 +131,7 @@ def tick(config_reference):
             or activation.get('result_retention_routing_verified') is not True
             or activation.get('additional_source_requests') != 0
             or activation.get('additional_result_requests') != 0):
-        raise ValueError('ALLOCATION_AND_OWNERSHIP_AMENDMENT_REQUIRED')
+        raise ValueError('DEVELOPMENT_ALLOCATION_AND_OWNERSHIP_NOT_VERIFIED')
     for ref in activation['verified_control_files']:
         Reader().read(ref)
     state = Path(config['state_root'])
@@ -152,7 +162,13 @@ def tick(config_reference):
                 snapshot = _protected_snapshot(config['protected_membership_journal'])
                 protected_ref = runtime.put_new(day_root / 'protected-membership.json', snapshot)
                 allocation = plan['authority']['allocation']
-                original = freeze_population(config['current_index'], config['index_evidence_root'],
+                if config.get('index_location') == 'CURRENT_NATIVE_PACKAGE':
+                    _, current_source, _ = _producer_view(producer, day)
+                    evidence_root = Path(current_source['evidence_root'])
+                    index_path = evidence_root / 'shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json'
+                else:
+                    evidence_root, index_path = config['index_evidence_root'], config['current_index']
+                original = freeze_population(index_path, evidence_root,
                     allocation['path'], allocation['sha256'], day_root / 'original-population.json')
                 population = planning.select_population(plan, original['observed_races'], local_date=day,
                     frozen_at=original['frozen_at'], source_observed_at=original['source_observed_at'],
@@ -178,11 +194,9 @@ def tick(config_reference):
         planning._validate_population(plan, population)
         if planning._digest(population) != account['population_sha256']:
             raise ValueError('POPULATION_CHANGED')
-        pointer = Reader().json(runtime.reference(producer / 'current-day.json'))
-        preparation = _checked_local(pointer['preparation'], producer)
-        source_plan = _checked_local(preparation['plan'], producer)
-        comparison = _checked_local(source_plan['frozen_comparison'], producer)
-        if pointer['racing_date'] != day or preparation['racing_date'] != day:
+        try:
+            preparation, source_plan, comparison = _producer_view(producer, day)
+        except (FileNotFoundError, ValueError):
             return {'status': 'WAIT_FOR_MATCHING_PRODUCER_DAY'}
         admission_root = Path(comparison['programme_root']) / source_plan['frozen_comparison']['sha256'] / 'attempts'
         jobs_root = day_root / 'jobs'

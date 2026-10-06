@@ -160,6 +160,7 @@ def isolated_command(job_reference, output, *, python=sys.executable):
 
 def _limits():
     os.nice(15)
+    os.sched_setscheduler(0, os.SCHED_IDLE, os.sched_param(0))
     resource.setrlimit(resource.RLIMIT_CPU, (60, 60))
     resource.setrlimit(resource.RLIMIT_AS, (768 * 1024**2, 768 * 1024**2))
     resource.setrlimit(resource.RLIMIT_FSIZE, (32 * 1024**2, 32 * 1024**2))

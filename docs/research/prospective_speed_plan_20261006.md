@@ -2,7 +2,7 @@
 
 The candidate remains exploratory. Code `af55ae9322d08d0f255f767a14e385c794205dfe`, saved first-period development `base16` model, preprocessing and adjustment strength **0.1** are fixed. The source-meaning assumptions remain: `1 SEC` is the individual dog's first sectional and `TIME` is total time; total time is not a new feature. There is no new coefficient search, feature selection, model fitting or production promotion.
 
-## Existing scope and operational incompatibility
+## Existing scope and operational routing
 
 The existing development allocation `development-single-snapshot-20261003-v1` (SHA-256 `e877d79118f7bf60832c8b1ee18c6ba0e72d5de1fdf2d551d18f68500cec7c8e`) has two remaining future dates: **10 and 11 October 2026**. Each date selects the six earliest canonical races scheduled from 13:10 through 14:20 Melbourne, from the complete verified index frozen during the **12:50 minute**. Index age must be at most 300 seconds; completion must occur before 12:51. Selection precedes price/history qualification. Failure never creates a replacement selection. All index rows and all selected race dispositions remain in accounting. The protected-allocation exceptions apply only to these selected identities; other races remain protected.
 
@@ -10,7 +10,7 @@ This permits at most 12 future development races. The collection horizon uses al
 
 The old pilot does not currently provide a usable activation route. Its capture and result workers require a missing original scientific canary, whereas the installed scientific scheduler now reports retained-study observer readiness. The installed observer automatically considers native persistent engineering seals and does not consult the development reservation exceptions. Reusing the persistent producer without settling that precedence could allocate a selected race to both development and the study. No agent-issued receipt renewal resolves this conflict.
 
-The private `development-authority-audit.json` identifies exact controls. A single non-loadable amendment is prepared in `allocation-and-ownership-amendment.PROPOSED.json`: retain the same two-date selected population, give its predeclared development reservation precedence over future observer admission, reuse existing daily capture artifacts, retire the competing pilot acquisition path, and route existing private result retention through the sole root owner. No existing scientific member is removed, and no source/result allowance is increased. Until approved, this proposed allocation/ownership amendment supplies no authority.
+The private `development-authority-audit.json` identifies exact controls. Independent review established that the later observer's automatic consideration policy never revoked the approved development reservations. Honoring them before new study admission is an authorized routing correction. The current user instruction covers implementation and activation within that existing scope. The initial non-loadable `allocation-and-ownership-amendment.PROPOSED.json` remains retained investigation evidence; the subsequent authority reconciliation supersedes its assessment that a new user decision was needed. No existing scientific member is removed, and no source/result allowance is increased. Activation still requires concrete verification of the reservation route, retired competing pilot acquisition path and original result allowance ownership.
 
 ## Forecast and history rules
 

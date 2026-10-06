@@ -96,6 +96,13 @@ def make_fixture(tmp_path, monkeypatch, *, label_status='FULL_ORDER_WIN_ELIGIBLE
             (tmp_path/directory/name).unlink()
         failure_evidence = put(directory+'interrupted-before-claim.json',
             {'status': failure_kind, 'source_job': source_job_ref, 'at': '2026-10-10T13:06:00+11:00'})
+    if failure_kind == 'INTERRUPTED_PARTIAL_CLAIM':
+        for name in ('job.json', 'forecast.json', 'terminal.json', 'seal.json', 'completion.json'):
+            (tmp_path/directory/name).unlink()
+        (tmp_path/directory/'claim.json').write_bytes(b'{"race_id":')
+        failure_evidence = put(directory+'interrupted-partial-claim.json',
+            {'status': failure_kind, 'claim': runtime.reference(tmp_path/directory/'claim.json'),
+             'at': '2026-10-10T13:06:00+11:00'})
     target_ref = proof_ref = closure_ref = None
     if label_status in plan.VERIFIED_LABELS and not failure:
         closure_ref = put('official-closure.private.json', {'race_id': race_id,
@@ -116,10 +123,12 @@ def make_fixture(tmp_path, monkeypatch, *, label_status='FULL_ORDER_WIN_ELIGIBLE
     entries = [{'race_id': race_id, 'race_date': '2026-10-10',
         'forecast_status': failure_kind if failure else 'SEALED_PREJUMP',
         'forecast_completion': completion_ref if not failure or failure_kind == 'LATE_SPEED_SEAL' else None,
-        'forecast_terminal': terminal_ref if failure and failure_kind != 'INTERRUPTED_BEFORE_CLAIM' else None, 'runner_ids': ids,
+        'forecast_terminal': terminal_ref if failure and failure_kind not in {'INTERRUPTED_BEFORE_CLAIM', 'INTERRUPTED_PARTIAL_CLAIM'} else None, 'runner_ids': ids,
         'label_status': 'UNREAD_FORECAST_FAILURE' if failure else label_status,
         'target': target_ref, 'target_role': 'SELECTED_DEVELOPMENT_WIN_TARGET' if target_ref else None,
         'identity_proof': proof_ref, 'closure_evidence': closure_ref, 'failure_evidence': failure_evidence}]
+    if failure_kind == 'INTERRUPTED_PARTIAL_CLAIM':
+        entries[0]['source_job'] = source_job_ref
     members_hash = pin([{'race_id': race_id, 'race_date': '2026-10-10'}])
     manifest = put('result-manifest.json', {'schema_version': 'prospective_speed_admitted_result_manifest_v1',
         'status': 'ROOT_VERIFIED_SELECTED_DEVELOPMENT_CLOSURE', 'plan': plan_ref,
@@ -152,6 +161,19 @@ def test_complete_durable_single_analysis_then_restart_without_target_reads(tmp_
     assert second['status'] == 'EVALUATION_ALREADY_CONSUMED'
     assert second['result_accesses_consumed'] == 0
     assert (f['output']/'evaluation.private.json').read_bytes() == first
+
+
+def test_partial_evaluation_claim_is_consumed_and_preserves_raw_bytes(tmp_path, monkeypatch):
+    f = make_fixture(tmp_path, monkeypatch)
+    f['output'].mkdir(mode=0o700)
+    claim = f['output']/'evaluation-claim.json'
+    claim.write_bytes(b'{"job":')
+    Path(f['target']['path']).unlink()
+    value = worker.run_evaluation(f['job'], f['output'])
+    assert value['status'] == 'PARTIAL_EVALUATION_CLAIM_NO_RETRY'
+    assert value['result_accesses_consumed'] == 0
+    assert claim.read_bytes() == b'{"job":'
+    assert worker.run_evaluation(f['job'], f['output'])['result_accesses_consumed'] == 0
 
 
 def test_actual_clock_gate_precedes_manifest_and_label_reads(tmp_path, monkeypatch):
@@ -221,7 +243,7 @@ def test_real_failure_terminal_stays_in_population_without_target(tmp_path, monk
     assert report['accounting']['forecast_status_counts'] == {'SPEED_PROCESSING_TIMEOUT': 1}
 
 
-@pytest.mark.parametrize('failure', ['LATE_SPEED_SEAL', 'INTERRUPTED_SEAL', 'INTERRUPTED_BEFORE_CLAIM'])
+@pytest.mark.parametrize('failure', ['LATE_SPEED_SEAL', 'INTERRUPTED_SEAL', 'INTERRUPTED_BEFORE_CLAIM', 'INTERRUPTED_PARTIAL_CLAIM'])
 def test_late_and_interrupted_seal_paths_remain_in_full_denominator(tmp_path, monkeypatch, failure):
     f = make_fixture(tmp_path, monkeypatch, failure=failure)
     result = worker.run_evaluation(f['job'], f['output'])
@@ -230,6 +252,33 @@ def test_late_and_interrupted_seal_paths_remain_in_full_denominator(tmp_path, mo
     report = json.loads((f['output']/'evaluation.private.json').read_bytes())
     assert report['accounting']['forecast_status_counts'] == {failure: 1}
     assert report['accounting']['selected_races'] == 1
+
+
+def test_partial_claim_bytes_are_hashed_never_decoded_or_repaired(tmp_path, monkeypatch):
+    f = make_fixture(tmp_path, monkeypatch, failure='INTERRUPTED_PARTIAL_CLAIM')
+    manifest = json.loads(Path(f['manifest']['path']).read_bytes())
+    partial = json.loads(Path(manifest['entries'][0]['failure_evidence']['path']).read_bytes())
+    claim_path = Path(partial['claim']['path'])
+    original_bytes = claim_path.read_bytes()
+    reader_json = worker._Checked.json
+    def reject_claim_parse(reader, ref):
+        assert ref['path'] != str(claim_path), 'Damaged claim must never be decoded'
+        return reader_json(reader, ref)
+    monkeypatch.setattr(worker._Checked, 'json', reject_claim_parse)
+    result = worker.run_evaluation(f['job'], f['output'])
+    assert result['status'] == 'COMPLETE_SINGLE_PLANNED_EVALUATION'
+    assert result['result_accesses_consumed'] == 0
+    assert claim_path.read_bytes() == original_bytes
+
+
+def test_partial_claim_changed_raw_bytes_reject_before_any_result_access(tmp_path, monkeypatch):
+    f = make_fixture(tmp_path, monkeypatch, failure='INTERRUPTED_PARTIAL_CLAIM')
+    manifest = json.loads(Path(f['manifest']['path']).read_bytes())
+    partial = json.loads(Path(manifest['entries'][0]['failure_evidence']['path']).read_bytes())
+    Path(partial['claim']['path']).write_bytes(b'{"different":')
+    with pytest.raises(ValueError, match='INPUT_HASH'):
+        worker.run_evaluation(f['job'], f['output'])
+    assert not (f['output']/'evaluation-claim.json').exists()
 
 
 @pytest.mark.parametrize('changed', [False, True])

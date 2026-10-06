@@ -1,0 +1,13 @@
+[Unit]
+Description=Finite development closure checks using original result milestones
+
+[Timer]
+OnCalendar=2026-10-10..24 *:0/10:00 Australia/Melbourne
+OnCalendar=2026-10-25 00..11:0/10:00 Australia/Melbourne
+OnCalendar=2026-10-25 12:00:00 Australia/Melbourne
+AccuracySec=1s
+Persistent=true
+Unit=prospective-speed-results.service
+
+[Install]
+WantedBy=timers.target

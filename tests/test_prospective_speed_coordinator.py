@@ -90,7 +90,7 @@ def forbid_producer_reads(config, monkeypatch):
 def test_missing_activation_prevents_any_producer_read_or_state_claim(tmp_path, monkeypatch):
     config, reference, _, frozen = fixture(tmp_path, monkeypatch, active=False)
     forbid_producer_reads(config, monkeypatch)
-    with pytest.raises(ValueError, match='ALLOCATION_AND_OWNERSHIP_AMENDMENT_REQUIRED'):
+    with pytest.raises(ValueError, match='DEVELOPMENT_ALLOCATION_AND_OWNERSHIP_NOT_VERIFIED'):
         coordinator.tick(reference)
     assert frozen == []
     assert not Path(config['state_root']).exists()

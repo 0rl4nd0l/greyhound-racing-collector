@@ -144,7 +144,27 @@ def _failed_forecast(reader, entry, job):
     attempt = Path(job['forecast_root']) / hashlib.sha256(entry['race_id'].encode()).hexdigest()
     status = entry['forecast_status']
     terminal_ref = entry['forecast_terminal']
-    if status == 'INTERRUPTED_BEFORE_CLAIM':
+    if status == 'INTERRUPTED_PARTIAL_CLAIM':
+        _require(terminal_ref is None and entry['forecast_completion'] is None
+            and entry['failure_evidence'] is not None, 'PARTIAL_CLAIM_EVIDENCE_MISSING')
+        _at(entry['failure_evidence'], attempt / 'interrupted-partial-claim.json')
+        partial = reader.json(entry['failure_evidence'])
+        _require(set(partial) == {'status', 'claim', 'at'} and partial['status'] == status
+            and instant(partial['at']) <= runtime.utc_now()
+            and not (attempt/'terminal.json').exists() and not (attempt/'completion.json').exists(),
+            'PARTIAL_CLAIM_EVIDENCE_CHANGED')
+        _at(partial['claim'], attempt / 'claim.json')
+        reader.raw(partial['claim'])  # Authenticate original truncated bytes; never parse or repair them.
+        if entry.get('source_job') is not None:
+            source_job = reader.json(entry['source_job'])
+            _require(source_job['member']['race_id'] == entry['race_id']
+                and source_job['plan'] == job['plan']
+                and source_job['population'] == job['population_by_date'][entry['race_date']],
+                'PARTIAL_CLAIM_SOURCE_ASSIGNMENT_CHANGED')
+        # Without a separately bound source job, only selected membership, the
+        # exact attempt path and raw claim hash are established. No parsed claim
+        # or completed forecast identity is inferred from damaged evidence.
+    elif status == 'INTERRUPTED_BEFORE_CLAIM':
         _require(terminal_ref is None and entry['forecast_completion'] is None
             and entry['failure_evidence'] is not None, 'ORPHAN_ATTEMPT_EVIDENCE_MISSING')
         _at(entry['failure_evidence'], attempt / 'interrupted-before-claim.json')
@@ -264,7 +284,9 @@ def _manifest(reader, job, experiment_plan, members):
     fields = {'race_id', 'race_date', 'forecast_status', 'forecast_completion', 'forecast_terminal',
         'runner_ids', 'label_status', 'target', 'target_role', 'identity_proof', 'closure_evidence', 'failure_evidence'}
     for entry in entries:
-        _require(set(entry) == fields and entry['race_date'] == members[entry['race_id']]['local_date'],
+        _require(set(entry) in (fields, fields | {'source_job'})
+            and ('source_job' not in entry or entry['forecast_status'] == 'INTERRUPTED_PARTIAL_CLAIM')
+            and entry['race_date'] == members[entry['race_id']]['local_date'],
                  'RESULT_MANIFEST_RECORD_INVALID')
         if entry['label_status'] in plan.VERIFIED_LABELS:
             _require(entry['forecast_status'] == 'SEALED_PREJUMP'
@@ -329,7 +351,15 @@ Only root can issue the admitted result manifest under an approved allocation.
                  'EVALUATION_OUTPUT_NOT_PRIVATE')
         claim_path, terminal_path = root / 'evaluation-claim.json', root / 'evaluation-terminal.json'
         if claim_path.exists():
-            claim = reader.json(runtime.reference(claim_path))
+            claim_reference = runtime.reference(claim_path)
+            try:
+                claim = reader.json(claim_reference)
+            except json.JSONDecodeError:
+                if not terminal_path.exists():
+                    runtime.put_new(terminal_path, {'status': 'PARTIAL_EVALUATION_CLAIM_NO_RETRY',
+                        'claim': claim_reference, 'at': runtime.utc_now().isoformat()})
+                return {'status': 'PARTIAL_EVALUATION_CLAIM_NO_RETRY',
+                    'terminal': runtime.reference(terminal_path), 'result_accesses_consumed': 0}
             _require(claim['job'] == job_reference, 'EVALUATION_CLAIM_CHANGED')
             if terminal_path.exists():
                 terminal = reader.json(runtime.reference(terminal_path))
