@@ -1,0 +1,22 @@
+[Unit]
+Description=Original development result allowance in verified collector gaps
+After=network-online.target
+
+[Service]
+Type=oneshot
+UMask=0077
+WorkingDirectory=@SOURCE@
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=OPENBLAS_NUM_THREADS=1
+Environment=OMP_NUM_THREADS=1
+Nice=15
+CPUSchedulingPolicy=idle
+MemoryMax=768M
+TasksMax=32
+IOSchedulingClass=idle
+TimeoutStartSec=10min
+TimeoutStopSec=90
+KillMode=control-group
+ExecStart=@PYTHON@ -B -m race_collection.prospective_speed_result_controller --config @RESULT_CONTROLLER@ --config-sha256 @RESULT_CONTROLLER_SHA256@
+ExecStopPost=@PYTHON@ -B -m race_collection.prospective_speed_result_controller --config @RESULT_CONTROLLER@ --config-sha256 @RESULT_CONTROLLER_SHA256@ --recover-only
+Restart=no

@@ -94,7 +94,11 @@ def _due_times(ready, cfg):
     return times
 
 
-def _inventory(cfg, root, now):
+def _inventory(cfg, root, now, *, race_key_fn=race_key, predecessor_configs=None):
+    # A successor may preserve earlier nominations in the same cumulative
+    # ledger. Callers authenticate these exact configurations before passing
+    # them; old nominations retain their own result milestones and identity.
+    allocations = {cfg['allocation']['sha256']: cfg, **(predecessor_configs or {})}
     ready_rows, due, completed = [], [], 0
     files = sorted((root/'ready').glob('*.json'))
     if len(files) > 24:
@@ -102,9 +106,9 @@ def _inventory(cfg, root, now):
     for path in files:
         ready = _metadata(path)
         if (ready.get('schema_version') != 'development_pilot_capture_ready_v1'
-                or ready.get('race_key') != race_key(ready['race_id'])
+                or ready.get('race_key') != race_key_fn(ready['race_id'])
                 or path.name != digest(ready['race_id'].encode())+'.json'
-                or ready.get('allocation_sha256') != cfg['allocation']['sha256']):
+                or ready.get('allocation_sha256') not in allocations):
             raise DevelopmentRejected('RESULT_NOMINATION_IDENTITY_INVALID')
         key = path.stem
         directory = root/'results'/key
@@ -115,7 +119,7 @@ def _inventory(cfg, root, now):
                 raise DevelopmentRejected('RESULT_COMPLETION_CHANGED')
             completed += 1
             continue
-        times = _due_times(ready, cfg)
+        times = _due_times(ready, allocations[ready['allocation_sha256']])
         if (directory/'official-result.json').exists() and now >= times[0]:
             due.append((times[0], ready, None))
             continue

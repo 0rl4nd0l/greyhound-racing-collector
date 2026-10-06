@@ -1,0 +1,11 @@
+[Unit]
+Description=Single private comparison at the fixed evaluation time
+
+[Timer]
+@EVALUATION_CALENDAR@
+AccuracySec=1s
+Persistent=true
+Unit=prospective-speed-evaluate.service
+
+[Install]
+WantedBy=timers.target

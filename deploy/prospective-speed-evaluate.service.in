@@ -1,0 +1,15 @@
+[Unit]
+Description=One fixed private speed comparison after authorised result closure
+
+[Service]
+Type=oneshot
+UMask=0077
+WorkingDirectory=@SOURCE@
+Nice=15
+CPUSchedulingPolicy=idle
+MemoryMax=512M
+TasksMax=32
+IOSchedulingClass=idle
+TimeoutStartSec=10min
+KillMode=control-group
+ExecStart=/usr/bin/bwrap --die-with-parent --unshare-net --ro-bind / / --bind @EVALUATION_STATE@ @EVALUATION_STATE@ --bind @STATE@ @STATE@ --tmpfs /tmp --proc /proc --dev /dev --setenv PYTHONDONTWRITEBYTECODE 1 --setenv OPENBLAS_NUM_THREADS 1 --setenv OMP_NUM_THREADS 1 @PYTHON@ -B -m race_collection.prospective_speed_closure --config @CLOSURE_CONFIG@ --config-sha256 @CLOSURE_CONFIG_SHA256@

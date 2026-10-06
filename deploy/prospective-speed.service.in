@@ -1,0 +1,18 @@
+[Unit]
+Description=Reserved development speed forecasts from retained native inputs
+
+[Service]
+Type=oneshot
+UMask=0077
+WorkingDirectory=@SOURCE@
+Nice=15
+CPUSchedulingPolicy=idle
+MemoryMax=512M
+TasksMax=32
+IOSchedulingClass=idle
+TimeoutStartSec=10min
+KillMode=control-group
+ExecStart=/usr/bin/bwrap --die-with-parent --unshare-net --ro-bind / / --bind @STATE@ @STATE@ --tmpfs /tmp --proc /proc --dev /dev --setenv PYTHONDONTWRITEBYTECODE 1 --setenv OPENBLAS_NUM_THREADS 1 --setenv OMP_NUM_THREADS 1 @PYTHON@ -B -m scripts.run_prospective_speed tick --config @CONFIG@ --config-sha256 @CONFIG_SHA256@
+
+# Render after the existing development reservation, sole collector ownership
+# and original result allowance routing have been verified.

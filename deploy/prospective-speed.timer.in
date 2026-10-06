@@ -1,0 +1,11 @@
+[Unit]
+Description=Fixed authorized development speed horizon
+
+[Timer]
+@FORECAST_CALENDAR@
+AccuracySec=1s
+Persistent=true
+Unit=prospective-speed.service
+
+[Install]
+WantedBy=timers.target
