@@ -108,7 +108,7 @@ def _forecast(reader, entry, job, experiment_plan, population):
         and payload['race_id'] == race_id and payload['race_date'] == entry['race_date']
         and payload['source_member'] == execution['member']
         and payload['original_publication'] == execution['original']
-        and payload['forecast_at'] == execution['forecast_at']
+        and instant(payload['forecast_at']) == instant(execution['forecast_at'])
         and payload['baseline_artifact'] == execution['model']
         and payload['baseline_artifact']['sha256'] == inputs.BASELINE_ARTIFACT_SHA256
         and payload['contract'] == inputs.frozen_contract(), 'FORECAST_CANDIDATE_CHANGED')

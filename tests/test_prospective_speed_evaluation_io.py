@@ -17,7 +17,7 @@ def pin(value):
 
 
 def make_fixture(tmp_path, monkeypatch, *, label_status='FULL_ORDER_WIN_ELIGIBLE',
-                 target_change=None, failure=False, missing_date=False):
+                 target_change=None, failure=False, missing_date=False, execution_forecast_at=None):
     def put(name, value):
         path = tmp_path / name
         path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -62,7 +62,8 @@ def make_fixture(tmp_path, monkeypatch, *, label_status='FULL_ORDER_WIN_ELIGIBLE
     directory = 'forecasts/' + hashlib.sha256(race_id.encode()).hexdigest() + '/'
     claim_ref = put(directory+'claim.json', {'mode': 'PROSPECTIVE', 'race_id': race_id,
         'source_job': source_job_ref, 'claimed_at': '2026-10-10T13:04:59+11:00'})
-    execution_ref = put(directory+'job.json', {**source_job, 'execution_mode': 'PROSPECTIVE'})
+    execution_ref = put(directory+'job.json', {**source_job, 'execution_mode': 'PROSPECTIVE',
+        'forecast_at': execution_forecast_at or source_job['forecast_at']})
     baseline, estimates, support = [.6, .4], [.5, 0.], [True, False]
     speed = adjusted_probabilities(baseline, estimates, support, .1)
     ids = ['native:dog1', 'native:dog2']
@@ -161,6 +162,16 @@ def test_complete_durable_single_analysis_then_restart_without_target_reads(tmp_
     assert second['status'] == 'EVALUATION_ALREADY_CONSUMED'
     assert second['result_accesses_consumed'] == 0
     assert (f['output']/'evaluation.private.json').read_bytes() == first
+
+
+@pytest.mark.parametrize('execution_time, expected', [
+    ('2026-10-10T02:05:00+00:00', 'COMPLETE_SINGLE_PLANNED_EVALUATION'),
+    ('2026-10-10T02:05:00.000001+00:00', 'FAILED_LOOK_NO_RETRY'),
+])
+def test_utc_execution_and_melbourne_payload_match_only_same_instant(
+        tmp_path, monkeypatch, execution_time, expected):
+    f = make_fixture(tmp_path, monkeypatch, execution_forecast_at=execution_time)
+    assert worker.run_evaluation(f['job'], f['output'])['status'] == expected
 
 
 def test_partial_evaluation_claim_is_consumed_and_preserves_raw_bytes(tmp_path, monkeypatch):
