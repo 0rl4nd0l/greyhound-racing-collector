@@ -262,7 +262,7 @@ population and original publication verification from the coordinator.
             else:
                 payload = reference(attempt / 'forecast.json')
                 value = read_output(payload)
-                if value['race_id'] != race_id or value['forecast_at'] != job['forecast_at']:
+                if value['race_id'] != race_id or instant(value['forecast_at']) != instant(job['forecast_at']):
                     raise ValueError('WORKER_IDENTITY_CHANGED')
                 stamp = utc_now().isoformat()
                 if replay:

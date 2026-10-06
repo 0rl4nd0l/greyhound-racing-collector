@@ -193,6 +193,33 @@ def test_worker_identity_failure_is_terminal_and_not_retried(tmp_path, monkeypat
     assert len(calls) == 1
 
 
+def test_equivalent_forecast_offsets_preserve_original_bytes_and_seal(tmp_path, monkeypatch):
+    job = fixture_job(tmp_path)
+    root = tmp_path/'attempts'
+    local_time = '2026-10-10T19:50:00+11:00'
+    calls = fake_worker(monkeypatch, Clock(), payload_change={'forecast_at': local_time})
+    assert runtime.run_job(job, root)['status'] == 'SEALED_PREJUMP'
+    attempt = attempt_path(root, job)
+    assert json.loads((attempt/'job.json').read_bytes())['forecast_at'] == '2026-10-10T08:50:00+00:00'
+    assert json.loads((attempt/'forecast.json').read_bytes())['forecast_at'] == local_time
+    preserved = {p.name: p.read_bytes() for p in attempt.iterdir()}
+    assert runtime.run_job(job, root)['original_status'] == 'SEALED_PREJUMP'
+    assert preserved == {p.name: p.read_bytes() for p in attempt.iterdir()}
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize('forecast_at', ['2026-10-10T19:50:00.000001+11:00',
+    '2026-10-10T19:50:00', 'invalid'])
+def test_changed_or_invalid_forecast_instant_remains_consumed(tmp_path, monkeypatch, forecast_at):
+    job = fixture_job(tmp_path)
+    root = tmp_path/'attempts'
+    calls = fake_worker(monkeypatch, Clock(), payload_change={'forecast_at': forecast_at})
+    assert runtime.run_job(job, root)['status'] == 'SPEED_INTEGRITY_FAILURE'
+    assert not (attempt_path(root, job)/'completion.json').exists()
+    assert runtime.run_job(job, root)['original_status'] == 'SPEED_INTEGRITY_FAILURE'
+    assert len(calls) == 1
+
+
 def test_failed_race_does_not_prevent_next_independent_race(tmp_path, monkeypatch):
     first = fixture_job(tmp_path)
     second = fixture_job(tmp_path, race_id='Race 2 - FIXTURE - 2026-10-10')
