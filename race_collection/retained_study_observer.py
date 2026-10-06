@@ -284,7 +284,7 @@ def _observe(cfg, protocol, now):
         journal = Journal(root)
         identity = {'kind': 'IDENTITY', 'protocol': cfg['retained_study_protocol'], 'amendment': cfg['study_amendment']}
         if reservation:
-            previous = reservation['predecessor']
+            previous = reservation['journal_predecessor']
             identity = {'kind': 'IDENTITY', 'protocol': previous['retained_study_protocol'],
                         'amendment': previous['study_amendment']}
         if journal.events and journal.events[0] != identity:

@@ -136,3 +136,48 @@ Installation recipe for the sole runtime owner:
 
 The helper reads only existing local metadata and hashes. It performs no
 provider call, result decode, score calculation or producer-state write.
+
+An explicitly authorized earlier schedule can use
+`retained_study_development_reservations_v2`, with status
+`AUTHORIZED_RESCHEDULED_DEVELOPMENT_RESERVATIONS`. It retains the reference
+fields above and adds `predecessor_reservations` and
+`reschedule_authorization`. Its `predecessor_observer_config` is the currently
+installed reservation-enabled configuration. The source/amendment/reservation
+reference remain the only permitted observer configuration changes.
+
+The dated `development_reschedule_authorization_v1` receipt binds the original
+allocation, predecessor reservation, exact `selection_windows`, six-per-date
+and twelve-total limits, and preservation of existing members and consumed
+allowances. The new `development_allocation_v2` and
+`development_reservation_amendment_v2` bind that approval and their original
+predecessors. The original allocation identity remains
+`development-single-snapshot-20261003-v1`; rescheduling never creates a new
+cumulative allowance. All frozen experiment fields outside schedule, authority,
+closure times and the inventory population policy must match the prior plan.
+
+Each of the two windows is `{local_date, freeze_at, jump_start, jump_end}` with
+aware timestamps on the same Melbourne date. The plan and user receipt must
+precede the declared freeze minute; the jump window begins at least twenty
+minutes after its start. The v2 plan's embedded schedule must match its pinned
+`prospective_speed_schedule_amendment_v1` document. Both the original receipt
+and final population must finish within the declared freeze minute.
+
+V2 population selection verifies the entire pinned
+`daily_race_inventory_v1`, its producer preparation and native output path,
+and a maximum age of 1,800 seconds at freeze. Every discovery row must appear
+in the original census, including missing jump times. Native venue codes keep
+hyphens exactly. The v1 parser and original 12:50 rule retain their semantics.
+The first six in the declared window are determined before qualification;
+existing protected members are removed from that six without replacement.
+
+Supersession requires the original operation to remain unconsumed. Its state
+may contain only the two worker lock files and empty `attempts`, `closure`,
+and `result-controller` directories. Any population, accounting record,
+claim, result or evaluation artifact holds the transition. The observer
+verifies the original journal binding, appends
+`DEVELOPMENT_RESERVATION_SUPERSESSION` with disposition
+`SUPERSEDED_UNCONSUMED`, and preserves every earlier byte and member. Restoring
+the superseded configuration or changing the adopted successor is rejected.
+The old reservation scope then ceases to withhold new study members; ordinary
+study qualification continues to apply. The new unknown selections remain
+held until an authenticated freeze or terminal date disposition is available.
