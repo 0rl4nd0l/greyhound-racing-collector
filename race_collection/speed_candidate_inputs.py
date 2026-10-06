@@ -7,8 +7,10 @@ joins dog names across cards, or assumes configured venue aliases are proof.
 from collections import Counter
 import csv
 from datetime import date
+import hashlib
 import io
 import json
+import re
 
 from bs4 import BeautifulSoup
 
@@ -45,9 +47,10 @@ class SnapshotReader:
         self.reader.check()
 
 
-def _profiles(page, sidecar, roster, receipt):
+def _profiles(page, sidecar, roster, receipt, *, race_binding=None):
     """Same-row entry-to-profile bridge, after complete native field checking."""
     markup = page.decode('utf-8', errors='strict')
+    soup = BeautifulSoup(markup, 'html.parser')
     canonical = extract_canonical_runner_set_from_html(markup,
         source_url=sidecar['race_url'], extraction_timestamp=receipt['capture_timestamp'])
     participants = sidecar['runner_completeness_after_canonical_alignment']['participants']
@@ -57,15 +60,36 @@ def _profiles(page, sidecar, roster, receipt):
     actual = {(r['box_number'], coverage.dog_token(r['dog_name']),
         str(r.get('source_native_runner_id') or '')) for r in active}
     require(canonical['canonical_runner_set_status'] == 'available'
-        and canonical['native_identity_status'] == 'available'
         and actual == expected and len(actual) == len(roster)
         and {(b, n) for b, n, _ in actual} == set(roster)
         and all(entry for _, _, entry in actual), 'TARGET_NATIVE_ROSTER_MISMATCH')
-    require(str(canonical['source_native_race_id']) == str(sidecar['source_native_race_id']),
-        'TARGET_NATIVE_RACE_MISMATCH')
+    native_race = str(sidecar.get('source_native_race_id') or '')
+    require(re.fullmatch(r'[1-9][0-9]*', native_race) is not None, 'TARGET_SEALED_NATIVE_RACE_INVALID')
+    if (not soup.select('[data-race-id]')
+            and canonical['source_native_race_id'] is None
+            and canonical['native_identity_reasons'] == ['source_native_race_id_missing']):
+        # verified_member has already authenticated the original bundle and
+        # sidecar, including this page/receipt pair. Legacy source HTML need
+        # not repeat the event ID obtained by that sealed original capture.
+        require(isinstance(race_binding, dict) and {'race_id', 'jump_at'} <= race_binding.keys(),
+            'TARGET_RACE_RECEIPT_BINDING_MISSING')
+        page_sha = hashlib.sha256(page).hexdigest()
+        require(receipt.get('status_code') == 200
+            and receipt.get('race_discovery_key') == race_binding['race_id']
+            and receipt.get('body_sha256') == page_sha
+            and sidecar.get('primary_race_page_evidence', {}).get('body_sha256') == page_sha
+            and receipt.get('requested_url', '').split('?')[0] == sidecar['race_url'].split('?')[0]
+            and coverage.instant(receipt['capture_timestamp']) < coverage.instant(race_binding['jump_at']),
+            'TARGET_RACE_RECEIPT_BINDING_INVALID')
+        method = 'SEALED_NATIVE_RACE_AND_BOUND_PREJUMP_PAGE_RECEIPT'
+    else:
+        require(canonical['native_identity_status'] == 'available'
+            and str(canonical['source_native_race_id']) == native_race,
+            'TARGET_NATIVE_RACE_MISMATCH')
+        method = 'MATCHING_NATIVE_HTML_AND_SEALED_RACE_ID'
     rows = {}
     required_entries = {entry for _, _, entry in expected}
-    for row in BeautifulSoup(markup, 'html.parser').select('tr.race-runner'):
+    for row in soup.select('tr.race-runner'):
         entries = {str(e.get('data-runner-id') or '').strip() for e in row.select('[data-runner-id]')}
         if len(entries) == 1:
             entry = next(iter(entries))
@@ -85,7 +109,7 @@ def _profiles(page, sidecar, roster, receipt):
             profiles[(box, name)] = (entry, None, 'PROFILE_ID_CONFLICT')
     known = [identity for _, identity, _ in profiles.values() if identity is not None]
     require(len(known) == len(set(known)), 'TARGET_DOG_PROFILE_DUPLICATE')
-    return profiles
+    return profiles, method
 
 
 def construct_member(reader, member, original):
@@ -117,7 +141,8 @@ def construct_member(reader, member, original):
     projected = coverage.projected_card(payload)
     roster = coverage.parse_card_target_roster_bytes(projected, source='authenticated retained card')
     blocks = coverage.parse_form_blocks_bytes(projected, source='authenticated retained card')
-    profiles = _profiles(page, sidecar, roster, receipt)
+    profiles, race_identity_method = _profiles(page, sidecar, roster, receipt,
+        race_binding={'race_id': member['race_id'], 'jump_at': member['jump_at']})
     runners, observations = [], []
     reasons, contexts, sections = Counter(), Counter(), Counter()
     target_date = date.fromisoformat(member['source_race_date'])
@@ -185,6 +210,7 @@ def construct_member(reader, member, original):
         'roster': [{key: runner[key] for key in ('runner_id', 'identity_id', 'identity_available_at', 'box_number')}
             | {'block_token': name} for runner, (_, name) in zip(runners, roster)]}
     audit = {'race_id': member['race_id'], 'runner_count': len(runners),
+        'race_identity_method': race_identity_method,
         'verified_profile_count': sum(r['identity_id'] is not None for r in runners),
         'profile_dispositions': dict(Counter(r['identity_status'] for r in runners)),
         'row_dispositions': dict(reasons), 'sectional_presence': dict(sections),

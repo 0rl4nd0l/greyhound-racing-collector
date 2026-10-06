@@ -9,14 +9,16 @@ from tests.test_retained_card_timing_coverage import card, put
 from tests.test_runner_completeness import _runner_row
 
 
-def case(tmp_path, *, index=1, profile='101', conflict=False, track='GUNN', page_entry='201'):
+def case(tmp_path, *, index=1, profile='101', conflict=False, track='GUNN', page_entry='201',
+         dom_race_ids=('500',), sealed_race_id='500'):
     base = tmp_path / str(index)
     rows = [{'Dog Name': '1. Alpha', 'DATE': '2026-09-27', 'TRACK': track,
         'DIST': '340', '1 SEC': '6.2', 'TIME': '20.1'},
         {'Dog Name': '', 'DATE': '2026-09-26', 'TRACK': track, 'DIST': '340', '1 SEC': '-'},
         {'Dog Name': '2. Beta', 'DATE': '2026-09-25', 'TRACK': track,
          'DIST': '340', '1 SEC': '6.4', 'TIME': '20.2'}]
-    markup = '<main data-race-id="500"><table>' + _runner_row(1, 'Alpha', runner_id=page_entry,
+    markup = '<main>' + ''.join(f'<span data-race-id="{value}"></span>' for value in dom_race_ids)
+    markup += '<table>' + _runner_row(1, 'Alpha', runner_id=page_entry,
         dog_id=profile) + _runner_row(2, 'Beta', runner_id='202', dog_id='102') + '</table></main>'
     if conflict:
         markup = markup.replace('data-dog-id="101"', 'data-dog-id="101"><i data-dog-id="999"></i')
@@ -37,7 +39,7 @@ def case(tmp_path, *, index=1, profile='101', conflict=False, track='GUNN', page
                          {'box_number': 2, 'dog_name': 'Beta', 'source_native_runner_id': '202'}]},
         'target_distance': '340', 'content_sha256': member['accepted_csv']['sha256'],
         'raw_content_sha256': member['raw_export']['sha256'], 'race_url': url,
-        'source_native_race_id': '500', 'primary_race_page_evidence': {
+        'source_native_race_id': sealed_race_id, 'primary_race_page_evidence': {
             'body_sha256': member['primary_page']['sha256'],
             'receipt_sha256': member['primary_receipt']['sha256']}}
     member['sidecar'] = put(base/'source/card.csv.metadata.json', sidecar)
@@ -98,10 +100,61 @@ def test_inactive_reserves_without_entry_ids_do_not_conflict_with_active_field()
         'runner_completeness_after_canonical_alignment': {'participants': [
             {'box_number': 1, 'dog_name': 'Alpha', 'source_native_runner_id': '201'},
             {'box_number': 2, 'dog_name': 'Beta', 'source_native_runner_id': '202'}]}}
-    profiles = inputs._profiles(markup.encode(), sidecar, [(1, 'ALPHA'), (2, 'BETA')],
+    profiles, method = inputs._profiles(markup.encode(), sidecar, [(1, 'ALPHA'), (2, 'BETA')],
         {'capture_timestamp': '2026-10-01T19:54:00+10:00'})
     assert profiles[(1, 'ALPHA')][1] == 'thedogs:dog:101'
     assert profiles[(2, 'BETA')][1] == 'thedogs:dog:102'
+    assert method == 'MATCHING_NATIVE_HTML_AND_SEALED_RACE_ID'
+
+
+def test_missing_html_race_id_uses_complete_sealed_page_receipt_binding(tmp_path):
+    member, original = case(tmp_path, dom_race_ids=())
+    packet, observations, audit = inputs.construct_member(inputs.SnapshotReader(), member, original)
+    assert [r['identity_id'] for r in packet['roster']] == ['thedogs:dog:101', 'thedogs:dog:102']
+    assert len(observations) == 3
+    assert audit['race_identity_method'] == 'SEALED_NATIVE_RACE_AND_BOUND_PREJUMP_PAGE_RECEIPT'
+
+
+@pytest.mark.parametrize('dom_ids', [('',), ('501',), ('not-numeric',), ('500', '501')])
+def test_present_blank_invalid_conflicting_or_mismatching_dom_race_id_rejects(tmp_path, dom_ids):
+    member, original = case(tmp_path, dom_race_ids=dom_ids)
+    with pytest.raises(ValueError, match='TARGET_NATIVE_RACE_MISMATCH'):
+        inputs.construct_member(inputs.SnapshotReader(), member, original)
+
+
+@pytest.mark.parametrize('sealed', ['', '0', 'not-numeric'])
+def test_missing_dom_race_id_does_not_make_invalid_sealed_race_id_usable(tmp_path, sealed):
+    member, original = case(tmp_path, dom_race_ids=(), sealed_race_id=sealed)
+    with pytest.raises(ValueError, match='TARGET_SEALED_NATIVE_RACE_INVALID'):
+        inputs.construct_member(inputs.SnapshotReader(), member, original)
+
+
+def test_missing_dom_race_id_never_relaxes_native_runner_field(tmp_path):
+    member, original = case(tmp_path, dom_race_ids=(), page_entry='777')
+    with pytest.raises(ValueError, match='TARGET_NATIVE_ROSTER_MISMATCH'):
+        inputs.construct_member(inputs.SnapshotReader(), member, original)
+
+
+@pytest.mark.parametrize('change', ['missing_binding', 'wrong_race', 'wrong_url', 'wrong_body', 'late_receipt'])
+def test_missing_dom_race_id_requires_exact_bound_receipt(tmp_path, change):
+    from pathlib import Path
+    member, original = case(tmp_path, dom_race_ids=())
+    sidecar = json.loads(Path(member['sidecar']['path']).read_bytes())
+    receipt = json.loads(Path(member['primary_receipt']['path']).read_bytes())
+    binding = {'race_id': member['race_id'], 'jump_at': member['jump_at']}
+    if change == 'missing_binding':
+        binding = None
+    elif change == 'wrong_race':
+        receipt['race_discovery_key'] = 'other-race'
+    elif change == 'wrong_url':
+        receipt['requested_url'] = 'https://www.thedogs.com.au/racing/other'
+    elif change == 'wrong_body':
+        receipt['body_sha256'] = 'a'*64
+    else:
+        receipt['capture_timestamp'] = member['jump_at']
+    with pytest.raises(ValueError, match='TARGET_RACE_RECEIPT_BINDING_'):
+        inputs._profiles(Path(member['primary_page']['path']).read_bytes(), sidecar,
+            [(1, 'ALPHA'), (2, 'BETA')], receipt, race_binding=binding)
 
 
 def test_unverified_track_alias_stays_distinct_and_is_audited(tmp_path):

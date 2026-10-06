@@ -269,6 +269,8 @@ def main():
         return 0
     except Exception:
         # Tracebacks remain in root's private stderr; no partial success summary.
+        accounting.update(reads=reader.reads, read_bytes=reader.bytes,
+                          output_bytes_attempted=output.bytes, output_files_created=len(output.files))
         output.failure('EXECUTION_FAILURE_SEE_PRIVATE_STDERR', **accounting)
         raise
 

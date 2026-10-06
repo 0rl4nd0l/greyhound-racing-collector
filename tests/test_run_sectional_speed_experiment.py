@@ -79,6 +79,9 @@ def test_final_oracle_failure_preserves_all_fit_and_prediction_records(tmp_path,
     assert len(failed['details']['fit_trials_completed']) == 5
     assert failed['details']['prediction_completed_races'] == 3
     assert failed['details']['probability_oracle_checked_races'] == 2
+    assert failed['details']['reads'] == 2
+    assert failed['details']['read_bytes'] == 0
+    assert failed['details']['output_files_created'] > 5
     progress = [json.loads(path.read_text()) for path in sorted(output_path.glob('evaluation-progress-*.private.json'))]
     assert len([event for event in progress if event['kind'] == 'FIT_TRIAL_COMPLETED']) == 5
     predictions = [event['record'] for event in progress if event['kind'] == 'PREDICTION_COMPLETED']
