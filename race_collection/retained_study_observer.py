@@ -8,6 +8,7 @@ from contextvars import ContextVar
 from pathlib import Path
 
 from race_collection.retained_study_readiness import verify_retained_readiness
+from race_collection import retained_study_reservations as reservations
 from src.predictor.future_comparison import load_plan, stamp
 
 MODELS = {'market', 'production', 'residual_box', 'residual_half'}
@@ -258,6 +259,7 @@ def observe(cfg, *, now):
 
 def _observe(cfg, protocol, now):
     root = root_path(protocol['state_root'])
+    reservation = reservations.load(cfg, checked, root_path)
     plans = discover_plans(protocol)
     protected_roots = [root_path(text) for _, plan in plans
                        for text in [plan['programme_root'], *plan['prediction_output_roots']]]
@@ -268,6 +270,8 @@ def _observe(cfg, protocol, now):
     protected_roots.extend(root_path(cfg[key]) for key in ('campaign_root', 'state_root') if key in cfg)
     if protocol.get('persistent_source'):
         protected_roots.append(root_path(protocol['persistent_source']['runtime_root']))
+    if reservation:
+        protected_roots.append(reservation['root'])
     for protected in protected_roots:
         if root == protected or root.is_relative_to(protected) or protected.is_relative_to(root):
             raise ValueError('observer_root_overlaps_original')
@@ -279,10 +283,15 @@ def _observe(cfg, protocol, now):
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         journal = Journal(root)
         identity = {'kind': 'IDENTITY', 'protocol': cfg['retained_study_protocol'], 'amendment': cfg['study_amendment']}
+        if reservation:
+            previous = reservation['journal_predecessor']
+            identity = {'kind': 'IDENTITY', 'protocol': previous['retained_study_protocol'],
+                        'amendment': previous['study_amendment']}
         if journal.events and journal.events[0] != identity:
             raise ValueError('observer_authority_changed')
         if not journal.events:
             journal.append(identity)
+        reservations.bind(reservation, cfg, journal)
         members = {r['race_id']: r for r in journal.events if r['kind'] == 'MEMBER'}
         if len(members) != sum(r['kind'] == 'MEMBER' for r in journal.events):
             raise ValueError('observer_duplicate_journal_members')
@@ -296,6 +305,10 @@ def _observe(cfg, protocol, now):
                     raise ValueError('observer_selected_evidence_changed')
             manifest = checked(member['bundle_manifest'])
             verify_bundle_files(Path(member['bundle_manifest']['path']).parent, manifest)
+        reservation_states = reservations.states(reservation, checked, reference, stamp, canonical, journal, now)
+        for day, state in reservation_states.items():
+            append_once(journal, {'kind': 'DEVELOPMENT_RESERVATION_DATE', 'local_date': day,
+                'status': state['status'], 'evidence': state['evidence']}, now)
         for ref in protocol.get('independent_verifier_evidence', []):
             if reference(ref['path']) != ref:
                 raise ValueError('observer_verifier_evidence_changed')
@@ -303,7 +316,7 @@ def _observe(cfg, protocol, now):
             if reference(ref['path']) != ref:
                 raise ValueError('observer_opportunity_evidence_changed')
             append_once(journal, {'kind': 'ORIGINAL_DENOMINATOR_REFERENCE', 'reference': ref}, now)
-        added = 0
+        added = pending_reservations = 0
         for plan_ref, plan in plans:
             programme = Path(plan['programme_root'])/plan_ref['sha256']
             for path in sorted((programme/'opportunities').glob('*.json')):
@@ -339,6 +352,13 @@ def _observe(cfg, protocol, now):
                         raise ValueError('OBSERVER_ENDPOINT_REACHED')
                     if len(members) >= protocol['max_new_members']:
                         raise ValueError('OBSERVER_MEMBERSHIP_CAP_REACHED')
+                    disposition = reservations.disposition(reservation, reservation_states, candidate)
+                    if disposition:
+                        pending_reservations += disposition['reason'] == 'DEVELOPMENT_SELECTION_PENDING'
+                        append_once(journal, {'kind': 'DEVELOPMENT_RESERVATION',
+                            'race_id': race, 'admission': candidate['admission'],
+                            'reservation': reservation['reference'], **disposition}, now)
+                        continue
                     event = {'kind': 'MEMBER', **candidate, 'selection_at': now.isoformat(),
                              'membership_class': 'RETROSPECTIVE_RETAINED_PREJUMP_FORECAST'}
                     journal.append(event); members[race] = event; added += 1
@@ -367,6 +387,7 @@ def _observe(cfg, protocol, now):
         return {'status': 'OBSERVER_ENDPOINT_REACHED' if now >= stamp(protocol['ends_at']) else 'OBSERVATION_COMPLETE',
                 'members': len(members), 'new_members': added, 'remaining_members': protocol['max_new_members']-len(members),
                 'prior_scientific_capture_attempts': protocol['prior_scientific_capture_attempts'],
+                'pending_development_reservations': pending_reservations,
                 'provider_requests': 0, 'result_requests': 0, 'scores_generated': 0,
                 'source_health_claim': 'NOT_ESTABLISHED_BY_HISTORICAL_READINESS',
                 'new_input_state': input_state, 'complete_scan': True}
