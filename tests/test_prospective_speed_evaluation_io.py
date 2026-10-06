@@ -171,7 +171,12 @@ def test_complete_durable_single_analysis_then_restart_without_target_reads(tmp_
 def test_utc_execution_and_melbourne_payload_match_only_same_instant(
         tmp_path, monkeypatch, execution_time, expected):
     f = make_fixture(tmp_path, monkeypatch, execution_forecast_at=execution_time)
-    assert worker.run_evaluation(f['job'], f['output'])['status'] == expected
+    if expected == 'COMPLETE_SINGLE_PLANNED_EVALUATION':
+        assert worker.run_evaluation(f['job'], f['output'])['status'] == expected
+    else:
+        with pytest.raises(worker.EvaluationIORejected, match='FORECAST_CANDIDATE_CHANGED'):
+            worker.run_evaluation(f['job'], f['output'])
+        assert not (f['output']/'evaluation-claim.json').exists()
 
 
 def test_partial_evaluation_claim_is_consumed_and_preserves_raw_bytes(tmp_path, monkeypatch):
