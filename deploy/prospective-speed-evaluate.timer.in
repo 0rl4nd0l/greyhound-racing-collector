@@ -1,8 +1,8 @@
 [Unit]
-Description=October 25 private comparison; no interim performance checks
+Description=Single private comparison at the fixed evaluation time
 
 [Timer]
-OnCalendar=2026-10-25 12:05:00 Australia/Melbourne
+@EVALUATION_CALENDAR@
 AccuracySec=1s
 Persistent=true
 Unit=prospective-speed-evaluate.service

@@ -61,7 +61,7 @@ def _configuration(config_reference):
         and activation.get('retention_by_date') == config['retention_by_date']
         and activation.get('additional_source_requests') == 0
         and activation.get('additional_result_requests') == 0, 'AUTOMATIC_CLOSURE_AUTHORITY_REQUIRED')
-    _require(set(config['retention_by_date']) == set(planning.DATES), 'RETENTION_DATES_CHANGED')
+    _require(set(config['retention_by_date']) == set(plan['dates']), 'RETENTION_DATES_CHANGED')
     for source in config['retention_by_date'].values():
         if source.get('kind') == 'DEVELOPMENT_SELECTED_NATIVE':
             from race_collection.prospective_speed_results import load_config

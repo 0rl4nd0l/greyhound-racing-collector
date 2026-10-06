@@ -224,7 +224,7 @@ def cycle(reference, *, recover_only=False, host_factory=Host):
             runtime.put_new(directory/'complete.json', {'status': 'RECOVERED_'+status, 'at': runtime.utc_now().isoformat()})
         if recover_only:
             return {'status': 'RECOVERY_COMPLETE'}
-        if runtime.utc_now() < instant('2026-10-10T12:50:00+11:00'):
+        if runtime.utc_now() < instant(results.planning.selection_window(plan, plan['dates'][0])['freeze_at']):
             return {'status': 'BEFORE_DEVELOPMENT_HORIZON'}
         # Nomination is source-only. Outcomes remain unopened until exclusive
         # acquisition ownership and an exact selected native seal are proved.

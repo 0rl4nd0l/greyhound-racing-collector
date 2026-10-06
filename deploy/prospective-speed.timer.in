@@ -1,10 +1,8 @@
 [Unit]
-Description=Fixed October 10-11 development speed horizon
+Description=Fixed authorized development speed horizon
 
 [Timer]
-OnCalendar=2026-10-10,11 12:50..59:00 Australia/Melbourne
-OnCalendar=2026-10-10,11 13,14:*:00 Australia/Melbourne
-OnCalendar=2026-10-12 00:05:00 Australia/Melbourne
+@FORECAST_CALENDAR@
 AccuracySec=1s
 Persistent=true
 Unit=prospective-speed.service

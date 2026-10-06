@@ -58,7 +58,8 @@ def setup(tmp_path, monkeypatch):
         'status': 'AUTHORIZED_EXISTING_DEVELOPMENT_QUIET_GAPS', 'bridge': {}, 'state_root': str(state)}
     ref = controller.runtime.put_new(tmp_path/'config.json', config)
     monkeypatch.setattr(controller.runtime, 'utc_now', lambda: NOW)
-    monkeypatch.setattr(controller.results, 'load_config', lambda ref: ({}, {}, {}))
+    monkeypatch.setattr(controller.results, 'load_config', lambda ref: ({}, {
+        'schema_version': 'prospective_sectional_plan_v1', 'dates': ['2026-10-10', '2026-10-11']}, {}))
     monkeypatch.setattr(controller.results, 'prepare_queue', lambda ref: None)
     due = {'selected_due': 1, 'transport_permitted_by_time_and_budget': True}
     monkeypatch.setattr(controller.results, 'inspect_queue', lambda ref: due.copy())
@@ -111,6 +112,19 @@ def test_no_due_work_never_observes_or_pauses_collector(tmp_path, monkeypatch):
     ref, state, host, calls, due = setup(tmp_path, monkeypatch); due['selected_due'] = 0
     assert controller.cycle(ref, host_factory=lambda _: host)['status'] == 'NO_SELECTED_RESULT_DUE'
     assert not host.actions and not calls
+
+
+def test_amended_start_uses_bound_plan_not_old_october_ten(tmp_path, monkeypatch):
+    ref, state, host, calls, due = setup(tmp_path, monkeypatch)
+    plan = {'schema_version': 'prospective_sectional_plan_v2', 'dates': ['2026-10-06', '2026-10-07'],
+        'selection_windows': [{'local_date': '2026-10-06', 'freeze_at': '2026-10-06T22:00:00+11:00'}]}
+    monkeypatch.setattr(controller.results, 'load_config', lambda ref: ({}, plan, {}))
+    monkeypatch.setattr(controller.runtime, 'utc_now', lambda: datetime.fromisoformat('2026-10-06T21:59:00+11:00'))
+    assert controller.cycle(ref, host_factory=lambda _: host)['status'] == 'BEFORE_DEVELOPMENT_HORIZON'
+    assert not host.actions and not calls
+    monkeypatch.setattr(controller.runtime, 'utc_now', lambda: datetime.fromisoformat('2026-10-07T06:00:00+11:00'))
+    assert controller.cycle(ref, host_factory=lambda _: host)['status'] == 'RESULT_BATCH_COMPLETE_COLLECTOR_RUNNING'
+    assert calls == ['request']
 
 
 def test_partial_intent_cannot_restart_unowned_collector(tmp_path, monkeypatch):

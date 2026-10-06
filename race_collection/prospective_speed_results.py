@@ -29,6 +29,48 @@ def _require(condition, reason):
         raise ValueError(reason)
 
 
+def _result_authority(plan, cfg, profile, allocation):
+    """An earlier selection uses the original cumulative charging identity.
+
+    The overlay changes membership and tightens the deadline. It cannot replace
+    the installed campaign profile, retention ledger, source controls or caps.
+    """
+    if plan['schema_version'] == 'prospective_sectional_plan_v1':
+        _require(cfg['allocation'] == profile['allocation']
+            and cfg['authority_reference'] == profile['authority_reference'] == allocation['authority_reference']
+            and cfg['result_closure_at'] == profile['result_closure_at'],
+            'ORIGINAL_DEVELOPMENT_RESULT_AUTHORITY_CHANGED')
+        return
+    previous = Reader().json(cfg['predecessor_runtime'])
+    approval = Reader().json(cfg['reschedule_authorization'])
+    amendment = Reader().json(plan['schedule_amendment_reference'])
+    changed = {'schema_version', 'allocation', 'authority_reference', 'result_closure_at',
+               'predecessor_runtime', 'reschedule_authorization'}
+    _require(cfg.get('schema_version') == 'development_pilot_runtime_v2'
+        and {k: v for k, v in cfg.items() if k not in changed}
+            == {k: v for k, v in previous.items() if k not in changed}
+        and previous['schema_version'] == 'development_pilot_runtime_v1'
+        and previous['allocation'] == allocation['predecessor_allocation'] == profile['allocation']
+        and previous['authority_reference'] == profile['authority_reference']
+        and previous['result_closure_at'] == profile['result_closure_at']
+        and instant(cfg['result_closure_at']) <= instant(profile['result_closure_at'])
+        and allocation['schema_version'] == 'development_allocation_v2'
+        and allocation['dates'] == plan['dates']
+        and allocation['selection_windows'] == plan['selection_windows']
+        and allocation['max_capture_attempts'] == 12 and allocation['max_attempts_per_date'] == 6
+        and allocation['approval'] == cfg['reschedule_authorization'] == amendment['user_receipt']
+        and amendment == plan['schedule_amendment']
+        and approval['schema_version'] == 'development_reschedule_authorization_v1'
+        and approval['status'] == 'AUTHORIZED'
+        and approval['predecessor_allocation'] == profile['allocation']
+        and approval['selection_windows'] == plan['selection_windows']
+        and approval['maximum_total'] == 12 and approval['maximum_per_date'] == 6
+        and approval['preserve_existing_study_members'] is True
+        and approval['preserve_consumed_allowances'] is True
+        and cfg['authority_reference'] == allocation['authority_reference'] == approval['authority_reference'],
+        'AMENDED_RESULT_AUTHORITY_INVALID')
+
+
 def load_config(reference):
     config = Reader().json(reference)
     plan = Reader().json(config['plan'])
@@ -42,14 +84,14 @@ def load_config(reference):
         and config['legacy_runtime'] == plan['authority']['result_runtime']
         and cfg.get('status') == 'AUTHORIZED' and allocation.get('status') == 'AUTHORIZED'
         and allocation['allocation_id'] == plan['allocation_id']
-        and cfg['allocation'] == plan['authority']['allocation'] == profile['allocation']
+        and cfg['allocation'] == plan['authority']['allocation']
         and cfg['state_root'] == profile['state_root']
-        and cfg['authority_reference'] == profile['authority_reference'] == allocation['authority_reference']
         and cfg['max_result_operations'] == profile['max_result_operations'] == 72
         and cfg['max_result_transport_requests'] == profile['max_result_logical_requests'] == 720
         and cfg['max_result_checks_per_race'] == 3
-        and cfg['result_closure_at'] == profile['result_closure_at'] == plan['result_requests_stop_at'],
+        and cfg['result_closure_at'] == plan['result_requests_stop_at'],
         'ORIGINAL_DEVELOPMENT_RESULT_AUTHORITY_CHANGED')
+    _result_authority(plan, cfg, profile, allocation)
     _require(activation.get('status') == 'AUTHORIZED_PROSPECTIVE_DEVELOPMENT'
         and activation.get('plan_sha256') == config['plan']['sha256']
         and activation.get('development_precedence_verified') is True
@@ -76,10 +118,10 @@ def _admitted(config, plan, ready):
     planning._validate_population(plan, population)
     day = population['local_date']
     account = Reader().json(runtime.reference(Path(config['coordinator_state_root'])/day/'date-accounting.json'))
-    _require(day in planning.DATES and ready['race_id'] in population['selected_race_ids']
+    _require(day in plan['dates'] and ready['race_id'] in population['selected_race_ids']
         and account['status'] == 'POPULATION_FROZEN' and account['population'] == ready['population']
         and account['population_sha256'] == planning._digest(population)
-        and ready['race_key'] == legacy.race_key(ready['race_id']), 'NATIVE_RESULT_NOT_SELECTED')
+        and ready['race_key'] == planning.race_key_for_plan(plan, ready['race_id']), 'NATIVE_RESULT_NOT_SELECTED')
     reader = evaluation._Checked()
     completion = reader.json(ready['forecast_completion'])
     seal = reader.json(completion['seal'])
@@ -104,12 +146,19 @@ def _admitted(config, plan, ready):
     return packet, context
 
 
+def _inventory(cfg, plan, root, now):
+    previous = Reader().json(cfg['predecessor_runtime']) if cfg.get('predecessor_runtime') else None
+    return legacy._inventory(cfg, root, now,
+        race_key_fn=lambda value: planning.race_key_for_plan(plan, value),
+        predecessor_configs={previous['allocation']['sha256']: previous} if previous else None)
+
+
 def nominate(config, plan, cfg):
     """Only exact selected disposition keys are inspected; no successful-directory census."""
     root = Path(cfg['state_root'])
     ready_root = legacy.private_output(root/'ready')
     count = 0
-    for day in planning.DATES:
+    for day in plan['dates']:
         day_root = Path(config['coordinator_state_root'])/day
         account_path = day_root/'date-accounting.json'
         if not account_path.exists():
@@ -142,7 +191,7 @@ def nominate(config, plan, cfg):
                                      if row['race_id'] == race_id)
                 _require(ready.get('schema_version') == 'development_pilot_capture_ready_v1'
                     and ready.get('prospective_speed_role') == 'SELECTED_NATIVE_DEVELOPMENT_RESULT'
-                    and ready.get('race_id') == race_id and ready.get('race_key') == legacy.race_key(race_id)
+                    and ready.get('race_id') == race_id and ready.get('race_key') == planning.race_key_for_plan(plan, race_id)
                     and ready.get('allocation_sha256') == cfg['allocation']['sha256']
                     and ready.get('plan') == config['plan'] and ready.get('population') == population_ref
                     and ready.get('forecast_completion') == completion_ref
@@ -155,7 +204,7 @@ def nominate(config, plan, cfg):
             context = closure._native_context(evaluation._Checked(), payload)
             ready = {'schema_version': 'development_pilot_capture_ready_v1',
                 'prospective_speed_role': 'SELECTED_NATIVE_DEVELOPMENT_RESULT',
-                'race_id': race_id, 'race_key': legacy.race_key(race_id),
+                'race_id': race_id, 'race_key': planning.race_key_for_plan(plan, race_id),
                 'jump_at': payload['jump_at'], 'job_id': context['job'].job_id,
                 'allocation_sha256': cfg['allocation']['sha256'],
                 'pre_result_sha256': terminal['payload']['sha256'],
@@ -309,7 +358,7 @@ def _complete(directory, ready, evidence, disposition, reason, observed, source_
 
 
 def _run_due(config, plan, cfg, root, now):
-    _, due, _, operations, transports = legacy._inventory(cfg, root, now)
+    _, due, _, operations, transports = _inventory(cfg, plan, root, now)
     selected = [(at, ready, stage) for at, ready, stage in due
         if ready.get('prospective_speed_role') == 'SELECTED_NATIVE_DEVELOPMENT_RESULT'
         and ready.get('plan') == config['plan']]
@@ -354,7 +403,7 @@ def _run_due(config, plan, cfg, root, now):
                 return {'status': 'FINAL_TRANSPORT_WINDOW_CLOSED'}
             # Authoritative inventory is rechecked under both original worker
             # and campaign locks; every prior original attempt remains charged.
-            _, _, _, operations, transports = legacy._inventory(cfg, root, now)
+            _, _, _, operations, transports = _inventory(cfg, plan, root, now)
             _require(operations < 72 and transports < 720, 'RESULT_CUMULATIVE_BUDGET')
             campaign = Campaign(Path(cfg['campaign_root']), development_authority=cfg['pilot_campaign_authority'])
             with requests.Session() as session:
@@ -410,7 +459,7 @@ def inspect_queue(config_reference):
     """Outcome-free scheduling metadata for the root's quiet-gap coordinator."""
     config, plan, cfg = load_config(config_reference)
     now = runtime.utc_now()
-    rows, due, completed, operations, transports = legacy._inventory(cfg, Path(cfg['state_root']), now)
+    rows, due, completed, operations, transports = _inventory(cfg, plan, Path(cfg['state_root']), now)
     selected = [item for item in due if item[1].get('prospective_speed_role') == 'SELECTED_NATIVE_DEVELOPMENT_RESULT'
                 and item[1].get('plan') == config['plan']]
     transport_due = [item for item in selected if item[2] is not None]

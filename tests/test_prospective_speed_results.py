@@ -311,3 +311,75 @@ def test_unknown_terminal_stays_quarantined_after_deadline(tmp_path, monkeypatch
     entry = json.loads((f['root']/'result-manifest.json').read_bytes())['entries'][0]
     assert entry['label_status'] == 'QUARANTINED_RETAINED_RESULT' and entry['target'] is None
     assert len(calls) == 1
+
+
+def amended_authority(tmp_path, monkeypatch):
+    f = fixture(tmp_path, monkeypatch)
+    previous = f['legacy']
+    profile = load(previous['pilot_campaign_authority'])
+    windows = [{'local_date': '2026-10-06'}, {'local_date': '2026-10-07'}]
+    approval = runtime.put_new(tmp_path/'reschedule.json', {
+        'schema_version': 'development_reschedule_authorization_v1', 'status': 'AUTHORIZED',
+        'authority_reference': 'FABRICATED:earlier', 'predecessor_allocation': profile['allocation'],
+        'selection_windows': windows, 'maximum_total': 12, 'maximum_per_date': 6,
+        'preserve_existing_study_members': True, 'preserve_consumed_allowances': True})
+    amendment = {'user_receipt': approval}
+    amendment_ref = runtime.put_new(tmp_path/'amendment.json', amendment)
+    allocation = {'schema_version': 'development_allocation_v2', 'status': 'AUTHORIZED',
+        'allocation_id': profile['allocation_id'], 'authority_reference': 'FABRICATED:earlier',
+        'predecessor_allocation': profile['allocation'], 'approval': approval,
+        'dates': ['2026-10-06', '2026-10-07'], 'selection_windows': windows,
+        'max_capture_attempts': 12, 'max_attempts_per_date': 6}
+    allocation_ref = runtime.put_new(tmp_path/'earlier-allocation.json', allocation)
+    cfg = {**previous, 'schema_version': 'development_pilot_runtime_v2', 'allocation': allocation_ref,
+        'authority_reference': 'FABRICATED:earlier', 'result_closure_at': '2026-10-09T12:00:00+11:00',
+        'predecessor_runtime': load(f['bridge'])['legacy_runtime'], 'reschedule_authorization': approval}
+    plan = {'schema_version': 'prospective_sectional_plan_v2', 'dates': allocation['dates'],
+        'selection_windows': windows, 'schedule_amendment_reference': amendment_ref,
+        'schedule_amendment': amendment}
+    return plan, cfg, profile, allocation
+
+
+def test_earlier_result_permission_reuses_original_campaign_profile_and_ledger(tmp_path, monkeypatch):
+    plan, cfg, profile, allocation = amended_authority(tmp_path, monkeypatch)
+    worker._result_authority(plan, cfg, profile, allocation)
+    previous = load(cfg['predecessor_runtime'])
+    assert cfg['pilot_campaign_authority'] == previous['pilot_campaign_authority']
+    assert cfg['state_root'] == previous['state_root']
+    assert cfg['max_result_operations'] == 72 and cfg['max_result_transport_requests'] == 720
+
+
+@pytest.mark.parametrize('change', ['ledger', 'profile', 'budget', 'deadline', 'allocation', 'authority'])
+def test_earlier_permission_cannot_reset_budget_or_detach_approval(tmp_path, monkeypatch, change):
+    plan, cfg, profile, allocation = amended_authority(tmp_path, monkeypatch)
+    if change == 'ledger': cfg['state_root'] += '-fresh'
+    if change == 'profile': cfg['pilot_campaign_authority'] = {'path': '/new-profile', 'sha256': 'a'*64}
+    if change == 'budget': cfg['max_result_operations'] = 73
+    if change == 'deadline': cfg['result_closure_at'] = '2026-10-26T12:00:00+11:00'
+    if change == 'allocation': allocation['max_capture_attempts'] = 24
+    if change == 'authority': cfg['authority_reference'] = 'FABRICATED:unbound'
+    with pytest.raises(ValueError, match='AMENDED_RESULT_AUTHORITY_INVALID'):
+        worker._result_authority(plan, cfg, profile, allocation)
+
+
+def test_mixed_original_and_amended_nominations_keep_prior_counters(tmp_path, monkeypatch):
+    plan, cfg, profile, allocation = amended_authority(tmp_path, monkeypatch)
+    root = Path(cfg['state_root'])
+    old = load(cfg['predecessor_runtime'])
+    names = [('Race 1 - DUBO - 2026-10-03', old['allocation']['sha256'], '2026-10-03T13:10:00+10:00'),
+             ('Race 1 - LADBROKES-Q1-LAKESIDE - 2026-10-06', cfg['allocation']['sha256'], '2026-10-06T22:21:00+11:00')]
+    for race_id, pin, jump in names:
+        key = hashlib.sha256(race_id.encode()).hexdigest()
+        runtime.put_new(root/'ready'/(key+'.json'), {
+            'schema_version': 'development_pilot_capture_ready_v1', 'race_id': race_id,
+            'race_key': worker.planning.race_key_for_plan(plan, race_id),
+            'allocation_sha256': pin, 'jump_at': jump, 'pre_result_sha256': 'b'*64})
+        d = root/'results'/key/'attempt-0'; d.mkdir(parents=True)
+        runtime.put_new(d/'started.json', {'race_id': race_id})
+        runtime.put_new(d/'request.json', {'race_id': race_id})
+    rows, due, completed, operations, transports = worker._inventory(cfg, plan, root,
+        datetime.fromisoformat('2026-10-07T06:00:00+11:00'))
+    assert len(rows) == 2 and operations == transports == 2
+    assert {r['allocation_sha256'] for r in rows} == {old['allocation']['sha256'], cfg['allocation']['sha256']}
+    # No target records are needed or opened to preserve earlier accounting.
+    assert not list((root/'results').glob('*/official-result.json'))
