@@ -273,3 +273,90 @@ def test_interrupted_freeze_without_account_is_consumed_not_reconstructed(tmp_pa
     account = json.loads(population.with_name('date-accounting.json').read_bytes())
     assert account['status'] == 'FREEZE_INTERRUPTED'
     assert frozen == []
+
+
+def earlier_fixture(tmp_path, monkeypatch, *, observed='2026-10-06T21:45:00+11:00'):
+    from tests.test_prospective_speed_plan import amendment, earlier_plan
+    from race_collection.daily_race_inventory import write_daily_inventory
+    config, _, clock, _ = fixture(tmp_path, monkeypatch, time='2026-10-06T22:00:10+11:00')
+    amendment_ref = write(tmp_path/'amendment.json', amendment())
+    allocation = write(tmp_path/'earlier-allocation.json', {'status': 'AUTHORIZED',
+        'allocation_id': 'development-single-snapshot-20261003-v1', 'dates': ['2026-10-06', '2026-10-07']})
+    plan = earlier_plan(reference=amendment_ref, allocation=allocation)
+    config['plan'] = write(tmp_path/'earlier-plan.json', plan)
+    activation = json.loads(Path(config['activation']['path']).read_bytes())
+    activation['plan_sha256'] = config['plan']['sha256']
+    config['activation'] = write(tmp_path/'earlier-activation.json', activation)
+    config_ref = write(tmp_path/'earlier-config.json', config)
+    producer = Path(config['producer_runtime_root'])
+    day = '2026-10-06'
+    output = producer/day/'native'
+    comparison = write(producer/day/'comparison.json', {'programme_root': str(producer/day/'admissions')})
+    source = write(producer/day/'source.json', {'frozen_comparison': comparison,
+        'prediction_root': str(producer/day/'predictions')})
+    preparation = write(producer/day/'preparation.json', {'racing_date': day, 'plan': source, 'output': str(output)})
+    write(producer/'current-day.json', {'racing_date': day, 'preparation': preparation})
+    races = [{'date': day, 'race_number': str(i+1), 'venue': 'LADBROKES-Q1-LAKESIDE' if i == 0 else 'MAND',
+        'url': f'https://www.thedogs.com.au/racing/'+('ladbrokes-q1-lakeside' if i == 0 else 'mandurah')+f'/{day}/{i+1}/fixture',
+        'scheduled_jump_datetime': f'{day}T22:{20+i*5:02d}:00+11:00'} for i in range(8)]
+    races.append({'date': day, 'race_number': '9', 'venue': 'MAND',
+        'url': f'https://www.thedogs.com.au/racing/mandurah/{day}/9/fixture', 'scheduled_jump_datetime': None})
+    inventory = write_daily_inventory(output/'inventories'/'complete.json', races=races,
+        source_date=day, observed_at=observed)
+    write(producer/'health.json', {'source_date': day, 'preparation': preparation,
+        'output': str(output), 'inventory': inventory})
+    monkeypatch.setattr(coordinator, 'freeze_population', lambda *args: pytest.fail('price-qualified index consulted'))
+    return config, config_ref, clock, inventory
+
+
+def test_earlier_freeze_uses_complete_daily_inventory_and_preserves_hyphenated_native_identity(tmp_path, monkeypatch):
+    config, reference, _, inventory = earlier_fixture(tmp_path, monkeypatch)
+    value = coordinator.tick(reference)
+    assert value['selected'] == 6
+    root = Path(config['state_root'])/'2026-10-06'
+    population = json.loads((root/'population.json').read_bytes())
+    assert len(population['observed_races']) == 9
+    assert population['selected_race_ids'][0] == 'Race 1 - LADBROKES-Q1-LAKESIDE - 2026-10-06'
+    assert population['dispositions'][-1]['disposition'] == 'MISSING_JUMP_TIME'
+    original = json.loads((root/'original-population.json').read_bytes())
+    assert original['inventory_reference'] == inventory
+    assert original['schema_version'] == 'development_population_freeze_v2'
+    assert original['selected_race_ids'] == population['first_six_race_ids']
+    completion = json.loads((root/'original-population.json.completion.json').read_bytes())
+    assert completion['population_sha256'] == coordinator.runtime.reference(root/'original-population.json')['sha256']
+    account = json.loads((root/'date-accounting.json').read_bytes())
+    assert account['freeze_completed_at'] == '2026-10-06T22:00:10+11:00'
+
+
+def test_earlier_stale_inventory_failure_is_consumed_with_no_index_fallback(tmp_path, monkeypatch):
+    config, reference, _, _ = earlier_fixture(tmp_path, monkeypatch, observed='2026-10-06T21:29:00+11:00')
+    assert coordinator.tick(reference)['status'] == 'POPULATION_FREEZE_FAILED'
+    assert coordinator.tick(reference)['status'] == 'DATE_ALREADY_CONSUMED'
+    account = json.loads((Path(config['state_root'])/'2026-10-06'/'date-accounting.json').read_bytes())
+    assert account['status'] == 'SOURCE_OR_AUTHORITY_UNAVAILABLE'
+
+
+def test_earlier_amendment_actual_bytes_must_match_frozen_copy(tmp_path, monkeypatch):
+    config, reference, _, _ = earlier_fixture(tmp_path, monkeypatch)
+    plan = json.loads(Path(config['plan']['path']).read_bytes())
+    Path(plan['schedule_amendment_reference']['path']).write_bytes(b'{}')
+    forbid_producer_reads(config, monkeypatch)
+    with pytest.raises(ValueError):
+        coordinator.tick(reference)
+    assert not Path(config['state_root']).exists()
+
+
+def test_earlier_population_fsync_crossing_cutoff_never_admits(tmp_path, monkeypatch):
+    config, reference, clock, _ = earlier_fixture(tmp_path, monkeypatch)
+    put = coordinator.runtime.put_new
+    def slow_publication(path, value):
+        result = put(path, value)
+        if Path(path).name == 'population.json':
+            clock.value = datetime.fromisoformat('2026-10-06T22:01:00+11:00')
+        return result
+    monkeypatch.setattr(coordinator.runtime, 'put_new', slow_publication)
+    assert coordinator.tick(reference)['status'] == 'POPULATION_FREEZE_FAILED'
+    assert coordinator.tick(reference)['status'] == 'DATE_ALREADY_CONSUMED'
+    root = Path(config['state_root'])/'2026-10-06'
+    assert json.loads((root/'date-accounting.json').read_bytes())['status'] != 'POPULATION_FROZEN'
+    assert not (root/'jobs').exists()

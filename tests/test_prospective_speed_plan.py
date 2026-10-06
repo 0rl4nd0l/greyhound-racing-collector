@@ -235,3 +235,83 @@ def test_entire_missing_collection_date_cannot_disappear():
     with pytest.raises(PlanRejected, match='DATE_ACCOUNTING_INCOMPLETE'):
         evaluate_closed_population(plan(), [], [], date_accounting=[],
             now='2026-10-25T12:05:00+11:00', collection_terminal=True, closure_terminal=True)
+
+
+def amendment():
+    return {'schema_version': 'prospective_speed_schedule_amendment_v1',
+        'status': 'AUTHORIZED_EARLIER_DEVELOPMENT_SCHEDULE', 'authority_reference': 'fixture:user-earlier-authority',
+        'issued_at': '2026-10-06T21:00:00+11:00',
+        'selection_windows': [{'local_date': day, 'freeze_at': day+'T'+freeze+'+11:00',
+            'jump_start': day+'T'+begin+'+11:00', 'jump_end': day+'T23:59:59+11:00'}
+            for day, freeze, begin in [('2026-10-06', '22:00:00', '22:20:00'),
+                                      ('2026-10-07', '07:00:00', '07:20:00')]],
+        'result_requests_stop_at': '2026-10-09T12:00:00+11:00',
+        'evaluation_at': '2026-10-09T12:05:00+11:00', 'maximum_total': 12, 'maximum_per_date': 6,
+        'beta': .1, 'additional_source_requests': 0, 'additional_result_requests': 0,
+        'preserve_existing_membership': True}
+
+
+def earlier_plan(reference=None, document=None, allocation=None):
+    original = plan()
+    authorities = original['authority']
+    if allocation:
+        authorities['allocation'] = allocation
+    return build_plan(frozen_at='2026-10-06T21:10:00+11:00', candidate_reference=original['candidate'],
+        authority_references=authorities, precision=original['precision'],
+        schedule_amendment_reference=reference or {'path': '/private/amendment.json', 'sha256': 'c'*64},
+        schedule_amendment=document or amendment())
+
+
+def late_races():
+    return [{'race_id': f'Race {i+1} - TEST - 2026-10-06', 'race_key': f'2026-10-06|TEST|{i+1}',
+        'jump_at': f'2026-10-06T22:{20+i*5:02d}:00+11:00'} for i in range(8)]
+
+
+def test_v2_changes_only_declared_schedule_and_uses_new_allocation_reference():
+    original, new = plan(), earlier_plan(allocation={'path': '/private/new-allocation.json', 'sha256': 'd'*64})
+    for field in ('candidate', 'candidate_commit', 'baseline', 'beta', 'methods', 'history_rule',
+                  'primary', 'secondary', 'missing_history', 'dead_heat', 'evaluation_looks'):
+        assert new[field] == original[field]
+    assert new['dates'] == ['2026-10-06', '2026-10-07']
+    assert new['population']['maximum_total'] == 12 and new['population']['maximum_per_date'] == 6
+    assert evaluation_gate(new, now='2026-10-09T12:04:59+11:00',
+        collection_terminal=True, closure_terminal=True) == 'WAIT_FOR_FIXED_EVALUATION_TIME'
+
+
+def test_v2_first_six_daily_census_missing_time_and_protected_do_not_replace():
+    rows = late_races()
+    rows.append({'race_id': 'Race 9 - TEST - 2026-10-06', 'race_key': '2026-10-06|TEST|9', 'jump_at': None})
+    result = select_population(earlier_plan(), list(reversed(rows)), local_date='2026-10-06',
+        frozen_at='2026-10-06T22:00:30+11:00', source_observed_at='2026-10-06T21:31:00+11:00',
+        index_complete=True, protected_membership_reference=PROTECTED, protected_race_ids=[rows[0]['race_id']])
+    assert result['first_six_race_ids'] == [row['race_id'] for row in rows[:6]]
+    assert result['selected_race_ids'] == [row['race_id'] for row in rows[1:6]]
+    assert len(result['dispositions']) == 9
+    assert result['dispositions'][0]['disposition'] == 'MISSING_JUMP_TIME'
+
+
+@pytest.mark.parametrize('mutation', [{'maximum_total': 13}, {'beta': .2}, {'additional_source_requests': 1}])
+def test_v2_cannot_change_frozen_scope_or_candidate(mutation):
+    value = amendment(); value.update(mutation)
+    with pytest.raises(PlanRejected, match='SCHEDULE_AMENDMENT_INVALID'):
+        earlier_plan(document=value)
+
+
+def test_v2_rejects_stale_inventory_and_after_midnight_is_outside_declared_window():
+    rows = late_races()
+    rows[-1]['jump_at'] = '2026-10-07T00:03:00+11:00'
+    kwargs = dict(local_date='2026-10-06', frozen_at='2026-10-06T22:00:00+11:00',
+        index_complete=True, protected_membership_reference=PROTECTED)
+    with pytest.raises(PlanRejected, match='INDEX_NOT_COMPLETE_AND_FRESH'):
+        select_population(earlier_plan(), rows, source_observed_at='2026-10-06T21:29:59+11:00', **kwargs)
+    result = select_population(earlier_plan(), rows, source_observed_at='2026-10-06T21:30:00+11:00', **kwargs)
+    assert result['dispositions'][-1]['disposition'] == 'OUTSIDE_SELECTION_WINDOW'
+
+
+def test_v2_evaluation_accounts_for_amended_dates_without_old_dates():
+    new = earlier_plan()
+    accounts = [{'local_date': day, 'status': 'INDEX_MISSING', 'reason': 'fixture absent',
+                 'population_sha256': None} for day in new['dates']]
+    result = evaluate_closed_population(new, [], [], date_accounting=accounts,
+        now=new['evaluation_at'], collection_terminal=True, closure_terminal=True)
+    assert set(result['date_results']) == set(new['dates'])

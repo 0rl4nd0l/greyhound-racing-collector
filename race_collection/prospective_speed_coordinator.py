@@ -6,6 +6,7 @@ is invoked here. Configured source controls remain read-only under systemd/bwrap
 """
 import hashlib
 import json
+from datetime import timedelta
 from pathlib import Path
 
 from race_collection import prospective_speed_inputs as inputs
@@ -96,7 +97,7 @@ def _run_existing(job_ref, state):
 def close_elapsed_dates(state, plan, local):
     """A stopped scheduler must leave whole missed dates and races visible."""
     for day in plan['dates']:
-        if day > local.date().isoformat() or (day == local.date().isoformat() and local.strftime('%H:%M') <= '14:30'):
+        if local <= instant(planning.selection_window(plan, day)['jump_end'])+timedelta(minutes=10):
             continue
         day_root = state / day
         day_root.mkdir(exist_ok=True, mode=0o700)
@@ -119,10 +120,57 @@ def close_elapsed_dates(state, plan, local):
                 runtime.put_new(disposition, {'race_id': race_id, **result})
 
 
+def _freeze_daily_inventory(config, plan, producer, day, day_root, protected_ref, protected_ids):
+    """Freeze the full native discovery census, never a price-qualified index."""
+    from race_collection.daily_race_inventory import load_daily_inventory
+    start = runtime.utc_now()
+    preparation, _, _ = _producer_view(producer, day)
+    health = Reader().json(runtime.reference(producer/'health.json'))
+    if health['preparation'] != runtime.reference(Path(health['preparation']['path'])):
+        raise ValueError('PRODUCER_PREPARATION_CHANGED')
+    if (health.get('source_date') != day or Reader().json(health['preparation']) != preparation
+            or health.get('output') != preparation['output']):
+        raise ValueError('INVENTORY_PRODUCER_BINDING_CHANGED')
+    inventory_ref = health['inventory']
+    if not Path(inventory_ref['path']).is_relative_to(Path(preparation['output'])/'inventories'):
+        raise ValueError('INVENTORY_OUTSIDE_NATIVE_OUTPUT')
+    Reader().read(inventory_ref)
+    inventory = load_daily_inventory(**inventory_ref, source_date=day, now=start, max_age_seconds=1800)
+    rows = planning.inventory_rows(inventory, day)
+    population = planning.select_population(plan, rows, local_date=day, frozen_at=start.isoformat(),
+        source_observed_at=inventory['observed_at'], index_complete=True,
+        protected_membership_reference=protected_ref, protected_race_ids=protected_ids)
+    original = {'schema_version': 'development_population_freeze_v2', 'synthetic': False,
+        'allocation_id': plan['allocation_id'], 'allocation_sha256': plan['authority']['allocation']['sha256'],
+        'selection_policy': plan['population']['selection_policy'], 'local_date': day,
+        'frozen_at': start.isoformat(), 'source_observed_at': inventory['observed_at'],
+        'inventory_reference': inventory_ref, 'producer_preparation': health['preparation'],
+        'schedule_amendment_reference': plan['schedule_amendment_reference'],
+        'selection_window': planning.selection_window(plan, day),
+        'observed_races': rows, 'observed_races_sha256': planning._digest(rows),
+        'selected_race_ids': population['first_six_race_ids'],
+        'coverage_basis': 'ALL_RETAINED_DAILY_DISCOVERY_ROWS_BEFORE_WIN_QUALIFICATION'}
+    original_ref = runtime.put_new(day_root/'original-population.json', original)
+    completed = runtime.utc_now()
+    window = planning.selection_window(plan, day)
+    if not instant(window['freeze_at']) <= completed < instant(window['freeze_at'])+timedelta(minutes=1):
+        raise ValueError('FREEZE_CROSSED_CUTOFF')
+    runtime.put_new(day_root/'original-population.json.completion.json', {'status': 'POPULATION_FROZEN',
+        'population_sha256': original_ref['sha256'], 'completed_at': completed.isoformat()})
+    return population
+
+
 def tick(config_reference):
     config = Reader().json(config_reference)
     plan = Reader().json(config['plan'])
     planning._validate_plan(plan)
+    if plan['schema_version'] == 'prospective_sectional_plan_v2':
+        if Reader().json(plan['schedule_amendment_reference']) != plan['schedule_amendment']:
+            raise ValueError('SCHEDULE_AMENDMENT_CHANGED')
+        allocation = Reader().json(plan['authority']['allocation'])
+        if (allocation.get('status') != 'AUTHORIZED' or allocation.get('allocation_id') != plan['allocation_id']
+                or allocation.get('dates') != plan['dates']):
+            raise ValueError('EARLIER_DEVELOPMENT_ALLOCATION_CHANGED')
     activation = Reader().json(config['activation'])
     if (activation.get('status') != 'AUTHORIZED_PROSPECTIVE_DEVELOPMENT'
             or activation.get('plan_sha256') != config['plan']['sha256']
@@ -147,38 +195,46 @@ def tick(config_reference):
             return {'status': 'NO_DEVELOPMENT_DATE_DUE', 'next_dates': [d for d in plan['dates'] if d > day]}
         day_root = state / day
         day_root.mkdir(exist_ok=True, mode=0o700)
+        window = planning.selection_window(plan, day)
+        freeze_at = instant(window['freeze_at'])
         population_path = day_root / 'population.json'
         date_status = day_root / 'date-accounting.json'
         if not population_path.exists():
-            if local.strftime('%H:%M') < '12:50':
+            if local < freeze_at:
                 return {'status': 'WAIT_FOR_POPULATION_FREEZE'}
             if date_status.exists():
                 return {'status': 'DATE_ALREADY_CONSUMED'}
-            if local.strftime('%H:%M') > '12:50':
+            if local >= freeze_at+timedelta(minutes=1):
                 runtime.put_new(date_status, {'local_date': day, 'status': 'FREEZE_INTERRUPTED',
-                    'reason': 'NO_IMMUTABLE_POPULATION_BY_1251', 'population_sha256': None})
+                    'reason': 'NO_IMMUTABLE_POPULATION_BY_DECLARED_FREEZE_END', 'population_sha256': None})
                 return {'status': 'MISSED_FREEZE'}
             try:
                 snapshot = _protected_snapshot(config['protected_membership_journal'])
                 protected_ref = runtime.put_new(day_root / 'protected-membership.json', snapshot)
                 allocation = plan['authority']['allocation']
-                if config.get('index_location') == 'CURRENT_NATIVE_PACKAGE':
-                    _, current_source, _ = _producer_view(producer, day)
-                    evidence_root = Path(current_source['evidence_root'])
-                    index_path = evidence_root / 'shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json'
+                if plan['schema_version'] == 'prospective_sectional_plan_v2':
+                    population = _freeze_daily_inventory(config, plan, producer, day, day_root,
+                        protected_ref, snapshot['race_ids'])
                 else:
-                    evidence_root, index_path = config['index_evidence_root'], config['current_index']
-                original = freeze_population(index_path, evidence_root,
-                    allocation['path'], allocation['sha256'], day_root / 'original-population.json')
-                population = planning.select_population(plan, original['observed_races'], local_date=day,
-                    frozen_at=original['frozen_at'], source_observed_at=original['source_observed_at'],
-                    index_complete=True, protected_membership_reference=protected_ref,
-                    protected_race_ids=snapshot['race_ids'])
+                    if config.get('index_location') == 'CURRENT_NATIVE_PACKAGE':
+                        _, current_source, _ = _producer_view(producer, day)
+                        evidence_root = Path(current_source['evidence_root'])
+                        index_path = evidence_root / 'shadow_autopilot_daemon_runtime/manual_prediction_current_race_index.json'
+                    else:
+                        evidence_root, index_path = config['index_evidence_root'], config['current_index']
+                    original = freeze_population(index_path, evidence_root,
+                        allocation['path'], allocation['sha256'], day_root / 'original-population.json')
+                    population = planning.select_population(plan, original['observed_races'], local_date=day,
+                        frozen_at=original['frozen_at'], source_observed_at=original['source_observed_at'],
+                        index_complete=True, protected_membership_reference=protected_ref,
+                        protected_race_ids=snapshot['race_ids'])
                 population_ref = runtime.put_new(population_path, population)
-                if runtime.utc_now().astimezone(planning.ZONE).strftime('%H:%M') != '12:50':
+                completed = runtime.utc_now()
+                if not freeze_at <= completed < freeze_at+timedelta(minutes=1):
                     raise ValueError('FREEZE_CROSSED_CUTOFF')
                 runtime.put_new(date_status, {'local_date': day, 'status': 'POPULATION_FROZEN',
-                    'population_sha256': planning._digest(population), 'population': population_ref})
+                    'population_sha256': planning._digest(population), 'population': population_ref,
+                    'freeze_completed_at': completed.isoformat()})
             except Exception as error:
                 runtime.put_new(date_status, {'local_date': day, 'status': 'SOURCE_OR_AUTHORITY_UNAVAILABLE',
                     'reason': type(error).__name__, 'population_sha256': None})
