@@ -23,6 +23,15 @@ CONTEXT_MANIFEST_SHA = '414766581055965d8c648013a7006141c9fee43d6f69adcdb1740a79
 DEFAULT_BASELINE = Path('/mnt/tenn-nvme2/tenn/greyhound-historical-improvement-execution-20261010-evidence/run-01')
 SPLITS = ('train', 'development', 'later')
 FEATURE_NAMES = list(support.BASELINE65) + ['state_' + f for f in ability.FIELDS]
+REPLACED_FEATURES = ('recent_finish_mean_3', 'retained_finish_mean', 'retained_win_rate',
+                     'retained_top3_rate', 'retained_same_venue_win_rate',
+                     'retained_exact_distance_win_rate')
+
+
+def feature_names(mode):
+    baseline = [name for name in support.BASELINE65
+                if mode == 'addition' or name not in REPLACED_FEATURES]
+    return baseline + ['state_' + field for field in ability.FIELDS]
 
 
 def digest(raw):
@@ -105,8 +114,8 @@ def rows_for(groups, states):
     return rows
 
 
-def fit(rows):
-    prep = prior.research.prefit(rows, FEATURE_NAMES)
+def fit(rows, names=FEATURE_NAMES):
+    prep = prior.research.prefit(rows, names)
     x = prior.research.transform(rows, prep)
     fitted = minimize(ranking._objective(x, rows, .5), np.zeros(x.shape[1]), jac=True,
                       method='L-BFGS-B', options=ranking.OPTIMIZER)
@@ -136,11 +145,14 @@ def main():
     parser.add_argument('--context', type=Path, default=DEFAULT_CONTEXT)
     parser.add_argument('--baseline', type=Path, default=DEFAULT_BASELINE)
     parser.add_argument('--prepare-only', action='store_true')
+    parser.add_argument('--feature-mode', choices=('addition', 'replacement'), default='addition')
     args = parser.parse_args()
     out = args.output
     out.mkdir(parents=True, exist_ok=False)
     protocol = {'schema': 'dynamic_ability_v1', 'arms': list(ability.ARMS), 'predictor_fits': 3,
-                'features': FEATURE_NAMES, 'half_life_days': ability.HALF_LIFE_DAYS,
+                'features': feature_names(args.feature_mode), 'feature_mode': args.feature_mode,
+                'replaced_features': list(REPLACED_FEATURES) if args.feature_mode == 'replacement' else [],
+                'half_life_days': ability.HALF_LIFE_DAYS,
                 'global_prior_starts': ability.GLOBAL_PRIOR_STARTS, 'context_prior_starts': ability.CONTEXT_PRIOR_STARTS,
                 'downstream': 'same hybrid50 regularized linear conditional-softmax,720 training races',
                 'outcome_update': 'all qualified admitted races strictly before target DATE; never same date',
@@ -182,7 +194,7 @@ def main():
         train = rows_for(groups['train'], states[arm])
         write(out / ('fit_intent_' + arm + '.json'), {'arm': arm, 'training_races': 720, 'protocol_sha256': digest((out / 'protocol.json').read_bytes())})
         try:
-            model = fit(train)
+            model = fit(train, feature_names(args.feature_mode))
         except Exception as exc:
             write(out / ('fit_failure_' + arm + '.json'), {'error': repr(exc)})
             raise
