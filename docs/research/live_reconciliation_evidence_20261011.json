@@ -101,6 +101,31 @@
     "status": "ACTUAL_PHASE_ONLY_CORRECTION_VERIFIED_SUCCESSOR_ACTIVATION_PENDING",
     "unattempted_races": 209
   },
+  "actual_rebind_interruption": {
+    "artifacts": [
+      {
+        "bytes": 4670,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/exact-july-postwrite-failure-independent-01.json",
+        "sha256": "2c2d05236a13e1d9cf4a6da8ecf3b04285922c59f80cd4ee3164211ca849cebc"
+      },
+      {
+        "bytes": 608,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/service-activation/july-runtime-rebind-execution-01/failed-or-uncertain.json",
+        "sha256": "83305cc60e37d8e6dd895ef87348548bcb62249191a2ef91ae381540f6c3829a"
+      },
+      {
+        "bytes": 756,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/service-activation/july-runtime-rebind-execution-01/install-intent.json",
+        "sha256": "c43eb9eb259393a1a3d33be743c41479739836552085ea729769e372ea00101c"
+      }
+    ],
+    "collector_active": false,
+    "failure": "systemd ExecStart volatile execution history reset after daemon-reload; stable executable/arguments unchanged",
+    "installed_running_admission_accepted": false,
+    "new_request_consumption": 0,
+    "resume_intent_recorded": false,
+    "status": "EXACT_UNIT_WRITTEN_POSTWRITE_GUARD_REJECTED_BEFORE_RESUME_INTENT"
+  },
   "artifacts": [
     {
       "bytes": 2737,

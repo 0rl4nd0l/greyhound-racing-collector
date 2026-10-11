@@ -8,6 +8,12 @@ The collector remains safely paused with its native ownership lease preserved. S
 
 Evidence: `review/actual-july-pause-independent-01.json` and `review/actual-july-source-cas-independent-01.json`. The execution trail retains the rejected preflights: a timer was incorrectly queried for a service process property, and the source guard compared the working directory with the unit-install directory. Both were corrected and independently tested; the latter was replayed against actual retained systemd properties and distinct source/unit directories before source mutation.
 
+## Post-update activation failure (11 October, 12:22 UTC)
+
+The exact two-line successor admission update was written to the service definition, but its post-update guard rejected activation before any resume intent or start. The collector remains inactive with no process or children. The consumed install intent and failed/uncertain terminal are preserved; no retry, rollback or additional provider request occurred.
+
+Independent replay identifies a software comparison defect: systemd daemon-reload resets historical execution fields inside `ExecStart` (old process ID, execution times and exit history), while the exact executable, arguments and configuration identity remain unchanged. The guard compared the whole rendered property. Evidence: `review/exact-july-postwrite-failure-independent-01.json` and `service-activation/july-runtime-rebind-execution-01/failed-or-uncertain.json`. The owner is preparing a narrow comparison repair and reconciliation of the already-written unit before a single controlled start. This unit-file change does not establish an installed running admission or new forecast/result success.
+
 ## Recovered first official response (11 October, 11:22 UTC)
 
 **One race is now fully evaluable from the retained response.** Independent inspection demonstrated that the recorded challenge was a false positive: both `captcha` matches came from the ordinary `https://www.recaptcha.net/recaptcha/api.js` script reference. The body contains the official result table. No additional provider request was needed.
