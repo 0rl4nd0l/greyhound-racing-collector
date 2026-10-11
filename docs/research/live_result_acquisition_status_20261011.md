@@ -8,7 +8,7 @@ The collector had failed, and automatic preparation timed out leaving an unresol
 
 `scripts/integrate_acquired_live_results.py` now joins actual owner completion receipts to the frozen population. It requires an externally pinned, genuinely authorized admission; checks all race membership and authority references before decoding bodies; preserves consumed intents without completion; and isolates invalid response evidence by race. Every original forecast gets a disposition. New independent identity, unchanged-field and WIN evidence can promote a race; winner or field contradictions suppress the older weak diagnostic while preserving its evidence. Losing-rank or terminal-status revisions alone do not veto a complete unchanged field with the same unique winner, and receive explicit correction events. This WIN interpretation was recorded and reviewed before new outcome acquisition.
 
-Root validation passes **118 tests and four subtests**, with four existing optional tests skipped. Independent review separately checks the integration and projector. The projector's operationally pinned hash is unchanged. No new outcome was used to change forecasts, selectors or thresholds. The prior nine-race diagnostic remains the latest actual scorecard until accepted completions arrive.
+Root validation passes **135 tests and four subtests**, with four existing optional tests skipped. Independent review separately checks the integration and projector. A separate acquired-result checker independently parses source runner/status evidence and reproduces metrics, frozen selections, controls and date uncertainty without importing the scorer or projector. The projector's operationally pinned hash is unchanged. No new outcome was used to change forecasts, selectors or thresholds. The prior nine-race diagnostic remains the latest actual scorecard until accepted completions arrive.
 
 The sole owner must publish the actual admission path/hash and a metadata-only census of **all** intents and completions, including failed and interrupted consumption. Run the integration against those artifacts, then feed its output directory to the existing frozen rerun:
 
@@ -25,6 +25,11 @@ python3 scripts/rerun_frozen_live_reconciliation.py \
   --original-evidence /mnt/tenn-nvme2/tenn/greyhound-live-benchmark-20261011-evidence \
   --reconciled-records <new-integrated-directory> \
   --output-dir <new-metrics-directory>
+python3 scripts/check_acquired_live_benchmark.py \
+  --baseline-root /mnt/tenn-nvme2/tenn/greyhound-live-benchmark-20261011-evidence \
+  --integration <new-integrated-directory> \
+  --completed <new-metrics-directory> \
+  --output <new-independent-check.json>
 ```
 
 The earlier observations below are retained as historical snapshots, not current service-health claims.
