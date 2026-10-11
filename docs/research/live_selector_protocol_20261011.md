@@ -1,0 +1,13 @@
+# Selective prediction extension: frozen diagnostic rules
+
+Added at the user's request before examining benchmark performance. Execute the all-race benchmark first. This extension never changes its membership or primary records.
+
+Three selectors: (1) maximum original model win probability; (2) minimum relevant-history count across the sealed active field, only when the original pre-race evidence supplies this exact scalar; (3) maximum original model probability times contemporaneous decimal WIN odds minus one. The third is a probability-price disagreement score, not measured profit. Missing quality evidence makes only selector 2 unavailable. No outcome-derived quality proxy is allowed.
+
+For each exact model version, use the earliest half of available authorised dates as development (rounded down, minimum one), and the remaining dates as later evaluation. Require at least two dates. This temporal split is a diagnostic convention, not evidence that later outcomes were untouched. Unless manifests prove an untouched population, label every result exploratory. Never access reserved records to fill either split. No outcome is used to construct thresholds.
+
+At target coverages 10%, 25%, 50%, select scores at or above the corresponding nearest-rank threshold of the earlier development distribution. Freeze thresholds before computing later scores. Ties remain included; actual later coverage may differ substantially from targets and must be reported. Full coverage selects every eligible later forecast including records without quality scalars. Preserve selected/pass/missing-quality dispositions for every eligible forecast; earlier-development records remain marked development.
+
+For each later selected set, compare model and market probabilities on exactly those races. The market-confidence comparator selects the same number of later races by maximum normalized market probability, breaking ties by canonical race ID. This outcome-blind batch ranking provides exactly matched diagnostic coverage; it is not a deployable absolute-threshold rule. Report its selected identities separately. All-race later performance is the baseline; no comparison to unmatched all-race market accuracy is substituted.
+
+Report races/dates, achieved coverage, log loss/Brier, tied-top accuracy, ten-bin calibration, paired differences, every date, leave-one-date-out sensitivity and descriptive date-cluster intervals. Few dates or shared development/evaluation exposure preclude reliable selector-advantage claims. Do not tune thresholds, search subgroups, infer profitability, promote selectors or alter live operations.
