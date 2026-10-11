@@ -1,0 +1,823 @@
+#!/usr/bin/env python3
+"""Offline integration of hash-bound July completion receipts and frozen forecasts.
+
+Input census: {"completion_references": [{"path": ".../completion.json", "sha256": "..."}]}.
+Only the external operational owner acquires responses. This utility never fetches,
+changes consumption records, refits models, or regenerates selector thresholds.
+"""
+import argparse
+from collections import Counter, defaultdict
+import json
+from pathlib import Path
+import re
+import sys
+
+if str(Path(__file__).resolve().parents[1]) not in sys.path:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts import live_benchmark_alignment as alignment
+from scripts import project_acquired_live_results as projector
+from scripts import project_reviewed_live_results_v2 as reviewed_projector
+from scripts import project_policy_live_results_v3 as policy_projector
+from scripts import project_structured_live_results_v4 as name_projector
+from scripts import project_navigation_live_results_v5 as navigation_projector
+from scripts import project_prerace_field_live_results_v6 as field_projector
+from scripts import project_nontrial_navigation_live_results_v7 as nontrial_projector
+
+READY = 'RETAINED_RAW_RESULT_IDENTITY_UNVERIFIED'
+FIELD_CONTRADICTIONS = ('forecast_runner_scratched:', 'official_runner_name_changed_at_box:',
+                        'official_runner_outside_forecast_field', 'official_reserve_mapping_rejected',
+                        'official_win_target_ambiguous')
+
+
+def reference(path):
+    path = Path(path)
+    return {'path': str(path), 'sha256': projector.digest(path.read_bytes())}
+
+
+def load_reference(ref):
+    path = Path(ref['path'])
+    raw = path.read_bytes()
+    if projector.digest(raw) != ref['sha256']:
+        raise ValueError('referenced_artifact_hash_mismatch:' + str(path))
+    return json.loads(raw)
+
+
+def approved_admission_bindings(single_reference, manifest_reference, allowed, expected_urls, canonical_keys):
+    """Only external root-approved pins authorize an admission, never a receipt."""
+    if bool(single_reference) == bool(manifest_reference):
+        raise ValueError('require_exactly_one_admission_authority_mode')
+    if single_reference:
+        load_reference(single_reference)
+        return [single_reference]
+    manifest = load_reference(manifest_reference)
+    if manifest.get('schema') != 'approved_july_admission_bindings_v1':
+        raise ValueError('approved_admissions_manifest_schema_mismatch')
+    refs = manifest['admissions']
+    if not refs or len(allowed) != 210:
+        raise ValueError('approved_admissions_require_nonempty_exact_210_scope')
+    if len({r['path'] for r in refs}) != len(refs) or len({r['sha256'] for r in refs}) != len(refs):
+        raise ValueError('approved_admissions_duplicate_or_conflicting_pin')
+    common = None
+    common_policy = None
+    common_keys = ('approval_reference', 'queue_reference', 'race_manifest_reference',
+                   'population_reference', 'request_reference')
+    expected = {rid: {'race_id': rid, 'canonical_race_key': canonical_keys[rid],
+                     'deduplication_key': canonical_keys[rid], 'official_source_url': expected_urls[rid]}
+                for rid in allowed}
+    for ref in refs:
+        admission = load_reference(ref)
+        if (admission.get('schema_version') != 'july_result_owner_admission_v1'
+                or admission.get('status') != 'AUTHORIZED_JULY_OWNER_DELEGATION'):
+            raise ValueError('approved_admission_schema_or_status_invalid')
+        policy_keys = ('state_root', 'source_state', 'maximum_requests', 'maximum_attempts_per_race',
+                       'minimum_request_interval_seconds', 'automatic_retries', 'redirects',
+                       'browser_fallback', 'proxy_fallback', 'cookies', 'borrow_study_budget')
+        policy = {key: admission[key] for key in policy_keys}
+        if (policy['maximum_requests'] != 210 or policy['maximum_attempts_per_race'] != 1
+                or policy['minimum_request_interval_seconds'] < 60
+                or not Path(policy['state_root']).is_absolute()
+                or not Path(policy['source_state']).is_absolute()
+                or any(policy[key] is not False for key in ('automatic_retries', 'redirects',
+                       'browser_fallback', 'proxy_fallback', 'cookies', 'borrow_study_budget'))):
+            raise ValueError('approved_admission_request_or_source_limits_invalid')
+        if common_policy is not None and policy != common_policy:
+            raise ValueError('approved_admissions_state_or_request_limits_changed')
+        common_policy = policy
+        binding = {key: admission[key] for key in common_keys}
+        if common is not None and binding != common:
+            raise ValueError('approved_admissions_scope_or_authority_changed')
+        common = binding
+        sources = {key: load_reference(value) for key, value in binding.items()}
+        for records in (sources['queue_reference']['records'], sources['race_manifest_reference']['races']):
+            if len(records) != 210 or len({r['race_id'] for r in records}) != 210:
+                raise ValueError('approved_admission_population_not_exact_210')
+            targets = {r['race_id']: {key: r.get(key) for key in next(iter(expected.values()))} for r in records}
+            if targets != expected:
+                raise ValueError('approved_admission_target_population_mismatch')
+        population = sources['population_reference']['records']
+        if len(population) != 210 or {r['race_id']: r['prediction_id'] for r in population} != allowed:
+            raise ValueError('approved_admission_frozen_forecast_population_mismatch')
+        queue = sources['queue_reference']
+        if any(queue.get(key) != binding[key] for key in ('approval_reference', 'population_reference', 'request_reference')):
+            raise ValueError('approved_admission_queue_authority_binding_mismatch')
+    return refs
+
+
+def admission_for_intent(intent_reference, approved_references):
+    # Read intent metadata only; never follow an unlisted admission reference.
+    claimed = load_reference(intent_reference)['admission_reference']
+    if claimed not in approved_references:
+        raise ValueError('intent_admission_not_pinned_approved_baseline')
+    return claimed
+
+
+def verified_projection_policy(ref, allowed, expected_urls, canonical_keys):
+    policy = load_reference(ref)
+    if (policy.get('schema') != 'frozen_offline_source_title_projection_policy_v3'
+            or policy.get('status') != 'FROZEN_BEFORE_ADDITIONAL_RESULT_DECODING'
+            or policy.get('new_runtime_or_provider_authority') is not False
+            or policy.get('field_policy_unchanged') is not True):
+        raise ValueError('projection_policy_not_frozen_offline_identity_policy')
+    population = load_reference(policy['population_reference'])['records']
+    if len(population) != 210 or {r['race_id']: r['prediction_id'] for r in population} != allowed:
+        raise ValueError('projection_policy_frozen_population_mismatch')
+    mappings = policy['mappings']
+    mapping_keys = [(r['native_venue'], r['official_url_slug']) for r in mappings]
+    expected_keys = set()
+    for rid in allowed:
+        native = re.fullmatch(r'Race (\d+) - (.+) - (\d{4}-\d{2}-\d{2})', rid)
+        if not native:
+            raise ValueError('projection_policy_native_race_identity_invalid')
+        expected_keys.add((native[2], projector.official_url_identity(expected_urls[rid])[0]))
+    if len(set(mapping_keys)) != len(mapping_keys) or set(mapping_keys) != expected_keys:
+        raise ValueError('projection_policy_native_slug_scope_mismatch')
+    for row in mappings:
+        names = row['proposed_exact_title_venues']
+        if not names or len(names) != len(set(names)) or any(not isinstance(n, str) or not n or n != n.strip() for n in names):
+            raise ValueError('projection_policy_display_names_invalid')
+    load_reference(policy['independent_review_reference'])
+    return policy
+
+
+def verified_runner_name_policy(ref, allowed, title_policy_reference):
+    policy = load_reference(ref)
+    if (policy.get('schema') != 'frozen_offline_structured_dog_name_policy_v4'
+            or policy.get('status') != 'FROZEN_BEFORE_CORRECTED_METRICS'
+            or policy.get('field_and_scoring_policy_unchanged') is not True
+            or policy.get('no_new_provider_or_runtime_authority') is not True):
+        raise ValueError('runner_name_policy_not_frozen_offline_repair')
+    population = load_reference(policy['population_reference'])['records']
+    if len(population) != 210 or {r['race_id']: r['prediction_id'] for r in population} != allowed:
+        raise ValueError('runner_name_policy_population_mismatch')
+    if policy['source_title_policy_reference'] != title_policy_reference:
+        raise ValueError('runner_name_policy_title_policy_mismatch')
+    expected = {str(Path(m.__file__).resolve()): projector.digest(Path(m.__file__).read_bytes())
+                for m in (projector, reviewed_projector, policy_projector)}
+    actual = {r['path']: r['sha256'] for r in policy['prior_parser_references']}
+    if actual != expected:
+        raise ValueError('runner_name_policy_prior_parser_mismatch')
+    for ref in policy['prior_parser_references']:
+        if projector.digest(Path(ref['path']).read_bytes()) != ref['sha256']:
+            raise ValueError('runner_name_policy_prior_parser_hash_mismatch')
+    load_reference(policy['independent_review_reference'])
+    return policy
+
+
+def verified_structural_identity_policy(ref, allowed, title_ref, name_ref):
+    policy = load_reference(ref)
+    if (policy.get('schema') != 'frozen_offline_active_route_identity_policy_v5'
+            or policy.get('status') != 'FROZEN_BEFORE_CORRECTED_METRICS'
+            or policy.get('field_and_scoring_policy_unchanged') is not True
+            or policy.get('no_new_provider_or_runtime_authority') is not True):
+        raise ValueError('structural_identity_policy_not_frozen_offline_repair')
+    population = load_reference(policy['population_reference'])['records']
+    if len(population) != 210 or {r['race_id']: r['prediction_id'] for r in population} != allowed:
+        raise ValueError('structural_identity_policy_population_mismatch')
+    if policy['source_title_policy_reference'] != title_ref or policy['runner_name_policy_reference'] != name_ref:
+        raise ValueError('structural_identity_policy_dependency_policy_mismatch')
+    expected = {str(Path(m.__file__).resolve()): projector.digest(Path(m.__file__).read_bytes())
+                for m in (projector, reviewed_projector, policy_projector, name_projector)}
+    actual = {r['path']: r['sha256'] for r in policy['prior_parser_references']}
+    if actual != expected or len(policy['prior_parser_references']) != 4:
+        raise ValueError('structural_identity_policy_prior_parser_mismatch')
+    load_reference(policy['independent_review_reference'])
+    return policy
+
+
+def verified_pre_race_field_policy(ref, allowed, title_ref, name_ref, structural_ref, originals_path):
+    policy = load_reference(ref)
+    if (policy.get('schema') != 'frozen_offline_pre_race_field_policy_v6'
+            or policy.get('status') != 'FROZEN_BEFORE_CORRECTED_METRICS'
+            or policy.get('field_and_scoring_policy_unchanged') is not True
+            or policy.get('no_new_provider_or_runtime_authority') is not True):
+        raise ValueError('pre_race_field_policy_not_frozen_offline_repair')
+    population = load_reference(policy['population_reference'])['records']
+    if len(population) != 210 or {r['race_id']: r['prediction_id'] for r in population} != allowed:
+        raise ValueError('pre_race_field_policy_population_mismatch')
+    if (policy['source_title_policy_reference'] != title_ref
+            or policy['runner_name_policy_reference'] != name_ref
+            or policy['structural_identity_policy_reference'] != structural_ref):
+        raise ValueError('pre_race_field_policy_dependency_policy_mismatch')
+    if policy['authenticated_originals_reference'] != reference(originals_path):
+        raise ValueError('pre_race_field_policy_authenticated_originals_mismatch')
+    expected = {str(Path(m.__file__).resolve()): projector.digest(Path(m.__file__).read_bytes())
+                for m in (projector, reviewed_projector, policy_projector, name_projector, navigation_projector)}
+    actual = {r['path']: r['sha256'] for r in policy['prior_parser_references']}
+    if actual != expected or len(policy['prior_parser_references']) != 5:
+        raise ValueError('pre_race_field_policy_prior_parser_mismatch')
+    load_reference(policy['independent_review_reference'])
+    return policy
+
+
+def verified_nontrial_navigation_policy(ref, allowed, title_ref, name_ref, structural_ref, field_ref, originals_path):
+    policy = load_reference(ref)
+    if (policy.get('schema') != 'frozen_offline_nontrial_navigation_policy_v7'
+            or policy.get('status') != 'FROZEN_BEFORE_CORRECTED_METRICS'
+            or policy.get('field_and_scoring_policy_unchanged') is not True
+            or policy.get('no_new_provider_or_runtime_authority') is not True):
+        raise ValueError('nontrial_navigation_policy_not_frozen_offline_repair')
+    population = load_reference(policy['population_reference'])['records']
+    if len(population) != 210 or {r['race_id']: r['prediction_id'] for r in population} != allowed:
+        raise ValueError('nontrial_navigation_policy_population_mismatch')
+    if (policy['source_title_policy_reference'] != title_ref or policy['runner_name_policy_reference'] != name_ref
+            or policy['structural_identity_policy_reference'] != structural_ref
+            or policy['pre_race_field_policy_reference'] != field_ref):
+        raise ValueError('nontrial_navigation_policy_dependency_policy_mismatch')
+    # V7 pins the V6 policy, which binds the authenticated original archive.
+    verified_pre_race_field_policy(field_ref, allowed, title_ref, name_ref, structural_ref, originals_path)
+    expected = {str(Path(m.__file__).resolve()): projector.digest(Path(m.__file__).read_bytes())
+                for m in (projector, reviewed_projector, policy_projector, name_projector, navigation_projector, field_projector)}
+    actual = {r['path']: r['sha256'] for r in policy['prior_parser_references']}
+    if actual != expected or len(policy['prior_parser_references']) != 6:
+        raise ValueError('nontrial_navigation_policy_prior_parser_mismatch')
+    load_reference(policy['independent_review_reference'])
+    return policy
+
+
+def project_observation(observation, original, expected_url, directory, policy=None, policy_reference=None, runner_name_policy=None, runner_name_policy_reference=None, structural_identity_policy=None, structural_identity_policy_reference=None, pre_race_field_policy=None, pre_race_field_policy_reference=None, authenticated_original=None, nontrial_navigation_policy=None, nontrial_navigation_policy_reference=None):
+    try:
+        return project_with_prerace_field_repair(observation, original, expected_url, directory, policy, policy_reference, runner_name_policy, runner_name_policy_reference, structural_identity_policy, structural_identity_policy_reference, pre_race_field_policy, pre_race_field_policy_reference, authenticated_original)
+    except ValueError as error:
+        previous = observation.get('structural_identity_policy_fallback', {})
+        if (str(error) not in {'source_navigation_href_not_exact_approved_route', 'source_navigation_anchor_missing_or_ambiguous:.page__layout .tabs-wrapper a.tabs__item--active'}
+                or previous.get('status') != 'REJECTED' or previous.get('fallback_failure') != str(error)
+                or nontrial_navigation_policy is None or authenticated_original is None
+                or authenticated_original['original'] != original or observation.get('reviewed_reclassification')
+                or observation.get('status') != READY or observation.get('source_hold') is not False):
+            raise
+        trail = {'status': 'ATTEMPTED', 'original_parser_failure': str(error),
+                 'nontrial_navigation_policy_reference': nontrial_navigation_policy_reference}
+        observation['nontrial_navigation_policy_fallback'] = trail
+        name_trail = {}
+        try:
+            result = nontrial_projector.project_one(observation['projection_item'], authenticated_original,
+                expected_url, directory / 'nontrial-navigation-v7', structural_identity_policy_reference,
+                policy, policy_reference, nontrial_navigation_policy_reference,
+                runner_name_policy_reference if runner_name_policy is not None else None, name_trail)
+        except (ValueError, KeyError, OSError) as fallback_error:
+            trail.update(status='REJECTED', fallback_failure=str(fallback_error))
+            raise
+        finally:
+            if name_trail:
+                observation['runner_name_policy_fallback'] = name_trail
+        trail['status'] = 'QUALIFIED'
+        for key in ('projection_policy_fallback', 'runner_name_policy_fallback', 'structural_identity_policy_fallback', 'pre_race_field_policy_fallback', 'nontrial_navigation_policy_fallback'):
+            if observation.get(key):
+                result[key] = dict(observation[key])
+        return result
+
+
+def project_with_prerace_field_repair(observation, original, expected_url, directory, policy=None, policy_reference=None, runner_name_policy=None, runner_name_policy_reference=None, structural_identity_policy=None, structural_identity_policy_reference=None, pre_race_field_policy=None, pre_race_field_policy_reference=None, authenticated_original=None):
+    try:
+        return project_with_structural_identity_repair(observation, original, expected_url, directory, policy, policy_reference, runner_name_policy, runner_name_policy_reference, structural_identity_policy, structural_identity_policy_reference)
+    except ValueError as error:
+        if (not (str(error) == 'official_runner_outside_forecast_field' or str(error).startswith('official_runner_name_changed_at_box:'))
+                or pre_race_field_policy is None or authenticated_original is None
+                or authenticated_original['original'] != original
+                or observation.get('reviewed_reclassification') or observation.get('status') != READY
+                or observation.get('source_hold') is not False):
+            raise
+        trail = {'status': 'ATTEMPTED', 'original_parser_failure': str(error),
+                 'pre_race_field_policy_reference': pre_race_field_policy_reference}
+        observation['pre_race_field_policy_fallback'] = trail
+        try:
+            result = field_projector.project_one(observation['projection_item'], authenticated_original,
+                expected_url, directory / 'pre-race-field-v6', policy, policy_reference,
+                runner_name_policy_reference, structural_identity_policy_reference, pre_race_field_policy_reference)
+        except (ValueError, KeyError, OSError) as fallback_error:
+            trail.update(status='REJECTED', fallback_failure=str(fallback_error))
+            raise
+        trail['status'] = 'QUALIFIED'
+        for key in ('projection_policy_fallback', 'runner_name_policy_fallback', 'structural_identity_policy_fallback', 'pre_race_field_policy_fallback'):
+            if observation.get(key):
+                result[key] = dict(observation[key])
+        return result
+
+
+def project_with_structural_identity_repair(observation, original, expected_url, directory, policy=None, policy_reference=None, runner_name_policy=None, runner_name_policy_reference=None, structural_identity_policy=None, structural_identity_policy_reference=None):
+    try:
+        return project_with_name_repair(observation, original, expected_url, directory, policy, policy_reference, runner_name_policy, runner_name_policy_reference)
+    except ValueError as error:
+        previous = observation.get('projection_policy_fallback', {})
+        if (str(error) != 'source_title_display_slug_native_not_exact_policy_member'
+                or structural_identity_policy is None or observation.get('reviewed_reclassification')
+                or observation.get('status') != READY or observation.get('source_hold') is not False
+                or previous.get('status') != 'REJECTED' or previous.get('fallback_failure') != str(error)):
+            raise
+        trail = {'status': 'ATTEMPTED', 'original_parser_failure': str(error),
+                 'structural_identity_policy_reference': structural_identity_policy_reference}
+        observation['structural_identity_policy_fallback'] = trail
+        name_trail = {}
+        try:
+            result = navigation_projector.project_one(observation['projection_item'], original, expected_url,
+                directory / 'active-route-v5', structural_identity_policy_reference, policy, policy_reference,
+                runner_name_policy_reference if runner_name_policy is not None else None, name_trail)
+        except (ValueError, KeyError, OSError) as fallback_error:
+            trail.update(status='REJECTED', fallback_failure=str(fallback_error))
+            raise
+        finally:
+            if name_trail:
+                observation['runner_name_policy_fallback'] = name_trail
+        trail['status'] = 'QUALIFIED'
+        result['structural_identity_policy_fallback'] = dict(trail)
+        result['projection_policy_fallback'] = dict(previous)
+        if name_trail:
+            result['runner_name_policy_fallback'] = dict(name_trail)
+        return result
+
+
+def project_with_name_repair(observation, original, expected_url, directory, policy=None, policy_reference=None, runner_name_policy=None, runner_name_policy_reference=None):
+    try:
+        return project_without_name_repair(observation, original, expected_url, directory, policy, policy_reference)
+    except ValueError as error:
+        if (not str(error).startswith('official_runner_name_changed_at_box:')
+                or runner_name_policy is None or observation.get('reviewed_reclassification')
+                or observation.get('status') != READY or observation.get('source_hold') is not False):
+            raise
+        trail = {'status': 'ATTEMPTED', 'original_parser_failure': str(error),
+                 'runner_name_policy_reference': runner_name_policy_reference}
+        observation['runner_name_policy_fallback'] = trail
+        try:
+            result = name_projector.project_one(observation['projection_item'], original, expected_url,
+                directory / 'structured-name-v4', policy, policy_reference, runner_name_policy_reference)
+        except (ValueError, KeyError, OSError) as fallback_error:
+            trail.update(status='REJECTED', fallback_failure=str(fallback_error))
+            raise
+        trail['status'] = 'QUALIFIED'
+        result['runner_name_policy_fallback'] = dict(trail)
+        if observation.get('projection_policy_fallback'):
+            result['projection_policy_fallback'] = dict(observation['projection_policy_fallback'])
+        return result
+
+
+def project_without_name_repair(observation, original, expected_url, directory, policy=None, policy_reference=None):
+    """Canonical first; an optional identity fallback cannot reopen a hold."""
+    if observation.get('reviewed_reclassification'):
+        result = reviewed_projector.project_one(observation['projection_item'], original, expected_url, directory)
+        result['reviewed_reclassification'] = observation['reviewed_reclassification']
+        result['original_transport_hold_preserved'] = True
+        return result
+    if observation.get('status') != READY or observation.get('source_hold') is not False:
+        raise ValueError('ordinary_projection_requires_original_ready_unheld_receipt')
+    try:
+        return projector.project_one(observation['projection_item'], original, expected_url, directory)
+    except ValueError as error:
+        if (str(error) != 'source_declared_race_identity_missing_or_mismatched' or policy is None
+                or observation.get('status') != READY or observation.get('source_hold') is not False):
+            raise
+        trail = {'original_parser_failure': str(error), 'projection_policy_reference': policy_reference,
+                 'status': 'ATTEMPTED'}
+        observation['projection_policy_fallback'] = trail
+        try:
+            result = policy_projector.project_one(observation['projection_item'], original, expected_url, directory, policy, policy_reference)
+        except (ValueError, KeyError, OSError) as fallback_error:
+            trail.update(status='REJECTED', fallback_failure=str(fallback_error))
+            raise
+        trail['status'] = 'QUALIFIED'
+        result['projection_policy_fallback'] = dict(trail)
+        return result
+
+
+def verified_intent(ref, allowed, expected_urls, canonical_keys, approved_admission_reference):
+    intent = load_reference(ref)
+    if intent.get('schema_version') != 'july_result_request_intent_v1' or intent.get('status') != 'CONSUMED_BEFORE_TRANSPORT':
+        raise ValueError('unsupported_intent_schema_or_state')
+    if intent['admission_reference'] != approved_admission_reference:
+        raise ValueError('intent_admission_not_pinned_approved_baseline')
+    target = intent['target']
+    rid = target['race_id']
+    if rid not in allowed or target['canonical_race_key'] != canonical_keys[rid] or target.get('deduplication_key') != canonical_keys[rid]:
+        raise ValueError('intent_outside_exact_population')
+    if target['official_source_url'] != expected_urls[rid]:
+        raise ValueError('intent_target_url_not_prepared')
+    admission = load_reference(intent['admission_reference'])
+    if admission.get('status') != 'AUTHORIZED_JULY_OWNER_DELEGATION':
+        raise ValueError('intent_admission_not_authorized')
+    for intent_key, admission_key in [('approval_reference', 'approval_reference'), ('queue_reference', 'queue_reference'), ('manifest_reference', 'race_manifest_reference')]:
+        if intent[intent_key] != admission[admission_key]:
+            raise ValueError('intent_authority_reference_mismatch:' + intent_key)
+    load_reference(intent['approval_reference'])
+    queue = load_reference(intent['queue_reference'])
+    wanted = load_reference(intent['manifest_reference'])
+    for rows in (queue['records'], wanted['races']):
+        matching = [{k: row.get(k) for k in target} for row in rows if row.get('race_id') == rid]
+        if matching != [target]:
+            raise ValueError('intent_target_not_exact_queue_manifest_member')
+    if intent.get('attempt') != 1:
+        raise ValueError('intent_attempt_not_one')
+    return intent
+
+
+def completion_item(ref, allowed, expected_urls, canonical_keys, approved_admission_reference):
+    """Verify metadata chain and membership before any outcome body is parsed."""
+    receipt = load_reference(ref)
+    if receipt.get('schema_version') != 'july_result_acquisition_terminal_v1':
+        raise ValueError('unsupported_completion_schema')
+    intent_ref = receipt['intent_reference']
+    intent = verified_intent(intent_ref, allowed, expected_urls, canonical_keys, approved_admission_reference)
+    target = intent['target']
+    rid = target['race_id']
+    if rid not in allowed or target['canonical_race_key'] != canonical_keys[rid]:
+        raise ValueError('completion_outside_exact_population')
+    if target['official_source_url'] != expected_urls[rid]:
+        raise ValueError('completion_target_url_not_prepared')
+    if receipt['admission_reference'] != intent['admission_reference']:
+        raise ValueError('completion_intent_admission_mismatch')
+    item = {'race_id': rid, 'receipt_reference': ref, 'intent_reference': intent_ref,
+            'status': receipt['status'], 'reason': receipt.get('reason'),
+            'charged_attempts': receipt.get('charged_attempts'), 'provider_requests': receipt.get('provider_requests'),
+            'source_hold': receipt.get('source_hold'), 'projection_item': None}
+    if receipt['status'] != READY:
+        if receipt.get('projection_records'):
+            raise ValueError('nonready_completion_exposes_projection')
+        return item
+    if receipt.get('synthetic_transport_calls', 0) or receipt.get('provider_requests') != 1:
+        raise ValueError('ready_completion_not_one_actual_provider_request')
+    if receipt.get('source_hold') is not False or receipt.get('charged_attempts') != 1:
+        raise ValueError('ready_completion_hold_or_consumption_inconsistent')
+    projected, evidence = verified_response_chain(receipt, intent, expected_urls[rid])
+    if receipt.get('projection_records') != [projected]:
+        raise ValueError('completion_projection_paths_mismatch')
+    item['projection_item'] = projected
+    item['result_reference'] = receipt['result_reference']
+    item['source_evidence'] = evidence
+    return item
+
+
+def verified_response_chain(receipt, intent, expected_url):
+    target = intent['target']
+    rid = target['race_id']
+    intent_ref = receipt['intent_reference']
+    manifest = load_reference(receipt['result_reference'])
+    if manifest['target'] != target or manifest['intent_reference'] != intent_ref or manifest['admission_reference'] != receipt['admission_reference'] or manifest.get('approval_reference') != intent['approval_reference']:
+        raise ValueError('result_manifest_identity_chain_mismatch')
+    evidence = manifest['source_evidence']
+    request = load_reference(evidence['request'])
+    response = load_reference(evidence['response'])
+    if request.get('method') != 'GET' or request.get('url') != expected_url or request.get('redirects') is not False:
+        raise ValueError('result_request_method_or_url_mismatch')
+    if request.get('automatic_transport_retries') != 0 or request.get('intent_reference') != intent_ref:
+        raise ValueError('result_request_consumption_chain_mismatch')
+    retry_keys = {str(key).lower() for key in response.get('retry_headers', {})}
+    if response.get('body_truncated') or retry_keys & {'retry-after', 'ratelimit-reset', 'x-ratelimit-reset'}:
+        raise ValueError('result_response_truncated_or_retry_instruction')
+    chronology = [intent['charged_at'], request['started_at'], response['response_received_at'],
+                  response['acquired_at'], response['body_retained_at'], receipt['recorded_at']]
+    times = [projector.timestamp(value) for value in chronology]
+    if times != sorted(times) or request['started_at'] != response['request_started_at']:
+        raise ValueError('completion_request_response_chronology_mismatch')
+    if response['response_sha256'] != evidence['body']['sha256']:
+        raise ValueError('result_response_body_hash_reference_mismatch')
+    projected = {'race_id': rid, 'response_path': evidence['body']['path'], 'metadata_path': evidence['response']['path']}
+    return projected, evidence
+
+
+def reviewed_completion_item(item, event, allowed, expected_urls, canonical_keys, admission_ref):
+    """Append a reviewed offline interpretation; never rewrite the transport hold."""
+    ref = item['receipt_reference']
+    receipt = load_reference(ref)
+    intent = verified_intent(receipt['intent_reference'], allowed, expected_urls, canonical_keys, admission_ref)
+    rid = intent['target']['race_id']
+    if (event.get('race_id') != rid or event.get('completion_reference') != ref
+            or event.get('intent_reference') != receipt['intent_reference']
+            or event.get('admission_reference') != admission_ref
+            or event.get('identity_rule') != reviewed_projector.IDENTITY_RULE
+            or event.get('adapter_reference') != reference(Path(reviewed_projector.__file__).resolve())):
+        raise ValueError('reviewed_reclassification_identity_binding_mismatch')
+    if (receipt.get('status') != 'TERMINAL_SOURCE_HOLD_NO_RETRY'
+            or receipt.get('reason') != 'SOURCE_ACCESS_CHALLENGE'
+            or receipt.get('source_hold') is not True
+            or receipt.get('charged_attempts') != 1 or receipt.get('provider_requests') != 1
+            or receipt.get('synthetic_transport_calls') != 0):
+        raise ValueError('reviewed_reclassification_not_exact_actual_challenge_hold')
+    projected, evidence = verified_response_chain(receipt, intent, expected_urls[rid])
+    manifest = load_reference(receipt['result_reference'])
+    request, response = load_reference(evidence['request']), load_reference(evidence['response'])
+    if (manifest.get('schema_version') != 'july_raw_result_manifest_v1'
+            or request.get('schema_version') != 'july_result_http_request_v1'
+            or response.get('schema_version') != 'july_result_http_response_v1'):
+        raise ValueError('reviewed_reclassification_source_schema_mismatch')
+    if (response.get('http_status') != 200 or response.get('requested_url') != expected_urls[rid]
+            or response.get('final_url') != expected_urls[rid]
+            or event.get('response_reference') != evidence['body']):
+        raise ValueError('reviewed_reclassification_response_binding_mismatch')
+    review = load_reference(event['independent_review_reference'])
+    if (review.get('schema') != 'machine_only_july_challenge_classification_review_v1'
+            or review.get('classification') != 'DEMONSTRATED_FALSE_POSITIVE_GENERIC_RECAPTCHA_SCRIPT_REFERENCE'
+            or review.get('canonical_race_key') != canonical_keys[rid]
+            or review.get('admission_reference') != admission_ref
+            or review.get('response_reference') != evidence['body']
+            or review.get('original_completion_reference') != ref
+            or review.get('source_hold_unchanged') is not True
+            or review.get('request_or_retry_authorized') is not False):
+        raise ValueError('reviewed_reclassification_independent_review_mismatch')
+    criteria = load_reference(event['identity_criteria_reference'])
+    if (criteria.get('schema') != 'independent_source_identity_criteria_v1'
+            or criteria.get('status') != 'ACCEPTED_BEFORE_METRIC_INSPECTION'
+            or criteria.get('identity_rule') != reviewed_projector.IDENTITY_RULE):
+        raise ValueError('reviewed_reclassification_identity_criteria_not_frozen')
+    return {**item, 'projection_item': projected, 'source_evidence': evidence,
+            'result_reference': receipt['result_reference'], 'reviewed_reclassification': event,
+            'derived_interpretation': 'OFFLINE_REVIEWED_CLASSIFIER_FALSE_POSITIVE',
+            'runtime_source_hold_preserved': True}
+
+
+def invalid_completion_observation(ref, receipt, intent, error):
+    """Evidence processing failure never changes an actual transport terminal."""
+    return {'race_id': intent['target']['race_id'], 'receipt_reference': ref,
+            'intent_reference': receipt['intent_reference'],
+            'status': 'COMPLETION_EVIDENCE_INVALID', 'reason': str(error),
+            'original_terminal_status': receipt.get('status'),
+            'original_terminal_reason': receipt.get('reason'),
+            'source_hold': receipt.get('source_hold'),
+            'charged_attempts': receipt.get('charged_attempts'),
+            'provider_requests': receipt.get('provider_requests'),
+            'projection_item': None}
+
+
+def conflicts_with_prior(prior, acquired):
+    if not prior:
+        return {'blocking': [], 'nonblocking': []}
+    previous = {r['box_number']: r for r in prior['runners']}
+    current = {r['box_number']: r for r in acquired['runners']}
+    conflicts, revisions = [], []
+    for box, old in previous.items():
+        new = current.get(box)
+        if new is None:
+            conflicts.append('previous_result_box_now_missing:' + str(box))
+        elif prior.get('official_runner_identity_observed') is True and projector.token(old.get('dog_name')) != projector.token(new.get('dog_name')):
+            conflicts.append('independently_observed_runner_identity_conflict:' + str(box))
+        elif bool(old['is_winner']) != bool(new['is_winner']):
+            conflicts.append('official_win_target_conflict:' + str(box))
+        elif old.get('finish_position') != new.get('finish_position') or (old.get('terminal_status') or ('FINISHED' if old.get('finish_position') is not None else None)) != (new.get('terminal_status') or ('FINISHED' if new.get('finish_position') is not None else None)):
+            revisions.append({'reason': 'NONWINNING_FINISH_REVISION', 'box': box,
+                              'prior_finish': old.get('finish_position'), 'new_finish': new.get('finish_position'),
+                              'prior_terminal_status': old.get('terminal_status') or ('FINISHED' if old.get('finish_position') is not None else None),
+                              'new_terminal_status': new.get('terminal_status')})
+    return {'blocking': conflicts, 'nonblocking': revisions}
+
+
+def integrate(population, prior, observations, acquire):
+    """One deterministic disposition per race; prior evidence remains a reference.
+
+    acquire(observation) returns a qualified projection or raises ValueError.
+    A new field contradiction suppresses the old weak diagnostic without erasing it.
+    """
+    previous = {r['race_id']: r for r in prior}
+    if len(previous) != len(prior) or not set(previous) <= set(population):
+        raise ValueError('prior_projection_duplicate_or_outside_population')
+    groups = defaultdict(list)
+    for observation in observations:
+        if observation['race_id'] not in population:
+            raise ValueError('observation_outside_population')
+        groups[observation['race_id']].append(observation)
+    selected, dispositions, events = [], [], []
+    for rid in sorted(population):
+        old = previous.get(rid)
+        rows = groups[rid]
+        current, disposition, reasons = old, 'PRIOR_DIAGNOSTIC_RETAINED' if old else 'NO_RESULT_ACQUIRED', []
+        nonblocking = []
+        if len(rows) > 1:
+            current, disposition = None, 'MULTIPLE_DISTINCT_COMPLETIONS_REQUIRE_REVIEW'
+        elif rows:
+            observation = rows[0]
+            if observation['status'] == 'CONSUMED_WITHOUT_COMPLETION':
+                disposition = 'CONSUMED_INTERRUPTED_PRIOR_DIAGNOSTIC_RETAINED' if old else 'CONSUMED_INTERRUPTED_WITHOUT_COMPLETION'
+                reasons = ['request_consumed_transport_and_result_state_unresolved']
+            elif observation['projection_item'] is None:
+                disposition = 'PRIOR_DIAGNOSTIC_RETAINED_AFTER_UNAVAILABLE_ACQUISITION' if old else 'ACQUISITION_UNAVAILABLE'
+                reasons = [observation.get('reason') or observation['status']]
+            else:
+                try:
+                    new = acquire(observation)
+                except (ValueError, KeyError, OSError) as error:
+                    reason = str(error)
+                    reasons = [reason]
+                    if reason.startswith(FIELD_CONTRADICTIONS):
+                        current, disposition = None, 'OFFICIAL_FIELD_CHANGED_PRIOR_DIAGNOSTIC_SUPPRESSED'
+                    else:
+                        disposition = 'PRIOR_DIAGNOSTIC_RETAINED_AFTER_UNQUALIFIED_RESPONSE' if old else 'RESPONSE_NOT_QUALIFIED'
+                else:
+                    comparison = conflicts_with_prior(old, new)
+                    reasons, nonblocking = comparison['blocking'], comparison['nonblocking']
+                    if reasons:
+                        current, disposition = None, 'OFFICIAL_RESULT_CONTRADICTION_REQUIRES_REVIEW'
+                    else:
+                        current, disposition = new, 'NEW_STRICT_RESULT_SUPERSEDES_PRIOR_DIAGNOSTIC' if old else 'NEW_STRICT_RESULT'
+                        if observation.get('reviewed_reclassification'):
+                            disposition = 'REVIEWED_OFFLINE_RESULT_SUPERSEDES_PRIOR_DIAGNOSTIC' if old else 'REVIEWED_OFFLINE_STRICT_RESULT'
+        if current is not None:
+            selected.append(current)
+        entry = {'race_id': rid, 'disposition': disposition, 'reasons': reasons,
+                 'nonblocking_official_revisions': nonblocking,
+                 'prior_projection_present': old is not None,
+                 'prior_projection_sha256': projector.digest(json.dumps(old, sort_keys=True).encode()) if old else None,
+                 'completion_observations': rows, 'selected_projection': 'ACQUIRED' if current is not None and current is not old else 'PRIOR' if current is old and old else None}
+        dispositions.append(entry)
+        if rows:
+            events.append({'race_id': rid, 'event': disposition, 'reasons': reasons,
+                           'nonblocking_official_revisions': nonblocking,
+                           'win_only_policy': 'Independent review before acquisition: losing ranks or terminal statuses cannot veto a complete source-identified unchanged field with the same unique winner.',
+                           'prior_projection_sha256': entry['prior_projection_sha256'],
+                           'reviewed_reclassifications': [row['reviewed_reclassification'] for row in rows if row.get('reviewed_reclassification')],
+                           'nontrial_navigation_policy_fallbacks': [row['nontrial_navigation_policy_fallback'] for row in rows if row.get('nontrial_navigation_policy_fallback')],
+                           'pre_race_field_policy_fallbacks': [row['pre_race_field_policy_fallback'] for row in rows if row.get('pre_race_field_policy_fallback')],
+                           'structural_identity_policy_fallbacks': [row['structural_identity_policy_fallback'] for row in rows if row.get('structural_identity_policy_fallback')],
+                           'runner_name_policy_fallbacks': [row['runner_name_policy_fallback'] for row in rows if row.get('runner_name_policy_fallback')],
+                           'projection_policy_fallbacks': [row['projection_policy_fallback'] for row in rows if row.get('projection_policy_fallback')],
+                           'original_transport_hold_preserved': any(row.get('runtime_source_hold_preserved') for row in rows),
+                           'completion_references': [row['receipt_reference'] for row in rows]})
+    return selected, dispositions, events
+
+
+def run(benchmark_evidence, prior_projection_path, reconciliation_path, completion_manifest_path, output, approved_admission_reference, reviewed_reclassifications_reference=None, approved_admissions_reference=None, projection_policy_reference=None, runner_name_policy_reference=None, structural_identity_policy_reference=None, pre_race_field_policy_reference=None, nontrial_navigation_policy_reference=None):
+    base = Path(benchmark_evidence)
+    boundary = projector.load(base / 'inventory/access-boundary.json')
+    membership = projector.load(base / 'inventory/residual-membership.json')
+    forecasts = projector.load(base / 'alignment/forecast-records.json')
+    by_key = {r['record_key']: r for r in membership['records']}
+    allowed, canonical = {}, {}
+    for row in forecasts:
+        member = by_key[row['prediction_id']]
+        if member['access_disposition'] != 'AUTHORIZED_NONRESERVED_RETAINED_OPERATIONAL' or member['canonical_race_key'] in boundary['canonical_protected_identity_keys']:
+            raise ValueError('population_not_authorized')
+        allowed[row['race_id']] = row['prediction_id']
+        canonical[row['race_id']] = member['canonical_race_key']
+    if len(allowed) != 210 or len(forecasts) != 210:
+        raise ValueError('population_not_exact_210')
+    originals = {r['original']['record_key']: r for r in projector.load(base / 'alignment/authenticated-originals.json')}
+    expected_urls = {r['race_id']: r['official_source_url'] for r in projector.load(reconciliation_path)['records']}
+    previous = projector.load(prior_projection_path)
+    manifest = projector.load(completion_manifest_path)
+    references = manifest['completion_references']
+    intent_references = manifest.get('intent_references', [])
+    unique, duplicates = {}, []
+    for ref in references:
+        # Equal receipt bytes are the same completion even when indexed twice.
+        load_reference(ref)
+        if ref['sha256'] in unique:
+            duplicates.append(ref)
+        else:
+            unique[ref['sha256']] = ref
+    approved_references = approved_admission_bindings(approved_admission_reference, approved_admissions_reference, allowed, expected_urls, canonical)
+    projection_policy = verified_projection_policy(projection_policy_reference, allowed, expected_urls, canonical) if projection_policy_reference else None
+    runner_name_policy = verified_runner_name_policy(runner_name_policy_reference, allowed, projection_policy_reference) if runner_name_policy_reference else None
+    structural_identity_policy = verified_structural_identity_policy(structural_identity_policy_reference, allowed, projection_policy_reference, runner_name_policy_reference) if structural_identity_policy_reference else None
+    pre_race_field_policy = verified_pre_race_field_policy(pre_race_field_policy_reference, allowed, projection_policy_reference, runner_name_policy_reference, structural_identity_policy_reference, base / 'alignment/authenticated-originals.json') if pre_race_field_policy_reference else None
+    nontrial_navigation_policy = verified_nontrial_navigation_policy(nontrial_navigation_policy_reference, allowed, projection_policy_reference, runner_name_policy_reference, structural_identity_policy_reference, pre_race_field_policy_reference, base / 'alignment/authenticated-originals.json') if nontrial_navigation_policy_reference else None
+    # Global scope/authority pass before any result body can be decoded.
+    completion_metadata = []
+    for ref in unique.values():
+        receipt = load_reference(ref)
+        admission_ref = admission_for_intent(receipt['intent_reference'], approved_references)
+        intent = verified_intent(receipt['intent_reference'], allowed, expected_urls, canonical, admission_ref)
+        completion_metadata.append((ref, receipt, intent, admission_ref))
+    unique_intents = {}
+    for ref in intent_references:
+        admission_ref = admission_for_intent(ref, approved_references)
+        intent = verified_intent(ref, allowed, expected_urls, canonical, admission_ref)
+        unique_intents.setdefault(ref['sha256'], (ref, intent))
+    reviewed_events = {}
+    if reviewed_reclassifications_reference:
+        reviewed = load_reference(reviewed_reclassifications_reference)
+        if reviewed.get('schema') != 'reviewed_offline_live_reclassifications_v1':
+            raise ValueError('reviewed_reclassification_manifest_schema_mismatch')
+        for event in reviewed['records']:
+            key = event['completion_reference']['sha256']
+            if event['race_id'] not in allowed or key not in unique or key in reviewed_events:
+                raise ValueError('reviewed_reclassification_outside_census_or_duplicate')
+            reviewed_events[key] = event
+    observations = []
+    for ref, receipt, intent, admission_ref in completion_metadata:
+        try:
+            observation = completion_item(ref, allowed, expected_urls, canonical, admission_ref)
+            if ref['sha256'] in reviewed_events:
+                observation = reviewed_completion_item(observation, reviewed_events[ref['sha256']], allowed, expected_urls, canonical, admission_ref)
+        except (ValueError, KeyError, OSError) as error:
+            # The race and authority are already verified; broken retained
+            # response metadata for it cannot terminate unrelated records.
+            observation = invalid_completion_observation(ref, receipt, intent, error)
+        observations.append(observation)
+        observation['approved_admission_reference'] = admission_ref
+    completed_intents = {row['intent_reference']['sha256'] for row in observations}
+    for key, (ref, intent) in unique_intents.items():
+        if key not in completed_intents:
+            observations.append({'race_id': intent['target']['race_id'], 'receipt_reference': None,
+                                 'intent_reference': ref, 'status': 'CONSUMED_WITHOUT_COMPLETION',
+                                 'approved_admission_reference': intent['admission_reference'],
+                                 'charged_attempts': 1, 'provider_requests': None, 'projection_item': None})
+    output = Path(output)
+    if output.exists() and any(output.iterdir()):
+        raise ValueError('output_directory_must_be_new_or_empty')
+    output.mkdir(parents=True, exist_ok=True)
+    def acquire(observation):
+        rid = observation['race_id']
+        projection = project_observation(observation, originals[allowed[rid]]['original'], expected_urls[rid], output / 'acquired-native' / allowed[rid], projection_policy, projection_policy_reference, runner_name_policy, runner_name_policy_reference, structural_identity_policy, structural_identity_policy_reference, pre_race_field_policy, pre_race_field_policy_reference, originals[allowed[rid]], nontrial_navigation_policy, nontrial_navigation_policy_reference)
+        joined, error = alignment.join_result(originals[allowed[rid]]['original'], projection)
+        if error or joined['field_status'] != 'EXACT_UNCHANGED':
+            raise ValueError('acquired_alignment_not_strict:' + str(error))
+        return projection
+    selected, dispositions, events = integrate(allowed, previous['records'], observations, acquire)
+    strict, diagnostic = [], []
+    for projection in selected:
+        original = originals[allowed[projection['race_id']]]
+        joined, error = alignment.join_result(original['original'], projection)
+        if error:
+            raise ValueError('selected_result_alignment_failed:' + str(error))
+        target = strict if joined['field_status'] == 'EXACT_UNCHANGED' else diagnostic
+        for variant in ('full', 'half'):
+            target.append(alignment.benchmark_row(original, joined, variant))
+    integrated_projection = {**previous, 'schema': 'integrated_july_acquired_result_projection_v1',
+                             'records': selected, 'result_races': len(selected),
+                             'missing_race_ids': sorted(set(allowed) - {r['race_id'] for r in selected})}
+    projector.write(output / 'integrated-result-projection.json', integrated_projection)
+    projector.write(output / 'strict-records.json', strict)
+    projector.write(output / 'diagnostic-records.json', diagnostic)
+    projector.write(output / 'integration-dispositions.json', dispositions)
+    projector.write(output / 'integration-correction-events.json', events)
+    projector.write(output / 'completion-index-audit.json', {'original_index_references': references, 'original_intent_references': intent_references, 'duplicate_index_entries': duplicates,
+                    'unique_completions': len(unique), 'consumed_without_completion': sum(row['status'] == 'CONSUMED_WITHOUT_COMPLETION' for row in observations), 'consumption_records_modified': False})
+    summary = {'schema': 'july_acquired_live_integration_v1', 'original_population': 210,
+               'strict_races': len(strict) // 2, 'diagnostic_races': len(diagnostic) // 2,
+               'unique_completion_receipts': len(unique), 'duplicate_index_entries': len(duplicates),
+               'consumed_without_completion': sum(row['status'] == 'CONSUMED_WITHOUT_COMPLETION' for row in observations),
+               'reviewed_offline_reclassifications': sum(bool(row.get('reviewed_reclassification')) for row in observations),
+               'nontrial_navigation_policy_fallbacks': dict(Counter(row['nontrial_navigation_policy_fallback']['status'] for row in observations if row.get('nontrial_navigation_policy_fallback'))),
+               'pre_race_field_policy_fallbacks': dict(Counter(row['pre_race_field_policy_fallback']['status'] for row in observations if row.get('pre_race_field_policy_fallback'))),
+               'structural_identity_policy_fallbacks': dict(Counter(row['structural_identity_policy_fallback']['status'] for row in observations if row.get('structural_identity_policy_fallback'))),
+               'runner_name_policy_fallbacks': dict(Counter(row['runner_name_policy_fallback']['status'] for row in observations if row.get('runner_name_policy_fallback'))),
+               'projection_policy_fallbacks': dict(Counter(row['projection_policy_fallback']['status'] for row in observations if row.get('projection_policy_fallback'))),
+               'dispositions': dict(Counter(r['disposition'] for r in dispositions)),
+               'provider_requests_by_integrator': 0, 'fits': 0, 'selector_changes': 0}
+    projector.write(output / 'summary.json', summary)
+    prior_corrections = Path(prior_projection_path).with_name('correction-trail.json')
+    projector.write(output / 'provenance.json', {'prior_correction_reference': reference(prior_corrections) if prior_corrections.exists() else None,
+                    'inputs': [reference(p) for p in [prior_projection_path, reconciliation_path, completion_manifest_path,
+                    base / 'inventory/access-boundary.json', base / 'inventory/residual-membership.json', base / 'alignment/forecast-records.json', base / 'alignment/authenticated-originals.json']],
+                    'approved_admission_reference': approved_admission_reference,
+                    'approved_admissions_reference': approved_admissions_reference,
+                    'approved_admission_bindings': approved_references,
+                    'reviewed_reclassifications_reference': reviewed_reclassifications_reference,
+                    'projection_policy_reference': projection_policy_reference,
+                    'runner_name_policy_reference': runner_name_policy_reference,
+                    'structural_identity_policy_reference': structural_identity_policy_reference,
+                    'pre_race_field_policy_reference': pre_race_field_policy_reference,
+                    'nontrial_navigation_policy_reference': nontrial_navigation_policy_reference,
+                    'implementation': [reference(Path(__file__)), reference(Path(projector.__file__)), reference(Path(reviewed_projector.__file__)), reference(Path(policy_projector.__file__)), reference(Path(alignment.__file__)), reference(Path(name_projector.__file__)), reference(Path(navigation_projector.__file__)), reference(Path(field_projector.__file__)), reference(Path(nontrial_projector.__file__))],
+                    'prior_evidence_preserved': True})
+    return summary
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--benchmark-evidence', type=Path, required=True)
+    parser.add_argument('--prior-projection', type=Path, required=True)
+    parser.add_argument('--reconciliation', type=Path, required=True)
+    parser.add_argument('--completion-manifest', type=Path, required=True)
+    parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--approved-admission', type=Path)
+    parser.add_argument('--approved-admission-sha256')
+    parser.add_argument('--approved-admissions', type=Path)
+    parser.add_argument('--approved-admissions-sha256')
+    parser.add_argument('--reviewed-reclassifications', type=Path)
+    parser.add_argument('--reviewed-reclassifications-sha256')
+    parser.add_argument('--projection-policy', type=Path)
+    parser.add_argument('--projection-policy-sha256')
+    parser.add_argument('--runner-name-policy', type=Path)
+    parser.add_argument('--runner-name-policy-sha256')
+    parser.add_argument('--structural-identity-policy', type=Path)
+    parser.add_argument('--structural-identity-policy-sha256')
+    parser.add_argument('--pre-race-field-policy', type=Path)
+    parser.add_argument('--pre-race-field-policy-sha256')
+    parser.add_argument('--nontrial-navigation-policy', type=Path)
+    parser.add_argument('--nontrial-navigation-policy-sha256')
+    args = parser.parse_args()
+    if bool(args.nontrial_navigation_policy) != bool(args.nontrial_navigation_policy_sha256):
+        parser.error('nontrial navigation policy requires both path and SHA256')
+    nontrial_ref = {'path': str(args.nontrial_navigation_policy), 'sha256': args.nontrial_navigation_policy_sha256} if args.nontrial_navigation_policy else None
+    if bool(args.pre_race_field_policy) != bool(args.pre_race_field_policy_sha256):
+        parser.error('pre-race field policy requires both path and SHA256')
+    field_ref = {'path': str(args.pre_race_field_policy), 'sha256': args.pre_race_field_policy_sha256} if args.pre_race_field_policy else None
+    if bool(args.structural_identity_policy) != bool(args.structural_identity_policy_sha256):
+        parser.error('structural identity policy requires both path and SHA256')
+    structural_ref = {'path': str(args.structural_identity_policy), 'sha256': args.structural_identity_policy_sha256} if args.structural_identity_policy else None
+    if bool(args.runner_name_policy) != bool(args.runner_name_policy_sha256):
+        parser.error('runner name policy requires both path and SHA256')
+    name_ref = {'path': str(args.runner_name_policy), 'sha256': args.runner_name_policy_sha256} if args.runner_name_policy else None
+    if bool(args.approved_admission) != bool(args.approved_admission_sha256) or bool(args.approved_admissions) != bool(args.approved_admissions_sha256):
+        parser.error('each admission mode requires both path and SHA256')
+    if bool(args.approved_admission) == bool(args.approved_admissions):
+        parser.error('supply exactly one of --approved-admission or --approved-admissions')
+    if bool(args.reviewed_reclassifications) != bool(args.reviewed_reclassifications_sha256):
+        parser.error('reviewed reclassifications require both path and SHA256')
+    if bool(args.projection_policy) != bool(args.projection_policy_sha256):
+        parser.error('projection policy requires both path and SHA256')
+    reviewed = {'path': str(args.reviewed_reclassifications), 'sha256': args.reviewed_reclassifications_sha256} if args.reviewed_reclassifications else None
+    single = {'path': str(args.approved_admission), 'sha256': args.approved_admission_sha256} if args.approved_admission else None
+    multiple = {'path': str(args.approved_admissions), 'sha256': args.approved_admissions_sha256} if args.approved_admissions else None
+    policy_ref = {'path': str(args.projection_policy), 'sha256': args.projection_policy_sha256} if args.projection_policy else None
+    print(json.dumps(run(args.benchmark_evidence, args.prior_projection, args.reconciliation, args.completion_manifest, args.output, single, reviewed, multiple, policy_ref, name_ref, structural_ref, field_ref, nontrial_ref)))
+
+
+if __name__ == '__main__':
+    main()

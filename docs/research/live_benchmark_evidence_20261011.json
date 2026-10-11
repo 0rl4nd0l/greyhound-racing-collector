@@ -1,0 +1,714 @@
+{
+  "artifact_references": {
+    "path": "/mnt/tenn-nvme2/tenn/greyhound-live-benchmark-20261011-evidence/artifact-references.json",
+    "sha256": "ad57f3994073677a6e808444901d1fd28cb364456232e017511b1e8eebed9133"
+  },
+  "conditional_diagnostic_by_version": {
+    "624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d:full": {
+      "by_date": {
+        "2026-07-17": {
+          "delta_brier": 0.03196841972722856,
+          "delta_log_loss": 0.04405793321272482,
+          "delta_top_credit": 0.0,
+          "market_brier": 0.6277084327711228,
+          "market_log_loss": 1.4351493257367909,
+          "market_top_credit": 0.6,
+          "model_brier": 0.6596768524983513,
+          "model_log_loss": 1.4792072589495158,
+          "model_top_credit": 0.6,
+          "races": 5,
+          "runners": 40
+        },
+        "2026-07-18": {
+          "delta_brier": -0.022190626175871003,
+          "delta_log_loss": -0.070410872779122,
+          "delta_top_credit": 0.0,
+          "market_brier": 0.5986680028610911,
+          "market_log_loss": 1.3181544363251838,
+          "market_top_credit": 0.5,
+          "model_brier": 0.57647737668522,
+          "model_log_loss": 1.2477435635460619,
+          "model_top_credit": 0.5,
+          "races": 2,
+          "runners": 16
+        }
+      },
+      "dates": [
+        "2026-07-17",
+        "2026-07-18"
+      ],
+      "delta_brier": 0.016494406612057255,
+      "delta_log_loss": 0.011352560072197157,
+      "delta_top_credit": 0.0,
+      "disagreements": {
+        "False": {
+          "delta_brier": null,
+          "delta_log_loss": null,
+          "delta_top_credit": null,
+          "market_brier": null,
+          "market_log_loss": null,
+          "market_top_credit": null,
+          "model_brier": null,
+          "model_log_loss": null,
+          "model_top_credit": null,
+          "races": 0,
+          "runners": 0
+        },
+        "True": {
+          "delta_brier": 0.016494406612057255,
+          "delta_log_loss": 0.011352560072197157,
+          "delta_top_credit": 0.0,
+          "market_brier": 0.6194111670825423,
+          "market_log_loss": 1.4017222144763317,
+          "market_top_credit": 0.5714285714285714,
+          "model_brier": 0.6359055736945994,
+          "model_log_loss": 1.4130747745485288,
+          "model_top_credit": 0.5714285714285714,
+          "races": 7,
+          "runners": 56
+        }
+      },
+      "leave_one_date_out": {
+        "2026-07-17": {
+          "delta_brier": -0.022190626175871003,
+          "delta_log_loss": -0.070410872779122,
+          "delta_top_credit": 0.0,
+          "market_brier": 0.5986680028610911,
+          "market_log_loss": 1.3181544363251838,
+          "market_top_credit": 0.5,
+          "model_brier": 0.57647737668522,
+          "model_log_loss": 1.2477435635460619,
+          "model_top_credit": 0.5,
+          "races": 2,
+          "runners": 16
+        },
+        "2026-07-18": {
+          "delta_brier": 0.03196841972722856,
+          "delta_log_loss": 0.04405793321272482,
+          "delta_top_credit": 0.0,
+          "market_brier": 0.6277084327711228,
+          "market_log_loss": 1.4351493257367909,
+          "market_top_credit": 0.6,
+          "model_brier": 0.6596768524983513,
+          "model_log_loss": 1.4792072589495158,
+          "model_top_credit": 0.6,
+          "races": 5,
+          "runners": 40
+        }
+      },
+      "market_brier": 0.6194111670825423,
+      "market_calibration": {
+        "bins": [
+          {
+            "count": 34,
+            "lower": 0.0,
+            "mean_probability": 0.05711082985281962,
+            "observed_frequency": 0.029411764705882353,
+            "outcome_sum": 1.0,
+            "probability_sum": 1.9417682149958673,
+            "upper": 0.1
+          },
+          {
+            "count": 13,
+            "lower": 0.1,
+            "mean_probability": 0.14402679384249098,
+            "observed_frequency": 0.15384615384615385,
+            "outcome_sum": 2.0,
+            "probability_sum": 1.8723483199523827,
+            "upper": 0.2
+          },
+          {
+            "count": 4,
+            "lower": 0.2,
+            "mean_probability": 0.24914968583823616,
+            "observed_frequency": 0.0,
+            "outcome_sum": 0.0,
+            "probability_sum": 0.9965987433529446,
+            "upper": 0.3
+          },
+          {
+            "count": 1,
+            "lower": 0.3,
+            "mean_probability": 0.3475865334430975,
+            "observed_frequency": 1.0,
+            "outcome_sum": 1.0,
+            "probability_sum": 0.3475865334430975,
+            "upper": 0.4
+          },
+          {
+            "count": 3,
+            "lower": 0.4,
+            "mean_probability": 0.4373693813070311,
+            "observed_frequency": 0.6666666666666666,
+            "outcome_sum": 2.0,
+            "probability_sum": 1.3121081439210933,
+            "upper": 0.5
+          },
+          {
+            "count": 1,
+            "lower": 0.5,
+            "mean_probability": 0.5295900443346143,
+            "observed_frequency": 1.0,
+            "outcome_sum": 1.0,
+            "probability_sum": 0.5295900443346143,
+            "upper": 0.6
+          },
+          {
+            "count": 0,
+            "lower": 0.6,
+            "mean_probability": null,
+            "observed_frequency": null,
+            "outcome_sum": 0.0,
+            "probability_sum": 0.0,
+            "upper": 0.7
+          },
+          {
+            "count": 0,
+            "lower": 0.7,
+            "mean_probability": null,
+            "observed_frequency": null,
+            "outcome_sum": 0.0,
+            "probability_sum": 0.0,
+            "upper": 0.8
+          },
+          {
+            "count": 0,
+            "lower": 0.8,
+            "mean_probability": null,
+            "observed_frequency": null,
+            "outcome_sum": 0.0,
+            "probability_sum": 0.0,
+            "upper": 0.9
+          },
+          {
+            "count": 0,
+            "lower": 0.9,
+            "mean_probability": null,
+            "observed_frequency": null,
+            "outcome_sum": 0.0,
+            "probability_sum": 0.0,
+            "upper": 1.0
+          }
+        ],
+        "ece": 0.06922739136960042,
+        "weighting": "runner_weighted"
+      },
+      "market_log_loss": 1.4017222144763317,
+      "market_top_credit": 0.5714285714285714,
+      "model_brier": 0.6359055736945994,
+      "model_calibration": {
+        "bins": [
+          {
+            "count": 32,
+            "lower": 0.0,
+            "mean_probability": 0.053377094604739495,
+            "observed_frequency": 0.03125,
+            "outcome_sum": 1.0,
+            "probability_sum": 1.7080670273516638,
+            "upper": 0.1
+          },
+          {
+            "count": 14,
+            "lower": 0.1,
+            "mean_probability": 0.13786896144717967,
+            "observed_frequency": 0.14285714285714285,
+            "outcome_sum": 2.0,
+            "probability_sum": 1.9301654602605152,
+            "upper": 0.2
+          },
+          {
+            "count": 4,
+            "lower": 0.2,
+            "mean_probability": 0.24362433454618213,
+            "observed_frequency": 0.0,
+            "outcome_sum": 0.0,
+            "probability_sum": 0.9744973381847285,
+            "upper": 0.3
+          },
+          {
+            "count": 3,
+            "lower": 0.3,
+            "mean_probability": 0.3359873584939023,
+            "observed_frequency": 0.3333333333333333,
+            "outcome_sum": 1.0,
+            "probability_sum": 1.007962075481707,
+            "upper": 0.4
+          },
+          {
+            "count": 3,
+            "lower": 0.4,
+            "mean_probability": 0.45976936624046183,
+            "observed_frequency": 1.0,
+            "outcome_sum": 3.0,
+            "probability_sum": 1.3793080987213855,
+            "upper": 0.5
+          },
+          {
+            "count": 0,
+            "lower": 0.5,
+            "mean_probability": null,
+            "observed_frequency": null,
+            "outcome_sum": 0.0,
+            "probability_sum": 0.0,
+            "upper": 0.6
+          },
+          {
+            "count": 0,
+            "lower": 0.6,
+            "mean_probability": null,
+            "observed_frequency": null,
+            "outcome_sum": 0.0,
+            "probability_sum": 0.0,
+            "upper": 0.7
+          },
+          {
+            "count": 0,
+            "lower": 0.7,
+            "mean_probability": null,
+            "observed_frequency": null,
+            "outcome_sum": 0.0,
+            "probability_sum": 0.0,
+            "upper": 0.8
+          },
+          {
+            "count": 0,
+            "lower": 0.8,
+            "mean_probability": null,
+            "observed_frequency": null,
+            "outcome_sum": 0.0,
+            "probability_sum": 0.0,
+            "upper": 0.9
+          },
+          {
+            "count": 0,
+            "lower": 0.9,
+            "mean_probability": null,
+            "observed_frequency": null,
+            "outcome_sum": 0.0,
+            "probability_sum": 0.0,
+            "upper": 1.0
+          }
+        ],
+        "ece": 0.06037594432207498,
+        "weighting": "runner_weighted"
+      },
+      "model_log_loss": 1.4130747745485288,
+      "model_top_credit": 0.5714285714285714,
+      "provider_quote_age_known": 0,
+      "races": 7,
+      "runners": 56,
+      "timing": {
+        "capture_age_seconds": {
+          "maximum": 353.706116,
+          "median": 224.526019,
+          "minimum": 154.993722
+        },
+        "prediction_lead_seconds": {
+          "maximum": 3265.103669,
+          "median": 2517.011973,
+          "minimum": 1243.738547
+        }
+      },
+      "uncertainty": {
+        "dates": 2,
+        "draws": 10000,
+        "intervals": {
+          "delta_brier": [
+            -0.022190626175871003,
+            0.03196841972722856
+          ],
+          "delta_log_loss": [
+            -0.070410872779122,
+            0.04405793321272482
+          ],
+          "delta_top_credit": [
+            0.0,
+            0.0
+          ]
+        },
+        "limitation": "Few dates and repeated dogs; not independent confirmation.",
+        "seed": 20261011,
+        "status": "DESCRIPTIVE_DATE_CLUSTER_PERCENTILE_95"
+      },
+      "winner_probability_directions": {
+        "market_better": 4,
+        "model_better": 3
+      }
+    },
+    "624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d:half": {
+      "by_date": {
+        "2026-07-17": {
+          "delta_brier": 0.015356086795024971,
+          "delta_log_loss": 0.020356058886404526,
+          "delta_top_credit": 0.0,
+          "market_brier": 0.6277084327711228,
+          "market_log_loss": 1.4351493257367909,
+          "market_top_credit": 0.6,
+          "model_brier": 0.6430645195661476,
+          "model_log_loss": 1.4555053846231956,
+          "model_top_credit": 0.6,
+          "races": 5,
+          "runners": 40
+        },
+        "2026-07-18": {
+          "delta_brier": -0.011572235763926908,
+          "delta_log_loss": -0.03655345737781429,
+          "delta_top_credit": 0.0,
+          "market_brier": 0.5986680028610911,
+          "market_log_loss": 1.3181544363251838,
+          "market_top_credit": 0.5,
+          "model_brier": 0.5870957670971642,
+          "model_log_loss": 1.2816009789473695,
+          "model_top_credit": 0.5,
+          "races": 2,
+          "runners": 16
+        }
+      },
+      "dates": [
+        "2026-07-17",
+        "2026-07-18"
+      ],
+      "delta_brier": 0.007662280349610148,
+      "delta_log_loss": 0.004096197096627722,
+      "delta_top_credit": 0.0,
+      "disagreements": {
+        "False": {
+          "delta_brier": null,
+          "delta_log_loss": null,
+          "delta_top_credit": null,
+          "market_brier": null,
+          "market_log_loss": null,
+          "market_top_credit": null,
+          "model_brier": null,
+          "model_log_loss": null,
+          "model_top_credit": null,
+          "races": 0,
+          "runners": 0
+        },
+        "True": {
+          "delta_brier": 0.007662280349610148,
+          "delta_log_loss": 0.004096197096627722,
+          "delta_top_credit": 0.0,
+          "market_brier": 0.6194111670825423,
+          "market_log_loss": 1.4017222144763317,
+          "market_top_credit": 0.5714285714285714,
+          "model_brier": 0.6270734474321523,
+          "model_log_loss": 1.4058184115729595,
+          "model_top_credit": 0.5714285714285714,
+          "races": 7,
+          "runners": 56
+        }
+      },
+      "leave_one_date_out": {
+        "2026-07-17": {
+          "delta_brier": -0.011572235763926908,
+          "delta_log_loss": -0.03655345737781429,
+          "delta_top_credit": 0.0,
+          "market_brier": 0.5986680028610911,
+          "market_log_loss": 1.3181544363251838,
+          "market_top_credit": 0.5,
+          "model_brier": 0.5870957670971642,
+          "model_log_loss": 1.2816009789473695,
+          "model_top_credit": 0.5,
+          "races": 2,
+          "runners": 16
+        },
+        "2026-07-18": {
+          "delta_brier": 0.015356086795024971,
+          "delta_log_loss": 0.020356058886404526,
+          "delta_top_credit": 0.0,
+          "market_brier": 0.6277084327711228,
+          "market_log_loss": 1.4351493257367909,
+          "market_top_credit": 0.6,
+          "model_brier": 0.6430645195661476,
+          "model_log_loss": 1.4555053846231956,
+          "model_top_credit": 0.6,
+          "races": 5,
+          "runners": 40
+        }
+      },
+      "market_brier": 0.6194111670825423,
+      "market_calibration": {
+        "bins": [
+          {
+            "count": 34,
+            "lower": 0.0,
+            "mean_probability": 0.05711082985281962,
+            "observed_frequency": 0.029411764705882353,
+            "outcome_sum": 1.0,
+            "probability_sum": 1.9417682149958673,
+            "upper": 0.1
+          },
+          {
+            "count": 13,
+            "lower": 0.1,
+            "mean_probability": 0.14402679384249098,
+            "observed_frequency": 0.15384615384615385,
+            "outcome_sum": 2.0,
+            "probability_sum": 1.8723483199523827,
+            "upper": 0.2
+          },
+          {
+            "count": 4,
+            "lower": 0.2,
+            "mean_probability": 0.24914968583823616,
+            "observed_frequency": 0.0,
+            "outcome_sum": 0.0,
+            "probability_sum": 0.9965987433529446,
+            "upper": 0.3
+          },
+          {
+            "count": 1,
+            "lower": 0.3,
+            "mean_probability": 0.3475865334430975,
+            "observed_frequency": 1.0,
+            "outcome_sum": 1.0,
+            "probability_sum": 0.3475865334430975,
+            "upper": 0.4
+          },
+          {
+            "count": 3,
+            "lower": 0.4,
+            "mean_probability": 0.4373693813070311,
+            "observed_frequency": 0.6666666666666666,
+            "outcome_sum": 2.0,
+            "probability_sum": 1.3121081439210933,
+            "upper": 0.5
+          },
+          {
+            "count": 1,
+            "lower": 0.5,
+            "mean_probability": 0.5295900443346143,
+            "observed_frequency": 1.0,
+            "outcome_sum": 1.0,
+            "probability_sum": 0.5295900443346143,
+            "upper": 0.6
+          },
+          {
+            "count": 0,
+            "lower": 0.6,
+            "mean_probability": null,
+            "observed_frequency": null,
+            "outcome_sum": 0.0,
+            "probability_sum": 0.0,
+            "upper": 0.7
+          },
+          {
+            "count": 0,
+            "lower": 0.7,
+            "mean_probability": null,
+            "observed_frequency": null,
+            "outcome_sum": 0.0,
+            "probability_sum": 0.0,
+            "upper": 0.8
+          },
+          {
+            "count": 0,
+            "lower": 0.8,
+            "mean_probability": null,
+            "observed_frequency": null,
+            "outcome_sum": 0.0,
+            "probability_sum": 0.0,
+            "upper": 0.9
+          },
+          {
+            "count": 0,
+            "lower": 0.9,
+            "mean_probability": null,
+            "observed_frequency": null,
+            "outcome_sum": 0.0,
+            "probability_sum": 0.0,
+            "upper": 1.0
+          }
+        ],
+        "ece": 0.06922739136960042,
+        "weighting": "runner_weighted"
+      },
+      "market_log_loss": 1.4017222144763317,
+      "market_top_credit": 0.5714285714285714,
+      "model_brier": 0.6270734474321523,
+      "model_calibration": {
+        "bins": [
+          {
+            "count": 34,
+            "lower": 0.0,
+            "mean_probability": 0.05663399370011157,
+            "observed_frequency": 0.029411764705882353,
+            "outcome_sum": 1.0,
+            "probability_sum": 1.9255557858037935,
+            "upper": 0.1
+          },
+          {
+            "count": 12,
+            "lower": 0.1,
+            "mean_probability": 0.14169694149656725,
+            "observed_frequency": 0.16666666666666666,
+            "outcome_sum": 2.0,
+            "probability_sum": 1.700363297958807,
+            "upper": 0.2
+          },
+          {
+            "count": 5,
+            "lower": 0.2,
+            "mean_probability": 0.24891375805857113,
+            "observed_frequency": 0.0,
+            "outcome_sum": 0.0,
+            "probability_sum": 1.2445687902928557,
+            "upper": 0.3
+          },
+          {
+            "count": 2,
+            "lower": 0.3,
+            "mean_probability": 0.36169360510858606,
+            "observed_frequency": 0.5,
+            "outcome_sum": 1.0,
+            "probability_sum": 0.7233872102171721,
+            "upper": 0.4
+          },
+          {
+            "count": 2,
+            "lower": 0.4,
+            "mean_probability": 0.4476748343213217,
+            "observed_frequency": 1.0,
+            "outcome_sum": 2.0,
+            "probability_sum": 0.8953496686426434,
+            "upper": 0.5
+          },
+          {
+            "count": 1,
+            "lower": 0.5,
+            "mean_probability": 0.5107752470847283,
+            "observed_frequency": 1.0,
+            "outcome_sum": 1.0,
+            "probability_sum": 0.5107752470847283,
+            "upper": 0.6
+          },
+          {
+            "count": 0,
+            "lower": 0.6,
+            "mean_probability": null,
+            "observed_frequency": null,
+            "outcome_sum": 0.0,
+            "probability_sum": 0.0,
+            "upper": 0.7
+          },
+          {
+            "count": 0,
+            "lower": 0.7,
+            "mean_probability": null,
+            "observed_frequency": null,
+            "outcome_sum": 0.0,
+            "probability_sum": 0.0,
+            "upper": 0.8
+          },
+          {
+            "count": 0,
+            "lower": 0.8,
+            "mean_probability": null,
+            "observed_frequency": null,
+            "outcome_sum": 0.0,
+            "probability_sum": 0.0,
+            "upper": 0.9
+          },
+          {
+            "count": 0,
+            "lower": 0.9,
+            "mean_probability": null,
+            "observed_frequency": null,
+            "outcome_sum": 0.0,
+            "probability_sum": 0.0,
+            "upper": 1.0
+          }
+        ],
+        "ece": 0.07750444914630891,
+        "weighting": "runner_weighted"
+      },
+      "model_log_loss": 1.4058184115729595,
+      "model_top_credit": 0.5714285714285714,
+      "provider_quote_age_known": 0,
+      "races": 7,
+      "runners": 56,
+      "timing": {
+        "capture_age_seconds": {
+          "maximum": 353.706116,
+          "median": 224.526019,
+          "minimum": 154.993722
+        },
+        "prediction_lead_seconds": {
+          "maximum": 3265.103669,
+          "median": 2517.011973,
+          "minimum": 1243.738547
+        }
+      },
+      "uncertainty": {
+        "dates": 2,
+        "draws": 10000,
+        "intervals": {
+          "delta_brier": [
+            -0.011572235763926908,
+            0.015356086795024971
+          ],
+          "delta_log_loss": [
+            -0.03655345737781429,
+            0.020356058886404526
+          ],
+          "delta_top_credit": [
+            0.0,
+            0.0
+          ]
+        },
+        "limitation": "Few dates and repeated dogs; not independent confirmation.",
+        "seed": 20261011,
+        "status": "DESCRIPTIVE_DATE_CLUSTER_PERCENTILE_95"
+      },
+      "winner_probability_directions": {
+        "market_better": 4,
+        "model_better": 3
+      }
+    }
+  },
+  "coverage": {
+    "no_appended_forecast_races": 221,
+    "nonreserved_attempted_races": 431,
+    "original_forecast_races": 210,
+    "strict_comparison_races": 0
+  },
+  "diagnostic_runner_appearances": 56,
+  "diagnostic_unique_races": 7,
+  "evidence_root": "/mnt/tenn-nvme2/tenn/greyhound-live-benchmark-20261011-evidence",
+  "outputs": {
+    "artifacts": {
+      "diagnostic-dataset.json": "d2e82b9aea9daf6364882cef9030a008b4827e2c022dfe5f3500ad6e1670e9a0",
+      "diagnostic-scorecard.json": "76b86ebda9006dec6d049b1d63620cb94c20f6ba2d7e003a85f0aab7e027ad32",
+      "diagnostic-selector-plan.json": "cb1c427be13e1f5ca1f76505cf9858b59f3aa1558c954d4add73f72c6bc833dd",
+      "diagnostic-selector-results.json": "efccadec03aeb9b46def14fe1e776500960f0c0cb785b2eb6779ad4928979a35",
+      "forecast-dataset.json": "0865697701f2b75492d5efe0a272f6906b75792d44afc8567ddf0cec23fa70b8",
+      "forecast-selector-plan.json": "775ff69107a93cbabd803f5d24d614fe59d8468f2372493cae58c37329f5ffee",
+      "forecast-selector-results.json": "f77316e5fad866d741137a5d230fa91d20ff7012ebe9f8bebd36fe06bb06fdbd",
+      "manual-forecast-dataset.json": "0c66035574b1d83861c0be4f39c929cee0df9ae8094c080d1c82f5f7b25ac80c",
+      "manual-forecast-selector-plan.json": "af507344661727baca0c63a5e17e57f20ed86719ffb6fc6b34aa66f1b44dde25",
+      "manual-forecast-selector-results.json": "a2dc2b7196cf53cb19ec0f8f521ca3cdcea6da258706ade896f31612aa12a7d3",
+      "primary-diagnostic-selector-evaluation.json": "0f743be0c42d8adc3605f991eefd1d82ba735680f7064446b8abc2d5c9d800c3",
+      "primary-strict-selector-evaluation.json": "063a900c894c52c5f3f8806fad3a25a066c941c240e73be88629c8d9c507f8d0",
+      "strict-dataset.json": "1699b3abad02384dc8baf36830fb2176c8411346e4a1edf4f4be2b08df45478f",
+      "strict-scorecard.json": "c40f3a7afd9391e96ee21a961252ddaf1607f6e86b88a7b4af0ea9b0b7e92c29",
+      "strict-selector-plan.json": "2f1eeba7ef247ef81af3a19ee726f80c57fc8ce6e1187352739f2860b6ec4b68",
+      "strict-selector-results.json": "7eff6d5910979a2bc52837d493dbdce5c30591f9a16de6f47da0d3fb272af26f"
+    },
+    "protocol_sha256": "100a5d1e254d2399bf29bdf5ff51a0da988c65a58e9227f73c4d8ffd685c7be0",
+    "schema": "live_benchmark_output_manifest_v1",
+    "selector_protocol_sha256": "a35ac7759c3fabf323234e43a611ff16cda28abe12b5f0d0f0afe7fa24476852"
+  },
+  "schema": "retained_live_benchmark_published_evidence_v1",
+  "selector_primary": {
+    "development_races": 79,
+    "later_forecasts": 131,
+    "later_retained_results": 0
+  },
+  "strict_races": 0,
+  "validation": {
+    "focused_tests_passed": 54,
+    "independent_source_and_metric_check": "PASS",
+    "numerical_replay_identical_artifacts": 16
+  }
+}
