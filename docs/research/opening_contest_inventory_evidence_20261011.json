@@ -1,0 +1,405 @@
+{
+  "artifacts": [
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-dynamic-race-shape-20261011-evidence/run-04/audit.json",
+      "sha256": "2908779d068102eb2af28278ffd1e24d46f88aada7392a5c9c8a3333d4f03e4f"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-dynamic-race-shape-20261011-evidence/run-04/section_inventory.jsonl",
+      "sha256": "328f3c1a633273c485a0c56d41d731507e27b9320b475cfa128f5f31393611cc"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-dynamic-race-shape-20261011-evidence/run-04/target_support.jsonl",
+      "sha256": "327586987310ed5ea15d6911544ba87419348f1169ee4bc2950411f49f1ed509"
+    }
+  ],
+  "capture_metadata_inventory": {
+    "captures": 28,
+    "maximum_source_observed_lead_seconds": 580.17804,
+    "minimum_source_observed_lead_seconds": 427.306087,
+    "races_with_multiple_captures": 0,
+    "references_hash_verified": 84,
+    "snapshot_scope": "Existing fair-comparison population audit; October10 only; no new live inventory or payload admission",
+    "unique_races": 28
+  },
+  "context_reference": {
+    "path": "/mnt/tenn-nvme2/tenn/greyhound-historical-next-comparison-20261010-evidence/context-package-01/retained_context_evidence.jsonl",
+    "sha256": "8a614e926b1a8807db4b0c794d952e702b350e2a1627f07cbb5cd405395c0d42"
+  },
+  "fits": 0,
+  "generated_at": "2026-10-11T04:09:51.826837+00:00",
+  "inputs": [
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-historical-csv-expansion-20261008-evidence/http-recovery-20261009/plan/plan.json",
+      "sha256": "01587be757466a0000c3415d877861ed16c7039b254099fa14c01218e9b2c69a"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-historical-csv-expansion-20261008-evidence/http-recovery-20261009/run-01/prepared/000084/joined/results_manifest.json",
+      "sha256": "6ef4b6c1b1a1abf3440c3216331c37d13183899400f0a7e889d7989ed26eec79"
+    },
+    {
+      "path": "/mnt/tenn-nvme2/tenn/greyhound-fair-comparison-20261011-evidence/data-audit/population-audit.json",
+      "sha256": "808fcbcfed9a160ad4e54c12e07f54c5680f153205e579005b377554406c50b5"
+    },
+    {
+      "path": "docs/research/historical_timing_qualification_evidence_20261010.json",
+      "sha256": "7f738d94b68bee8e070fcd2c1c73d90bcc3788788da92f9a7330d7b7ed95fc92"
+    }
+  ],
+  "interpretation": "Section box order is newly inventoried measurement structure, not qualified early speed or historical decision-time availability. Single captures cannot support movement pairs. No model eligibility inferred.",
+  "mapping_reference": {
+    "path": "/mnt/tenn-nvme2/tenn/greyhound-historical-csv-expansion-20261008-evidence/http-recovery-20261009/run-01/prepared/000084/joined/runner_mapping.jsonl",
+    "sha256": "ff56ade2ce8afc7ec1fb460e7aa1bf64bb47d1af01716dd3e803a2ce3b71b20e"
+  },
+  "prior_date_same_track_distance_support_by_date": {
+    "2025-07-04": {
+      "complete_prior_same_track_distance_call": 0,
+      "races": 1
+    },
+    "2025-08-04": {
+      "complete_prior_same_track_distance_call": 0,
+      "races": 1
+    },
+    "2025-08-20": {
+      "complete_prior_same_track_distance_call": 0,
+      "races": 53
+    },
+    "2025-08-21": {
+      "complete_prior_same_track_distance_call": 0,
+      "races": 54
+    },
+    "2025-08-22": {
+      "complete_prior_same_track_distance_call": 0,
+      "races": 67
+    },
+    "2025-08-23": {
+      "complete_prior_same_track_distance_call": 0,
+      "races": 47
+    },
+    "2025-08-24": {
+      "complete_prior_same_track_distance_call": 0,
+      "races": 88
+    },
+    "2025-08-28": {
+      "complete_prior_same_track_distance_call": 0,
+      "races": 120
+    },
+    "2025-08-29": {
+      "complete_prior_same_track_distance_call": 0,
+      "races": 105
+    },
+    "2025-08-30": {
+      "complete_prior_same_track_distance_call": 1,
+      "races": 80
+    },
+    "2025-08-31": {
+      "complete_prior_same_track_distance_call": 0,
+      "races": 104
+    },
+    "2025-09-01": {
+      "complete_prior_same_track_distance_call": 0,
+      "races": 88
+    },
+    "2025-09-02": {
+      "complete_prior_same_track_distance_call": 0,
+      "races": 101
+    },
+    "2025-09-03": {
+      "complete_prior_same_track_distance_call": 0,
+      "races": 108
+    },
+    "2025-09-04": {
+      "complete_prior_same_track_distance_call": 0,
+      "races": 118
+    },
+    "2025-09-05": {
+      "complete_prior_same_track_distance_call": 1,
+      "races": 106
+    },
+    "2025-09-06": {
+      "complete_prior_same_track_distance_call": 0,
+      "races": 72
+    },
+    "2025-09-08": {
+      "complete_prior_same_track_distance_call": 0,
+      "races": 63
+    },
+    "2025-09-09": {
+      "complete_prior_same_track_distance_call": 0,
+      "races": 105
+    },
+    "2025-09-10": {
+      "complete_prior_same_track_distance_call": 0,
+      "races": 123
+    },
+    "2025-09-11": {
+      "complete_prior_same_track_distance_call": 2,
+      "races": 118
+    },
+    "2025-09-12": {
+      "complete_prior_same_track_distance_call": 0,
+      "races": 13
+    },
+    "2025-09-16": {
+      "complete_prior_same_track_distance_call": 2,
+      "races": 85
+    },
+    "2025-09-17": {
+      "complete_prior_same_track_distance_call": 1,
+      "races": 106
+    },
+    "2025-09-18": {
+      "complete_prior_same_track_distance_call": 0,
+      "races": 126
+    },
+    "2025-09-29": {
+      "complete_prior_same_track_distance_call": 0,
+      "races": 97
+    },
+    "2025-09-30": {
+      "complete_prior_same_track_distance_call": 0,
+      "races": 99
+    },
+    "2025-10-01": {
+      "complete_prior_same_track_distance_call": 0,
+      "races": 103
+    }
+  },
+  "prior_date_same_track_distance_support_upper_bound": {
+    "runner_targets": 16855,
+    "whole_fields_with_prior_same_track_distance_call": 7,
+    "whole_fields_with_three_prior_same_track_distance_calls": 0,
+    "with_prior_same_track_distance_call": 2385
+  },
+  "protected_raw_bodies_opened": 0,
+  "provider_requests": 0,
+  "raw_result_html_count": 2351,
+  "schema_version": "opening_contest_inventory_v1",
+  "section_counts": {
+    "duplicate_section_labels": 0,
+    "first_section_count_matches_active_field": 1224,
+    "first_section_exact_native_field": 1224,
+    "first_section_present": 1470,
+    "first_section_unique_box_order": 1268,
+    "section_order_changes": 1040
+  },
+  "section_counts_by_track": {
+    "AP_K": {
+      "count_matches_active_field": 0,
+      "first_section_present": 5,
+      "races": 122
+    },
+    "BAL": {
+      "count_matches_active_field": 39,
+      "first_section_present": 39,
+      "races": 78
+    },
+    "BEN": {
+      "count_matches_active_field": 2,
+      "first_section_present": 2,
+      "races": 50
+    },
+    "BH": {
+      "count_matches_active_field": 0,
+      "first_section_present": 0,
+      "races": 15
+    },
+    "BULLI": {
+      "count_matches_active_field": 26,
+      "first_section_present": 34,
+      "races": 34
+    },
+    "CANN": {
+      "count_matches_active_field": 57,
+      "first_section_present": 73,
+      "races": 73
+    },
+    "CAPA": {
+      "count_matches_active_field": 31,
+      "first_section_present": 36,
+      "races": 39
+    },
+    "CASO": {
+      "count_matches_active_field": 52,
+      "first_section_present": 59,
+      "races": 59
+    },
+    "DAPT": {
+      "count_matches_active_field": 24,
+      "first_section_present": 30,
+      "races": 30
+    },
+    "DARW": {
+      "count_matches_active_field": 0,
+      "first_section_present": 0,
+      "races": 32
+    },
+    "DUBBO": {
+      "count_matches_active_field": 22,
+      "first_section_present": 29,
+      "races": 29
+    },
+    "GAWL": {
+      "count_matches_active_field": 0,
+      "first_section_present": 1,
+      "races": 55
+    },
+    "GEE": {
+      "count_matches_active_field": 58,
+      "first_section_present": 58,
+      "races": 72
+    },
+    "GOSF": {
+      "count_matches_active_field": 28,
+      "first_section_present": 40,
+      "races": 42
+    },
+    "GOUL": {
+      "count_matches_active_field": 19,
+      "first_section_present": 23,
+      "races": 23
+    },
+    "GRAF": {
+      "count_matches_active_field": 31,
+      "first_section_present": 32,
+      "races": 38
+    },
+    "GRDN": {
+      "count_matches_active_field": 42,
+      "first_section_present": 48,
+      "races": 48
+    },
+    "GUNN": {
+      "count_matches_active_field": 47,
+      "first_section_present": 52,
+      "races": 52
+    },
+    "HEA": {
+      "count_matches_active_field": 37,
+      "first_section_present": 37,
+      "races": 55
+    },
+    "HOBT": {
+      "count_matches_active_field": 0,
+      "first_section_present": 33,
+      "races": 46
+    },
+    "HOR": {
+      "count_matches_active_field": 28,
+      "first_section_present": 28,
+      "races": 56
+    },
+    "LAU": {
+      "count_matches_active_field": 1,
+      "first_section_present": 42,
+      "races": 50
+    },
+    "MAND": {
+      "count_matches_active_field": 95,
+      "first_section_present": 105,
+      "races": 105
+    },
+    "MEA": {
+      "count_matches_active_field": 53,
+      "first_section_present": 53,
+      "races": 73
+    },
+    "MOUNT": {
+      "count_matches_active_field": 0,
+      "first_section_present": 1,
+      "races": 64
+    },
+    "MURR": {
+      "count_matches_active_field": 0,
+      "first_section_present": 2,
+      "races": 56
+    },
+    "MUSWELLBROOK": {
+      "count_matches_active_field": 27,
+      "first_section_present": 34,
+      "races": 42
+    },
+    "NOR": {
+      "count_matches_active_field": 29,
+      "first_section_present": 31,
+      "races": 31
+    },
+    "NOWRA": {
+      "count_matches_active_field": 36,
+      "first_section_present": 37,
+      "races": 37
+    },
+    "QOT": {
+      "count_matches_active_field": 42,
+      "first_section_present": 51,
+      "races": 52
+    },
+    "RICH": {
+      "count_matches_active_field": 85,
+      "first_section_present": 100,
+      "races": 100
+    },
+    "ROCK": {
+      "count_matches_active_field": 0,
+      "first_section_present": 0,
+      "races": 49
+    },
+    "SAL": {
+      "count_matches_active_field": 22,
+      "first_section_present": 22,
+      "races": 62
+    },
+    "SAN": {
+      "count_matches_active_field": 34,
+      "first_section_present": 34,
+      "races": 71
+    },
+    "SHEP": {
+      "count_matches_active_field": 51,
+      "first_section_present": 51,
+      "races": 86
+    },
+    "TAREE": {
+      "count_matches_active_field": 57,
+      "first_section_present": 61,
+      "races": 61
+    },
+    "TEM": {
+      "count_matches_active_field": 0,
+      "first_section_present": 0,
+      "races": 43
+    },
+    "TWN": {
+      "count_matches_active_field": 0,
+      "first_section_present": 36,
+      "races": 65
+    },
+    "WAG": {
+      "count_matches_active_field": 0,
+      "first_section_present": 0,
+      "races": 26
+    },
+    "WAR": {
+      "count_matches_active_field": 36,
+      "first_section_present": 36,
+      "races": 81
+    },
+    "WPK": {
+      "count_matches_active_field": 47,
+      "first_section_present": 49,
+      "races": 50
+    },
+    "WRGL": {
+      "count_matches_active_field": 66,
+      "first_section_present": 66,
+      "races": 99
+    }
+  },
+  "source_script": {
+    "path": "/mnt/tenn-nvme2/tenn/greyhound-dynamic-race-shape-20261011/scripts/audit_opening_contest_inventory.py",
+    "sha256": "e91b2af1ebb87df8ff06ec5fc6e92005b63df1778d61acd90bd6a55122a9ff2a"
+  },
+  "timing_main_page_hashes_revalidated": 201,
+  "timing_semantic_status": "INSUFFICIENT_QUALIFIED_TIMING_EVIDENCE",
+  "withheld_test_keys_checked": 169
+}
