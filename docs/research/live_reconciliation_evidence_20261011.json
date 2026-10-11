@@ -798,6 +798,45 @@
     "resume_intent_recorded": false,
     "status": "EXACT_UNIT_WRITTEN_POSTWRITE_GUARD_REJECTED_BEFORE_RESUME_INTENT"
   },
+  "actual_waiting_continuation": {
+    "artifacts": [
+      {
+        "bytes": 4740,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/actual-night-continuation-runtime-independent-01.json",
+        "sha256": "2ee5f918f19d66c16a8d8e0b076889899fe96615b618a10d61f19cdff64274b1"
+      },
+      {
+        "bytes": 8466,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/service-activation/night-continuation-runtime-verification-01/verification.json",
+        "sha256": "4f316e7870a7c067772e1feb43a3984f4562a4cbfa9aebf6a34222ae56b470ab"
+      },
+      {
+        "bytes": 11155,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/service-activation/night-continuation-controls-02/wrapper-descriptor.AUTHORIZED.json",
+        "sha256": "88a170936a0d340ec7db66ea23cf267ff5709e1525478884e089af2b5f5ac1b8"
+      },
+      {
+        "bytes": 4359,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/consumed-night-continuation-monitor-1330.json",
+        "sha256": "c86de5984538868f18c066150f7eb9234a61e1276cbf22551c9b84026cdf38c3"
+      },
+      {
+        "bytes": 14268,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/passive-metadata-monitor-20261011T132014Z.json",
+        "sha256": "d57717ec9fe1c174cf9c7fe373bbd85e6f5903942af176a645b61e8afef77b3b"
+      }
+    ],
+    "expiry_utc": "2026-10-11T14:45:00+00:00",
+    "hard_end_utc": "2026-10-11T15:16:00+00:00",
+    "july_consumed_requests": 23,
+    "native_lease_preserved_open": true,
+    "new_july_admission_accepted": false,
+    "observed_at": "2026-10-11T13:37:03.929045+00:00",
+    "pid": 775322,
+    "source_phase": "OPEN",
+    "start_ticks": 28611821,
+    "status": "INSTALLED_WAITING_ONLY_NO_SUCCESSOR_ADMISSION"
+  },
   "artifacts": [
     {
       "bytes": 2737,
@@ -1072,13 +1111,14 @@
     "installed_policy": "KEEP_MARKET_BASELINE",
     "later_frozen_forecasts": 131,
     "later_result_joins": 0,
+    "next_time_gate_utc": "2026-10-11T14:45:00+00:00",
     "original_forecasts": 210,
     "provider_requests_by_offline_audit": 0,
     "provider_requests_made": 23,
     "recovered_diagnostic_joins": 2,
     "requires_acquisition": 187,
     "restricted": 0,
-    "runtime_state": "STOPPED_HANDOFF_RECONCILIATION_PENDING",
+    "runtime_state": "CONTINUATION_VERIFIED_WAITING_ORIGINAL_EXPIRY_COLLECTOR_STOPPED",
     "shadow_conclusion": "INCONCLUSIVE",
     "snapshot": "acquisition/observed-continuation-04/corrected-v5",
     "strict_dates": 2,
