@@ -1,5 +1,36 @@
 # Approved July result acquisition — execution status
 
+## Service approval and offline integration update (11 October, 09:18 UTC)
+
+The user subsequently approved safe collector recovery and activation of the reviewed July interface. That approval is retained at `service-activation/user-approval.json`; it supersedes the earlier restriction on service changes for this narrow recovery. Operational thread `01a11a4d-08df-7c71-b9c1-d092513b8b2b` is the sole runtime/provider owner. The audit process makes no provider requests or service changes.
+
+The collector had failed, and automatic preparation timed out leaving an unresolved ownership token and partial package. The operator has paused the automatic recovery watcher to avoid competing recovery attempts; the receipt requires restoring it. Preserving and reconciling the interrupted ownership evidence remains underway. Prepared source code, passing tests and an initially empty request queue do not prove activation or acquisition. No new request completion is confirmed at this update.
+
+`scripts/integrate_acquired_live_results.py` now joins actual owner completion receipts to the frozen population. It requires an externally pinned, genuinely authorized admission; checks all race membership and authority references before decoding bodies; preserves consumed intents without completion; and isolates invalid response evidence by race. Every original forecast gets a disposition. New independent identity, unchanged-field and WIN evidence can promote a race; winner or field contradictions suppress the older weak diagnostic while preserving its evidence. Losing-rank or terminal-status revisions alone do not veto a complete unchanged field with the same unique winner, and receive explicit correction events. This WIN interpretation was recorded and reviewed before new outcome acquisition.
+
+Root validation passes **118 tests and four subtests**, with four existing optional tests skipped. Independent review separately checks the integration and projector. The projector's operationally pinned hash is unchanged. No new outcome was used to change forecasts, selectors or thresholds. The prior nine-race diagnostic remains the latest actual scorecard until accepted completions arrive.
+
+The sole owner must publish the actual admission path/hash and a metadata-only census of **all** intents and completions, including failed and interrupted consumption. Run the integration against those artifacts, then feed its output directory to the existing frozen rerun:
+
+```bash
+python3 scripts/integrate_acquired_live_results.py \
+  --benchmark-evidence /mnt/tenn-nvme2/tenn/greyhound-live-benchmark-20261011-evidence \
+  --prior-projection /mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/results/archive-result-projection.json \
+  --reconciliation /mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/results/reconciliation.json \
+  --completion-manifest <actual-owner-census.json> \
+  --approved-admission <actual-owner-admission.json> \
+  --approved-admission-sha256 <verified-admission-sha256> \
+  --output <new-integrated-directory>
+python3 scripts/rerun_frozen_live_reconciliation.py \
+  --original-evidence /mnt/tenn-nvme2/tenn/greyhound-live-benchmark-20261011-evidence \
+  --reconciled-records <new-integrated-directory> \
+  --output-dir <new-metrics-directory>
+```
+
+The earlier observations below are retained as historical snapshots, not current service-health claims.
+
+## Earlier acquisition and ownership snapshot
+
 The user approved the prepared request for up to **210 TheDogs official-result GET attempts**, one per exact race identity, at least60seconds apart, with no automatic retry. The approval is recorded in `acquisition-authority.APPROVED.json`, hash-bound to the original prepared request. The request,210-race manifest and frozen population hashes agree. The allowance is unconsumed: **zero requests and zero new official responses**.
 
 Execution is waiting for genuine operational-owner admission. The active collector holds the campaign owner mutex for its entire lifetime, and its installed release has no result-purpose delegation hook. Read-only source admission returns `sportsbet_persistent_owner_required`. The current source's open state cannot confer the owner role. The [ownership audit](live_result_acquisition_owner_audit_20261011.md) records the actual systemd command, kernel lock holder and source controls.
