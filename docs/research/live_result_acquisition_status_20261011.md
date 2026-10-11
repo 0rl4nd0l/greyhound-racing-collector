@@ -1,12 +1,16 @@
 # Approved July result acquisition — execution status
 
-## Current result hold and evaluated checkpoint (12 October, 02:39 AEDT)
+## Current result hold and evaluated checkpoint (12 October, 02:33 AEDT)
 
-The fixed 50-response census supports **40 strict races, nine terminal-incomplete races, one confirmed original-field scratch and 160 unacquired races**. Eight qualifications were recovered through exact sealed pre-race inactive-field and reserve evidence; the forecast probabilities are unchanged. Independent source, chronology and arithmetic reviews pass. Full-shadow log-loss difference is +0.000513 and Brier +0.005193; top accuracy is 17/40 for both model and market. The installed policy retained the market baseline. All 131 later selector outcomes remain missing.
+The fixed hold census contains **65 consumed attempts: 64 retained bodies and one uncertain timeout without a body**. After the independently reviewed V7 navigation repair it supports **51 strict races, 12 terminal-incomplete races, one confirmed original-field scratch, one consumed timeout and 145 never-attempted races**. These dispositions sum to all 210 original forecasts. Exact scope, original forecasts and every selection/pass remain intact.
 
-Subsequent metadata shows **65 consumed attempts and 65 completion records**, including a new `TERMINAL_UNCERTAIN_ATTEMPT_NO_RETRY` at 15:33:51 UTC / 02:33:51 AEDT: `TRANSPORT_OR_RETENTION_ReadTimeout`, `source_hold=true`. This is not a retained result or a successful closure. No retry is authorized by its consumed state. The complete 65-attempt hold checkpoint is being reconciled offline under unchanged rules. The sole operational owner has been notified; offline agents cannot clear the hold or fetch.
+The new terminal at 15:33:51 UTC / 02:33:51 AEDT is `TERMINAL_UNCERTAIN_ATTEMPT_NO_RETRY`, reason `TRANSPORT_OR_RETENTION_ReadTimeout`, `source_hold=true`, for Sale July 19 race 8. Its consumed request cannot be retried under the current one-request-per-race allowance. The previous first-response hold remains preserved separately.
 
-Current fixed-scorecard evidence is `acquisition/observed-continuation-05/corrected-v6/`, with independent reviews `review/actual-continuation-05-corrected-v6-independent-review.json` and `review/actual-continuation-05-sensitivity-and-gaps-independent-review.json`. All original responses, failures, consumed requests and selections remain intact. See the [decision report](live_reconciliation_decision_20261011.md).
+Independent runtime inspection still verifies collector PID838033/start29047228, exact configuration/source and genuine campaign-lock ownership. Shared source phase is STOP with no active request and no new provider-denial metadata. The July bridge independently refuses another target while an unreconciled source-hold completion exists; simply reopening the shared source would not resume this queue. Existing authority covers the remaining 145 distinct identities, including all 131 later selector forecasts. The sole operational owner has been asked to reconcile the hold under that authority. Offline agents neither fetch nor clear it.
+
+The current identity, chronology and arithmetic checks pass; full-shadow log-loss difference is +0.002944 and Brier +0.005475, with 21/51 top accuracy for both model and market. The installed policy retained the market baseline. All later selector outcomes remain missing. The narrow Rockhampton navigation repair recovers one race from sealed pre-race and official source route evidence, preserving the original refusal and every field/status gate.
+
+Evidence: `acquisition/observed-continuation-06/corrected-v7/`, `review/actual-continuation-06-corrected-v7-independent-review.json`, `review/actual-continuation-06-corrected-v7-sensitivity-independent-review.json`, and `review/actual-july-transport-hold-independent-65.json`. The original 50-response/40-qualified checkpoint remains independently reproduced under `observed-continuation-05/corrected-v6/`. See the [decision report](live_reconciliation_decision_20261011.md).
 
 ## Earlier execution: verified collector restart (12 October, 01:49 AEDT)
 

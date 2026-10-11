@@ -532,3 +532,23 @@ def test_field_policy_rejects_unapproved_scope_or_code(tmp_path,change,reason):
     if change=='external_hash':ref['sha256']='0'*64
     with pytest.raises(ValueError,match=reason):
         s.verified_pre_race_field_policy(ref,allowed,*refs,originals)
+
+
+def test_nontrial_policy_binds_prior_readers_originals_and_four_policies(tmp_path):
+    policy,allowed,refs,originals=field_policy_fixture(tmp_path)
+    field_ref=put(tmp_path,'pre-race-policy.json',policy)
+    policy['schema']='frozen_offline_nontrial_navigation_policy_v7'
+    policy['pre_race_field_policy_reference']=field_ref
+    policy['prior_parser_references'].append(s.reference(s.field_projector.__file__))
+    assert s.verified_nontrial_navigation_policy(put(tmp_path,'v7.json',policy),allowed,*refs,field_ref,originals)==policy
+    for key,reason in [('pre_race_field_policy_reference','dependency_policy')]:
+        changed=dict(policy);changed[key]={'path':'/unapproved','sha256':'0'*64}
+        with pytest.raises(ValueError,match=reason):
+            s.verified_nontrial_navigation_policy(put(tmp_path,'v7-changed.json',changed),allowed,*refs,field_ref,originals)
+    originals.write_text('["changed"]')
+    with pytest.raises(ValueError,match='authenticated_originals'):
+        s.verified_nontrial_navigation_policy(put(tmp_path,'v7-originals.json',policy),allowed,*refs,field_ref,originals)
+    originals.write_text('[]')
+    policy['prior_parser_references'][-1]['sha256']='0'*64
+    with pytest.raises(ValueError,match='prior_parser_mismatch'):
+        s.verified_nontrial_navigation_policy(put(tmp_path,'v7-parser.json',policy),allowed,*refs,field_ref,originals)

@@ -818,3 +818,114 @@ def test_v6_duplicate_archive_prediction_id_rejected(tmp_path):
     doc=json.loads(path.read_text());doc['authenticated_originals_reference']['sha256']=c.digest(source);path.write_text(json.dumps(doc))
     with pytest.raises(ValueError,match='membership'):
         c.load_pre_race_field_policy(path,c.digest(path),forecasts,title,name,structural)
+
+
+def nontrial_markup():
+    path='/racing/angle-park/2026-07-20/4/test'
+    return ('<title>thedogs - Sponsored Angle Park  20 July 2026 Race 4</title>'
+        '<a class="race-box--active" href="'+path+'?trial=false"><span class="race-box__number">R4</span></a>'
+        '<div class="page__layout"><div class="tabs-wrapper"><a class="tabs__item" href="'+path+'?trial=false">RESULTS</a></div></div>'
+        '<a class="dropdown__menu__meeting--active" href="/racing/angle-park/2026-07-20?trial=false"></a>'
+        '<table class="race-runners--result"></table>')
+
+
+def check_nontrial(tmp_path,markup=None,url=None):
+    from bs4 import BeautifulSoup
+    _,_,title,_=name_policy_fixture(tmp_path)
+    return c.check_nontrial_route_identity(BeautifulSoup(markup or nontrial_markup(),'html.parser'),
+        url or ANGLE_URL.split('?')[0],ANGLE_RACE,title)
+
+
+def test_v7_bare_authorized_url_requires_exact_source_explicit_nontrial_routes(tmp_path):
+    witness=check_nontrial(tmp_path)
+    assert witness['results_anchor_classes']==['tabs__item']
+    assert witness['source_title_identity']==['angle-park','2026-07-20',4]
+    assert check_nontrial(tmp_path,url=ANGLE_URL)['active_race_number']==4
+
+
+@pytest.mark.parametrize('bad',['?trial=true','?trial=false&x=1','?trial=false&trial=false',
+    '?trial=False','?trial=','?trial=%66alse','#fragment','?trial=false#x'])
+def test_v7_rejects_unsafe_authorized_query_or_fragment(tmp_path,bad):
+    with pytest.raises(ValueError): check_nontrial(tmp_path,url=ANGLE_URL.split('?')[0]+bad)
+
+
+@pytest.mark.parametrize('mutate',[
+    lambda s:s.replace('?trial=false',''),
+    lambda s:s.replace('?trial=false','?trial=false&x=1'),
+    lambda s:s.replace('/4/test','/5/test'),
+    lambda s:s.replace('20 July','21 July'),
+    lambda s:s.replace('R4','R5'),
+    lambda s:s.replace('RESULTS','FORM GUIDE'),
+    lambda s:s.replace('</div></div>','<a class="tabs__item" href="/bad">RESULTS</a></div></div>'),
+    lambda s:s+'<link rel="canonical">',
+    lambda s:s+'<table class="race-runners--result"></table>',
+    lambda s:s.replace('href="/racing','href="//evil/racing'),
+    lambda s:s.replace('Sponsored Angle Park ','Sandown'),
+])
+def test_v7_rejects_missing_or_contradictory_source_identity(tmp_path,mutate):
+    with pytest.raises(ValueError):check_nontrial(tmp_path,mutate(nontrial_markup()))
+
+
+def v7_source_fixture(tmp_path,names=False):
+    from bs4 import BeautifulSoup
+    row,title,name,structural=v5_source_fixture(tmp_path,names)
+    body=tmp_path/'body';soup=BeautifulSoup(body.read_bytes(),'html.parser');table=str(soup.select_one('table.race-runners--result'))
+    body.write_text(nontrial_markup().replace('<table class="race-runners--result"></table>',table))
+    soup=BeautifulSoup(body.read_bytes(),'html.parser');url=ANGLE_URL.split('?')[0]
+    meta=tmp_path/'metadata.json';md=json.loads(meta.read_text());md.update(requested_url=url,final_url=url,response_sha256=c.digest(body));meta.write_text(json.dumps(md))
+    original,sidecar=prereceipt(tmp_path);sidecar['prejump_shadow_metadata']['source_url']=url
+    sidecar['canonical_runner_alignment'].update(canonical_source_url=url,canonical_runner_count=2,prediction_runner_count=2)
+    (tmp_path/'pre.json').write_text(json.dumps(sidecar));sha=c.digest(tmp_path/'pre.json')
+    original['append_proof']['artifacts']['sidecar']['sha256']=sha;original['append_proof']['native_prediction']['input_hashes']['sidecar_sha256']=sha
+    original['original'].update(race_id=ANGLE_RACE,record_key='p-angle')
+    policy={'reference':{'path':'frozen-v7','sha256':'7'*64},'population':{ANGLE_RACE:'p-angle'},'originals':{'p-angle':original}}
+    proof=c.check_pre_race_field_proof(original,url);e=row['result_evidence']
+    e['races'][0]['source_identity']={**c.check_nontrial_route_identity(soup,url,ANGLE_RACE,title),
+        'identity_semantics':c.V7_IDENTITY,'projection_policy_reference':title['reference'],
+        'structural_identity_policy_reference':structural['reference'],'nontrial_navigation_policy_reference':policy['reference'],
+        'pre_race_identity_proof':proof}
+    e['structural_identity_policy_fallback'].update(status='REJECTED',fallback_failure='source_navigation_href_not_exact_approved_route')
+    e['nontrial_navigation_policy_fallback']={'status':'QUALIFIED','original_parser_failure':'source_navigation_href_not_exact_approved_route',
+        'nontrial_navigation_policy_reference':policy['reference']}
+    e['response_provenance'].update(response_sha256=c.digest(body),metadata_sha256=c.digest(meta),
+        nontrial_navigation_policy_reference=policy['reference'],pre_race_identity_sidecar_reference=proof['sidecar_reference'])
+    return row,title,name,structural,policy,url
+
+
+@pytest.mark.parametrize('names',[False,True])
+def test_v7_full_source_identity_and_old_field_rules_preserved(tmp_path,names):
+    r,title,name,structural,policy,url=v7_source_fixture(tmp_path,names)
+    assert c.check_source_identity(r,url,title,name,structural,None,policy)['identity_rule']==c.V7_IDENTITY
+
+
+@pytest.mark.parametrize('mutation',[
+    lambda r:r.update(prediction_id='other'),
+    lambda r:r['result_evidence']['nontrial_navigation_policy_fallback'].update(original_parser_failure='anything'),
+    lambda r:r['result_evidence']['nontrial_navigation_policy_fallback'].update(nontrial_navigation_policy_reference=None),
+    lambda r:r['result_evidence']['races'][0]['source_identity']['pre_race_identity_proof'].update(forecast_scored_at='late'),
+    lambda r:r['result_evidence']['structural_identity_policy_fallback'].update(fallback_failure='different'),
+    lambda r:r['result_evidence'].update(original_transport_hold_preserved=True),
+    lambda r:r['result_evidence']['runners'].pop(),
+])
+def test_v7_rejects_missing_scope_wrong_trigger_hold_and_runner_removal(tmp_path,mutation):
+    r,title,name,structural,policy,url=v7_source_fixture(tmp_path);mutation(r)
+    with pytest.raises(ValueError):c.check_source_identity(r,url,title,name,structural,None,policy)
+
+
+def test_v7_policy_external_hash_prior_policies_scope_and_criteria(tmp_path):
+    fieldpath,forecasts,title,name,structural=field_policy_fixture(tmp_path)
+    field=c.load_pre_race_field_policy(fieldpath,c.digest(fieldpath),forecasts,title,name,structural)
+    doc={'schema':'frozen_offline_nontrial_navigation_policy_v7','status':'FROZEN_BEFORE_CORRECTED_METRICS',
+        'newly_corrected_metrics_inspected':False,'field_and_scoring_policy_unchanged':True,
+        'no_new_provider_or_runtime_authority':True,'no_model_fit_calibration_selector_threshold_change':True,
+        'population_races':210,'population_reference':field['document']['population_reference'],
+        'independent_review_reference':field['document']['independent_review_reference'],'criteria':field['document']['criteria'],
+        'prior_parser_references':field['document']['prior_parser_references'],
+        'source_title_policy_reference':title['reference'],'runner_name_policy_reference':name['reference'],
+        'structural_identity_policy_reference':structural['reference'],'pre_race_field_policy_reference':field['reference']}
+    path=tmp_path/'v7.json';path.write_text(json.dumps(doc))
+    assert len(c.load_nontrial_navigation_policy(path,c.digest(path),forecasts,title,name,structural,field)['originals'])==210
+    with pytest.raises(ValueError,match='hash'):c.load_nontrial_navigation_policy(path,'0'*64,forecasts,title,name,structural,field)
+    with pytest.raises(ValueError,match='dependency'):c.load_nontrial_navigation_policy(path,c.digest(path),forecasts,title,name,structural,None)
+    doc['criteria']={'changed':True};path.write_text(json.dumps(doc))
+    with pytest.raises(ValueError,match='criteria'):c.load_nontrial_navigation_policy(path,c.digest(path),forecasts,title,name,structural,field)

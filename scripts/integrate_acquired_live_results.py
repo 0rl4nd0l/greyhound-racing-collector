@@ -21,6 +21,7 @@ from scripts import project_policy_live_results_v3 as policy_projector
 from scripts import project_structured_live_results_v4 as name_projector
 from scripts import project_navigation_live_results_v5 as navigation_projector
 from scripts import project_prerace_field_live_results_v6 as field_projector
+from scripts import project_nontrial_navigation_live_results_v7 as nontrial_projector
 
 READY = 'RETAINED_RAW_RESULT_IDENTITY_UNVERIFIED'
 FIELD_CONTRADICTIONS = ('forecast_runner_scratched:', 'official_runner_name_changed_at_box:',
@@ -208,7 +209,65 @@ def verified_pre_race_field_policy(ref, allowed, title_ref, name_ref, structural
     return policy
 
 
-def project_observation(observation, original, expected_url, directory, policy=None, policy_reference=None, runner_name_policy=None, runner_name_policy_reference=None, structural_identity_policy=None, structural_identity_policy_reference=None, pre_race_field_policy=None, pre_race_field_policy_reference=None, authenticated_original=None):
+def verified_nontrial_navigation_policy(ref, allowed, title_ref, name_ref, structural_ref, field_ref, originals_path):
+    policy = load_reference(ref)
+    if (policy.get('schema') != 'frozen_offline_nontrial_navigation_policy_v7'
+            or policy.get('status') != 'FROZEN_BEFORE_CORRECTED_METRICS'
+            or policy.get('field_and_scoring_policy_unchanged') is not True
+            or policy.get('no_new_provider_or_runtime_authority') is not True):
+        raise ValueError('nontrial_navigation_policy_not_frozen_offline_repair')
+    population = load_reference(policy['population_reference'])['records']
+    if len(population) != 210 or {r['race_id']: r['prediction_id'] for r in population} != allowed:
+        raise ValueError('nontrial_navigation_policy_population_mismatch')
+    if (policy['source_title_policy_reference'] != title_ref or policy['runner_name_policy_reference'] != name_ref
+            or policy['structural_identity_policy_reference'] != structural_ref
+            or policy['pre_race_field_policy_reference'] != field_ref):
+        raise ValueError('nontrial_navigation_policy_dependency_policy_mismatch')
+    # V7 pins the V6 policy, which binds the authenticated original archive.
+    verified_pre_race_field_policy(field_ref, allowed, title_ref, name_ref, structural_ref, originals_path)
+    expected = {str(Path(m.__file__).resolve()): projector.digest(Path(m.__file__).read_bytes())
+                for m in (projector, reviewed_projector, policy_projector, name_projector, navigation_projector, field_projector)}
+    actual = {r['path']: r['sha256'] for r in policy['prior_parser_references']}
+    if actual != expected or len(policy['prior_parser_references']) != 6:
+        raise ValueError('nontrial_navigation_policy_prior_parser_mismatch')
+    load_reference(policy['independent_review_reference'])
+    return policy
+
+
+def project_observation(observation, original, expected_url, directory, policy=None, policy_reference=None, runner_name_policy=None, runner_name_policy_reference=None, structural_identity_policy=None, structural_identity_policy_reference=None, pre_race_field_policy=None, pre_race_field_policy_reference=None, authenticated_original=None, nontrial_navigation_policy=None, nontrial_navigation_policy_reference=None):
+    try:
+        return project_with_prerace_field_repair(observation, original, expected_url, directory, policy, policy_reference, runner_name_policy, runner_name_policy_reference, structural_identity_policy, structural_identity_policy_reference, pre_race_field_policy, pre_race_field_policy_reference, authenticated_original)
+    except ValueError as error:
+        previous = observation.get('structural_identity_policy_fallback', {})
+        if (str(error) not in {'source_navigation_href_not_exact_approved_route', 'source_navigation_anchor_missing_or_ambiguous:.page__layout .tabs-wrapper a.tabs__item--active'}
+                or previous.get('status') != 'REJECTED' or previous.get('fallback_failure') != str(error)
+                or nontrial_navigation_policy is None or authenticated_original is None
+                or authenticated_original['original'] != original or observation.get('reviewed_reclassification')
+                or observation.get('status') != READY or observation.get('source_hold') is not False):
+            raise
+        trail = {'status': 'ATTEMPTED', 'original_parser_failure': str(error),
+                 'nontrial_navigation_policy_reference': nontrial_navigation_policy_reference}
+        observation['nontrial_navigation_policy_fallback'] = trail
+        name_trail = {}
+        try:
+            result = nontrial_projector.project_one(observation['projection_item'], authenticated_original,
+                expected_url, directory / 'nontrial-navigation-v7', structural_identity_policy_reference,
+                policy, policy_reference, nontrial_navigation_policy_reference,
+                runner_name_policy_reference if runner_name_policy is not None else None, name_trail)
+        except (ValueError, KeyError, OSError) as fallback_error:
+            trail.update(status='REJECTED', fallback_failure=str(fallback_error))
+            raise
+        finally:
+            if name_trail:
+                observation['runner_name_policy_fallback'] = name_trail
+        trail['status'] = 'QUALIFIED'
+        for key in ('projection_policy_fallback', 'runner_name_policy_fallback', 'structural_identity_policy_fallback', 'pre_race_field_policy_fallback', 'nontrial_navigation_policy_fallback'):
+            if observation.get(key):
+                result[key] = dict(observation[key])
+        return result
+
+
+def project_with_prerace_field_repair(observation, original, expected_url, directory, policy=None, policy_reference=None, runner_name_policy=None, runner_name_policy_reference=None, structural_identity_policy=None, structural_identity_policy_reference=None, pre_race_field_policy=None, pre_race_field_policy_reference=None, authenticated_original=None):
     try:
         return project_with_structural_identity_repair(observation, original, expected_url, directory, policy, policy_reference, runner_name_policy, runner_name_policy_reference, structural_identity_policy, structural_identity_policy_reference)
     except ValueError as error:
@@ -561,6 +620,7 @@ def integrate(population, prior, observations, acquire):
                            'win_only_policy': 'Independent review before acquisition: losing ranks or terminal statuses cannot veto a complete source-identified unchanged field with the same unique winner.',
                            'prior_projection_sha256': entry['prior_projection_sha256'],
                            'reviewed_reclassifications': [row['reviewed_reclassification'] for row in rows if row.get('reviewed_reclassification')],
+                           'nontrial_navigation_policy_fallbacks': [row['nontrial_navigation_policy_fallback'] for row in rows if row.get('nontrial_navigation_policy_fallback')],
                            'pre_race_field_policy_fallbacks': [row['pre_race_field_policy_fallback'] for row in rows if row.get('pre_race_field_policy_fallback')],
                            'structural_identity_policy_fallbacks': [row['structural_identity_policy_fallback'] for row in rows if row.get('structural_identity_policy_fallback')],
                            'runner_name_policy_fallbacks': [row['runner_name_policy_fallback'] for row in rows if row.get('runner_name_policy_fallback')],
@@ -570,7 +630,7 @@ def integrate(population, prior, observations, acquire):
     return selected, dispositions, events
 
 
-def run(benchmark_evidence, prior_projection_path, reconciliation_path, completion_manifest_path, output, approved_admission_reference, reviewed_reclassifications_reference=None, approved_admissions_reference=None, projection_policy_reference=None, runner_name_policy_reference=None, structural_identity_policy_reference=None, pre_race_field_policy_reference=None):
+def run(benchmark_evidence, prior_projection_path, reconciliation_path, completion_manifest_path, output, approved_admission_reference, reviewed_reclassifications_reference=None, approved_admissions_reference=None, projection_policy_reference=None, runner_name_policy_reference=None, structural_identity_policy_reference=None, pre_race_field_policy_reference=None, nontrial_navigation_policy_reference=None):
     base = Path(benchmark_evidence)
     boundary = projector.load(base / 'inventory/access-boundary.json')
     membership = projector.load(base / 'inventory/residual-membership.json')
@@ -604,6 +664,7 @@ def run(benchmark_evidence, prior_projection_path, reconciliation_path, completi
     runner_name_policy = verified_runner_name_policy(runner_name_policy_reference, allowed, projection_policy_reference) if runner_name_policy_reference else None
     structural_identity_policy = verified_structural_identity_policy(structural_identity_policy_reference, allowed, projection_policy_reference, runner_name_policy_reference) if structural_identity_policy_reference else None
     pre_race_field_policy = verified_pre_race_field_policy(pre_race_field_policy_reference, allowed, projection_policy_reference, runner_name_policy_reference, structural_identity_policy_reference, base / 'alignment/authenticated-originals.json') if pre_race_field_policy_reference else None
+    nontrial_navigation_policy = verified_nontrial_navigation_policy(nontrial_navigation_policy_reference, allowed, projection_policy_reference, runner_name_policy_reference, structural_identity_policy_reference, pre_race_field_policy_reference, base / 'alignment/authenticated-originals.json') if nontrial_navigation_policy_reference else None
     # Global scope/authority pass before any result body can be decoded.
     completion_metadata = []
     for ref in unique.values():
@@ -651,7 +712,7 @@ def run(benchmark_evidence, prior_projection_path, reconciliation_path, completi
     output.mkdir(parents=True, exist_ok=True)
     def acquire(observation):
         rid = observation['race_id']
-        projection = project_observation(observation, originals[allowed[rid]]['original'], expected_urls[rid], output / 'acquired-native' / allowed[rid], projection_policy, projection_policy_reference, runner_name_policy, runner_name_policy_reference, structural_identity_policy, structural_identity_policy_reference, pre_race_field_policy, pre_race_field_policy_reference, originals[allowed[rid]])
+        projection = project_observation(observation, originals[allowed[rid]]['original'], expected_urls[rid], output / 'acquired-native' / allowed[rid], projection_policy, projection_policy_reference, runner_name_policy, runner_name_policy_reference, structural_identity_policy, structural_identity_policy_reference, pre_race_field_policy, pre_race_field_policy_reference, originals[allowed[rid]], nontrial_navigation_policy, nontrial_navigation_policy_reference)
         joined, error = alignment.join_result(originals[allowed[rid]]['original'], projection)
         if error or joined['field_status'] != 'EXACT_UNCHANGED':
             raise ValueError('acquired_alignment_not_strict:' + str(error))
@@ -681,6 +742,7 @@ def run(benchmark_evidence, prior_projection_path, reconciliation_path, completi
                'unique_completion_receipts': len(unique), 'duplicate_index_entries': len(duplicates),
                'consumed_without_completion': sum(row['status'] == 'CONSUMED_WITHOUT_COMPLETION' for row in observations),
                'reviewed_offline_reclassifications': sum(bool(row.get('reviewed_reclassification')) for row in observations),
+               'nontrial_navigation_policy_fallbacks': dict(Counter(row['nontrial_navigation_policy_fallback']['status'] for row in observations if row.get('nontrial_navigation_policy_fallback'))),
                'pre_race_field_policy_fallbacks': dict(Counter(row['pre_race_field_policy_fallback']['status'] for row in observations if row.get('pre_race_field_policy_fallback'))),
                'structural_identity_policy_fallbacks': dict(Counter(row['structural_identity_policy_fallback']['status'] for row in observations if row.get('structural_identity_policy_fallback'))),
                'runner_name_policy_fallbacks': dict(Counter(row['runner_name_policy_fallback']['status'] for row in observations if row.get('runner_name_policy_fallback'))),
@@ -700,7 +762,8 @@ def run(benchmark_evidence, prior_projection_path, reconciliation_path, completi
                     'runner_name_policy_reference': runner_name_policy_reference,
                     'structural_identity_policy_reference': structural_identity_policy_reference,
                     'pre_race_field_policy_reference': pre_race_field_policy_reference,
-                    'implementation': [reference(Path(__file__)), reference(Path(projector.__file__)), reference(Path(reviewed_projector.__file__)), reference(Path(policy_projector.__file__)), reference(Path(alignment.__file__)), reference(Path(name_projector.__file__)), reference(Path(navigation_projector.__file__)), reference(Path(field_projector.__file__))],
+                    'nontrial_navigation_policy_reference': nontrial_navigation_policy_reference,
+                    'implementation': [reference(Path(__file__)), reference(Path(projector.__file__)), reference(Path(reviewed_projector.__file__)), reference(Path(policy_projector.__file__)), reference(Path(alignment.__file__)), reference(Path(name_projector.__file__)), reference(Path(navigation_projector.__file__)), reference(Path(field_projector.__file__)), reference(Path(nontrial_projector.__file__))],
                     'prior_evidence_preserved': True})
     return summary
 
@@ -726,7 +789,12 @@ def main():
     parser.add_argument('--structural-identity-policy-sha256')
     parser.add_argument('--pre-race-field-policy', type=Path)
     parser.add_argument('--pre-race-field-policy-sha256')
+    parser.add_argument('--nontrial-navigation-policy', type=Path)
+    parser.add_argument('--nontrial-navigation-policy-sha256')
     args = parser.parse_args()
+    if bool(args.nontrial_navigation_policy) != bool(args.nontrial_navigation_policy_sha256):
+        parser.error('nontrial navigation policy requires both path and SHA256')
+    nontrial_ref = {'path': str(args.nontrial_navigation_policy), 'sha256': args.nontrial_navigation_policy_sha256} if args.nontrial_navigation_policy else None
     if bool(args.pre_race_field_policy) != bool(args.pre_race_field_policy_sha256):
         parser.error('pre-race field policy requires both path and SHA256')
     field_ref = {'path': str(args.pre_race_field_policy), 'sha256': args.pre_race_field_policy_sha256} if args.pre_race_field_policy else None
@@ -748,7 +816,7 @@ def main():
     single = {'path': str(args.approved_admission), 'sha256': args.approved_admission_sha256} if args.approved_admission else None
     multiple = {'path': str(args.approved_admissions), 'sha256': args.approved_admissions_sha256} if args.approved_admissions else None
     policy_ref = {'path': str(args.projection_policy), 'sha256': args.projection_policy_sha256} if args.projection_policy else None
-    print(json.dumps(run(args.benchmark_evidence, args.prior_projection, args.reconciliation, args.completion_manifest, args.output, single, reviewed, multiple, policy_ref, name_ref, structural_ref, field_ref)))
+    print(json.dumps(run(args.benchmark_evidence, args.prior_projection, args.reconciliation, args.completion_manifest, args.output, single, reviewed, multiple, policy_ref, name_ref, structural_ref, field_ref, nontrial_ref)))
 
 
 if __name__ == '__main__':
