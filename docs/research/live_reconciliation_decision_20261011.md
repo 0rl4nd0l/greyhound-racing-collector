@@ -2,9 +2,9 @@
 
 **The installed July policy retained the market baseline; it shows no improvement over that same baseline. The genuinely sealed shadow forecasts remain inconclusive.** The fixed 23-response checkpoint supports 15 decision-time comparisons on two dates. Full-strength shadow log loss and Brier both worsen slightly, and winner accuracy is unchanged. No model, calibration, forecast or selector was fitted or replaced.
 
-The snapshot was frozen at 13:01:04 UTC on 11 October (00:01 AEDT on 12 October). Acquisition is incomplete: the scheduled handoff stopped the collector and failed after 23 consumed requests. Its consumed intent, original receipts and source history remain preserved. A reviewed continuation is now installed and independently verified, waiting for the original lease expiry at 14:45 UTC / 01:45 AEDT before its next handoff step; no collector successor or new July admission is yet verified. See [execution status](live_result_acquisition_status_20261011.md).
+The snapshot was frozen at 13:01:04 UTC on 11 October (00:01 AEDT on 12 October). Acquisition is incomplete. After the scheduled handoff stopped the collector at 23 consumed requests, a reviewed continuation preserved the failed transaction, closed the original lease after its 14:45 UTC expiry, and restarted the collector at 14:45:21 UTC. Independent runtime, source and ownership verification passed under the same July admission; 25 requests had completed at 14:49 UTC. These later raw responses do not change the fixed 23-response scorecard below. The next evaluation checkpoint is 50 completions or a hold/terminal, with all rules unchanged. See [execution status](live_result_acquisition_status_20261011.md).
 
-| Current disposition of the original population | Races |
+| Disposition at the fixed 23-response checkpoint | Races |
 |---|---:|
 | Evaluable without repair | 0 |
 | Recovered and fully evaluable | 15 |
@@ -58,7 +58,7 @@ The offline grade repair reproduces 369 rejected attempts. Of these, 316 attempt
 
 The 15 qualified races represent **7.14% of retained forecasts and 3.48% of attempted races**. Pre-attempt downtime and unrecorded opportunities cannot be inferred from that denominator. Unavailable forecasts are not zero-probability predictions. No profitability claim is supported.
 
-The highest-value next action is **finish the already approved exact-population result reconciliation**, including the installed continuation at the preserved lease expiry through the sole operational owner. There are 187 unattempted identities within the existing finite allowance; 23 requests are consumed and must not be repeated. Retained incomplete responses remain separate repair investigations. No new model search, calibration fit or selector tuning is warranted.
+The highest-value next action is **finish the already approved exact-population result reconciliation**, through the independently verified restarted collector and sole operational owner. There are 187 unattempted identities within the existing finite allowance; 23 requests are consumed and must not be repeated. Retained incomplete responses remain separate repair investigations. No new model search, calibration fit or selector tuning is warranted.
 
 The current machine-readable dataset, all 210 dispositions, original odds, corrections, scorecards, calibration bins, date sensitivity, every selector/pass and conditional bounds are under `acquisition/observed-continuation-04/corrected-v5/` in `/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence`. Exact exclusions and references are in `integration/integration-dispositions.json`; strict runner data are in `completed/strict-dataset.json`. The [hash index](live_reconciliation_evidence_20261011.json) also preserves earlier snapshots, authority, consumed receipts, source/title/name policies and review artifacts.
 

@@ -57,6 +57,41 @@
     "subtests_passed": 4,
     "tests_passed": 95
   },
+  "actual_completed_handoff_successor": {
+    "artifacts": [
+      {
+        "bytes": 26333,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/actual-completed-handoff-successor-independent-01.json",
+        "sha256": "a2a82ecd4c57e592b2ce5fde424460632be1614152e9166584d488adb1fd7604"
+      },
+      {
+        "bytes": 3024,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/service-activation/night-handoff-continuation-runtime-01/runtime-wrapper-01/completion.json",
+        "sha256": "2f27f6a1c6b18c0fdbee5196f1fcaac5616f12297eac7d42f37b6dd76e3edd15"
+      },
+      {
+        "bytes": 5107,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/service-activation/night-handoff-continuation-runtime-01/runtime-finalizer-01/completion.json",
+        "sha256": "72d9c1af2a902837b6df713bc71bb5a5e67f849244420edb1aa1a8f4a6d96e78"
+      },
+      {
+        "bytes": 797,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/service-activation/night-handoff-continuation-runtime-01/runtime-adapter-01/installation/completion.json",
+        "sha256": "77646266902cb2c85543d2a426aea16ebe96979f0ce0f1d744439dc9a9c67fd8"
+      }
+    ],
+    "at": "2026-10-11T14:49:51.100718+00:00",
+    "forecast_health_status_only": "WAITING_FOR_RACE",
+    "julys_completions_at_observation": 25,
+    "julys_consumed_at_observation": 25,
+    "new_external_admission_entry_required": false,
+    "new_forecast_independently_verified": false,
+    "pid": 838033,
+    "same_july_admission_reused": true,
+    "scientific_outcomes_opened": 0,
+    "start_ticks": 29047228,
+    "status": "INDEPENDENT_RUNTIME_SCOPE_AND_OWNERSHIP_PASS"
+  },
   "actual_continuation_snapshot_02": {
     "actual_v3_qualified_races": 1,
     "artifacts": [
@@ -828,6 +863,7 @@
     ],
     "expiry_utc": "2026-10-11T14:45:00+00:00",
     "hard_end_utc": "2026-10-11T15:16:00+00:00",
+    "historical_snapshot": true,
     "july_consumed_requests": 23,
     "native_lease_preserved_open": true,
     "new_july_admission_accepted": false,
@@ -1097,6 +1133,7 @@
   "authority": "Exact210 nonreserved reconciliation and431-race forecast-failure audit; approved finite acquisition executed solely by operational owner;1 request consumed,0 by offline audit.",
   "decision": {
     "attempted_races": 431,
+    "benchmark_consumption_snapshot": 23,
     "diagnostic_full_delta_brier": 0.023283889268956342,
     "diagnostic_full_delta_log_loss": 0.03126473639978097,
     "diagnostic_races": 6,
@@ -1111,14 +1148,14 @@
     "installed_policy": "KEEP_MARKET_BASELINE",
     "later_frozen_forecasts": 131,
     "later_result_joins": 0,
-    "next_time_gate_utc": "2026-10-11T14:45:00+00:00",
+    "next_fixed_completion_checkpoint": 50,
     "original_forecasts": 210,
     "provider_requests_by_offline_audit": 0,
     "provider_requests_made": 23,
     "recovered_diagnostic_joins": 2,
     "requires_acquisition": 187,
     "restricted": 0,
-    "runtime_state": "CONTINUATION_VERIFIED_WAITING_ORIGINAL_EXPIRY_COLLECTOR_STOPPED",
+    "runtime_state": "VERIFIED_SUCCESSOR_RUNNING_SAME_JULY_ADMISSION",
     "shadow_conclusion": "INCONCLUSIVE",
     "snapshot": "acquisition/observed-continuation-04/corrected-v5",
     "strict_dates": 2,
