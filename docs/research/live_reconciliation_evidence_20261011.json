@@ -340,5 +340,70 @@
     "unsuccessful_races": 221
   },
   "parent_commit": "879e89f962b055e6b616a5ee2a8e7145e60b6cba",
-  "schema": "live_reconciliation_artifact_references_v1"
+  "schema": "live_reconciliation_artifact_references_v1",
+  "service_activation_and_integration_preparation": {
+    "artifacts": [
+      {
+        "bytes": 1656,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/service-activation/user-approval.json",
+        "sha256": "3781f160e38bef93048b6fbf5bb4171bc51f9ee8eba3b87df34ae74c71bbe14c"
+      },
+      {
+        "bytes": 987,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/service-activation/owner-acknowledgement-01.json",
+        "sha256": "9b1766f32df9979c699fb15c1afd05ee4b14a2cc412a780999e924c20eca2b0a"
+      },
+      {
+        "bytes": 1587,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/service-activation/watch-pause-execution-01.json",
+        "sha256": "cc865677adb2a152ce6da57ea83bdb8ce71731cd7de1f963eb4d1dd97b78a6b2"
+      },
+      {
+        "bytes": 1007,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/service-activation/win-rank-applicability-before-acquisition.json",
+        "sha256": "da1c2b0cf69c58c8806f034ac1ad25d4d88f689e284123ea59b5fc7ddfdc495e"
+      },
+      {
+        "bytes": 4903,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/offline-acquisition-integration-independent-check.json",
+        "sha256": "6ba274548a9ac55412e32170d52f8f6a209c145f82552844e9655f7d2270c8cf"
+      },
+      {
+        "bytes": 30436,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/acquired-checker-baseline-compatibility.json",
+        "sha256": "076551e526b2cfcb5721b9bf477430823fd189de5d8f7be2c06ddaf11eedf2a2"
+      },
+      {
+        "bytes": 21228,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011/scripts/integrate_acquired_live_results.py",
+        "sha256": "081f57cc4156c8a91c81cac57c03297c47d2e1b31d8c91d9194cde388bdadd77"
+      },
+      {
+        "bytes": 11193,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011/scripts/check_acquired_live_benchmark.py",
+        "sha256": "a8ccb438a3b28fa39df3684f855d1b07dc66c45865b1c9fbbfe3f7d34cd33720"
+      },
+      {
+        "bytes": 12737,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011/tests/test_integrate_acquired_live_results.py",
+        "sha256": "812a35a2b69e3470ed66d1c832d9fd5ada20b6c1ca69fe39239162a0121c9299"
+      },
+      {
+        "bytes": 6924,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011/tests/test_check_acquired_live_benchmark.py",
+        "sha256": "d7ac502f101e58cd13d00b6f13d458ecdd99d16273811808c57ce83ab5c11432"
+      }
+    ],
+    "at": "2026-10-11T09:23:46.295784+00:00",
+    "new_official_results_confirmed": 0,
+    "note": "Initial queue is not current consumption. Actual owner admission and all-intent census are required before acquisition integration.",
+    "optional_tests_skipped": 4,
+    "performance_claim_changed": false,
+    "provider_requests_by_audit": 0,
+    "runtime_owner_thread": "01a11a4d-08df-7c71-b9c1-d092513b8b2b",
+    "schema": "july_integration_preparation_evidence_v1",
+    "status": "OFFLINE_INTEGRATION_REVIEWED_ACTUAL_OWNER_RECOVERY_PENDING",
+    "subtests_passed": 4,
+    "tests_passed": 135
+  }
 }
