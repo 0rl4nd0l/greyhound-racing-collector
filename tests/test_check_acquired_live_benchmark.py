@@ -511,3 +511,146 @@ def test_v4_cannot_reclassify_held_completion():
     assert c.check_census(*args)['strict_races']==1
     args[1][0]['completion_observations'][0]['source_hold']=True
     with pytest.raises(ValueError,match='V4.*READY'):c.check_census(*args)
+
+
+def active_route_markup():
+    route='/racing/angle-park/2026-07-20/4/test?trial=false'
+    return ('<title>thedogs - Unmapped Sponsored Venue 20 July 2026 Race 4</title>'
+      '<nav><a class="tabs__item--active" href="/racing">Racing</a></nav>'
+      f'<a class="race-box--active" href="{route}"></a>'
+      '<a class="dropdown__menu__meeting--active" href="/racing/angle-park/2026-07-20?trial=false"></a>'
+      f'<div class="page__layout"><div class="tabs-wrapper"><a class="tabs__item--active" href="{route}">RESULTS</a></div></div>')
+
+
+def active_identity(markup,policy):
+    from bs4 import BeautifulSoup
+    return c.check_active_route_identity(BeautifulSoup(markup,'html.parser'),ANGLE_URL,ANGLE_RACE,policy)
+
+
+def test_v5_independent_exact_active_routes_do_not_infer_display_alias(tmp_path):
+    _,_,policy=policy_fixture(tmp_path)
+    proof=active_identity(active_route_markup(),policy)
+    assert proof['active_race_number']==4
+    assert proof['source_title'].startswith('thedogs - Unmapped Sponsored Venue')
+    assert active_identity(active_route_markup().replace('href="/racing/','href="https://www.thedogs.com.au/racing/'),policy)
+
+
+@pytest.mark.parametrize('change',[
+    lambda x:x.replace('race-box--active','race-box'),
+    lambda x:x+'<a class="race-box--active" href="/racing/wrong"></a>',
+    lambda x:x.replace('class="page__layout"','class="nav"'),
+    lambda x:x+'<div class="page__layout"><div class="tabs-wrapper"><a class="tabs__item--active" href="/racing/wrong">RESULTS</a></div></div>',
+    lambda x:x.replace('dropdown__menu__meeting--active','meeting'),
+    lambda x:x+'<a class="dropdown__menu__meeting--active" href="/racing/wrong"></a>',
+    lambda x:x.replace('/4/test','/5/test'),
+    lambda x:x.replace('angle-park','sandown'),
+    lambda x:x.replace('trial=false','trial=true'),
+    lambda x:x.replace('trial=false','trial=false&unexpected=1'),
+    lambda x:x.replace('href="/racing/','href="//www.thedogs.com.au/racing/'),
+    lambda x:x.replace('href="/racing/','href="https:/racing/'),
+    lambda x:x.replace('href="/racing/','href="https://evil.example/racing/'),
+    lambda x:x.replace('>RESULTS<','>PREVIEW<'),
+    lambda x:x.replace('20 July','21 July'),
+    lambda x:x.replace('20 July','31 February'),
+    lambda x:x.replace('Race 4','Race 5'),
+    lambda x:x.replace('Unmapped Sponsored Venue','Sandown'),
+    lambda x:x+'<link rel="canonical">',
+    lambda x:x+'<meta property="og:url" content="">',
+    lambda x:x+'<link rel="canonical" href="'+ANGLE_URL+'">',
+])
+def test_v5_missing_ambiguous_or_contradictory_active_routes_reject(tmp_path,change):
+    _,_,policy=policy_fixture(tmp_path)
+    with pytest.raises(ValueError):active_identity(change(active_route_markup()),policy)
+
+
+def structural_policy_fixture(tmp_path):
+    _,forecasts,title_policy,name_policy=name_policy_fixture(tmp_path)
+    doc={'schema':'frozen_offline_active_route_identity_policy_v5','status':'FROZEN_BEFORE_CORRECTED_METRICS',
+         'field_and_scoring_policy_unchanged':True,'newly_corrected_metrics_inspected':False,
+         'no_model_fit_calibration_selector_threshold_change':True,'no_new_provider_or_runtime_authority':True,
+         'population_races':210,'population_reference':name_policy['document']['population_reference'],
+         'independent_review_reference':name_policy['document']['independent_review_reference'],
+         'prior_parser_references':name_policy['document']['prior_parser_references'],
+         'source_title_policy_reference':title_policy['reference'],'runner_name_policy_reference':name_policy['reference'],
+         'selectors':{'active_meeting':'a.dropdown__menu__meeting--active','active_race':'a.race-box--active',
+                      'active_result_tab':'.page__layout .tabs-wrapper a.tabs__item--active'}}
+    path=tmp_path/'structural-policy.json';path.write_text(json.dumps(doc))
+    return path,forecasts,title_policy,name_policy,c.load_structural_identity_policy(path,c.digest(path),forecasts,title_policy,name_policy)
+
+
+def test_v5_policy_authenticates_external_prior_policies_scope_and_hashes(tmp_path):
+    path,forecasts,title_policy,name_policy,policy=structural_policy_fixture(tmp_path)
+    with pytest.raises(ValueError,match='hash'):
+        c.load_structural_identity_policy(path,'0'*64,forecasts,title_policy,name_policy)
+    with pytest.raises(ValueError,match='external policy'):
+        c.load_structural_identity_policy(path,c.digest(path),forecasts,None,name_policy)
+    changed=copy.deepcopy(forecasts);changed[0]['prediction_id']='new'
+    with pytest.raises(ValueError,match='population'):
+        c.load_structural_identity_policy(path,c.digest(path),changed,title_policy,name_policy)
+    doc=json.loads(path.read_text());doc['selectors']['active_result_tab']='a.tabs__item--active';path.write_text(json.dumps(doc))
+    with pytest.raises(ValueError,match='selector scope'):
+        c.load_structural_identity_policy(path,c.digest(path),forecasts,title_policy,name_policy)
+
+
+def v5_source_fixture(tmp_path, names=False):
+    from bs4 import BeautifulSoup
+    row,title_policy,name_policy=v4_source_fixture(tmp_path)
+    _,_,title_policy,name_policy,policy=structural_policy_fixture(tmp_path)
+    body=tmp_path/'body';soup=BeautifulSoup(body.read_bytes(),'html.parser');soup.find('link').decompose()
+    evidence=row['result_evidence']
+    if not names:
+        for n in soup.select('.race-runners__name__time'):n.string=''
+        evidence.pop('runner_name_policy_fallback')
+        evidence['races'][0].pop('structured_runner_name_witnesses')
+        evidence['response_provenance'].pop('runner_name_policy_reference')
+    body.write_bytes((active_route_markup()+str(soup)).encode())
+    soup=BeautifulSoup(body.read_bytes(),'html.parser')
+    meta=tmp_path/'metadata.json';metadata=json.loads(meta.read_text());metadata['response_sha256']=c.digest(body);meta.write_text(json.dumps(metadata))
+    evidence['response_provenance'].update(response_sha256=c.digest(body),metadata_sha256=c.digest(meta),
+                                          structural_identity_policy_reference=policy['reference'])
+    _,rows=c.source_rows(body.read_bytes(),structured_names=names)
+    evidence['races'][0]['native_official_rows']=rows
+    evidence['races'][0]['source_identity']={**c.check_active_route_identity(soup,ANGLE_URL,ANGLE_RACE,title_policy),
+      'identity_semantics':c.V5_IDENTITY,'projection_policy_reference':title_policy['reference'],
+      'structural_identity_policy_reference':policy['reference']}
+    if names:
+        evidence['races'][0]['structured_runner_name_witnesses']=[c.structured_source_name(n.select_one('td.race-runners__name'),r['box_number'])[1] for n,r in zip(soup.select('tr.race-runner'),rows)]
+    evidence['structural_identity_policy_fallback']={'status':'QUALIFIED','original_parser_failure':'source_title_display_slug_native_not_exact_policy_member','structural_identity_policy_reference':policy['reference']}
+    evidence['projection_policy_fallback']={'status':'REJECTED','original_parser_failure':'source_declared_race_identity_missing_or_mismatched','fallback_failure':'source_title_display_slug_native_not_exact_policy_member','projection_policy_reference':title_policy['reference']}
+    return row,title_policy,name_policy,policy
+
+
+@pytest.mark.parametrize('names',[False,True])
+def test_v5_full_source_identity_with_optional_frozen_name_repair(tmp_path,names):
+    row,title_policy,name_policy,policy=v5_source_fixture(tmp_path,names)
+    assert c.check_source_identity(row,ANGLE_URL,title_policy,name_policy,policy)['identity_rule']==c.V5_IDENTITY
+
+
+@pytest.mark.parametrize('change',[
+    lambda r:r.update(prediction_id='replacement'),
+    lambda r:r['result_evidence']['structural_identity_policy_fallback'].update(structural_identity_policy_reference={'path':'elsewhere','sha256':'0'*64}),
+    lambda r:r['result_evidence']['structural_identity_policy_fallback'].update(original_parser_failure='some_other_error'),
+    lambda r:r['result_evidence']['projection_policy_fallback'].update(fallback_failure='some_other_error'),
+    lambda r:r['result_evidence']['response_provenance'].update(structural_identity_policy_reference={'path':'elsewhere','sha256':'0'*64}),
+    lambda r:r['result_evidence'].update(original_transport_hold_preserved=True),
+])
+def test_v5_scope_policy_and_failed_identity_chain_reject_before_body(tmp_path,monkeypatch,change):
+    row,title_policy,name_policy,policy=v5_source_fixture(tmp_path);change(row)
+    def no_decode(*a,**kw):pytest.fail('decoded before V5 policy/scope check')
+    monkeypatch.setattr(c,'source_rows',no_decode)
+    with pytest.raises(ValueError):c.check_source_identity(row,ANGLE_URL,title_policy,name_policy,policy)
+
+
+def test_v5_projected_route_witness_must_match_independent_source(tmp_path):
+    row,title_policy,name_policy,policy=v5_source_fixture(tmp_path)
+    row['result_evidence']['races'][0]['source_identity']['active_race_href']='/racing/invented'
+    with pytest.raises(ValueError,match='independent active source'):
+        c.check_source_identity(row,ANGLE_URL,title_policy,name_policy,policy)
+
+
+def test_v5_cannot_reopen_original_held_request():
+    args=list(census());args[4][0]['structural_identity_policy_fallback']={'status':'QUALIFIED'}
+    args[1][0]['completion_observations']=[{'status':'RETAINED_RAW_RESULT_IDENTITY_UNVERIFIED','source_hold':False,'charged_attempts':1,'provider_requests':1}]
+    assert c.check_census(*args)['strict_races']==1
+    args[1][0]['completion_observations'][0]['source_hold']=True
+    with pytest.raises(ValueError,match='V5.*READY'):c.check_census(*args)

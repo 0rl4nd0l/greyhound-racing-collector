@@ -16,6 +16,7 @@ except ImportError:
 
 read, digest = independent.read, independent.digest
 V3_IDENTITY = 'frozen_exact_source_title_venue_date_race_v3'
+V5_IDENTITY = 'exact_active_official_race_navigation_v5'
 
 
 def require(test, reason):
@@ -97,6 +98,40 @@ def load_runner_name_policy(path, expected_sha256, forecasts, projection_policy=
     require(len(population) == len(admitted) == len(expected) == len(forecasts) == 210
             and admitted == expected and policy.get('population_races') == 210,
             'runner name policy population differs from frozen forecasts')
+    return {'document': policy, 'reference': {'path': str(path.resolve()), 'sha256': expected_sha256},
+            'population': admitted}
+
+
+def load_structural_identity_policy(path, expected_sha256, forecasts, projection_policy, runner_name_policy):
+    path = Path(path)
+    require(isinstance(expected_sha256, str) and re.fullmatch('[0-9a-f]{64}', expected_sha256)
+            and digest(path) == expected_sha256, 'structural identity policy hash mismatch')
+    policy = read(path)
+    require(policy.get('schema') == 'frozen_offline_active_route_identity_policy_v5'
+            and policy.get('status') == 'FROZEN_BEFORE_CORRECTED_METRICS'
+            and policy.get('field_and_scoring_policy_unchanged') is True
+            and policy.get('newly_corrected_metrics_inspected') is False
+            and policy.get('no_model_fit_calibration_selector_threshold_change') is True
+            and policy.get('no_new_provider_or_runtime_authority') is True,
+            'structural identity policy not frozen with unchanged scope')
+    require(projection_policy is not None and runner_name_policy is not None
+            and policy['source_title_policy_reference'] == projection_policy['reference']
+            and policy['runner_name_policy_reference'] == runner_name_policy['reference'],
+            'structural identity linked external policy mismatch')
+    require(policy.get('selectors') == {'active_meeting': 'a.dropdown__menu__meeting--active',
+            'active_race': 'a.race-box--active',
+            'active_result_tab': '.page__layout .tabs-wrapper a.tabs__item--active'},
+            'structural identity selector scope changed')
+    refs = [policy['population_reference'], policy['independent_review_reference'],
+            policy['source_title_policy_reference'], policy['runner_name_policy_reference']] + policy['prior_parser_references']
+    for reference in refs:
+        require(digest(reference['path']) == reference['sha256'], 'structural identity linked hash mismatch')
+    population = read(policy['population_reference']['path'])['records']
+    expected = {r['race_id']: r['prediction_id'] for r in forecasts}
+    admitted = {r['race_id']: r['prediction_id'] for r in population}
+    require(len(population) == len(admitted) == len(expected) == len(forecasts) == 210
+            and admitted == expected and policy.get('population_races') == 210,
+            'structural identity population differs from frozen forecasts')
     return {'document': policy, 'reference': {'path': str(path.resolve()), 'sha256': expected_sha256},
             'population': admitted}
 
@@ -196,6 +231,13 @@ def check_census(forecasts, dispositions, strict, diagnostic, projections):
                         and observations[0]['source_hold'] is False
                         and observations[0]['charged_attempts'] == observations[0]['provider_requests'] == 1,
                         'V4 fallback requires original READY completion without hold')
+            if projection.get('structural_identity_policy_fallback'):
+                observations = d.get('completion_observations', [])
+                require(not reviewed and len(observations) == 1
+                        and observations[0]['status'] == 'RETAINED_RAW_RESULT_IDENTITY_UNVERIFIED'
+                        and observations[0]['source_hold'] is False
+                        and observations[0]['charged_attempts'] == observations[0]['provider_requests'] == 1,
+                        'V5 fallback requires original READY completion without hold')
     for r in strict + diagnostic:
         require(r['result_evidence'] == selected[r['race_id']], 'scored evidence differs from selected projection')
     return {'status': 'PASS', 'forecasts': len(expected), 'strict_races': len(ids[0]),
@@ -247,6 +289,56 @@ def url_identity(url):
     return tuple(parts[2:5])
 
 
+def check_active_route_identity(soup, expected_url, race_id, projection_policy):
+    """Exact event routes from active source controls, without display aliases."""
+    require(projection_policy is not None and race_id in projection_policy['population'],
+            'V5 race outside frozen title policy population')
+    require(not soup.select('link[rel="canonical"], meta[property="og:url"]'),
+            'V5 fallback cannot replace present source declarations')
+    expected = url_identity(expected_url)
+    native = re.fullmatch(r'Race ([1-9][0-9]*) - (.+) - ([0-9]{4}-[0-9]{2}-[0-9]{2})', race_id)
+    require(native is not None and expected[1:] == (native[3], native[1]),
+            'V5 native date or race mismatch')
+    selectors = {'active_race_href': 'a.race-box--active',
+                 'active_results_href': '.page__layout .tabs-wrapper a.tabs__item--active',
+                 'active_meeting_href': 'a.dropdown__menu__meeting--active'}
+    witness = {}
+    for key, css in selectors.items():
+        nodes = soup.select(css)
+        require(len(nodes) == 1, 'V5 active source control missing or ambiguous: ' + key)
+        href = nodes[0].get('href', '')
+        route = urlsplit(href)
+        require((not route.scheme and not route.netloc and href.startswith('/racing/'))
+                or (route.scheme == 'https' and route.netloc == 'www.thedogs.com.au'),
+                'V5 active source route malformed or foreign')
+        resolved = 'https://www.thedogs.com.au' + href if not route.scheme else href
+        wanted = ('https://www.thedogs.com.au/racing/' + expected[0] + '/' + expected[1] + '?trial=false'
+                  if key == 'active_meeting_href' else expected_url)
+        require(resolved == wanted, 'V5 active source route differs from authorized identity')
+        if key == 'active_results_href':
+            require(nodes[0].get_text(' ', strip=True) == 'RESULTS', 'V5 active tab is not results')
+        if key == 'active_race_href':
+            labels = nodes[0].select('.race-box__number')
+            require(not labels or (len(labels) == 1 and labels[0].get_text(strip=True) == 'R' + expected[2]),
+                    'V5 active race label contradicts identity')
+        witness[key] = href
+    titles = soup.find_all('title')
+    require(len(titles) == 1, 'V5 source title missing or ambiguous')
+    title = titles[0].get_text().strip()
+    match = re.fullmatch(r'thedogs - (.+) ([1-9][0-9]?) ([A-Za-z]+) ([0-9]{4}) Race ([1-9][0-9]*)', title)
+    months = ('January', 'February', 'March', 'April', 'May', 'June',
+              'July', 'August', 'September', 'October', 'November', 'December')
+    require(match is not None and match[3] in months, 'V5 title syntax unsupported')
+    source_date = date(int(match[4]), months.index(match[3])+1, int(match[2])).isoformat()
+    require((source_date, match[5]) == expected[1:], 'V5 source title date or race contradiction')
+    known = {(slug, venue) for display, slug, venue in projection_policy['triples'] if display == match[1]}
+    require(not known or known == {(expected[0], native[2])}, 'V5 known source title venue contradiction')
+    witness.update(active_race_number=int(native[1]), source_title=title,
+                   source_title_identity=[expected[0], source_date, int(native[1])],
+                   source_title_native_venue=native[2], source_declared_identities=[])
+    return witness
+
+
 def check_declared_identity(soup, expected_url, required_rule=None, *, projection_policy=None, race_id=None):
     """Independent exact native-title witness; no projector/parser imports."""
     expected = url_identity(expected_url)
@@ -288,7 +380,8 @@ def check_declared_identity(soup, expected_url, required_rule=None, *, projectio
     return 'exact_source_title_venue_date_race_v1'
 
 
-def check_source_identity(record, expected_url, projection_policy=None, runner_name_policy=None):
+def check_source_identity(record, expected_url, projection_policy=None, runner_name_policy=None,
+                          structural_identity_policy=None):
     require(record.get('official_runner_identity_observed') is True, 'strict source identity missing')
     evidence = record['result_evidence']
     require(evidence.get('runner_name_origin') == 'SOURCE_NATIVE_OFFICIAL_HTML', 'circular source runner names')
@@ -297,6 +390,21 @@ def check_source_identity(record, expected_url, projection_policy=None, runner_n
     required_rule = source_identity.get('identity_semantics')
     fallback = evidence.get('projection_policy_fallback')
     name_fallback = evidence.get('runner_name_policy_fallback')
+    structural_fallback = evidence.get('structural_identity_policy_fallback')
+    if required_rule == V5_IDENTITY or structural_fallback:
+        require(required_rule == V5_IDENTITY and structural_identity_policy is not None,
+                'V5 result requires external structural identity policy')
+        require(record['race_id'] in structural_identity_policy['population']
+                and record['prediction_id'] == structural_identity_policy['population'][record['race_id']],
+                'V5 result outside frozen policy population')
+        require(isinstance(structural_fallback, dict) and structural_fallback.get('status') == 'QUALIFIED'
+                and structural_fallback.get('original_parser_failure') == 'source_title_display_slug_native_not_exact_policy_member'
+                and structural_fallback.get('structural_identity_policy_reference') == structural_identity_policy['reference']
+                and source_identity.get('structural_identity_policy_reference') == structural_identity_policy['reference'],
+                'V5 result structural policy reference or original failure mismatch')
+        require(not evidence.get('reviewed_reclassification')
+                and evidence.get('original_transport_hold_preserved') is not True,
+                'V5 fallback cannot supersede held receipt')
     if name_fallback:
         require(runner_name_policy is not None, 'V4 result requires external runner name policy')
         require(record['race_id'] in runner_name_policy['population']
@@ -309,15 +417,17 @@ def check_source_identity(record, expected_url, projection_policy=None, runner_n
         require(not evidence.get('reviewed_reclassification')
                 and evidence.get('original_transport_hold_preserved') is not True,
                 'V4 fallback cannot supersede held receipt')
-    if required_rule == V3_IDENTITY or fallback:
-        require(required_rule == V3_IDENTITY and projection_policy is not None,
+    if required_rule in {V3_IDENTITY, V5_IDENTITY} or fallback:
+        require(required_rule in {V3_IDENTITY, V5_IDENTITY} and projection_policy is not None,
                 'V3 result lacks externally pinned projection policy')
         require(record['race_id'] in projection_policy['population']
                 and record['prediction_id'] == projection_policy['population'][record['race_id']],
                 'V3 result outside frozen policy population')
         accepted_title_trail = isinstance(fallback, dict) and (fallback.get('status') == 'QUALIFIED'
             or (name_fallback and fallback.get('status') == 'REJECTED'
-                and fallback.get('fallback_failure') == name_fallback.get('original_parser_failure')))
+                and fallback.get('fallback_failure') == name_fallback.get('original_parser_failure'))
+            or (structural_fallback and fallback.get('status') == 'REJECTED'
+                and fallback.get('fallback_failure') == structural_fallback.get('original_parser_failure')))
         require(accepted_title_trail
                 and fallback.get('original_parser_failure') == 'source_declared_race_identity_missing_or_mismatched'
                 and fallback.get('projection_policy_reference') == projection_policy['reference']
@@ -327,13 +437,18 @@ def check_source_identity(record, expected_url, projection_policy=None, runner_n
                 and evidence.get('original_transport_hold_preserved') is not True,
                 'V3 fallback cannot supersede held receipt')
     provenance = evidence['response_provenance']
+    if structural_fallback:
+        require(provenance.get('structural_identity_policy_reference') == structural_identity_policy['reference'],
+                'V5 response provenance policy reference mismatch')
+    require(bool(structural_fallback) == bool(provenance.get('structural_identity_policy_reference')),
+            'V5 structural identity evidence lacks fallback')
     if name_fallback:
         require(provenance.get('runner_name_policy_reference') == runner_name_policy['reference'],
                 'V4 response provenance policy reference mismatch')
     require(bool(name_fallback) == bool(provenance.get('runner_name_policy_reference'))
             == bool(evidence['races'][0].get('structured_runner_name_witnesses')),
             'V4 structural name evidence missing fallback or policy')
-    if required_rule == V3_IDENTITY:
+    if required_rule in {V3_IDENTITY, V5_IDENTITY}:
         require(provenance.get('projection_policy_reference') == projection_policy['reference'],
                 'V3 response provenance policy reference mismatch')
     for prefix in ('response', 'metadata'):
@@ -350,8 +465,14 @@ def check_source_identity(record, expected_url, projection_policy=None, runner_n
                      for node, row in zip(soup.select('table.race-runners--result tr.race-runner'), rows)]
         require(witnesses == evidence['races'][0]['structured_runner_name_witnesses'],
                 'V4 projected dog identity witnesses differ from independent source')
-    identity_rule = check_declared_identity(soup, metadata['requested_url'],
-        required_rule, projection_policy=projection_policy, race_id=record['race_id'])
+    if required_rule == V5_IDENTITY:
+        witness = check_active_route_identity(soup, metadata['requested_url'], record['race_id'], projection_policy)
+        require(all(source_identity.get(k) == v for k, v in witness.items()),
+                'V5 projected identity differs from independent active source routes')
+        identity_rule = V5_IDENTITY
+    else:
+        identity_rule = check_declared_identity(soup, metadata['requested_url'],
+            required_rule, projection_policy=projection_policy, race_id=record['race_id'])
     if identity_rule == V3_IDENTITY:
         native = re.fullmatch(r'Race ([1-9][0-9]*) - (.+) - ([0-9]{4}-[0-9]{2}-[0-9]{2})', record['race_id'])
         expected = url_identity(expected_url)
@@ -389,7 +510,8 @@ def check_source_identity(record, expected_url, projection_policy=None, runner_n
 
 
 def run(baseline, integration, completed, projection_policy_path=None, projection_policy_sha256=None,
-        runner_name_policy_path=None, runner_name_policy_sha256=None):
+        runner_name_policy_path=None, runner_name_policy_sha256=None,
+        structural_identity_policy_path=None, structural_identity_policy_sha256=None):
     # This audits allocation before decoding any acquired result body, then all
     # immutable forecasts, metrics, calibration, dates, intervals and selectors.
     result = independent.run(baseline, completed)
@@ -409,6 +531,11 @@ def run(baseline, integration, completed, projection_policy_path=None, projectio
             'runner name policy path and hash must be provided together')
     name_policy = (load_runner_name_policy(runner_name_policy_path, runner_name_policy_sha256, forecasts, policy)
                    if runner_name_policy_path is not None else None)
+    require((structural_identity_policy_path is None) == (structural_identity_policy_sha256 is None),
+            'structural identity policy path and hash must be provided together')
+    identity_policy = (load_structural_identity_policy(structural_identity_policy_path,
+                        structural_identity_policy_sha256, forecasts, policy, name_policy)
+                       if structural_identity_policy_path is not None else None)
     records = {kind: read(completed / f'{kind}-dataset.json')['records'] for kind in ('strict', 'diagnostic')}
     for kind, rows in records.items():
         dataset = read(completed / f'{kind}-dataset.json')
@@ -419,12 +546,14 @@ def run(baseline, integration, completed, projection_policy_path=None, projectio
         require(len({(r['race_id'], r['model_version']) for r in rows}) == len(rows), 'duplicate scored record')
     result['integration_census'] = check_census(forecasts, read(integration / 'integration-dispositions.json'),
         records['strict'], records['diagnostic'], read(integration / 'integrated-result-projection.json')['records'])
-    result['source_identity'] = [check_source_identity(r, expected_urls[r['race_id']], policy, name_policy)
+    result['source_identity'] = [check_source_identity(r, expected_urls[r['race_id']], policy, name_policy, identity_policy)
                                  for r in records['strict'] if r['model_version'].endswith(':full')]
     if policy is not None:
         result['projection_policy_reference'] = policy['reference']
     if name_policy is not None:
         result['runner_name_policy_reference'] = name_policy['reference']
+    if identity_policy is not None:
+        result['structural_identity_policy_reference'] = identity_policy['reference']
     for kind in records:
         for row in records[kind]:
             for ref in row['result_artifacts']:
@@ -442,10 +571,13 @@ def main():
     parser.add_argument('--projection-policy-sha256')
     parser.add_argument('--runner-name-policy', type=Path)
     parser.add_argument('--runner-name-policy-sha256')
+    parser.add_argument('--structural-identity-policy', type=Path)
+    parser.add_argument('--structural-identity-policy-sha256')
     args = parser.parse_args()
     result = run(args.baseline_root, args.integration, args.completed,
                  args.projection_policy, args.projection_policy_sha256,
-                 args.runner_name_policy, args.runner_name_policy_sha256)
+                 args.runner_name_policy, args.runner_name_policy_sha256,
+                 args.structural_identity_policy, args.structural_identity_policy_sha256)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True, allow_nan=False)+'\n')
     print(json.dumps({'status': result['status'], 'output': str(args.output)}))
