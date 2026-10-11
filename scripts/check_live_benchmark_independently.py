@@ -155,7 +155,9 @@ def validate_record(record: dict[str, Any], diagnostic: bool = False) -> dict[st
         "verified": True,
     }
     for key, value in required.items():
-        if key == "field_status" and diagnostic and record.get(key) == "RESULT_FIELD_PARTIAL":
+        if key == "field_status" and diagnostic and record.get(key) in (
+            "RESULT_FIELD_PARTIAL", "RESULT_RUNNER_IDENTITY_UNVERIFIED"
+        ):
             continue
         if record.get(key) != value:
             raise ValueError(f"unacceptable {key}")
@@ -177,6 +179,8 @@ def validate_record(record: dict[str, Any], diagnostic: bool = False) -> dict[st
         <= times["result_at"]
     ):
         raise ValueError("invalid chronology")
+    if not diagnostic and record.get("official_runner_identity_observed") is False:
+        raise ValueError("official runner identity not observed")
     converted = dict(record)
     converted["runners"] = [
         {**row, "model_probability": row["probability"]} for row in record["runners"]

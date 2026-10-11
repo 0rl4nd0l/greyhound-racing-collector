@@ -24,9 +24,11 @@ def validate(record, diagnostic=False):
         raise ValueError('scientific_allocation_exclusion')
     if record['forecast_type'] != 'ORIGINAL_SEALED_LIVE':
         raise ValueError('not_original_live_forecast')
+    if not diagnostic and record.get('official_runner_identity_observed') is False:
+        raise ValueError('official_runner_identity_not_observed')
     if record['verified'] is not True:
         raise ValueError('bundle_not_verified')
-    if record['field_status'] != 'EXACT_UNCHANGED' and not (diagnostic and record['field_status'] == 'RESULT_FIELD_PARTIAL'):
+    if record['field_status'] != 'EXACT_UNCHANGED' and not (diagnostic and record['field_status'] in {'RESULT_FIELD_PARTIAL', 'RESULT_RUNNER_IDENTITY_UNVERIFIED'}):
         raise ValueError('changed_or_unresolved_field')
     times = [stamp(record[k]) for k in ('quote_at', 'cutoff_at', 'predicted_at', 'sealed_at', 'jump_at')]
     if not all(a <= b for a, b in zip(times, times[1:])) or times[-2] >= times[-1]:

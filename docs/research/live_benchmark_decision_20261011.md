@@ -1,5 +1,7 @@
 # Retained live prediction audit — 11 October 2026
 
+> Historical first-pass report. The [completed reconciliation continuation](live_reconciliation_decision_20261011.md) supersedes its result-availability findings: two archive joins recovered, nine diagnostic races, an independently identified source-name retention defect, complete221-race failure accounting and unchanged frozen selectors. Original evidence and this report's first-pass metrics remain retained below.
+
 **The installed model's improvement over its decision-time market remains unestablished.** This audit executed the benchmark, rather than substituting the 975-race retrospective starting-price study. It found **zero fully qualified comparisons** in the inspected nonreserved retained populations. Seven original live shadow forecasts support a separately labelled, incomplete-field diagnostic: the current installed artifact is slightly worse than the market on both probability losses. That tiny diagnostic cannot establish the performance of installed production.
 
 ## Population and evidence reconciliation

@@ -208,8 +208,19 @@ def join_result(record, projection):
     original = {r['box_number']: r for r in record['predictions']}
     if len(by_box) != len(rows) or not set(by_box).issubset(original):
         return None, 'CHANGED_OR_DUPLICATE_RESULT_FIELD'
-    if len(longest['box_order']) != len(rows) or any(by_box.get(box, {}).get('finish_position') != rank for rank, box in enumerate(longest['box_order'], 1)):
+    order = longest['box_order']
+    if len(order) != len(rows) or len(set(order)) != len(order) or set(order) != set(by_box):
         return None, 'RESULT_FINISH_ORDER_MISMATCH'
+    positions = [by_box[box]['finish_position'] for box in order]
+    if any(type(p) is not int or p < 1 for p in positions) or positions != sorted(positions):
+        return None, 'RESULT_FINISH_ORDER_MISMATCH'
+    expected = 1
+    for position, count in sorted(Counter(positions).items()):
+        if position != expected:
+            return None, 'RESULT_FINISH_ORDER_MISMATCH'
+        expected += count
+    # Nonwinning ties do not alter the WIN target. Winning ties remain rejected
+    # below; preserve source positions instead of inventing a finishing order.
     for box, row in by_box.items():
         token = re.sub(r'[^A-Z0-9]', '', row['dog_name'].upper())
         if original[box]['runner_id'] != f"{record['race_id']}|box:{box}|dog:{token}":
@@ -232,12 +243,15 @@ def join_result(record, projection):
                         completed.append(attempt['completed_at'])
             references.append(reference(path))
     correction = 'COMPATIBLE_PREFIX_RESULT_SNAPSHOTS_COALESCED' if len(races) > 1 else None
-    return {'field_status': 'EXACT_UNCHANGED' if exact else 'RESULT_FIELD_PARTIAL', 'result_at': max(completed) if completed else max(r['captured_at'] for r in races), 'result_timestamp_semantics': 'native_result_attempt_completed_at' if completed else 'native_batch_generated_at', 'winner_box': winners[0]['box_number'], 'result_projection': projection, 'result_artifacts': references, 'derived_correction': correction}, None
+    field_status = 'EXACT_UNCHANGED' if exact else 'RESULT_FIELD_PARTIAL'
+    if projection.get('official_runner_identity_observed') is False:
+        field_status = 'RESULT_RUNNER_IDENTITY_UNVERIFIED' if exact else 'RESULT_FIELD_PARTIAL'
+    return {'official_runner_identity_observed': projection.get('official_runner_identity_observed'), 'field_status': field_status, 'result_at': max(completed) if completed else max(r['captured_at'] for r in races), 'result_timestamp_semantics': 'native_result_attempt_completed_at' if completed else 'native_batch_generated_at', 'winner_box': winners[0]['box_number'], 'result_projection': projection, 'result_artifacts': references, 'derived_correction': correction}, None
 
 
 def benchmark_row(item, joined, variant):
     record, proof = item['original'], item['append_proof']
-    output = {'race_id': record['race_id'], 'date': record['race_id'][-10:], 'model_version': record['model_sha256'] + ':' + variant, 'model_sha256': record['model_sha256'], 'prediction_id': record['record_key'], 'forecast_type': 'ORIGINAL_SEALED_LIVE', 'historical_role': 'shadow', 'analysis_class': 'STRICT_DECISION_TIME' if joined['field_status'] == 'EXACT_UNCHANGED' else 'RESULT_FIELD_UNVERIFIED_DIAGNOSTIC', 'allocation_status': 'AUTHORISED_NONRESERVED', 'field_status': joined['field_status'], 'verified': True, 'quote_at': item['win_field']['capture_at'], 'cutoff_at': record['score_timestamp'], 'predicted_at': record['score_timestamp'], 'sealed_at': proof['sealed_at'], 'jump_at': record['jump_timestamp'], 'result_at': joined['result_at'], 'provider_quote_publication_time': None, 'membership': item['membership'], 'artifacts': proof['artifacts'], 'result_artifacts': joined['result_artifacts'], 'derived_correction': joined['derived_correction'], 'result_evidence': joined['result_projection'], 'runners': [{'runner_id': r['runner_id'], 'box': r['box_number'], 'dog_name': r['dog_name'], 'probability': r[variant + '_probability'], 'decimal_odds': r['strict_win_odds'], 'winner': int(r['box_number'] == joined['winner_box'])} for r in record['predictions']]}
+    output = {'official_runner_identity_observed': joined.get('official_runner_identity_observed'), 'result_runner_identity_origin': 'CANDIDATE_PARTICIPANTS_NOT_SOURCE_VERIFIED' if joined.get('official_runner_identity_observed') is False else 'LEGACY_PROJECTION_UNSPECIFIED', 'race_id': record['race_id'], 'date': record['race_id'][-10:], 'model_version': record['model_sha256'] + ':' + variant, 'model_sha256': record['model_sha256'], 'prediction_id': record['record_key'], 'forecast_type': 'ORIGINAL_SEALED_LIVE', 'historical_role': 'shadow', 'analysis_class': 'STRICT_DECISION_TIME' if joined['field_status'] == 'EXACT_UNCHANGED' else 'RESULT_FIELD_UNVERIFIED_DIAGNOSTIC', 'allocation_status': 'AUTHORISED_NONRESERVED', 'field_status': joined['field_status'], 'verified': True, 'quote_at': item['win_field']['capture_at'], 'cutoff_at': record['score_timestamp'], 'predicted_at': record['score_timestamp'], 'sealed_at': proof['sealed_at'], 'jump_at': record['jump_timestamp'], 'result_at': joined['result_at'], 'provider_quote_publication_time': None, 'membership': item['membership'], 'artifacts': proof['artifacts'], 'result_artifacts': joined['result_artifacts'], 'derived_correction': joined['derived_correction'], 'result_evidence': joined['result_projection'], 'runners': [{'runner_id': r['runner_id'], 'box': r['box_number'], 'dog_name': r['dog_name'], 'probability': r[variant + '_probability'], 'decimal_odds': r['strict_win_odds'], 'winner': int(r['box_number'] == joined['winner_box'])} for r in record['predictions']]}
 
     output['pre_race_quality'] = item.get('pre_race_quality')
     output['feature_freeze_at'] = proof['native_prediction']['feature_freeze_timestamp']
