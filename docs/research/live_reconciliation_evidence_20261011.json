@@ -343,6 +343,106 @@
     "subtests_passed": 4,
     "unsuccessful_races": 221
   },
+  "frozen_title_policy_v3": {
+    "actual_completion_receipts": 1,
+    "actual_v3_fallback_qualifications": 0,
+    "artifacts": [
+      {
+        "bytes": 8774,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011/scripts/project_policy_live_results_v3.py",
+        "sha256": "cfd986a5157597e8b3e87682e1a566bd0c14af84e3741cfb19981b96f743a253"
+      },
+      {
+        "bytes": 38011,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011/scripts/integrate_acquired_live_results.py",
+        "sha256": "9d84a002153d4919b40e15944d0f7522f5e2f8aa001529dbde0f889147109a8d"
+      },
+      {
+        "bytes": 21535,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011/scripts/check_acquired_live_benchmark.py",
+        "sha256": "d1271225bdc08b0ca1589a4767d29ad51965fe62b96109ba844bbf03030fa7e2"
+      },
+      {
+        "bytes": 5445,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011/tests/test_project_policy_live_results_v3.py",
+        "sha256": "8125b696e1f57ed7871bedf9d6bc2b5b4a95fffdb2aa286889216a676fb5fc4b"
+      },
+      {
+        "bytes": 29755,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011/tests/test_integrate_acquired_live_results.py",
+        "sha256": "a826fdd62b42acd75b6526b0757715c9014c95b0436298d2ce841d3ea6d6dd6b"
+      },
+      {
+        "bytes": 20101,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011/tests/test_check_acquired_live_benchmark.py",
+        "sha256": "dfc73dfcb2d90b018229f4b24becee876686b4bdca3dc51b5cd31e1ec7ff8a4e"
+      },
+      {
+        "bytes": 45127,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/source-title-projection-policy.FROZEN.v3.json",
+        "sha256": "d1976b107467b869fa2a8b7d9bbcb0c509d297a8ffc072146f433dd36599d7cc"
+      },
+      {
+        "bytes": 411387,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/pre-race-venue-witnesses-v2.json",
+        "sha256": "b0323751b5ed7a6b4211623b611801d6441275d7c583085389b4bea558637b01"
+      },
+      {
+        "bytes": 291238,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/title-projection-policy-independent-v1.json",
+        "sha256": "91315341f6b98b9d624633fb150d275e24282cdd0bb736e8402c18063c5bd0e3"
+      },
+      {
+        "bytes": 7233,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/source-title-policy-v3-independent-implementation-review-01.json",
+        "sha256": "76c0d7831606414a60630854bcd2269a53b5701a9784ce7d62a1001ccb22c523"
+      },
+      {
+        "bytes": 3412,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/source-title-policy-v3-root-validation-01.json",
+        "sha256": "f171c32db0b991b22d2763927e851e40bd33539627b6db9441b759dbc2fd17bc"
+      },
+      {
+        "bytes": 3451,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/v3-independent-first-response-01/commands.json",
+        "sha256": "9799ffca66e585edc9f0aeb75ee2093e01a23b3a91c15d6f53e924945f52d593"
+      },
+      {
+        "bytes": 46791,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/v3-independent-first-response-01/independent-check.json",
+        "sha256": "f154ec3b18559c6d1baeebe4ec2a376230c44e0b02eeb92a7b445648be006dc7"
+      },
+      {
+        "bytes": 3601,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/v3-root-reproduction-01/commands.json",
+        "sha256": "4e6370fecf89ca9460ad57d47950d62ad9adf168a136b136450f1c4eaa09dc58"
+      },
+      {
+        "bytes": 47316,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/v3-root-reproduction-01/independent-check.json",
+        "sha256": "0a50122ce202c0f471f44147eff3a6d62da84b4d11f14867b18fd1f3099ab5b1"
+      },
+      {
+        "bytes": 192,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/v3-root-reproduction-01/metric-comparison.json",
+        "sha256": "fea4047e3e7c2fd85f5d3dcbd8a44ac395deb3fe25829e62702e058f93c6a468"
+      },
+      {
+        "bytes": 3732,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/exact-july-continuation-interface-independent-v2.json",
+        "sha256": "589c9896e02f8f5271ea84650cc46d9d7a57ba2c5ea0edccae69bf431fcc1713"
+      }
+    ],
+    "diagnostic_races": 8,
+    "exact_display_entries": 32,
+    "focused_tests_passed": 181,
+    "missing_races": 201,
+    "native_venues": 31,
+    "new_provider_requests": 0,
+    "runtime_mutations": 0,
+    "status": "OFFLINE_IMPLEMENTATION_REVIEW_AND_REPRODUCTION_PASS",
+    "strict_races": 1
+  },
   "installed_runtime_and_empty_census": {
     "artifacts": [
       {
@@ -479,7 +579,9 @@
         "sha256": "92364da8949855c90c1b5554f19fb7d4ea1d07e036024266da94517026923c6a"
       }
     ],
+    "code_reference_semantics": "Recorded hashes identify files at the historical commit; current V3 code references are in frozen_title_policy_v3.",
     "focused_tests_passed": 139,
+    "historical_code_commit": "1d8b9a4aef83698715f253479e6213ac9d1d932f",
     "known_admissions": 2,
     "status": "OFFLINE_VERIFICATION_PASS_NO_NEW_RUNTIME_ADMISSION"
   },

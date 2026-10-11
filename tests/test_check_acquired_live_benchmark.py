@@ -189,3 +189,173 @@ def test_selected_and_market_control_missingness_preserved():
     claimed['selected_missing_outcomes']=0
     with pytest.raises(ValueError,match='outcome coverage'):
         c.independent.check_primary_selector_closure([row],{'comparisons':[frozen]},{'comparisons':[claimed]})
+
+V3 = 'frozen_exact_source_title_venue_date_race_v3'
+ANGLE_URL = 'https://www.thedogs.com.au/racing/angle-park/2026-07-20/4/test?trial=false'
+ANGLE_RACE = 'Race 4 - AP_K - 2026-07-20'
+
+
+def policy_fixture(tmp_path):
+    forecasts = [{'race_id': ANGLE_RACE, 'prediction_id': 'p-angle'}]
+    forecasts += [{'race_id': 'Race '+str(i)+' - SAN - 2026-07-20', 'prediction_id': 'p-'+str(i)} for i in range(1,210)]
+    population = tmp_path/'population.json'
+    population.write_text(json.dumps({'records':forecasts}))
+    policy = {'schema':'frozen_offline_source_title_projection_policy_v3',
+              'status':'FROZEN_BEFORE_ADDITIONAL_RESULT_DECODING',
+              'population_races':210, 'native_venues':2, 'exact_display_entries':3,
+              'field_policy_unchanged':True, 'source_hold_preserved':True,
+              'new_runtime_or_provider_authority':False,
+              'population_reference':{'path':str(population),'sha256':c.digest(population)},
+              'mappings':[{'native_venue':'AP_K','official_url_slug':'angle-park',
+                           'proposed_exact_title_venues':['Angle Park']},
+                          {'native_venue':'SAN','official_url_slug':'sandown',
+                           'proposed_exact_title_venues':['Sandown','Sandown Park']}]}
+    path = tmp_path/'policy.json';path.write_text(json.dumps(policy))
+    return path, forecasts, c.load_projection_policy(path,c.digest(path),forecasts)
+
+
+def v3_declared(markup, policy, url=ANGLE_URL, race=ANGLE_RACE):
+    from bs4 import BeautifulSoup
+    return c.check_declared_identity(BeautifulSoup(markup,'html.parser'),url,V3,
+                                    projection_policy=policy,race_id=race)
+
+
+def test_frozen_v3_angle_park_exact_triple_without_generic_albion_alias(tmp_path):
+    _,_,policy=policy_fixture(tmp_path)
+    title='<title>thedogs - Angle Park 20 July 2026 Race 4</title>'
+    assert v3_declared(title,policy)==V3
+    for name in ('Albion Park (K)','AP_K','Angle-Park','angle park','Angle Park Extra'):
+        with pytest.raises(ValueError):
+            v3_declared(title.replace('Angle Park',name),policy)
+    with pytest.raises(ValueError):
+        v3_declared(title,policy,ANGLE_URL.replace('angle-park','albion-park'))
+    with pytest.raises(ValueError):
+        v3_declared(title,policy,race=ANGLE_RACE.replace('AP_K','SAN'))
+
+
+@pytest.mark.parametrize('name',['Sandown','Sandown Park'])
+def test_frozen_v3_sandown_exact_source_backed_variants(tmp_path,name):
+    _,_,policy=policy_fixture(tmp_path)
+    markup='<title>thedogs - '+name+' 20 July 2026 Race 3</title>'
+    assert v3_declared(markup,policy,ANGLE_URL.replace('angle-park','sandown').replace('/4/','/3/'),'Race 3 - SAN - 2026-07-20')==V3
+
+
+@pytest.mark.parametrize('change',[
+    lambda text:text.replace('Race 4','Race 5'),
+    lambda text:text.replace('20 July','21 July'),
+    lambda text:text.replace('20 July','31 February'),
+    lambda text:text.replace('July','Jul'),
+    lambda text:text.replace('2026','2025'),
+    lambda text:text+' extra',
+])
+def test_v3_title_anchoring_date_and_race_fail_closed(tmp_path,change):
+    _,_,policy=policy_fixture(tmp_path)
+    with pytest.raises(ValueError):
+        v3_declared('<title>'+change('thedogs - Angle Park 20 July 2026 Race 4')+'</title>',policy)
+
+
+@pytest.mark.parametrize('extra',[
+    '<title>thedogs - Angle Park 20 July 2026 Race 4</title>',
+    '<link rel="canonical">',
+    '<meta property="og:url" content="">',
+    '<link rel="canonical" href="'+ANGLE_URL.replace('/4/','/5/')+'">',
+    '<meta property="og:url" content="'+ANGLE_URL.replace('angle-park','sandown')+'">',
+    '<link rel="canonical" href="'+ANGLE_URL+'">',
+])
+def test_v3_not_general_bypass_for_ambiguous_or_present_declarations(tmp_path,extra):
+    _,_,policy=policy_fixture(tmp_path)
+    with pytest.raises(ValueError):
+        v3_declared('<title>thedogs - Angle Park 20 July 2026 Race 4</title>'+extra,policy)
+
+
+def test_v3_requires_external_policy_before_accepting_title(tmp_path):
+    with pytest.raises(ValueError,match='policy'):
+        v3_declared('<title>thedogs - Angle Park 20 July 2026 Race 4</title>',None)
+    path,forecasts,_=policy_fixture(tmp_path)
+    with pytest.raises(ValueError,match='hash'):
+        c.load_projection_policy(path,'0'*64,forecasts)
+    changed=list(forecasts);changed[0]={'race_id':ANGLE_RACE,'prediction_id':'reconstructed'}
+    with pytest.raises(ValueError,match='population'):
+        c.load_projection_policy(path,c.digest(path),changed)
+    population=tmp_path/'population.json';population.write_text('{}')
+    with pytest.raises(ValueError,match='hash'):
+        c.load_projection_policy(path,c.digest(path),forecasts)
+
+
+def test_policy_changed_scope_or_duplicate_mapping_rejected(tmp_path):
+    path,forecasts,_=policy_fixture(tmp_path)
+    document=json.loads(path.read_text())
+    document['mappings'].append(document['mappings'][0])
+    path.write_text(json.dumps(document))
+    with pytest.raises(ValueError,match='mapping'):
+        c.load_projection_policy(path,c.digest(path),forecasts)
+
+
+def test_ready_v3_census_cannot_reclassify_held_completion():
+    args=list(census());p=args[4][0]
+    p['projection_policy_fallback']={'status':'QUALIFIED','original_parser_failure':'source_declared_race_identity_missing_or_mismatched'}
+    args[1][0]['completion_observations']=[{'status':'RETAINED_RAW_RESULT_IDENTITY_UNVERIFIED','source_hold':False,'charged_attempts':1,'provider_requests':1}]
+    assert c.check_census(*args)['strict_races']==1
+    args[1][0]['completion_observations'][0]['source_hold']=True
+    with pytest.raises(ValueError,match='V3.*READY'):
+        c.check_census(*args)
+
+
+def v3_source_fixture(tmp_path):
+    row=fixture(tmp_path)
+    _,_,policy=policy_fixture(tmp_path)
+    body=tmp_path/'body'
+    raw=body.read_bytes().replace(('<link rel="canonical" href="'+URL+'">').encode(),
+                                 b'<title>thedogs - Angle Park 20 July 2026 Race 4</title>')
+    body.write_bytes(raw)
+    metadata=json.loads((tmp_path/'metadata.json').read_text())
+    metadata.update(requested_url=ANGLE_URL,final_url=ANGLE_URL,response_sha256=c.digest(body))
+    (tmp_path/'metadata.json').write_text(json.dumps(metadata))
+    row.update(race_id=ANGLE_RACE,prediction_id='p-angle')
+    evidence=row['result_evidence'];reference=policy['reference']
+    evidence['response_provenance'].update(response_sha256=c.digest(body),metadata_sha256=c.digest(tmp_path/'metadata.json'),projection_policy_reference=reference)
+    evidence['projection_policy_fallback']={'status':'QUALIFIED','original_parser_failure':'source_declared_race_identity_missing_or_mismatched','projection_policy_reference':reference}
+    evidence['races'][0]['source_identity']={'identity_semantics':V3,'source_title':'thedogs - Angle Park 20 July 2026 Race 4','source_title_identity':['angle-park','2026-07-20',4],'source_title_native_venue':'AP_K','source_declared_identities':[],'projection_policy_reference':reference}
+    return row,policy
+
+
+def test_complete_v3_source_check_preserves_existing_field_and_terminal_checks(tmp_path):
+    row,policy=v3_source_fixture(tmp_path)
+    assert c.check_source_identity(row,ANGLE_URL,policy)['identity_rule']==V3
+    row['result_evidence']['runners'][1]['dog_name']='Invented'
+    with pytest.raises(ValueError,match='identity or terminal'):
+        c.check_source_identity(row,ANGLE_URL,policy)
+
+
+@pytest.mark.parametrize('change',[
+    lambda r:r.update(prediction_id='replay'),
+    lambda r:r.update(race_id='Race 999 - AP_K - 2026-07-20'),
+    lambda r:r['result_evidence']['projection_policy_fallback'].update(projection_policy_reference={'path':'elsewhere','sha256':'0'*64}),
+    lambda r:r['result_evidence']['response_provenance'].update(projection_policy_reference={'path':'elsewhere','sha256':'0'*64}),
+    lambda r:r['result_evidence'].update(original_transport_hold_preserved=True),
+])
+def test_v3_policy_scope_pin_and_hold_fail_before_body_decode(tmp_path,monkeypatch,change):
+    row,policy=v3_source_fixture(tmp_path);change(row)
+    def must_not_decode(_):
+        pytest.fail('outcome body decoded before scope/policy rejection')
+    monkeypatch.setattr(c,'source_rows',must_not_decode)
+    with pytest.raises(ValueError):c.check_source_identity(row,ANGLE_URL,policy)
+
+
+@pytest.mark.parametrize('change',[
+    lambda r:r['result_evidence']['races'][0]['source_identity'].update(source_title_native_venue='SAN'),
+    lambda r:r['result_evidence']['races'][0]['source_identity'].update(source_title_identity=['angle-park','2026-07-20',5]),
+    lambda r:r['result_evidence']['races'][0]['source_identity'].update(source_title='fabricated'),
+])
+def test_v3_projection_claim_must_equal_independent_title(tmp_path,change):
+    row,policy=v3_source_fixture(tmp_path);change(row)
+    with pytest.raises(ValueError,match='independent title'):
+        c.check_source_identity(row,ANGLE_URL,policy)
+
+
+def test_policy_native_scope_uses_exact_native_labels_not_allocation_aliases(tmp_path):
+    path,forecasts,_=policy_fixture(tmp_path)
+    document=json.loads(path.read_text());document['mappings'][0]['native_venue']='AP'
+    path.write_text(json.dumps(document))
+    with pytest.raises(ValueError,match='native mapping'):
+        c.load_projection_policy(path,c.digest(path),forecasts)

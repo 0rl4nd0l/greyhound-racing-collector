@@ -9,6 +9,7 @@ import argparse
 from collections import Counter, defaultdict
 import json
 from pathlib import Path
+import re
 import sys
 
 if str(Path(__file__).resolve().parents[1]) not in sys.path:
@@ -16,6 +17,7 @@ if str(Path(__file__).resolve().parents[1]) not in sys.path:
 from scripts import live_benchmark_alignment as alignment
 from scripts import project_acquired_live_results as projector
 from scripts import project_reviewed_live_results_v2 as reviewed_projector
+from scripts import project_policy_live_results_v3 as policy_projector
 
 READY = 'RETAINED_RAW_RESULT_IDENTITY_UNVERIFIED'
 FIELD_CONTRADICTIONS = ('forecast_runner_scratched:', 'official_runner_name_changed_at_box:',
@@ -103,6 +105,62 @@ def admission_for_intent(intent_reference, approved_references):
     if claimed not in approved_references:
         raise ValueError('intent_admission_not_pinned_approved_baseline')
     return claimed
+
+
+def verified_projection_policy(ref, allowed, expected_urls, canonical_keys):
+    policy = load_reference(ref)
+    if (policy.get('schema') != 'frozen_offline_source_title_projection_policy_v3'
+            or policy.get('status') != 'FROZEN_BEFORE_ADDITIONAL_RESULT_DECODING'
+            or policy.get('new_runtime_or_provider_authority') is not False
+            or policy.get('field_policy_unchanged') is not True):
+        raise ValueError('projection_policy_not_frozen_offline_identity_policy')
+    population = load_reference(policy['population_reference'])['records']
+    if len(population) != 210 or {r['race_id']: r['prediction_id'] for r in population} != allowed:
+        raise ValueError('projection_policy_frozen_population_mismatch')
+    mappings = policy['mappings']
+    mapping_keys = [(r['native_venue'], r['official_url_slug']) for r in mappings]
+    expected_keys = set()
+    for rid in allowed:
+        native = re.fullmatch(r'Race (\d+) - (.+) - (\d{4}-\d{2}-\d{2})', rid)
+        if not native:
+            raise ValueError('projection_policy_native_race_identity_invalid')
+        expected_keys.add((native[2], projector.official_url_identity(expected_urls[rid])[0]))
+    if len(set(mapping_keys)) != len(mapping_keys) or set(mapping_keys) != expected_keys:
+        raise ValueError('projection_policy_native_slug_scope_mismatch')
+    for row in mappings:
+        names = row['proposed_exact_title_venues']
+        if not names or len(names) != len(set(names)) or any(not isinstance(n, str) or not n or n != n.strip() for n in names):
+            raise ValueError('projection_policy_display_names_invalid')
+    load_reference(policy['independent_review_reference'])
+    return policy
+
+
+def project_observation(observation, original, expected_url, directory, policy=None, policy_reference=None):
+    """Canonical first; an optional identity fallback cannot reopen a hold."""
+    if observation.get('reviewed_reclassification'):
+        result = reviewed_projector.project_one(observation['projection_item'], original, expected_url, directory)
+        result['reviewed_reclassification'] = observation['reviewed_reclassification']
+        result['original_transport_hold_preserved'] = True
+        return result
+    if observation.get('status') != READY or observation.get('source_hold') is not False:
+        raise ValueError('ordinary_projection_requires_original_ready_unheld_receipt')
+    try:
+        return projector.project_one(observation['projection_item'], original, expected_url, directory)
+    except ValueError as error:
+        if (str(error) != 'source_declared_race_identity_missing_or_mismatched' or policy is None
+                or observation.get('status') != READY or observation.get('source_hold') is not False):
+            raise
+        trail = {'original_parser_failure': str(error), 'projection_policy_reference': policy_reference,
+                 'status': 'ATTEMPTED'}
+        observation['projection_policy_fallback'] = trail
+        try:
+            result = policy_projector.project_one(observation['projection_item'], original, expected_url, directory, policy, policy_reference)
+        except (ValueError, KeyError, OSError) as fallback_error:
+            trail.update(status='REJECTED', fallback_failure=str(fallback_error))
+            raise
+        trail['status'] = 'QUALIFIED'
+        result['projection_policy_fallback'] = dict(trail)
+        return result
 
 
 def verified_intent(ref, allowed, expected_urls, canonical_keys, approved_admission_reference):
@@ -347,12 +405,13 @@ def integrate(population, prior, observations, acquire):
                            'win_only_policy': 'Independent review before acquisition: losing ranks or terminal statuses cannot veto a complete source-identified unchanged field with the same unique winner.',
                            'prior_projection_sha256': entry['prior_projection_sha256'],
                            'reviewed_reclassifications': [row['reviewed_reclassification'] for row in rows if row.get('reviewed_reclassification')],
+                           'projection_policy_fallbacks': [row['projection_policy_fallback'] for row in rows if row.get('projection_policy_fallback')],
                            'original_transport_hold_preserved': any(row.get('runtime_source_hold_preserved') for row in rows),
                            'completion_references': [row['receipt_reference'] for row in rows]})
     return selected, dispositions, events
 
 
-def run(benchmark_evidence, prior_projection_path, reconciliation_path, completion_manifest_path, output, approved_admission_reference, reviewed_reclassifications_reference=None, approved_admissions_reference=None):
+def run(benchmark_evidence, prior_projection_path, reconciliation_path, completion_manifest_path, output, approved_admission_reference, reviewed_reclassifications_reference=None, approved_admissions_reference=None, projection_policy_reference=None):
     base = Path(benchmark_evidence)
     boundary = projector.load(base / 'inventory/access-boundary.json')
     membership = projector.load(base / 'inventory/residual-membership.json')
@@ -382,6 +441,7 @@ def run(benchmark_evidence, prior_projection_path, reconciliation_path, completi
         else:
             unique[ref['sha256']] = ref
     approved_references = approved_admission_bindings(approved_admission_reference, approved_admissions_reference, allowed, expected_urls, canonical)
+    projection_policy = verified_projection_policy(projection_policy_reference, allowed, expected_urls, canonical) if projection_policy_reference else None
     # Global scope/authority pass before any result body can be decoded.
     completion_metadata = []
     for ref in unique.values():
@@ -429,11 +489,7 @@ def run(benchmark_evidence, prior_projection_path, reconciliation_path, completi
     output.mkdir(parents=True, exist_ok=True)
     def acquire(observation):
         rid = observation['race_id']
-        selected_projector = reviewed_projector if observation.get('reviewed_reclassification') else projector
-        projection = selected_projector.project_one(observation['projection_item'], originals[allowed[rid]]['original'], expected_urls[rid], output / 'acquired-native' / allowed[rid])
-        if observation.get('reviewed_reclassification'):
-            projection['reviewed_reclassification'] = observation['reviewed_reclassification']
-            projection['original_transport_hold_preserved'] = True
+        projection = project_observation(observation, originals[allowed[rid]]['original'], expected_urls[rid], output / 'acquired-native' / allowed[rid], projection_policy, projection_policy_reference)
         joined, error = alignment.join_result(originals[allowed[rid]]['original'], projection)
         if error or joined['field_status'] != 'EXACT_UNCHANGED':
             raise ValueError('acquired_alignment_not_strict:' + str(error))
@@ -463,6 +519,7 @@ def run(benchmark_evidence, prior_projection_path, reconciliation_path, completi
                'unique_completion_receipts': len(unique), 'duplicate_index_entries': len(duplicates),
                'consumed_without_completion': sum(row['status'] == 'CONSUMED_WITHOUT_COMPLETION' for row in observations),
                'reviewed_offline_reclassifications': sum(bool(row.get('reviewed_reclassification')) for row in observations),
+               'projection_policy_fallbacks': dict(Counter(row['projection_policy_fallback']['status'] for row in observations if row.get('projection_policy_fallback'))),
                'dispositions': dict(Counter(r['disposition'] for r in dispositions)),
                'provider_requests_by_integrator': 0, 'fits': 0, 'selector_changes': 0}
     projector.write(output / 'summary.json', summary)
@@ -474,7 +531,8 @@ def run(benchmark_evidence, prior_projection_path, reconciliation_path, completi
                     'approved_admissions_reference': approved_admissions_reference,
                     'approved_admission_bindings': approved_references,
                     'reviewed_reclassifications_reference': reviewed_reclassifications_reference,
-                    'implementation': [reference(Path(__file__)), reference(Path(projector.__file__)), reference(Path(reviewed_projector.__file__)), reference(Path(alignment.__file__))],
+                    'projection_policy_reference': projection_policy_reference,
+                    'implementation': [reference(Path(__file__)), reference(Path(projector.__file__)), reference(Path(reviewed_projector.__file__)), reference(Path(policy_projector.__file__)), reference(Path(alignment.__file__))],
                     'prior_evidence_preserved': True})
     return summary
 
@@ -492,6 +550,8 @@ def main():
     parser.add_argument('--approved-admissions-sha256')
     parser.add_argument('--reviewed-reclassifications', type=Path)
     parser.add_argument('--reviewed-reclassifications-sha256')
+    parser.add_argument('--projection-policy', type=Path)
+    parser.add_argument('--projection-policy-sha256')
     args = parser.parse_args()
     if bool(args.approved_admission) != bool(args.approved_admission_sha256) or bool(args.approved_admissions) != bool(args.approved_admissions_sha256):
         parser.error('each admission mode requires both path and SHA256')
@@ -499,10 +559,13 @@ def main():
         parser.error('supply exactly one of --approved-admission or --approved-admissions')
     if bool(args.reviewed_reclassifications) != bool(args.reviewed_reclassifications_sha256):
         parser.error('reviewed reclassifications require both path and SHA256')
+    if bool(args.projection_policy) != bool(args.projection_policy_sha256):
+        parser.error('projection policy requires both path and SHA256')
     reviewed = {'path': str(args.reviewed_reclassifications), 'sha256': args.reviewed_reclassifications_sha256} if args.reviewed_reclassifications else None
     single = {'path': str(args.approved_admission), 'sha256': args.approved_admission_sha256} if args.approved_admission else None
     multiple = {'path': str(args.approved_admissions), 'sha256': args.approved_admissions_sha256} if args.approved_admissions else None
-    print(json.dumps(run(args.benchmark_evidence, args.prior_projection, args.reconciliation, args.completion_manifest, args.output, single, reviewed, multiple)))
+    policy_ref = {'path': str(args.projection_policy), 'sha256': args.projection_policy_sha256} if args.projection_policy else None
+    print(json.dumps(run(args.benchmark_evidence, args.prior_projection, args.reconciliation, args.completion_manifest, args.output, single, reviewed, multiple, policy_ref)))
 
 
 if __name__ == '__main__':

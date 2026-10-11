@@ -443,3 +443,56 @@ def test_multi_admissions_cannot_reset_state_or_widen_request_policy(tmp_path, k
     manifest = put(tmp_path, 'changed-policy-pins.json', {'schema': 'approved_july_admission_bindings_v1', 'admissions': refs})
     with pytest.raises(ValueError, match='limits_invalid|limits_changed'):
         s.approved_admission_bindings(None, manifest, allowed, urls, keys)
+
+
+def frozen_projection_policy_fixture(tmp_path):
+    refs, _, allowed, urls, keys, _ = admission_population(tmp_path)
+    admission = s.load_reference(refs[0])
+    original_allowed, original_urls, original_keys = allowed, urls, keys
+    names = {rid: f'Race {n+1} - HEA - 2026-07-17' for n, rid in enumerate(original_allowed)}
+    allowed = {names[rid]: pid for rid, pid in original_allowed.items()}
+    urls = {names[rid]: url for rid, url in original_urls.items()}
+    keys = {names[rid]: key for rid, key in original_keys.items()}
+    population = put(tmp_path, 'projection-population.json', {'records': [{'race_id': rid, 'prediction_id': pid} for rid, pid in allowed.items()]})
+    policy = {'schema': 'frozen_offline_source_title_projection_policy_v3',
+              'status': 'FROZEN_BEFORE_ADDITIONAL_RESULT_DECODING',
+              'new_runtime_or_provider_authority': False, 'field_policy_unchanged': True,
+              'population_reference': population,
+              'independent_review_reference': put(tmp_path, 'policy-review.json', {'status': 'PASS'}),
+              'mappings': [{'native_venue': 'HEA', 'official_url_slug': 'healesville',
+                            'proposed_exact_title_venues': ['Healesville']}]}
+    return policy, allowed, urls, keys
+
+
+def test_projection_policy_hash_and_exact_frozen_population_checked_before_body(tmp_path):
+    policy, allowed, urls, keys = frozen_projection_policy_fixture(tmp_path)
+    ref = put(tmp_path, 'policy.json', policy)
+    assert s.verified_projection_policy(ref, allowed, urls, keys) == policy
+    with pytest.raises(ValueError, match='frozen_population_mismatch'):
+        s.verified_projection_policy(ref, {**allowed, 'race-0': 'changed-forecast'}, urls, keys)
+    with pytest.raises(ValueError, match='hash_mismatch'):
+        s.verified_projection_policy({**ref, 'sha256': 'f'*64}, allowed, urls, keys)
+
+
+@pytest.mark.parametrize('field,value,reason', [
+    ('status', 'PROPOSED', 'not_frozen'),
+    ('new_runtime_or_provider_authority', True, 'not_frozen'),
+    ('field_policy_unchanged', False, 'not_frozen'),
+    ('mappings', [{'native_venue': 'WRONG', 'official_url_slug': 'healesville', 'proposed_exact_title_venues': ['Healesville']}], 'scope_mismatch'),
+])
+def test_projection_policy_cannot_change_scope_or_admit_unfrozen_rule(tmp_path, field, value, reason):
+    policy, allowed, urls, keys = frozen_projection_policy_fixture(tmp_path)
+    policy[field] = value
+    with pytest.raises(ValueError, match=reason):
+        s.verified_projection_policy(put(tmp_path, 'changed-policy.json', policy), allowed, urls, keys)
+
+
+def test_projection_policy_uses_sealed_native_label_not_allocation_canonical_alias(tmp_path):
+    policy, allowed, urls, keys = frozen_projection_policy_fixture(tmp_path)
+    names = {rid: rid.replace('HEA', 'SHEPPARTON') for rid in allowed}
+    allowed = {names[rid]: pid for rid, pid in allowed.items()}
+    urls = {names[rid]: url.replace('healesville', 'shepparton') for rid, url in urls.items()}
+    keys = {names[rid]: key.replace('|HEA|', '|SHEP|') for rid, key in keys.items()}
+    policy['population_reference'] = put(tmp_path, 'long-name-population.json', {'records': [{'race_id': rid, 'prediction_id': pid} for rid, pid in allowed.items()]})
+    policy['mappings'] = [{'native_venue': 'SHEPPARTON', 'official_url_slug': 'shepparton', 'proposed_exact_title_venues': ['Shepparton']}]
+    assert s.verified_projection_policy(put(tmp_path, 'native-policy.json', policy), allowed, urls, keys) == policy
