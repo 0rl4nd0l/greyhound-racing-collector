@@ -35,3 +35,11 @@ def test_rejects_changed_fields_disguised_as_probabilities_and_duplicate_races()
     good = race('01', [.6, .4], [.7, .3])
     with pytest.raises(ValueError, match='duplicate race'):
         summarize([good, good], reference='market', model='form')
+
+
+def test_rejects_nonbinary_labels_even_when_they_sum_to_one():
+    invalid = race('01', [.5, .3, .2], [.4, .4, .2])
+    for runner, label in zip(invalid['runners'], [1, 1, -1]):
+        runner['y'] = label
+    with pytest.raises(ValueError, match='binary'):
+        summarize([invalid], reference='market', model='form')

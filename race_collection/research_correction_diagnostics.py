@@ -16,6 +16,8 @@ def _metric(runners, name):
         raise ValueError('finite positive probabilities required')
     if not math.isclose(sum(probabilities), 1., abs_tol=1e-8):
         raise ValueError('probabilities must sum to one within race')
+    if any(r['y'] not in (0, 1) for r in runners):
+        raise ValueError('binary winner labels required')
     if sum(r['y'] for r in runners) != 1:
         raise ValueError('exactly one winner required')
     top = {i for i, p in enumerate(probabilities) if p == max(probabilities)}
