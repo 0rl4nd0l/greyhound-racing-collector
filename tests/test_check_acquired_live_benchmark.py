@@ -359,3 +359,155 @@ def test_policy_native_scope_uses_exact_native_labels_not_allocation_aliases(tmp
     path.write_text(json.dumps(document))
     with pytest.raises(ValueError,match='native mapping'):
         c.load_projection_policy(path,c.digest(path),forecasts)
+
+
+def name_cell(name='Alpha', dog_id='123', badge='NBT', note=''):
+    return (f'<td class="race-runners__name"><blackbook-dog data-dog-id="{dog_id}"></blackbook-dog>'
+            f'<div class="race-runners__name__dog"><a href="/dogs/{dog_id}/alpha">{name}</a>'
+            f'<span class="race-runners__name__time">{badge}</span>'
+            f'<span class="race-runners__name__box">{note}</span></div>'
+            '<div>T: Trainer R/T:</div></td>')
+
+
+def parse_name(markup):
+    from bs4 import BeautifulSoup
+    return c.structured_source_name(BeautifulSoup(markup,'html.parser').find('td'),1)
+
+
+def test_v4_name_is_exact_anchor_not_time_badge_or_trainer():
+    name,witness=parse_name(name_cell())
+    assert name=='Alpha'
+    assert witness['source_dog_id']=='123'
+    assert witness['source_blackbook_ids']==['123']
+    assert witness['separate_time_annotations']==['NBT']
+    assert witness['original_parser_name']=='Alpha NBT'
+    assert parse_name(name_cell(name='Alpha NBT'))[0]=='Alpha NBT'
+    assert parse_name(name_cell(note='(from box 2)'))[0]=='Alpha (from box 2)'
+
+
+@pytest.mark.parametrize('change',[
+    lambda x:x.replace('/dogs/123/alpha','https://evil.example/dogs/123/alpha'),
+    lambda x:x.replace('/dogs/123/alpha','//www.thedogs.com.au/dogs/123/alpha'),
+    lambda x:x.replace('/dogs/123/alpha','/dogs/0/alpha'),
+    lambda x:x.replace('/dogs/123/alpha','/dogs/123/alpha?other=1'),
+    lambda x:x.replace('/dogs/123/alpha','/dogs/123/alpha#part'),
+    lambda x:x.replace('data-dog-id="123"','data-dog-id="456"'),
+    lambda x:x.replace('</a>','</a><a href="/dogs/123/alpha">Alpha</a>'),
+    lambda x:x.replace('>Alpha</a>','></a>'),
+    lambda x:x.replace('</blackbook-dog>','</blackbook-dog><blackbook-dog data-dog-id="123"></blackbook-dog>'),
+    lambda x:x.replace('<span class="race-runners__name__time">','<span class="race-runners__name__time">1</span><span class="race-runners__name__time">'),
+    lambda x:x.replace('class="race-runners__name__box">','class="race-runners__name__box">from box 2'),
+])
+def test_v4_ambiguous_foreign_or_unbound_dog_identity_rejected(change):
+    with pytest.raises(ValueError):parse_name(change(name_cell()))
+
+
+def name_policy_fixture(tmp_path):
+    title_path,forecasts,title_policy=policy_fixture(tmp_path)
+    review=tmp_path/'review.json';review.write_text('{}')
+    parser=tmp_path/'pinned-parser.py';parser.write_text('# frozen parser\n')
+    doc={'schema':'frozen_offline_structured_dog_name_policy_v4',
+         'status':'FROZEN_BEFORE_CORRECTED_METRICS','field_and_scoring_policy_unchanged':True,
+         'newly_corrected_metrics_inspected':False,'no_new_provider_or_runtime_authority':True,
+         'population_races':210,'population_reference':title_policy['document']['population_reference'],
+         'independent_review_reference':{'path':str(review),'sha256':c.digest(review)},
+         'source_title_policy_reference':title_policy['reference'],
+         'prior_parser_references':[{'path':str(parser),'sha256':c.digest(parser)}],
+         'terminal_policy':{'accepted_vocabulary_unchanged':True,'no_runner_removal_or_renormalization':True,
+                            **{code:'UNMAPPED; preserved' for code in ('F','T','-')}},
+         'version_and_scope':{k:True for k in ('base_v2_v3_projector_bytes_preserved','external_policy_hash_required',
+          'no_model_fit_calibration_selector_threshold_change','no_performance_based_rule',
+          'no_provider_or_runtime_authority','separate_v4_adapter_required')}}
+    path=tmp_path/'name-policy.json';path.write_text(json.dumps(doc))
+    return path,forecasts,title_policy,c.load_runner_name_policy(path,c.digest(path),forecasts,title_policy)
+
+
+def test_v4_policy_pin_scope_and_original_parser_bytes_verified(tmp_path):
+    path,forecasts,title_policy,policy=name_policy_fixture(tmp_path)
+    with pytest.raises(ValueError,match='hash'):
+        c.load_runner_name_policy(path,'0'*64,forecasts,title_policy)
+    changed=copy.deepcopy(forecasts);changed[0]['prediction_id']='replacement'
+    with pytest.raises(ValueError,match='population'):
+        c.load_runner_name_policy(path,c.digest(path),changed,title_policy)
+    (tmp_path/'pinned-parser.py').write_text('# changed')
+    with pytest.raises(ValueError,match='linked hash'):
+        c.load_runner_name_policy(path,c.digest(path),forecasts,title_policy)
+
+
+@pytest.mark.parametrize('code',['F','T','-'])
+def test_v4_policy_does_not_authorize_new_terminal_meaning(tmp_path,code):
+    path,forecasts,title_policy,_=name_policy_fixture(tmp_path)
+    doc=json.loads(path.read_text());doc['terminal_policy'][code]='DNF'
+    path.write_text(json.dumps(doc))
+    with pytest.raises(ValueError,match='terminal'):
+        c.load_runner_name_policy(path,c.digest(path),forecasts,title_policy)
+    markup='<table class="race-runners--result"><tr class="race-runner"><td class="race-runners__box"><i name="rug_1"></i></td>'+name_cell()+'<td class="race-runners__finish-position">'+code+'</td></tr></table>'
+    with pytest.raises(ValueError,match='terminal'):
+        c.source_rows(markup,structured_names=True)
+
+
+def v4_source_fixture(tmp_path, title=False):
+    from bs4 import BeautifulSoup
+    row=fixture(tmp_path,[(1,'Alpha','1st'),(2,'Beta','DNF'),(9,'Unused','SCR')])
+    _,_,title_policy,policy=name_policy_fixture(tmp_path)
+    body=tmp_path/'body';soup=BeautifulSoup(body.read_bytes(),'html.parser')
+    for node in soup.select('tr.race-runner'):
+        old=node.select_one('td.race-runners__name');name=old.get_text();box=node.select_one('[name]')['name'][4:]
+        old.replace_with(BeautifulSoup(name_cell(name=name,dog_id='10'+box),'html.parser').find('td'))
+    evidence=row['result_evidence'];reference=policy['reference']
+    row.update(race_id=ANGLE_RACE,prediction_id='p-angle')
+    soup.find('link')['href']=ANGLE_URL
+    identity={'identity_semantics':'exact_official_venue_slug_date_race_number'}
+    if title:
+        soup.find('link').decompose();title_node=soup.new_tag('title');title_node.string='thedogs - Angle Park 20 July 2026 Race 4';soup.insert(0,title_node)
+        identity={'identity_semantics':V3,'source_title':title_node.string,'source_title_identity':['angle-park','2026-07-20',4],
+          'source_title_native_venue':'AP_K','source_declared_identities':[],'projection_policy_reference':title_policy['reference']}
+        evidence['projection_policy_fallback']={'status':'REJECTED','original_parser_failure':'source_declared_race_identity_missing_or_mismatched',
+          'fallback_failure':'official_runner_name_changed_at_box:1','projection_policy_reference':title_policy['reference']}
+    body.write_bytes(str(soup).encode())
+    meta=tmp_path/'metadata.json';metadata=json.loads(meta.read_text());metadata.update(requested_url=ANGLE_URL,final_url=ANGLE_URL,response_sha256=c.digest(body));meta.write_text(json.dumps(metadata))
+    _,rows=c.source_rows(body.read_bytes(),structured_names=True)
+    evidence['races'][0].update(native_official_rows=rows,source_identity=identity,
+      structured_runner_name_witnesses=[c.structured_source_name(n.select_one('td.race-runners__name'),r['box_number'])[1] for n,r in zip(soup.select('tr.race-runner'),rows)])
+    evidence['runner_name_policy_fallback']={'status':'QUALIFIED','original_parser_failure':'official_runner_name_changed_at_box:1','runner_name_policy_reference':reference}
+    evidence['response_provenance'].update(response_sha256=c.digest(body),metadata_sha256=c.digest(meta),runner_name_policy_reference=reference,projection_policy_reference=title_policy['reference'])
+    return row,title_policy,policy
+
+
+@pytest.mark.parametrize('title',[False,True])
+def test_v4_preserves_canonical_without_title_and_v3_identity_with_original_rejection(tmp_path,title):
+    row,title_policy,policy=v4_source_fixture(tmp_path,title)
+    check=c.check_source_identity(row,ANGLE_URL,title_policy,policy)
+    assert check['forecast_runners']==2
+    assert check['identity_rule']==(V3 if title else 'canonical_or_og_url')
+
+
+@pytest.mark.parametrize('change',[
+    lambda r:r.update(prediction_id='newprediction'),
+    lambda r:r['result_evidence']['runner_name_policy_fallback'].update(runner_name_policy_reference={'path':'elsewhere','sha256':'0'*64}),
+    lambda r:r['result_evidence']['response_provenance'].update(runner_name_policy_reference={'path':'elsewhere','sha256':'0'*64}),
+    lambda r:r['result_evidence'].update(original_transport_hold_preserved=True),
+])
+def test_v4_scope_policy_hold_rejected_before_body(tmp_path,monkeypatch,change):
+    row,title_policy,policy=v4_source_fixture(tmp_path);change(row)
+    def no_decode(*a,**kw):pytest.fail('body decoded before invalid policy or scope rejected')
+    monkeypatch.setattr(c,'source_rows',no_decode)
+    with pytest.raises(ValueError):c.check_source_identity(row,ANGLE_URL,title_policy,policy)
+
+
+def test_v4_projected_name_witness_and_true_changed_names_rejected(tmp_path):
+    row,title_policy,policy=v4_source_fixture(tmp_path)
+    bad=copy.deepcopy(row);bad['result_evidence']['races'][0]['structured_runner_name_witnesses'][0]['source_dog_id']='999'
+    with pytest.raises(ValueError,match='witnesses'):
+        c.check_source_identity(bad,ANGLE_URL,title_policy,policy)
+    row['result_evidence']['runners'][0]['dog_name']='Different'
+    with pytest.raises(ValueError,match='identity or terminal'):
+        c.check_source_identity(row,ANGLE_URL,title_policy,policy)
+
+
+def test_v4_cannot_reclassify_held_completion():
+    args=list(census());args[4][0]['runner_name_policy_fallback']={'status':'QUALIFIED'}
+    args[1][0]['completion_observations']=[{'status':'RETAINED_RAW_RESULT_IDENTITY_UNVERIFIED','source_hold':False,'charged_attempts':1,'provider_requests':1}]
+    assert c.check_census(*args)['strict_races']==1
+    args[1][0]['completion_observations'][0]['source_hold']=True
+    with pytest.raises(ValueError,match='V4.*READY'):c.check_census(*args)

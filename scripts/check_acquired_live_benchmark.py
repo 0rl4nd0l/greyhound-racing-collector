@@ -63,6 +63,81 @@ def load_projection_policy(path, expected_sha256, forecasts, expected_urls=None)
             'population': admitted, 'triples': frozenset(triples)}
 
 
+def load_runner_name_policy(path, expected_sha256, forecasts, projection_policy=None):
+    """Authenticate the independently reviewed structural repair before bodies."""
+    path = Path(path)
+    require(isinstance(expected_sha256, str) and re.fullmatch('[0-9a-f]{64}', expected_sha256)
+            and digest(path) == expected_sha256, 'runner name policy hash mismatch')
+    policy = read(path)
+    require(policy.get('schema') == 'frozen_offline_structured_dog_name_policy_v4'
+            and policy.get('status') == 'FROZEN_BEFORE_CORRECTED_METRICS'
+            and policy.get('field_and_scoring_policy_unchanged') is True
+            and policy.get('newly_corrected_metrics_inspected') is False
+            and policy.get('no_new_provider_or_runtime_authority') is True,
+            'runner name policy not frozen with unchanged scope')
+    terminal = policy.get('terminal_policy', {})
+    require(terminal.get('accepted_vocabulary_unchanged') is True
+            and terminal.get('no_runner_removal_or_renormalization') is True
+            and all(str(terminal.get(code, '')).startswith('UNMAPPED;') for code in ('F', 'T', '-')),
+            'runner name policy changed terminal rules')
+    require(all(policy.get('version_and_scope', {}).get(key) is True for key in (
+        'base_v2_v3_projector_bytes_preserved', 'external_policy_hash_required',
+        'no_model_fit_calibration_selector_threshold_change', 'no_performance_based_rule',
+        'no_provider_or_runtime_authority', 'separate_v4_adapter_required')),
+        'runner name policy changed version or evaluation scope')
+    refs = [policy['population_reference'], policy['independent_review_reference'],
+            policy['source_title_policy_reference']] + policy['prior_parser_references']
+    for reference in refs:
+        require(digest(reference['path']) == reference['sha256'], 'runner name policy linked hash mismatch')
+    require(projection_policy is None or policy['source_title_policy_reference'] == projection_policy['reference'],
+            'runner name policy title policy mismatch')
+    population = read(policy['population_reference']['path'])['records']
+    expected = {r['race_id']: r['prediction_id'] for r in forecasts}
+    admitted = {r['race_id']: r['prediction_id'] for r in population}
+    require(len(population) == len(admitted) == len(expected) == len(forecasts) == 210
+            and admitted == expected and policy.get('population_races') == 210,
+            'runner name policy population differs from frozen forecasts')
+    return {'document': policy, 'reference': {'path': str(path.resolve()), 'sha256': expected_sha256},
+            'population': admitted}
+
+
+def structured_source_name(cell, box):
+    """Read the source's dog identity, keeping annotation text separate."""
+    containers = cell.select('.race-runners__name__dog')
+    require(len(containers) == 1, 'structured dog container ambiguous')
+    anchors = containers[0].find_all('a')
+    require(len(anchors) == 1, 'structured dog anchor ambiguous')
+    anchor = anchors[0]
+    href = anchor.get('href', '')
+    route = urlsplit(href)
+    match = re.fullmatch(r'/dogs/([1-9][0-9]*)/([^/\s]+)', route.path)
+    require(match is not None and not route.query and not route.fragment
+            and ((not route.scheme and not route.netloc and href.startswith('/dogs/'))
+                 or (route.scheme == 'https' and route.netloc in {'www.thedogs.com.au', 'thedogs.com.au'})),
+            'structured dog profile route invalid')
+    name = ' '.join(anchor.stripped_strings)
+    require(bool(name), 'structured dog name missing')
+    identities = cell.select('blackbook-dog[data-dog-id]')
+    require(len(identities) <= 1 and all(n['data-dog-id'] == match[1] for n in identities),
+            'structured dog id contradictory')
+    times = containers[0].select('.race-runners__name__time')
+    notes = containers[0].select('.race-runners__name__box')
+    require(len(times) <= 1 and len(notes) <= 1, 'structured dog annotation ambiguous')
+    note = notes[0].get_text(' ', strip=True) if notes else ''
+    require(not note or re.fullmatch(r'\(\s*from\s+box\s+[1-8]\s*\)', note, re.I),
+            'structured reserve note unsupported')
+    native_name = name + (' ' + note if note else '')
+    original_name = ' '.join(cell.get_text(' ', strip=True).split())
+    original_name = re.sub(r'^\d{1,2}\s*[.\):\-]\s*', '', original_name)
+    original_name = re.split(r'\s+(?:\d{1,2}\.\d{2}\s+)?T:\s+', original_name)[0]
+    return native_name, {'source_box': box, 'source_anchor_name': name, 'source_dog_href': href,
+                         'source_dog_id': match[1], 'source_blackbook_ids': [n['data-dog-id'] for n in identities],
+                         'separate_time_annotations': [n.get_text(' ', strip=True) for n in times],
+                         'source_box_note': note, 'original_flattened_name': cell.get_text(' ', strip=True),
+                         'original_parser_name': original_name,
+                         'source_name_cell_html': str(cell)}
+
+
 def check_census(forecasts, dispositions, strict, diagnostic, projections):
     expected = {r['race_id']: r['prediction_id'] for r in forecasts}
     require(len(expected) == len(forecasts), 'duplicate forecast census')
@@ -114,6 +189,13 @@ def check_census(forecasts, dispositions, strict, diagnostic, projections):
                         and observations[0]['source_hold'] is False
                         and observations[0]['charged_attempts'] == observations[0]['provider_requests'] == 1,
                         'V3 fallback requires original READY completion without hold')
+            if projection.get('runner_name_policy_fallback'):
+                observations = d.get('completion_observations', [])
+                require(not reviewed and len(observations) == 1
+                        and observations[0]['status'] == 'RETAINED_RAW_RESULT_IDENTITY_UNVERIFIED'
+                        and observations[0]['source_hold'] is False
+                        and observations[0]['charged_attempts'] == observations[0]['provider_requests'] == 1,
+                        'V4 fallback requires original READY completion without hold')
     for r in strict + diagnostic:
         require(r['result_evidence'] == selected[r['race_id']], 'scored evidence differs from selected projection')
     return {'status': 'PASS', 'forecasts': len(expected), 'strict_races': len(ids[0]),
@@ -125,7 +207,7 @@ def token(value):
     return re.sub('[^A-Z0-9]', '', value.upper())
 
 
-def source_rows(raw):
+def source_rows(raw, structured_names=False):
     """Independently extract every result-table row; never silently skip one."""
     from bs4 import BeautifulSoup
     soup = BeautifulSoup(raw, 'html.parser')
@@ -133,6 +215,9 @@ def source_rows(raw):
             'source result table missing or ambiguous')
     rows = []
     for node in soup.select('table.race-runners--result tr.race-runner'):
+        if structured_names:
+            require(all(len(node.select('td.race-runners__' + name)) == 1
+                        for name in ('box', 'name', 'finish-position')), 'structured source runner cell ambiguous')
         cells = [node.select_one('td.race-runners__' + name) for name in ('box', 'name', 'finish-position')]
         require(all(c is not None for c in cells), 'source runner cell missing')
         rugs = cells[0].find_all(attrs={'name': re.compile(r'^rug_[0-9]{1,2}$')})
@@ -141,6 +226,8 @@ def source_rows(raw):
         name = ' '.join(' '.join(cells[1].stripped_strings).split())
         name = re.sub(r'^\d{1,2}\s*[.\):\-]\s*', '', name)
         name = re.split(r'\s+(?:\d{1,2}\.\d{2}\s+)?T:\s+', name)[0]
+        if structured_names:
+            name, _ = structured_source_name(cells[1], box)
         status = ' '.join(cells[2].stripped_strings).upper()
         match = re.fullmatch(r'([1-9]|10)(ST|ND|RD|TH)', status)
         require(bool(name) and (match or status in {'SCR', 'L/SCR', 'LSCR', 'DNF', 'FELL', 'DISQ'}),
@@ -201,7 +288,7 @@ def check_declared_identity(soup, expected_url, required_rule=None, *, projectio
     return 'exact_source_title_venue_date_race_v1'
 
 
-def check_source_identity(record, expected_url, projection_policy=None):
+def check_source_identity(record, expected_url, projection_policy=None, runner_name_policy=None):
     require(record.get('official_runner_identity_observed') is True, 'strict source identity missing')
     evidence = record['result_evidence']
     require(evidence.get('runner_name_origin') == 'SOURCE_NATIVE_OFFICIAL_HTML', 'circular source runner names')
@@ -209,13 +296,29 @@ def check_source_identity(record, expected_url, projection_policy=None):
     source_identity = evidence['races'][0].get('source_identity', {})
     required_rule = source_identity.get('identity_semantics')
     fallback = evidence.get('projection_policy_fallback')
+    name_fallback = evidence.get('runner_name_policy_fallback')
+    if name_fallback:
+        require(runner_name_policy is not None, 'V4 result requires external runner name policy')
+        require(record['race_id'] in runner_name_policy['population']
+                and record['prediction_id'] == runner_name_policy['population'][record['race_id']],
+                'V4 result outside frozen policy population')
+        require(isinstance(name_fallback, dict) and name_fallback.get('status') == 'QUALIFIED'
+                and str(name_fallback.get('original_parser_failure', '')).startswith('official_runner_name_changed_at_box:')
+                and name_fallback.get('runner_name_policy_reference') == runner_name_policy['reference'],
+                'V4 result runner name policy reference mismatch')
+        require(not evidence.get('reviewed_reclassification')
+                and evidence.get('original_transport_hold_preserved') is not True,
+                'V4 fallback cannot supersede held receipt')
     if required_rule == V3_IDENTITY or fallback:
         require(required_rule == V3_IDENTITY and projection_policy is not None,
                 'V3 result lacks externally pinned projection policy')
         require(record['race_id'] in projection_policy['population']
                 and record['prediction_id'] == projection_policy['population'][record['race_id']],
                 'V3 result outside frozen policy population')
-        require(isinstance(fallback, dict) and fallback.get('status') == 'QUALIFIED'
+        accepted_title_trail = isinstance(fallback, dict) and (fallback.get('status') == 'QUALIFIED'
+            or (name_fallback and fallback.get('status') == 'REJECTED'
+                and fallback.get('fallback_failure') == name_fallback.get('original_parser_failure')))
+        require(accepted_title_trail
                 and fallback.get('original_parser_failure') == 'source_declared_race_identity_missing_or_mismatched'
                 and fallback.get('projection_policy_reference') == projection_policy['reference']
                 and source_identity.get('projection_policy_reference') == projection_policy['reference'],
@@ -224,6 +327,12 @@ def check_source_identity(record, expected_url, projection_policy=None):
                 and evidence.get('original_transport_hold_preserved') is not True,
                 'V3 fallback cannot supersede held receipt')
     provenance = evidence['response_provenance']
+    if name_fallback:
+        require(provenance.get('runner_name_policy_reference') == runner_name_policy['reference'],
+                'V4 response provenance policy reference mismatch')
+    require(bool(name_fallback) == bool(provenance.get('runner_name_policy_reference'))
+            == bool(evidence['races'][0].get('structured_runner_name_witnesses')),
+            'V4 structural name evidence missing fallback or policy')
     if required_rule == V3_IDENTITY:
         require(provenance.get('projection_policy_reference') == projection_policy['reference'],
                 'V3 response provenance policy reference mismatch')
@@ -235,7 +344,12 @@ def check_source_identity(record, expected_url, projection_policy=None):
     require(metadata['response_sha256'] == provenance['response_sha256'] and metadata['http_status'] == 200
             and metadata['requested_url'] == metadata['final_url'] == expected_url, 'source metadata mismatch')
     # Membership and scope are checked by run before this function opens a body.
-    soup, rows = source_rows(Path(provenance['response_path']).read_bytes())
+    soup, rows = source_rows(Path(provenance['response_path']).read_bytes(), structured_names=bool(name_fallback))
+    if name_fallback:
+        witnesses = [structured_source_name(node.select_one('td.race-runners__name'), row['box_number'])[1]
+                     for node, row in zip(soup.select('table.race-runners--result tr.race-runner'), rows)]
+        require(witnesses == evidence['races'][0]['structured_runner_name_witnesses'],
+                'V4 projected dog identity witnesses differ from independent source')
     identity_rule = check_declared_identity(soup, metadata['requested_url'],
         required_rule, projection_policy=projection_policy, race_id=record['race_id'])
     if identity_rule == V3_IDENTITY:
@@ -274,7 +388,8 @@ def check_source_identity(record, expected_url, projection_policy=None):
             'forecast_runners': len(evidence['runners']), 'identity_rule': identity_rule}
 
 
-def run(baseline, integration, completed, projection_policy_path=None, projection_policy_sha256=None):
+def run(baseline, integration, completed, projection_policy_path=None, projection_policy_sha256=None,
+        runner_name_policy_path=None, runner_name_policy_sha256=None):
     # This audits allocation before decoding any acquired result body, then all
     # immutable forecasts, metrics, calibration, dates, intervals and selectors.
     result = independent.run(baseline, completed)
@@ -290,6 +405,10 @@ def run(baseline, integration, completed, projection_policy_path=None, projectio
             'projection policy path and hash must be provided together')
     policy = (load_projection_policy(projection_policy_path, projection_policy_sha256, forecasts, expected_urls)
               if projection_policy_path is not None else None)
+    require((runner_name_policy_path is None) == (runner_name_policy_sha256 is None),
+            'runner name policy path and hash must be provided together')
+    name_policy = (load_runner_name_policy(runner_name_policy_path, runner_name_policy_sha256, forecasts, policy)
+                   if runner_name_policy_path is not None else None)
     records = {kind: read(completed / f'{kind}-dataset.json')['records'] for kind in ('strict', 'diagnostic')}
     for kind, rows in records.items():
         dataset = read(completed / f'{kind}-dataset.json')
@@ -300,9 +419,12 @@ def run(baseline, integration, completed, projection_policy_path=None, projectio
         require(len({(r['race_id'], r['model_version']) for r in rows}) == len(rows), 'duplicate scored record')
     result['integration_census'] = check_census(forecasts, read(integration / 'integration-dispositions.json'),
         records['strict'], records['diagnostic'], read(integration / 'integrated-result-projection.json')['records'])
-    result['source_identity'] = [check_source_identity(r, expected_urls[r['race_id']], policy) for r in records['strict'] if r['model_version'].endswith(':full')]
+    result['source_identity'] = [check_source_identity(r, expected_urls[r['race_id']], policy, name_policy)
+                                 for r in records['strict'] if r['model_version'].endswith(':full')]
     if policy is not None:
         result['projection_policy_reference'] = policy['reference']
+    if name_policy is not None:
+        result['runner_name_policy_reference'] = name_policy['reference']
     for kind in records:
         for row in records[kind]:
             for ref in row['result_artifacts']:
@@ -318,9 +440,12 @@ def main():
         parser.add_argument('--'+name, required=True, type=Path)
     parser.add_argument('--projection-policy', type=Path)
     parser.add_argument('--projection-policy-sha256')
+    parser.add_argument('--runner-name-policy', type=Path)
+    parser.add_argument('--runner-name-policy-sha256')
     args = parser.parse_args()
     result = run(args.baseline_root, args.integration, args.completed,
-                 args.projection_policy, args.projection_policy_sha256)
+                 args.projection_policy, args.projection_policy_sha256,
+                 args.runner_name_policy, args.runner_name_policy_sha256)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True, allow_nan=False)+'\n')
     print(json.dumps({'status': result['status'], 'output': str(args.output)}))

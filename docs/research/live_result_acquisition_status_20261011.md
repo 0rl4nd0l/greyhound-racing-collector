@@ -1,6 +1,38 @@
 # Approved July result acquisition — execution status
 
-## Current recovery state (11 October, 12:19 UTC)
+## Current evaluated checkpoint and interrupted handoff (12 October, 00:01 AEDT)
+
+The complete 23-response census is evaluated under the unchanged benchmark and selectors: **11 fully qualified races, six weak diagnostics, six other unqualified responses and 187 unacquired races**. The original 210 forecasts, every consumed request and every selection/pass remain preserved. Independent source/metric review and separate root reproduction pass. Full-shadow log-loss difference is −0.014582, Brier difference +0.002841, and top accuracy 3/11 for both shadow and market across only two dates. Production retained the market baseline. All 131 later selector outcomes remain missing; no advantage or profitability is established. See the [current decision report](live_reconciliation_decision_20261011.md).
+
+A reviewed offline structural parser separates an `NBT` timing badge from the official dog-profile name. It recovers six qualifications in this census while preserving original name-mismatch failures; two repaired names still fail terminal completeness. It rejects actual name changes and malformed profile links. The twelve unqualified responses comprise eight races with 20 unresolved original-runner terminal cells and four Gardens races whose sponsored display title is outside the frozen pre-race title policy. No field change has been established. Exact gaps and derived corrections are in `acquisition/observed-continuation-04/`.
+
+At 12:59:10 UTC / 23:59:10 AEDT on 11 October, the scheduled night wrapper stopped PID710059 and failed with `CONSUMED_REQUIRES_EXPLICIT_ROOT_RECONCILIATION` / `ValueError`. Independent read-only checks found the collector inactive, no kernel campaign-lock owner, source state OPEN, and 23 retained completions (22 ordinary responses plus the original held first response). No replacement admission or restarted collector is accepted. The launch interlocks and original consumed handoff remain; this is a stopped service, not a successful night transition.
+
+Offline reproduction identifies two observation assumptions: an optional native-publication lock has never existed in this recovered package, and retained native health remains HOLD despite an absent process, empty children and completed dispatches. The sole operational owner is preparing narrow reconciliation with exact quiescence proof. Neither finding permits overwriting health, closing the native lease, resetting requests, or replaying the consumed wrapper unchanged. Existing user approval covers reviewed safe recovery; no repeated approval request is needed. Live forecast readiness and watcher restoration remain separate unverified claims.
+
+Current references: `review/actual-continuation-04-independent-review.json`, `review/structured-dog-name-v4-implementation-independent-01.json`, `review/structured-dog-name-v4-root-validation-01.json`, `review/actual-night-handoff-terminal-independent-01.json`, and `review/actual-night-handoff-failure-diagnosis-01.json`. The accepted offline admission list remains `acquisition/verified-admission-bindings-02.json`; a later runtime binding requires its own actual independent verification before decoding its responses. **235 focused tests pass**, with tested hashes unchanged.
+
+```bash
+bash /mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-continuation-04/reproduce.sh /tmp/july-benchmark-checkpoint04
+```
+
+All sections below are historical snapshots. Their contemporaneous counts and pending actions are preserved, not current operational claims.
+
+## Historical verified continuation snapshot (11 October, 12:37:57 UTC)
+
+The owner completed the first controlled resume after reconciling the interrupted unit update. Independent checks authenticate actual PID710059/start28263752, the exact process/executable/arguments/configuration,13 source roles, successor admission `84147c6e…`, and kernel campaign-lock ownership. The original native lease, approval,210-race scope, request ceilings and first held consumption remain preserved. The UI is unchanged. Current forecast readiness still reports inherited `HOLD/UPSTREAM_TEMPORARY_UNAVAILABLE`; successful July result retention does not establish healthy live forecasting. The watcher and overnight handoff require their separate operational checks.
+
+The whole-census snapshot contains **three consumed intents and completions,207 unattempted races**. Integration, the unchanged benchmark, independent source/metric review, separate root replay and the published reproduction command all pass: **two strict races, seven weak diagnostics and201 absent joins**. HEA July17 R8 is the first real V3 title-policy qualification; HEA R7 retains its exact reviewed V2 correction. HEA R9 remains incomplete: original boxes2,4,5,7 have literal `-` finish cells without an explicit terminal status in the retained source. Both investigators confirmed this is missing source evidence, not a discarded parser label. No retry or invented finish was used.
+
+On the two strict races (16 runners, one date), full-shadow log loss1.395678 versus market1.421390 gives−0.025711; Brier difference−0.018357. Top credit is1/2 for both. HEA R7 worsens and R8 improves, so improvement is concentrated in one race; one date provides no estimable uncertainty. The July operating policy remains the market baseline. All131 later selector forecasts still have no matched outcomes and all frozen selections/passes remain unchanged. The acquisition lane continues separately; these counts describe the fixed snapshot, not a live counter.
+
+Current snapshot outputs are `acquisition/observed-continuation-02/`. Review: `review/actual-continuation-02-independent-review.json`; runtime acceptance: `review/actual-july-admission03-runtime-independent-01.json`. The external accepted binding list is `acquisition/verified-admission-bindings-02.json`; it preserves both earlier bindings. Reproduce this actual snapshot into a new directory:
+
+```bash
+bash /mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-continuation-02/reproduce.sh /tmp/july-continuation-benchmark
+```
+
+## Historical recovery state (11 October, 12:19 UTC)
 
 The owner executed the reviewed correction of the false source hold. Independent verification confirms that only the current source phase changed from STOP to OPEN; all6,440 operations, four denial records, one recovery attempt and the campaign ledger remain unchanged. The original HEA R7 intent, held completion, response manifest and one consumed request are preserved. This corrects the demonstrated false positive; it does not retry that race, reset a budget or remove a genuine provider restriction.
 
@@ -8,7 +40,7 @@ The collector remains safely paused with its native ownership lease preserved. S
 
 Evidence: `review/actual-july-pause-independent-01.json` and `review/actual-july-source-cas-independent-01.json`. The execution trail retains the rejected preflights: a timer was incorrectly queried for a service process property, and the source guard compared the working directory with the unit-install directory. Both were corrected and independently tested; the latter was replayed against actual retained systemd properties and distinct source/unit directories before source mutation.
 
-## Post-update activation failure (11 October, 12:22 UTC)
+## Historical post-update activation failure (11 October, 12:22 UTC)
 
 The exact two-line successor admission update was written to the service definition, but its post-update guard rejected activation before any resume intent or start. The collector remains inactive with no process or children. The consumed install intent and failed/uncertain terminal are preserved; no retry, rollback or additional provider request occurred.
 
