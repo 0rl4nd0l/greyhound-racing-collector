@@ -52,3 +52,29 @@ OPENBLAS_NUM_THREADS=1 /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-opera
 ```
 
 Four focused synthetic tests verify identity/missing-price rejection, duplicate boxes, bounded fitting without future-label dependence, and race metrics/tie credit. No provider requests, protected outcomes, runtime changes or model promotion occurred.
+
+## Completed recency and dynamic correction addendum
+
+The fixed dynamic experiment's exact hashed development/later probabilities were joined by race, guide box and date, with complete field sums and identical membership enforced. Fourteen further scalar fits used the same six expanding dates plus final fit for each of the two predeclared streams. There was no new search, base predictor refit or changed market-control fit.
+
+| Same975 races | Log loss | Brier | Fractional top-one accuracy |
+|---|---:|---:|---:|
+| Market-only calibration, unchanged |1.503299|0.708087|42.15%|
+| Market + recency |1.503271|0.708228|41.33%|
+| Market + dynamic ability |1.503279|0.708216|41.44%|
+
+Recency's incremental NLL is−0.000028,95% date interval[−0.001036,+0.000947]; dynamic is−0.000020,[−0.001035,+0.000955]. Both leave-one-date-out ranges cross zero. Dynamic helps498 and hurts477 races; recency helps496 and hurts479. Both worsen Brier and top-one accuracy. Earlier568 prequential races also worsen:1.520008 recency and1.519910 dynamic versus1.517552 market calibration. Dynamic therefore supplies no demonstrated improvement beyond simple recency or this calibrated SP proxy. **Reject these tested corrections as challengers.** This completes35 small meta optimizer executions, with zero scientific retries.
+
+All joined probabilities,14 fit intents/results, source/input hashes, scores and intervals are in the separate `extension-01` directory. The original `run-01` was preserved. The committed implementation also guards against reusing a consumed fitting output directory.
+
+```bash
+OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 MKL_NUM_THREADS=1 \
+  /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-python311-20260803-9d58f340/bin/python \
+  scripts/run_retrospective_sp_benchmark.py --output /path/to/new-extension \
+  --base /path/to/base-output \
+  --dynamic /mnt/tenn-nvme2/tenn/greyhound-dynamic-form-20261011-evidence/run-01
+OPENBLAS_NUM_THREADS=1 /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-operator-ui-r3-python311-20260803-9d58f340/bin/python \
+  scripts/summarize_sp_pairing.py /path/to/new-extension
+```
+
+Source-pinning detail: the base run's protocol and every fit intent preceded optimization, but its source-hash capture was added after execution; `source-review-reference.json` states that limitation rather than claiming a contemporaneous source pin. The numerical fitting/extraction implementation is unchanged in commit07128076 and all base probabilities were replayed exactly. The dynamic extension recorded the executing source hash before fitting. This does not affect scientific exposure: both blocks were already development data.
