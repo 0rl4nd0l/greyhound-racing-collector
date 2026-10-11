@@ -1,4 +1,61 @@
 {
+  "acquisition_continuation": {
+    "artifacts": [
+      {
+        "bytes": 648,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition-authority.APPROVED.json",
+        "sha256": "bcf72b212ed6a45ab648ed1ab3bbc71913f627a22ed22b982196f53b8597d931"
+      },
+      {
+        "bytes": 4548,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/acquisition-independent-check.json",
+        "sha256": "4f62135bd748dae3daac3c3b3e5ce1adcdddb87b7c39f6171fd2fc344f1f6273"
+      },
+      {
+        "bytes": 537,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/acquisition-prior-alignment-replay.json",
+        "sha256": "1ee76b2ef12df95a04fbf8de3772675f483400290633ddd2047a200418b948e3"
+      },
+      {
+        "bytes": 4793,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/owner-admission-inspection.json",
+        "sha256": "d0700071d4d94b751c28f0a69d23460924626e5fa6bd4c5dda06219c37a8d261"
+      },
+      {
+        "bytes": 120796,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/queue.INITIAL.json",
+        "sha256": "42ffb8ac5f150d1a049d3e0c513a5d34bc23b5429514d0ab898119cb9a1f3aad"
+      },
+      {
+        "bytes": 122,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/responses.NOT_STARTED.json",
+        "sha256": "9318c37a3d70d03d45a6ca9af00c76b97dd830b6c21a8d0fe40ba800e5734b28"
+      },
+      {
+        "bytes": 467,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/events.jsonl",
+        "sha256": "dc8e61daa2948a861ce9c642e7983c511c269a86e848c8857f63eecde04fefb3"
+      },
+      {
+        "bytes": 18625,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/projected-not-started/acquired-result-dispositions.json",
+        "sha256": "3673bf7adb63cfe11136e95a2a58d66e9c84ac70a461e08a6adb8af277e6dd58"
+      },
+      {
+        "bytes": 7654,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/projected-not-started/acquired-result-projection.json",
+        "sha256": "12fbc4497d2dfc91a40f6d57ea5c9bb72cbd652cb1bdffff66df2ff2458e5836"
+      }
+    ],
+    "independent_review": "PASS",
+    "max_requests": 210,
+    "new_official_responses": 0,
+    "requests_consumed": 0,
+    "schema": "live_result_acquisition_artifact_index_v1",
+    "status": "APPROVED_WAITING_OWNER_ADMISSION",
+    "subtests_passed": 4,
+    "tests_passed": 95
+  },
   "artifacts": [
     {
       "bytes": 2737,

@@ -52,3 +52,13 @@ python3 scripts/check_live_reconciliation.py \
   --result-root /mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/results \
   --output /tmp/live-reconciliation-independent-check.json
 ```
+
+## Approved acquisition follow-up
+
+The user's subsequent approval binds the exact prepared request hash and all 210 distinct race identities/official URLs. Independent checks verify 13 referenced hashes, the 210-attempt ceiling, one attempt per race, no automatic retries or redirects, concurrency one and minimum 60-second spacing. The initial queue and append-only event agree on zero consumed requests, with execution disabled while owner admission is pending. This approval does not reopen an old window or release a different population.
+
+A separate read-only kernel check confirmed the existing campaign lock remained held by PID 2848247 on inode 27727813 through descriptor 5. The retained owner audit distinguishes approved result purpose from an uninstalled delegation route. The reviewer made no provider request, admission call, lock acquisition or source-control mutation. Ownership and source state are momentary observations requiring reverification before execution.
+
+The prepared offline HTML projector retains independently sourced names, exact response/metadata hashes and terminal statuses, rejects changed original fields and scratches, and preserves DNF/FELL/DISQ without inventing finishing positions. It preserves native reserve-remapping evidence and nonwinning ties. Review found and repaired two false-qualification paths: an unparsed extra official runner could previously be silently dropped, and an explicit `trial=true` canonical URL was not distinguished from the authorised race. Both now have regression coverage. All 33 focused projector/alignment/reconciliation tests pass, including 18 new projector tests. These are offline synthetic checks; no acquired official responses or additional evaluable races are claimed.
+
+Approval, zero-consumption, ownership and projector review evidence is retained in `review/acquisition-independent-check.json` with hashes of the reviewed files.
