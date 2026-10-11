@@ -1,5 +1,17 @@
 # Approved July result acquisition — execution status
 
+## Installed recovery and scheduled acquisition update (11 October)
+
+The collector has restarted under the approved recovery. Independent checks confirm PID 544848, source `c7f4e0bd`, the intended interpreter/configuration, the genuine campaign lock and July admission hash `df8eedd9410e83e0d1108796314521cf849fe605e2631461ade8d8c8edcf814a`. The old ownership record and all 923 partial-package files were preserved. Native preparation and installed source qualification passed without provider requests. The operator subsequently verified a fresh pre-jump prediction; that new October forecast is outside this frozen July benchmark.
+
+July acquisition is installed but has not yet dispatched. The 10:10 UTC schedule inspection finds fourteen remaining races with overlapping protected lead-in windows. The earliest schedule-only candidate gap is **after 22:04 AEDT on 11 October**. This is not a guaranteed dispatch time: the collector must also be idle, the schedule fresh, the shared source open/inactive and the existing spacing/ownership gates satisfied. The earlier October 12 start placeholder is not a controlling restriction. No gate is bypassed.
+
+The actual immutable request census in `acquisition/execution-snapshot-01/census.json` contains zero intents and zero completions. The new integration CLI, frozen rerun and independent acquired-result checker were executed against this installed admission and census: **PASS; 210 forecasts preserved, zero strict races, nine original diagnostic races, 201 missing joins, unchanged selectors and passes, no fitting**. This snapshot is a real empty request census, not a synthetic acquisition or a new performance result. All outputs and the independent check are retained under that snapshot directory.
+
+An offline subagent is actively monitoring only the exact July metadata directory. On the first real completion it will create a fresh census, integrate the response, rerun the frozen analysis and independently verify it, then notify the root task. It will also notify the root on a source hold, changed admission, or no completion by 23:00 AEDT. It cannot fetch or alter runtime/provider accounting. Automatic recovery-watcher restoration and the overnight handoff remain separately tracked by the sole operational owner; they are not implied by collector startup.
+
+Acceptance references are `review/owned-resolution-execution-independent-check.json`, `review/native-preparation-execution-independent-check.json`, `review/authorized-july-admission-independent-check.json`, `review/installed-july-runtime-independent-check.json`, `service-activation/july-scheduling-status-01.json`, and `acquisition/execution-snapshot-01/independent-check.json` in the evidence root. The commands below reproduce the snapshot when supplied its census, the installed admission and fresh output directories.
+
 ## Service approval and offline integration update (11 October, 09:18 UTC)
 
 The user subsequently approved safe collector recovery and activation of the reviewed July interface. That approval is retained at `service-activation/user-approval.json`; it supersedes the earlier restriction on service changes for this narrow recovery. Operational thread `01a11a4d-08df-7c71-b9c1-d092513b8b2b` is the sole runtime/provider owner. The audit process makes no provider requests or service changes.

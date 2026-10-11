@@ -1,6 +1,6 @@
 # Retained live forecast reconciliation — PR #231 continuation
 
-> Subsequent user approval covers the prepared210-result request. [Current acquisition status](live_result_acquisition_status_20261011.md): allowance unconsumed, pending genuine operational-owner admission; offline response qualification implemented and tested. The historical request rationale below remains as the decision record.
+> Subsequent user approval covers the prepared210-result request and safe recovery/interface activation. [Current acquisition status](live_result_acquisition_status_20261011.md): collector and exact July admission independently verified; zero attempts in the latest census, awaiting a protected scheduling gap after22:04AEDT on11October. The offline integration, frozen rerun and independent checker have executed successfully; the scorecard below is unchanged. The historical request rationale remains as the decision record.
 
 **Model advantage remains inconclusive.** Retained archives recover two result joins, but reveal a source-name retention defect affecting all nine joined races. None yet proves the complete decision-time comparison. The nine-race winning-box diagnostic is slightly worse than the market on both proper losses. No model or selector was fitted or changed.
 

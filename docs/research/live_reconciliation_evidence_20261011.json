@@ -339,6 +339,87 @@
     "subtests_passed": 4,
     "unsuccessful_races": 221
   },
+  "installed_runtime_and_empty_census": {
+    "artifacts": [
+      {
+        "bytes": 2901,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/owned-resolution-execution-independent-check.json",
+        "sha256": "cfd271411913ba24c16cce66e89082b12ad9266fb898c3b0ca2c61ff24780468"
+      },
+      {
+        "bytes": 2002,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/native-preparation-execution-independent-check.json",
+        "sha256": "2e90132184679edcd1b8de293b93010e718983ca2426bfe6a1f6822e6ef76226"
+      },
+      {
+        "bytes": 7399,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/authorized-july-admission-independent-check.json",
+        "sha256": "6acd6ae7cffb26a88674ee38404ac2132d23e2442eeb01a6b402d7e21acc1ef3"
+      },
+      {
+        "bytes": 2589,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/installed-july-runtime-independent-check.json",
+        "sha256": "b60472c3bd87fbc0c9c884ff2f6c96789080ded78504b30e5ea6abba205b8cb2"
+      },
+      {
+        "bytes": 1744,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/service-activation/native-preparation-execution-01/prepared.json",
+        "sha256": "8a91fa13053e68fdac3d608f51a404bef12cda1ce7cca115cd3d22b3e010ed00"
+      },
+      {
+        "bytes": 8938,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/service-activation/july-authorized-controls-01/owner-admission.AUTHORIZED.json",
+        "sha256": "df8eedd9410e83e0d1108796314521cf849fe605e2631461ade8d8c8edcf814a"
+      },
+      {
+        "bytes": 15398,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/service-activation/runtime-verification-01/verification.json",
+        "sha256": "a28d2f5015b4689156cd75242805469c76424b5dfd3ff092be2672d57af35933"
+      },
+      {
+        "bytes": 2014,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/service-activation/owner-status-04.json",
+        "sha256": "c0073ad63e7295250d37aaa3d4bfbdb76c133cf81d5f44e2513c918a9ac994ec"
+      },
+      {
+        "bytes": 1577,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/service-activation/july-scheduling-status-01.json",
+        "sha256": "e1567f73dd73e84e181d8784aada251ce9438d8ba1acb484d92c313e68b30fc8"
+      },
+      {
+        "bytes": 635,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/execution-snapshot-01/census.json",
+        "sha256": "b789afa2b107224f70f87add8281c9e521764a4130f5580cec12145ece09144e"
+      },
+      {
+        "bytes": 400,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/execution-snapshot-01/integrated/summary.json",
+        "sha256": "1fa08e309696346fa8c60f2aa9c80c5640c3f242c6f29a13d48483a5fcf76127"
+      },
+      {
+        "bytes": 573,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/execution-snapshot-01/completed/summary.json",
+        "sha256": "54fdad5689be58c2fe7f355a577bada10040b374f71b583c6e040321c91914a6"
+      },
+      {
+        "bytes": 31611,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/execution-snapshot-01/independent-check.json",
+        "sha256": "334d498e245d24715ff3eaa207dfd3d3b6ac52b7d978a2f76e184352906c76d5"
+      }
+    ],
+    "at": "2026-10-11T10:16:49.092939+00:00",
+    "automatic_recovery_watcher_restoration": "SEPARATE_OWNER_ACCEPTANCE_PENDING",
+    "diagnostic_races": 9,
+    "first_schedule_only_gap_after": "2026-10-11T22:04:00+11:00",
+    "guaranteed_dispatch": false,
+    "offline_monitor_agent": "/root/reconcile_results",
+    "offline_monitor_terminal_callback_deadline": "2026-10-11T12:00:00Z",
+    "schema": "july_installed_runtime_and_empty_census_snapshot_v1",
+    "snapshot_completions": 0,
+    "snapshot_intents": 0,
+    "status": "INSTALLED_INDEPENDENTLY_VERIFIED_WAITING_PROTECTED_SCHEDULE_GAP",
+    "strict_races": 0
+  },
   "parent_commit": "879e89f962b055e6b616a5ee2a8e7145e60b6cba",
   "schema": "live_reconciliation_artifact_references_v1",
   "service_activation_and_integration_preparation": {
