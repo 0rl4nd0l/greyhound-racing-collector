@@ -1,6 +1,6 @@
 # Dynamic ability: completed three-arm comparison, 11 October 2026
 
-**Decision: reject this candidate as a replacement for the frozen 65-feature model.** Opponent adjustment modestly improves an otherwise identical recency representation, but all three added-state models predict substantially worse than the frozen baseline. No parameter search, follow-up fit, model promotion or live change followed this negative result. The result concerns this parsimonious sequential representation on this sparse corpus; it does not establish that every dynamic ability model is ineffective.
+**Decision: reject this tested candidate.** Opponent adjustment modestly improves an otherwise identical recency representation, but all three added-state models predict substantially worse than the frozen baseline. Independent review subsequently required the fixed replacement control below to complete the user's literal replacement question. Both negative experiment families remain reported. No parameter search, model promotion or live change followed. The result concerns this parsimonious sequential representation on this sparse corpus; it does not establish that every dynamic ability model is ineffective.
 
 ## Actual executed comparison
 
@@ -82,3 +82,17 @@ OPENBLAS_NUM_THREADS=1 "$PY" -B scripts/verify_dynamic_ability_experiment.py /ne
 ```
 
 No provider requests, live owner changes, service modifications, protected-label access or deployments occurred. The smallest data improvement that would enable a stronger version of this particular experiment is an authorised contiguous earlier complete-race warm-up with native identities and qualified pre-race fields; this would reduce state cold-start and support-distribution drift. It is a data requirement, not an acquisition request made by this implementation. No new dynamic challenger is recommended from these results.
+
+## Fixed replacement scope repair
+
+Independent review correctly distinguished addition from replacement. The amendment in `dynamic_ability_plan_20261011.md` was committed before three further fits. Six semantically chosen mean/rate features were removed and the identical six state summaries inserted, leaving65 inputs in each arm. All other settings, histories, populations and preprocessing boundaries stayed fixed. This amendment was made after the additive outcomes were known and is explicitly exploratory; no alternative removal sets or constants were tried.
+
+| Replacement representation | Development LL | Later LL | Later Brier | Correct /975 |
+|---|---:|---:|---:|---:|
+| Uniform history |1.788453|1.827099|0.825321|258|
+| Recency weighting |1.787756|1.813093|0.819936|258|
+| Opponent-adjusted dynamic |1.786856|1.810945|0.819081|259|
+
+Dynamic minus recency is−0.002148, descriptive date-bootstrap95% interval[−0.002989,−0.001246]. It reverses on September9 and29. Dynamic minus frozen baseline is+0.060034[+0.042558,+0.078457], worse on every later date. Replacement therefore does not rescue the candidate. Adding this replacement forecast to SP yields1.503206 versus calibrated market1.503299, interval for the paired difference[−0.000992,+0.000751]; Brier and top accuracy worsen, and earlier prequential LL1.519405 is worse than market calibration1.517552.
+
+All three replacement fits converged (231/240/238 iterations), with zero failed or replacement optimizer attempts. Together the additive and replacement families use six predictor fits. Evidence: dynamic `replacement-01/` and market `replacement-extension-01/`, retaining the same files as the original runs. No-fit numerical replay is below7.5e−16. Reproduction uses the command above with `--feature-mode replacement`; no more fitting is planned under this task.
