@@ -16,7 +16,7 @@ FLOCK ADVISORY WRITE 2848247 103:01:27727813 0 EOF
 
 `/proc/2848247/fd/5` points to `/home/l4nd0/greyhound-collector-campaign-20260923/owner.lock`, inode 27727813. No conflict probe or new descriptor lock attempt was needed. The installed `race_collection/persistent_collector.py` opens and exclusively locks this file at lines 550–551 before its long-running loop, preserving ownership even during `WAITING_FOR_RACE`.
 
-At the inspected health snapshot, `2026-10-11T05:22:14.052813+00:00`, the collector was `DISCOVERING`, had an `inventory` child, and reported `result_access: false`. This is a snapshot rather than an enduring claim; process health and active children may change independently of this audit.
+At the inspected health snapshot, `2026-10-11T05:24:20.496869+00:00`, the collector was `HOLD`, had an `odds` child, and reported `result_access: false`. This is a snapshot rather than an enduring claim; process health and active children may change independently of this audit.
 
 ## Source and result interfaces
 
