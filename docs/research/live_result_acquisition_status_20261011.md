@@ -1,6 +1,14 @@
 # Approved July result acquisition — execution status
 
-## Current execution: verified collector restart (12 October, 01:49 AEDT)
+## Current result hold and evaluated checkpoint (12 October, 02:39 AEDT)
+
+The fixed 50-response census supports **40 strict races, nine terminal-incomplete races, one confirmed original-field scratch and 160 unacquired races**. Eight qualifications were recovered through exact sealed pre-race inactive-field and reserve evidence; the forecast probabilities are unchanged. Independent source, chronology and arithmetic reviews pass. Full-shadow log-loss difference is +0.000513 and Brier +0.005193; top accuracy is 17/40 for both model and market. The installed policy retained the market baseline. All 131 later selector outcomes remain missing.
+
+Subsequent metadata shows **65 consumed attempts and 65 completion records**, including a new `TERMINAL_UNCERTAIN_ATTEMPT_NO_RETRY` at 15:33:51 UTC / 02:33:51 AEDT: `TRANSPORT_OR_RETENTION_ReadTimeout`, `source_hold=true`. This is not a retained result or a successful closure. No retry is authorized by its consumed state. The complete 65-attempt hold checkpoint is being reconciled offline under unchanged rules. The sole operational owner has been notified; offline agents cannot clear the hold or fetch.
+
+Current fixed-scorecard evidence is `acquisition/observed-continuation-05/corrected-v6/`, with independent reviews `review/actual-continuation-05-corrected-v6-independent-review.json` and `review/actual-continuation-05-sensitivity-and-gaps-independent-review.json`. All original responses, failures, consumed requests and selections remain intact. See the [decision report](live_reconciliation_decision_20261011.md).
+
+## Earlier execution: verified collector restart (12 October, 01:49 AEDT)
 
 The consumed handoff continuation completed at **01:45:21 AEDT / 14:45:21 UTC**. The original lease closed after its expiry; its original failure, intent, other ledger records and all request consumption remain preserved. Independent inspection verifies collector PID838033/start29047228, exact process/configuration/source identity, 13 source roles and genuine campaign-lock ownership. It reuses unchanged July admission `84147c6e…`; the externally accepted `verified-admission-bindings-02.json` remains valid. The separate prospective-study delegation is outside this benchmark and grants no access to its outcomes.
 
@@ -8,7 +16,7 @@ At the fixed 01:49 AEDT runtime inspection there are **25 consumed requests and 
 
 Acceptance: `review/actual-completed-handoff-successor-independent-01.json` (SHA256 `a2a82ecd4c57e592b2ce5fde424460632be1614152e9166584d488adb1fd7604`). Completion: `service-activation/night-handoff-continuation-runtime-01/runtime-wrapper-01/completion.json`. Source controls, the exact 210-race scope and the single-request-per-race accounting are unchanged. The offline monitor/reviewer cannot fetch or alter runtime. Existing approval covers continuation; no new approval request is pending.
 
-## Fixed evaluated checkpoint (23 responses; 12 October, 00:01 AEDT)
+## Historical evaluated checkpoint (23 responses; 12 October, 00:01 AEDT)
 
 **Historical runtime update, 12 October 00:37 AEDT:** the continuation service is installed and independently verified as PID775322/start28611821. Exact process, interpreter, arguments, working directory, cgroup, unit and 43 referenced artifacts match the reviewed controls. It is waiting for the original lease expiry at **01:45 AEDT / 14:45 UTC**, with a hard end at 02:16 AEDT / 15:16 UTC. The original collector remains absent, its native lease remains OPEN, the campaign lock has no owner, source state is OPEN, and all 23 consumed requests are unchanged. This accepts the waiting continuation only: no successor collector, new July admission, forecast readiness or resumed result acquisition is claimed. The sole operational owner continues under existing approval; an independent monitor will report the actual terminal or successor evidence.
 

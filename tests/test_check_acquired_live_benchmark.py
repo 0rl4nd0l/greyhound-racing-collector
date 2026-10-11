@@ -9,6 +9,58 @@ URL = 'https://www.thedogs.com.au/racing/healesville/2026-07-17/7/test?trial=fal
 TITLE = 'thedogs - Healesville 17 July 2026 Race 7'
 
 
+def prereceipt(tmp_path):
+    sidecar = {'prejump_shadow_metadata': {'status': 'PASS', 'fail_reasons': [],
+        'metadata_is_leakage_safe': True, 'metadata_captured_at': '2026-07-17T01:00:00Z',
+        'runner_box_name_list': [{'box_number': 1, 'dog_name': 'Alpha'}, {'box_number': 2, 'dog_name': 'Beta'}]},
+        'canonical_runner_alignment': {'status': 'aligned', 'canonical_runner_set_status': 'available',
+            'duplicate_source_runner_names': [], 'missing_canonical_participants': [],
+            'dropped_participants': [{'box_number': 3, 'dog_name': 'Unused'}], 'remapped_participants': []}}
+    path = tmp_path/'pre.json'; path.write_text(json.dumps(sidecar))
+    ref = {'path': str(path), 'sha256': c.digest(path)}
+    original = {'original': {'race_id': 'r', 'record_key': 'p', 'score_timestamp': '2026-07-17T01:02:00Z',
+        'jump_timestamp': '2026-07-17T01:10:00Z', 'predictions': sidecar['prejump_shadow_metadata']['runner_box_name_list']},
+        'append_errors': [], 'append_proof': {'sealed_at': '2026-07-17T01:02:01Z', 'artifacts': {'sidecar': ref},
+            'native_prediction': {'input_hashes': {'sidecar_sha256': ref['sha256']}}},
+        'win_field': {'status': 'EXACT_COMPLETE_WIN_FIELD', 'capture_at': '2026-07-17T01:00:30Z',
+            'available_at': '2026-07-17T01:01:00Z'}}
+    return original, sidecar
+
+
+def test_v6_independent_pre_race_authentication(tmp_path):
+    original, sidecar = prereceipt(tmp_path)
+    assert c.check_pre_race_field_proof(original)['pre_race_active_field'] == sidecar['prejump_shadow_metadata']['runner_box_name_list']
+
+
+@pytest.mark.parametrize('change', [
+    lambda o: o['append_proof']['native_prediction']['input_hashes'].update(sidecar_sha256='0'*64),
+    lambda o: o['original'].update(score_timestamp='2026-07-17T00:59:00Z'),
+    lambda o: o['original'].update(jump_timestamp='2026-07-17T01:02:00Z'),
+    lambda o: o['win_field'].update(status='PARTIAL'),
+    lambda o: o['win_field'].update(available_at='2026-07-17T01:03:00Z'),
+    lambda o: o['original']['predictions'].pop(),
+    lambda o: o.update(append_errors=['unsealed']),
+])
+def test_v6_unsealed_late_partial_or_changed_pre_race_proof_rejected(tmp_path, change):
+    original, _ = prereceipt(tmp_path); change(original)
+    with pytest.raises(ValueError): c.check_pre_race_field_proof(original)
+
+
+@pytest.mark.parametrize('change', [
+    lambda s: s['prejump_shadow_metadata'].update(status='FAIL'),
+    lambda s: s['prejump_shadow_metadata'].update(metadata_is_leakage_safe=False),
+    lambda s: s['prejump_shadow_metadata'].update(fail_reasons=['bad']),
+    lambda s: s['canonical_runner_alignment'].update(missing_canonical_participants=['Alpha']),
+    lambda s: s['canonical_runner_alignment'].update(duplicate_source_runner_names=['Alpha']),
+])
+def test_v6_invalid_pre_race_sidecar_rejected_even_if_hash_matches(tmp_path, change):
+    original, sidecar = prereceipt(tmp_path); change(sidecar)
+    path=tmp_path/'pre.json'; path.write_text(json.dumps(sidecar)); sha=c.digest(path)
+    original['append_proof']['artifacts']['sidecar']['sha256']=sha
+    original['append_proof']['native_prediction']['input_hashes']['sidecar_sha256']=sha
+    with pytest.raises(ValueError): c.check_pre_race_field_proof(original)
+
+
 def declared(markup, url=URL, required_rule=None):
     from bs4 import BeautifulSoup
     return c.check_declared_identity(BeautifulSoup(markup, 'html.parser'), url, required_rule)
@@ -654,3 +706,115 @@ def test_v5_cannot_reopen_original_held_request():
     assert c.check_census(*args)['strict_races']==1
     args[1][0]['completion_observations'][0]['source_hold']=True
     with pytest.raises(ValueError,match='V5.*READY'):c.check_census(*args)
+
+
+def v6_source_fixture(tmp_path, title=False):
+    from bs4 import BeautifulSoup
+    row,title_policy,name_policy=v4_source_fixture(tmp_path,title)
+    original,sidecar=prereceipt(tmp_path)
+    sidecar['prejump_shadow_metadata']['source_url']=ANGLE_URL
+    sidecar['canonical_runner_alignment'].update(canonical_source_url=ANGLE_URL,canonical_runner_count=2,prediction_runner_count=2)
+    (tmp_path/'pre.json').write_text(json.dumps(sidecar));sha=c.digest(tmp_path/'pre.json')
+    original['append_proof']['artifacts']['sidecar']['sha256']=sha
+    original['append_proof']['native_prediction']['input_hashes']['sidecar_sha256']=sha
+    original['original'].update(race_id=row['race_id'],record_key=row['prediction_id'])
+    reference={'path':'frozen-v6','sha256':'6'*64}
+    policy={'reference':reference,'population':{row['race_id']:row['prediction_id']},
+            'originals':{row['prediction_id']:original}}
+    evidence=row['result_evidence'];evidence.pop('runner_name_policy_fallback')
+    evidence['pre_race_field_policy_fallback']={'status':'QUALIFIED','original_parser_failure':'official_runner_outside_forecast_field',
+                                              'pre_race_field_policy_reference':reference}
+    if title: evidence['projection_policy_fallback']['fallback_failure']='official_runner_outside_forecast_field'
+    body=tmp_path/'body';soup=BeautifulSoup(body.read_bytes(),'html.parser');soup.select_one('[name="rug_9"]')['name']='rug_3'
+    body.write_bytes(str(soup).encode());meta=tmp_path/'metadata.json';md=json.loads(meta.read_text());md['response_sha256']=c.digest(body);meta.write_text(json.dumps(md))
+    _,rows=c.source_rows(body.read_bytes(),structured_names=True)
+    proof=c.check_pre_race_field_proof(original)
+    evidence['races'][0].update(native_official_rows=rows,raw_native_official_rows=c.source_rows(body.read_bytes())[1],
+        structured_runner_name_witnesses=[c.structured_source_name(n.select_one('td.race-runners__name'),r['box_number'])[1] for n,r in zip(soup.select('tr.race-runner'),rows)],
+        pre_race_field_projection=c.check_pre_race_field_derivation(rows,proof))
+    evidence['response_provenance'].update(response_sha256=c.digest(body),metadata_sha256=c.digest(meta),
+        pre_race_field_policy_reference=reference,source_name_extraction_policy_reference=name_policy['reference'],
+        sidecar_reference=proof['sidecar_reference'],runner_name_policy_reference=None)
+    return row,title_policy,name_policy,policy
+
+
+@pytest.mark.parametrize('title',[False,True])
+def test_v6_independent_source_excludes_only_sealed_inactive_identity(tmp_path,title):
+    row,title_policy,name_policy,policy=v6_source_fixture(tmp_path,title)
+    assert c.check_source_identity(row,ANGLE_URL,title_policy,name_policy,None,policy)['source_runners']==3
+
+
+@pytest.mark.parametrize('change',[
+    lambda r:r['result_evidence']['races'][0]['pre_race_field_projection']['excluded_source_rows'].clear(),
+    lambda r:r['result_evidence']['races'][0]['raw_native_official_rows'].pop(),
+    lambda r:r['result_evidence']['pre_race_field_policy_fallback'].update(pre_race_field_policy_reference=None),
+    lambda r:r['result_evidence']['response_provenance'].update(source_name_extraction_policy_reference=None),
+    lambda r:r['result_evidence'].update(original_transport_hold_preserved=True),
+])
+def test_v6_rejects_tampered_witnesses_dependencies_and_hold(tmp_path,change):
+    row,title_policy,name_policy,policy=v6_source_fixture(tmp_path);change(row)
+    with pytest.raises(ValueError): c.check_source_identity(row,ANGLE_URL,title_policy,name_policy,None,policy)
+
+
+def test_v6_original_active_scratch_cannot_be_excluded(tmp_path):
+    original,_=prereceipt(tmp_path);proof=c.check_pre_race_field_proof(original)
+    proof['dropped_participants'].append({'box_number':1,'dog_name':'Alpha'})
+    with pytest.raises(ValueError,match='original scratched'):
+        c.check_pre_race_field_derivation([{'box_number':1,'dog_name':'Alpha','status':'L/SCR','finish_position':None}],proof)
+
+
+def test_v6_promoted_identity_requires_pre_race_and_source_note(tmp_path):
+    original,_=prereceipt(tmp_path);proof=c.check_pre_race_field_proof(original)
+    source=[{'box_number':10,'dog_name':'Beta (from box 2)','status':'DNF','finish_position':None}]
+    with pytest.raises(ValueError,match='continuity'):
+        c.check_pre_race_field_derivation(source,proof)
+    proof['remapped_participants']=[{'source_box_number':10,'original_box_number':10,'final_box_number':2,'dog_name':'Beta'}]
+    derived=c.check_pre_race_field_derivation(source,proof)
+    assert derived['derived_original_field_rows'][0]['box_number']==2
+    assert derived['derived_original_field_rows'][0]['status']=='DNF'
+    proof['remapped_participants']*=2
+    with pytest.raises(ValueError,match='continuity'):
+        c.check_pre_race_field_derivation(source,proof)
+
+
+def field_policy_fixture(tmp_path):
+    _,forecasts,title,name,structural=structural_policy_fixture(tmp_path)
+    original_rows=[{'original':{'race_id':r['race_id'],'record_key':r['prediction_id']}} for r in forecasts]
+    original_rows.append({'original':{'race_id':forecasts[0]['race_id'],'record_key':'retained-nonprimary'}})
+    originals=tmp_path/'originals.json';originals.write_text(json.dumps(original_rows))
+    review=tmp_path/'field-review.json';review.write_text(json.dumps({'status':'PASS_CRITERIA_BEFORE_CORRECTED_METRICS','criteria':{'test':'frozen'}}))
+    document={'schema':'frozen_offline_pre_race_field_policy_v6','status':'FROZEN_BEFORE_CORRECTED_METRICS',
+        'field_and_scoring_policy_unchanged':True,'newly_corrected_metrics_inspected':False,
+        'no_model_fit_calibration_selector_threshold_change':True,'no_new_provider_or_runtime_authority':True,
+        'population_races':210,'population_reference':structural['document']['population_reference'],
+        'authenticated_originals_reference':{'path':str(originals),'sha256':c.digest(originals)},
+        'independent_review_reference':{'path':str(review),'sha256':c.digest(review)},
+        'prior_parser_references':structural['document']['prior_parser_references'],
+        'source_title_policy_reference':title['reference'],'runner_name_policy_reference':name['reference'],
+        'structural_identity_policy_reference':structural['reference'],'criteria':{'test':'frozen'}}
+    path=tmp_path/'field-policy.json';path.write_text(json.dumps(document))
+    return path,forecasts,title,name,structural
+
+
+def test_v6_policy_pin_scope_and_exact_primary_selection(tmp_path):
+    path,forecasts,title,name,structural=field_policy_fixture(tmp_path)
+    policy=c.load_pre_race_field_policy(path,c.digest(path),forecasts,title,name,structural)
+    assert len(policy['originals'])==210 and 'retained-nonprimary' not in policy['originals']
+    with pytest.raises(ValueError,match='hash'):
+        c.load_pre_race_field_policy(path,'0'*64,forecasts,title,name,structural)
+    with pytest.raises(ValueError,match='dependency'):
+        c.load_pre_race_field_policy(path,c.digest(path),forecasts,title,None,structural)
+    modified=copy.deepcopy(forecasts);modified[0]['prediction_id']='replacement'
+    with pytest.raises(ValueError,match='population'):
+        c.load_pre_race_field_policy(path,c.digest(path),modified,title,name,structural)
+    doc=json.loads(path.read_text());doc['criteria']['test']='changed';path.write_text(json.dumps(doc))
+    with pytest.raises(ValueError,match='criteria'):
+        c.load_pre_race_field_policy(path,c.digest(path),forecasts,title,name,structural)
+
+
+def test_v6_duplicate_archive_prediction_id_rejected(tmp_path):
+    path,forecasts,title,name,structural=field_policy_fixture(tmp_path)
+    source=tmp_path/'originals.json';rows=json.loads(source.read_text());rows.append(rows[0]);source.write_text(json.dumps(rows))
+    doc=json.loads(path.read_text());doc['authenticated_originals_reference']['sha256']=c.digest(source);path.write_text(json.dumps(doc))
+    with pytest.raises(ValueError,match='membership'):
+        c.load_pre_race_field_policy(path,c.digest(path),forecasts,title,name,structural)

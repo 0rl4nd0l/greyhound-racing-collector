@@ -496,3 +496,39 @@ def test_projection_policy_uses_sealed_native_label_not_allocation_canonical_ali
     policy['population_reference'] = put(tmp_path, 'long-name-population.json', {'records': [{'race_id': rid, 'prediction_id': pid} for rid, pid in allowed.items()]})
     policy['mappings'] = [{'native_venue': 'SHEPPARTON', 'official_url_slug': 'shepparton', 'proposed_exact_title_venues': ['Shepparton']}]
     assert s.verified_projection_policy(put(tmp_path, 'native-policy.json', policy), allowed, urls, keys) == policy
+
+
+def field_policy_fixture(tmp_path):
+    title, allowed, _, _ = frozen_projection_policy_fixture(tmp_path)
+    originals=tmp_path/'authenticated-originals.json';originals.write_text('[]')
+    refs=[put(tmp_path,name+'.json',{'synthetic':name}) for name in ('title','names','navigation')]
+    policy={'schema':'frozen_offline_pre_race_field_policy_v6','status':'FROZEN_BEFORE_CORRECTED_METRICS',
+            'field_and_scoring_policy_unchanged':True,'no_new_provider_or_runtime_authority':True,
+            'population_reference':title['population_reference'], 'authenticated_originals_reference':s.reference(originals),
+            'source_title_policy_reference':refs[0],'runner_name_policy_reference':refs[1],
+            'structural_identity_policy_reference':refs[2],'independent_review_reference':title['independent_review_reference'],
+            'prior_parser_references':[s.reference(module.__file__) for module in (s.projector,s.reviewed_projector,s.policy_projector,s.name_projector,s.navigation_projector)]}
+    return policy,allowed,refs,originals
+
+
+def test_field_policy_pins_all_originals_dependencies_and_population(tmp_path):
+    policy,allowed,refs,originals=field_policy_fixture(tmp_path)
+    assert s.verified_pre_race_field_policy(put(tmp_path,'field.json',policy),allowed,*refs,originals)==policy
+    originals.write_text('["changed"]')
+    with pytest.raises(ValueError,match='authenticated_originals_mismatch'):
+        s.verified_pre_race_field_policy(put(tmp_path,'field.json',policy),allowed,*refs,originals)
+
+
+@pytest.mark.parametrize('change,reason',[
+ ('status','not_frozen'),('population','population_mismatch'),('dependency','dependency_policy_mismatch'),
+ ('parser','prior_parser_mismatch'),('external_hash','hash_mismatch')])
+def test_field_policy_rejects_unapproved_scope_or_code(tmp_path,change,reason):
+    policy,allowed,refs,originals=field_policy_fixture(tmp_path)
+    if change=='status':policy['status']='PROPOSED'
+    if change=='population':allowed={**allowed,'outside':'not-a-forecast'}
+    if change=='dependency':policy['runner_name_policy_reference']=refs[0]
+    if change=='parser':policy['prior_parser_references'][0]['sha256']='0'*64
+    ref=put(tmp_path,'field.json',policy)
+    if change=='external_hash':ref['sha256']='0'*64
+    with pytest.raises(ValueError,match=reason):
+        s.verified_pre_race_field_policy(ref,allowed,*refs,originals)
