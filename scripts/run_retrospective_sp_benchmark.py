@@ -34,8 +34,10 @@ def lines(path):
     return [json.loads(line) for line in Path(path).open() if line.strip()]
 
 
-def verify_artifacts(directory):
+def verify_artifacts(directory, required_files=()):
     manifest=json.loads((directory/'artifacts.sha256.json').read_text())
+    if not set(required_files).issubset(manifest):
+        raise ValueError('REQUIRED_ARTIFACT_MISSING_FROM_MANIFEST')
     # These frozen source manifests map relative filenames to digests.
     for name, digest in manifest.items():
         if isinstance(digest, dict):
@@ -51,6 +53,11 @@ def parse_sp(raw, expected):
         raise ValueError('RESULT_TABLE_CARDINALITY')
     soup=BeautifulSoup(table[0], 'html.parser')
     observed={}
+    active=set()
+    finishes=[]
+    expected_boxes=[box for box, _ in expected]
+    if not expected or len(set(expected_boxes))!=len(expected_boxes):
+        raise ValueError('EXPECTED_FIELD_INVALID')
     for row in soup.select('tr.race-runner'):
         boxel=row.select_one('td.race-runners__box sprite-svg')
         dogel=row.select_one('blackbook-dog[data-dog-id]')
@@ -65,6 +72,20 @@ def parse_sp(raw, expected):
         matched=re.fullmatch(r'\$?(\d+(?:\.\d+)?)', token)
         price=float(matched[1]) if matched else None
         observed[box]=(native,price,token)
+        finish_cell=row.select_one('td.race-runners__finish-position')
+        finish=finish_cell.get_text(' ',strip=True) if finish_cell else ''
+        if finish.upper() in {'SCR','L/SCR','LSCR'}:
+            continue
+        # A missing status is never sufficient proof of a nonstarter.
+        rank=re.fullmatch(r'([1-8])(?:st|nd|rd|th)?',finish,flags=re.I)
+        if rank is None:
+            raise ValueError('ACTIVE_STATUS_UNQUALIFIED')
+        active.add(box)
+        finishes.append(int(rank[1]))
+    if active!=set(expected_boxes):
+        raise ValueError('ACTIVE_FIELD_MISMATCH')
+    if sorted(finishes)!=list(range(1,len(active)+1)):
+        raise ValueError('FINISH_ORDER_INVALID')
     result=[]
     for box,native in expected:
         if box not in observed or observed[box][0]!=native:
@@ -82,10 +103,26 @@ def softmax(score):
     return result/result.sum()
 
 
+def probability_vector(race, model):
+    p=np.asarray([v['probabilities'][model] for v in race['runners']],dtype=float)
+    if (not len(p) or not np.isfinite(p).all() or (p<=0).any()
+            or (p>1).any() or not np.isclose(p.sum(),1,rtol=0,atol=1e-10)):
+        raise ValueError('INVALID_PROBABILITY_VECTOR')
+    return p
+
+
+def winner_vector(race):
+    y=np.asarray([v['y'] for v in race['runners']],dtype=float)
+    if not len(y) or not np.isfinite(y).all() or not np.isin(y,[0,1]).all() or y.sum()!=1:
+        raise ValueError('INVALID_WINNER_VECTOR')
+    return y
+
+
 def metrics(races, model):
+    if not races:raise ValueError('EMPTY_RACE_SAMPLE')
     rows=[]; bins=[{'n':0,'sum_p':0.,'wins':0.} for _ in range(10)]
     for r in races:
-        p=np.asarray([v['probabilities'][model] for v in r['runners']]); y=np.asarray([v['y'] for v in r['runners']]); win=int(np.argmax(y))
+        p=probability_vector(r,model); y=winner_vector(r); win=int(np.argmax(y))
         top=np.flatnonzero(p==p.max()); credit=float(y[top].sum()/len(top))
         rows.append({'race':r['source_race_key'],'date':r['race_date'],'track':r['track'],'log_loss':float(-np.log(p[win])),'brier':float(np.square(p-y).sum()),'top1':credit})
         for q,v in zip(p,y):
@@ -102,9 +139,9 @@ def fit_correction(races, stream=None):
     """
     arrays=[]
     for r in races:
-        market=np.log([v['probabilities']['reported_sp'] for v in r['runners']])
-        form=np.log([v['probabilities'][stream] for v in r['runners']]) if stream else np.zeros(len(market))
-        arrays.append((np.column_stack([market,form])[:,:2 if stream else 1],np.asarray([v['y'] for v in r['runners']])))
+        market=np.log(probability_vector(r,'reported_sp'))
+        form=np.log(probability_vector(r,stream)) if stream else np.zeros(len(market))
+        arrays.append((np.column_stack([market,form])[:,:2 if stream else 1],winner_vector(r)))
     anchor=np.array([1.,0.] if stream else [1.])
     def objective(beta):
         loss=0.; grad=np.zeros(len(beta))
@@ -133,9 +170,11 @@ def prepare(out):
     reserved={r['source_race_key'] for r in corpus['races'] if r['proposed_split']=='test'}
     assert len(reserved)==169
     verify_artifacts(SOURCE/'feature-package-01');verify_artifacts(SOURCE/'run-01')
+    verify_artifacts(JOINED,required_files=['runner_mapping.jsonl','results_manifest.json'])
     mappings=defaultdict(dict)
     for row in lines(JOINED/'runner_mapping.jsonl'):
         if row['source_race_key'] in reserved:raise ValueError('RESERVED_MAPPING')
+        if row['guide_box'] in mappings[row['source_race_key']]:raise ValueError('DUPLICATE_RUNNER_MAPPING')
         mappings[row['source_race_key']][row['guide_box']]=row
     refs={r['source_race_key']:r for r in manifest['results']}
     allowed=set(manifest['allowed_source_race_keys'])
@@ -205,8 +244,9 @@ def add_dynamic(out, base, dynamic):
     """Run only the predeclared recency/dynamic meta arms, preserving base fits."""
     if (out/'protocol.json').exists():
         raise ValueError('OUTPUT_ALREADY_CONSUMED')
+    verify_artifacts(base,required_files=['predictions.jsonl','protocol.json'])
+    verify_artifacts(dynamic,required_files=['development_predictions.jsonl','later_predictions.jsonl'])
     races=lines(base/'predictions.jsonl')
-    verify_artifacts(dynamic)
     sources={}
     for partition in ['development','later']:
         for row in lines(dynamic/f'{partition}_predictions.jsonl'):

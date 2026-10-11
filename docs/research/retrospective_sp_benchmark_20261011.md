@@ -78,3 +78,9 @@ OPENBLAS_NUM_THREADS=1 /mnt/tenn-nvme2/tenn/offloaded-home/l4nd0/greyhound-opera
 ```
 
 Source-pinning detail: the base run's protocol and every fit intent preceded optimization, but its source-hash capture was added after execution; `source-review-reference.json` states that limitation rather than claiming a contemporaneous source pin. The numerical fitting/extraction implementation is unchanged in commit07128076 and all base probabilities were replayed exactly. The dynamic extension recorded the executing source hash before fitting. This does not affect scientific exposure: both blocks were already development data.
+
+## Independent review guard repair
+
+Standards review found that malformed new inputs could evade the benchmark's guards: an extra active result runner was ignored, invalid probability/winner vectors were accepted, and the dynamic extension decoded base predictions before checking their artifact manifest. These checks now fail closed. Joined runner mappings are also hash-verified and duplicate mapping rows rejected. Explicit SCR/L/SCR/LSCR statuses qualify nonstarters; unknown status does not.
+
+The repaired extractor rechecked all2,351 admitted result bodies into the separate `guard-recheck-01` directory without optimization. Membership, price/probability input, exclusion and eligibility files are byte-identical to the original run. All32 original and extension metric summaries reproduce exactly under the stricter probability/winner checks. Thirteen focused tests pass. `guard-recheck-01/guard-recheck-report.json` pins this evidence and the patched source hash. No scientific results changed, no fit was repeated, and original receipts remain intact.
