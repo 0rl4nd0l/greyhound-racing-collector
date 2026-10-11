@@ -1,5 +1,13 @@
 # Approved July result acquisition — execution status
 
+## Current recovery state (11 October, 12:19 UTC)
+
+The owner executed the reviewed correction of the false source hold. Independent verification confirms that only the current source phase changed from STOP to OPEN; all6,440 operations, four denial records, one recovery attempt and the campaign ledger remain unchanged. The original HEA R7 intent, held completion, response manifest and one consumed request are preserved. This corrects the demonstrated false positive; it does not retry that race, reset a budget or remove a genuine provider restriction.
+
+The collector remains safely paused with its native ownership lease preserved. Successor rebind, resume and actual process/source/admission verification are still pending. The third prepared/authorized admission is not yet an accepted installed binding. No second result request or additional qualified race is claimed.
+
+Evidence: `review/actual-july-pause-independent-01.json` and `review/actual-july-source-cas-independent-01.json`. The execution trail retains the rejected preflights: a timer was incorrectly queried for a service process property, and the source guard compared the working directory with the unit-install directory. Both were corrected and independently tested; the latter was replayed against actual retained systemd properties and distinct source/unit directories before source mutation.
+
 ## Recovered first official response (11 October, 11:22 UTC)
 
 **One race is now fully evaluable from the retained response.** Independent inspection demonstrated that the recorded challenge was a false positive: both `captcha` matches came from the ordinary `https://www.recaptcha.net/recaptcha/api.js` script reference. The body contains the official result table. No additional provider request was needed.

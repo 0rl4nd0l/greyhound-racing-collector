@@ -57,6 +57,50 @@
     "subtests_passed": 4,
     "tests_passed": 95
   },
+  "actual_false_hold_correction": {
+    "artifacts": [
+      {
+        "bytes": 979,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/actual-july-pause-independent-01.json",
+        "sha256": "9ff1284d97dca630ac9946fff79f3eece262b1719fbc7fc1483ab89bc5e3e95d"
+      },
+      {
+        "bytes": 2287,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/exact-cas-working-directory-independent-01.json",
+        "sha256": "464a20df47d8a2a79aa41af8219fa87f407b769a5021a88e5d28d0f8721d8038"
+      },
+      {
+        "bytes": 2027,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/actual-july-source-cas-independent-01.json",
+        "sha256": "d0675a52f201139593ef9bca71a6bd2a00de776e0866817386aabdffeeba989b"
+      },
+      {
+        "bytes": 3121,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/service-activation/july-owner-pause-execution-01/paused.json",
+        "sha256": "36b8c24ade46c0e972125daa9b0b7fc8e69eb8de83c639c4335b9de7a6fc71cc"
+      },
+      {
+        "bytes": 2973,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/service-activation/july-source-reconciliation-execution-01/completed.json",
+        "sha256": "eb314ead0b2587a8113005da11e28266ba9f14f0d66a26e48de7ae670e390cef"
+      },
+      {
+        "bytes": 1158,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/service-activation/july-source-cas-controls-01/rejected-input-preflight-01.json",
+        "sha256": "df92f2a338dac03b7682c1c50fab2683b1bdd06248d8b1e22ea3d6aabe2eaf9a"
+      }
+    ],
+    "charged_attempts": 1,
+    "collector_paused": true,
+    "denials_preserved": 4,
+    "new_runtime_admission_accepted": false,
+    "operations_preserved": 6440,
+    "original_held_terminal_preserved": true,
+    "recovery_attempts_preserved": 1,
+    "source_phase": "OPEN",
+    "status": "ACTUAL_PHASE_ONLY_CORRECTION_VERIFIED_SUCCESSOR_ACTIVATION_PENDING",
+    "unattempted_races": 209
+  },
   "artifacts": [
     {
       "bytes": 2737,

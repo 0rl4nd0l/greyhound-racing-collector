@@ -76,7 +76,7 @@ Forecast coverage remains **210/431 =48.72%** of recorded attempted races. The o
 
 ## Decision and remaining action
 
-The highest-value next action is **repair the demonstrated false challenge classifier and reconcile its hold through the operational owner**, then use the already approved remaining scope only if actual source controls permit it. Independently sourced runner identities and terminal statuses remain necessary for201 absent joins and eight remaining identity/field gaps, including all131 later selector forecasts. The first response is already recovered; its request remains consumed and must not be repeated. No model search or profitability claim is supported.
+The highest-value next action is **complete verified activation of the repaired result collector through the operational owner**, then use the already approved remaining scope only if actual source controls permit it. At12:19UTC the exact false-hold correction was independently verified, preserving every original hold/denial and consumed request; the collector remains paused pending successor activation. Independently sourced runner identities and terminal statuses remain necessary for201 absent joins and eight remaining identity/field gaps, including all131 later selector forecasts. The first response is already recovered; its request remains consumed and must not be repeated. No model search or profitability claim is supported.
 
 The paragraphs below preserve the original request rationale, subsequently approved and activated; they are not current approval blockers.
 
