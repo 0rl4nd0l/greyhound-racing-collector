@@ -344,3 +344,102 @@ def test_rejected_offline_correction_keeps_actual_source_hold_in_accounting(tmp_
     assert retained['original_terminal_reason'] == 'SOURCE_ACCESS_CHALLENGE'
     assert retained['source_hold'] is True
     assert retained['charged_attempts'] == retained['provider_requests'] == 1
+
+
+def admission_population(tmp_path):
+    allowed = {f'race-{n}': f'prediction-{n}' for n in range(210)}
+    keys = {rid: f'2026-07-17|HEA|{n+1}' for n, rid in enumerate(allowed)}
+    urls = {rid: f'https://www.thedogs.com.au/racing/healesville/2026-07-17/{n+1}/results' for n, rid in enumerate(allowed)}
+    targets = [{'race_id': rid, 'canonical_race_key': keys[rid], 'deduplication_key': keys[rid], 'official_source_url': urls[rid]} for rid in allowed]
+    approval = put(tmp_path, 'multi-approval.json', {'fixture': True})
+    request = put(tmp_path, 'multi-request.json', {'fixture': True, 'max_requests': 210})
+    population = put(tmp_path, 'multi-population.json', {'records': [{'race_id': rid, 'prediction_id': pid} for rid, pid in allowed.items()]})
+    queue = put(tmp_path, 'multi-queue.json', {'records': targets, 'approval_reference': approval, 'request_reference': request, 'population_reference': population})
+    wanted = put(tmp_path, 'multi-wanted.json', {'races': targets})
+    common = {'schema_version': 'july_result_owner_admission_v1', 'status': 'AUTHORIZED_JULY_OWNER_DELEGATION',
+              'state_root': '/synthetic/exact-state', 'source_state': '/synthetic/exact-source-state',
+              'maximum_requests': 210, 'maximum_attempts_per_race': 1, 'minimum_request_interval_seconds': 60,
+              'automatic_retries': False, 'redirects': False, 'browser_fallback': False,
+              'proxy_fallback': False, 'cookies': False, 'borrow_study_budget': False,
+              'approval_reference': approval, 'request_reference': request, 'population_reference': population,
+              'queue_reference': queue, 'race_manifest_reference': wanted}
+    refs = [put(tmp_path, f'multi-admission-{n}.json', {**common, 'runtime_release': str(n)}) for n in range(2)]
+    manifest = put(tmp_path, 'multi-approved.json', {'schema': 'approved_july_admission_bindings_v1', 'admissions': refs})
+    intents = []
+    for n in range(2):
+        intents.append(put(tmp_path, f'multi-intent-{n}.json', {
+            'schema_version': 'july_result_request_intent_v1', 'status': 'CONSUMED_BEFORE_TRANSPORT',
+            'target': targets[n], 'attempt': 1, 'admission_reference': refs[n], 'approval_reference': approval,
+            'queue_reference': queue, 'manifest_reference': wanted}))
+    return refs, manifest, allowed, urls, keys, intents
+
+
+def test_mixed_externally_pinned_admissions_verify_each_original_intent(tmp_path):
+    refs, manifest, allowed, urls, keys, intents = admission_population(tmp_path)
+    approved = s.approved_admission_bindings(None, manifest, allowed, urls, keys)
+    for ref, expected in zip(intents, refs):
+        pin = s.admission_for_intent(ref, approved)
+        assert pin == expected
+        assert s.verified_intent(ref, allowed, urls, keys, pin)['admission_reference'] == expected
+
+
+def test_intent_cannot_self_admit_a_new_authority_or_read_unlisted_path(tmp_path):
+    refs, manifest, allowed, urls, keys, intents = admission_population(tmp_path)
+    approved = s.approved_admission_bindings(None, manifest, allowed, urls, keys)
+    intent = s.load_reference(intents[0])
+    intent['admission_reference'] = {'path': '/does/not/exist/unapproved.json', 'sha256': 'f'*64}
+    ref = put(tmp_path, 'unapproved-intent.json', intent)
+    with pytest.raises(ValueError, match='not_pinned_approved'):
+        s.admission_for_intent(ref, approved)
+
+
+@pytest.mark.parametrize('changed', ['approval_reference', 'queue_reference', 'race_manifest_reference', 'population_reference', 'request_reference'])
+def test_mixed_admissions_must_bind_identical_authority_and_scope(tmp_path, changed):
+    refs, manifest, allowed, urls, keys, _ = admission_population(tmp_path)
+    admission = s.load_reference(refs[1])
+    admission[changed] = put(tmp_path, 'changed-binding.json', s.load_reference(admission[changed]))
+    refs[1] = put(tmp_path, 'changed-admission.json', admission)
+    manifest = put(tmp_path, 'changed-approved.json', {'schema': 'approved_july_admission_bindings_v1', 'admissions': refs})
+    with pytest.raises(ValueError, match='scope_or_authority_changed'):
+        s.approved_admission_bindings(None, manifest, allowed, urls, keys)
+
+
+def test_multi_admission_targets_must_match_frozen_210(tmp_path):
+    refs, manifest, allowed, urls, keys, _ = admission_population(tmp_path)
+    wrong = dict(urls)
+    wrong['race-209'] += '?different=true'
+    with pytest.raises(ValueError, match='target_population_mismatch'):
+        s.approved_admission_bindings(None, manifest, allowed, wrong, keys)
+
+
+def test_duplicate_or_conflicting_admission_pins_rejected(tmp_path):
+    refs, manifest, allowed, urls, keys, _ = admission_population(tmp_path)
+    for pins in ([refs[0], refs[0]], [refs[0], {**refs[0], 'sha256': 'f'*64}]):
+        manifest = put(tmp_path, 'duplicate-approved.json', {'schema': 'approved_july_admission_bindings_v1', 'admissions': pins})
+        with pytest.raises(ValueError, match='duplicate_or_conflicting_pin'):
+            s.approved_admission_bindings(None, manifest, allowed, urls, keys)
+
+
+def test_single_admission_mode_remains_backward_compatible(tmp_path):
+    refs, _, allowed, urls, keys, _ = admission_population(tmp_path)
+    assert s.approved_admission_bindings(refs[0], None, allowed, urls, keys) == [refs[0]]
+
+
+def test_external_admission_manifest_hash_is_required(tmp_path):
+    _, manifest, allowed, urls, keys, _ = admission_population(tmp_path)
+    manifest['sha256'] = 'f'*64
+    with pytest.raises(ValueError, match='artifact_hash_mismatch'):
+        s.approved_admission_bindings(None, manifest, allowed, urls, keys)
+
+
+@pytest.mark.parametrize('key,value', [('state_root', '/different'), ('source_state', '/different'),
+    ('maximum_requests', 211), ('maximum_attempts_per_race', 2), ('minimum_request_interval_seconds', 30),
+    ('automatic_retries', True), ('redirects', True), ('browser_fallback', True), ('proxy_fallback', True)])
+def test_multi_admissions_cannot_reset_state_or_widen_request_policy(tmp_path, key, value):
+    refs, _, allowed, urls, keys, _ = admission_population(tmp_path)
+    changed = s.load_reference(refs[1])
+    changed[key] = value
+    refs[1] = put(tmp_path, 'changed-policy.json', changed)
+    manifest = put(tmp_path, 'changed-policy-pins.json', {'schema': 'approved_july_admission_bindings_v1', 'admissions': refs})
+    with pytest.raises(ValueError, match='limits_invalid|limits_changed'):
+        s.approved_admission_bindings(None, manifest, allowed, urls, keys)

@@ -36,6 +36,75 @@ def load_reference(ref):
     return json.loads(raw)
 
 
+def approved_admission_bindings(single_reference, manifest_reference, allowed, expected_urls, canonical_keys):
+    """Only external root-approved pins authorize an admission, never a receipt."""
+    if bool(single_reference) == bool(manifest_reference):
+        raise ValueError('require_exactly_one_admission_authority_mode')
+    if single_reference:
+        load_reference(single_reference)
+        return [single_reference]
+    manifest = load_reference(manifest_reference)
+    if manifest.get('schema') != 'approved_july_admission_bindings_v1':
+        raise ValueError('approved_admissions_manifest_schema_mismatch')
+    refs = manifest['admissions']
+    if not refs or len(allowed) != 210:
+        raise ValueError('approved_admissions_require_nonempty_exact_210_scope')
+    if len({r['path'] for r in refs}) != len(refs) or len({r['sha256'] for r in refs}) != len(refs):
+        raise ValueError('approved_admissions_duplicate_or_conflicting_pin')
+    common = None
+    common_policy = None
+    common_keys = ('approval_reference', 'queue_reference', 'race_manifest_reference',
+                   'population_reference', 'request_reference')
+    expected = {rid: {'race_id': rid, 'canonical_race_key': canonical_keys[rid],
+                     'deduplication_key': canonical_keys[rid], 'official_source_url': expected_urls[rid]}
+                for rid in allowed}
+    for ref in refs:
+        admission = load_reference(ref)
+        if (admission.get('schema_version') != 'july_result_owner_admission_v1'
+                or admission.get('status') != 'AUTHORIZED_JULY_OWNER_DELEGATION'):
+            raise ValueError('approved_admission_schema_or_status_invalid')
+        policy_keys = ('state_root', 'source_state', 'maximum_requests', 'maximum_attempts_per_race',
+                       'minimum_request_interval_seconds', 'automatic_retries', 'redirects',
+                       'browser_fallback', 'proxy_fallback', 'cookies', 'borrow_study_budget')
+        policy = {key: admission[key] for key in policy_keys}
+        if (policy['maximum_requests'] != 210 or policy['maximum_attempts_per_race'] != 1
+                or policy['minimum_request_interval_seconds'] < 60
+                or not Path(policy['state_root']).is_absolute()
+                or not Path(policy['source_state']).is_absolute()
+                or any(policy[key] is not False for key in ('automatic_retries', 'redirects',
+                       'browser_fallback', 'proxy_fallback', 'cookies', 'borrow_study_budget'))):
+            raise ValueError('approved_admission_request_or_source_limits_invalid')
+        if common_policy is not None and policy != common_policy:
+            raise ValueError('approved_admissions_state_or_request_limits_changed')
+        common_policy = policy
+        binding = {key: admission[key] for key in common_keys}
+        if common is not None and binding != common:
+            raise ValueError('approved_admissions_scope_or_authority_changed')
+        common = binding
+        sources = {key: load_reference(value) for key, value in binding.items()}
+        for records in (sources['queue_reference']['records'], sources['race_manifest_reference']['races']):
+            if len(records) != 210 or len({r['race_id'] for r in records}) != 210:
+                raise ValueError('approved_admission_population_not_exact_210')
+            targets = {r['race_id']: {key: r.get(key) for key in next(iter(expected.values()))} for r in records}
+            if targets != expected:
+                raise ValueError('approved_admission_target_population_mismatch')
+        population = sources['population_reference']['records']
+        if len(population) != 210 or {r['race_id']: r['prediction_id'] for r in population} != allowed:
+            raise ValueError('approved_admission_frozen_forecast_population_mismatch')
+        queue = sources['queue_reference']
+        if any(queue.get(key) != binding[key] for key in ('approval_reference', 'population_reference', 'request_reference')):
+            raise ValueError('approved_admission_queue_authority_binding_mismatch')
+    return refs
+
+
+def admission_for_intent(intent_reference, approved_references):
+    # Read intent metadata only; never follow an unlisted admission reference.
+    claimed = load_reference(intent_reference)['admission_reference']
+    if claimed not in approved_references:
+        raise ValueError('intent_admission_not_pinned_approved_baseline')
+    return claimed
+
+
 def verified_intent(ref, allowed, expected_urls, canonical_keys, approved_admission_reference):
     intent = load_reference(ref)
     if intent.get('schema_version') != 'july_result_request_intent_v1' or intent.get('status') != 'CONSUMED_BEFORE_TRANSPORT':
@@ -283,7 +352,7 @@ def integrate(population, prior, observations, acquire):
     return selected, dispositions, events
 
 
-def run(benchmark_evidence, prior_projection_path, reconciliation_path, completion_manifest_path, output, approved_admission_reference, reviewed_reclassifications_reference=None):
+def run(benchmark_evidence, prior_projection_path, reconciliation_path, completion_manifest_path, output, approved_admission_reference, reviewed_reclassifications_reference=None, approved_admissions_reference=None):
     base = Path(benchmark_evidence)
     boundary = projector.load(base / 'inventory/access-boundary.json')
     membership = projector.load(base / 'inventory/residual-membership.json')
@@ -312,16 +381,18 @@ def run(benchmark_evidence, prior_projection_path, reconciliation_path, completi
             duplicates.append(ref)
         else:
             unique[ref['sha256']] = ref
-    load_reference(approved_admission_reference)
+    approved_references = approved_admission_bindings(approved_admission_reference, approved_admissions_reference, allowed, expected_urls, canonical)
     # Global scope/authority pass before any result body can be decoded.
     completion_metadata = []
     for ref in unique.values():
         receipt = load_reference(ref)
-        intent = verified_intent(receipt['intent_reference'], allowed, expected_urls, canonical, approved_admission_reference)
-        completion_metadata.append((ref, receipt, intent))
+        admission_ref = admission_for_intent(receipt['intent_reference'], approved_references)
+        intent = verified_intent(receipt['intent_reference'], allowed, expected_urls, canonical, admission_ref)
+        completion_metadata.append((ref, receipt, intent, admission_ref))
     unique_intents = {}
     for ref in intent_references:
-        intent = verified_intent(ref, allowed, expected_urls, canonical, approved_admission_reference)
+        admission_ref = admission_for_intent(ref, approved_references)
+        intent = verified_intent(ref, allowed, expected_urls, canonical, admission_ref)
         unique_intents.setdefault(ref['sha256'], (ref, intent))
     reviewed_events = {}
     if reviewed_reclassifications_reference:
@@ -334,21 +405,23 @@ def run(benchmark_evidence, prior_projection_path, reconciliation_path, completi
                 raise ValueError('reviewed_reclassification_outside_census_or_duplicate')
             reviewed_events[key] = event
     observations = []
-    for ref, receipt, intent in completion_metadata:
+    for ref, receipt, intent, admission_ref in completion_metadata:
         try:
-            observation = completion_item(ref, allowed, expected_urls, canonical, approved_admission_reference)
+            observation = completion_item(ref, allowed, expected_urls, canonical, admission_ref)
             if ref['sha256'] in reviewed_events:
-                observation = reviewed_completion_item(observation, reviewed_events[ref['sha256']], allowed, expected_urls, canonical, approved_admission_reference)
+                observation = reviewed_completion_item(observation, reviewed_events[ref['sha256']], allowed, expected_urls, canonical, admission_ref)
         except (ValueError, KeyError, OSError) as error:
             # The race and authority are already verified; broken retained
             # response metadata for it cannot terminate unrelated records.
             observation = invalid_completion_observation(ref, receipt, intent, error)
         observations.append(observation)
+        observation['approved_admission_reference'] = admission_ref
     completed_intents = {row['intent_reference']['sha256'] for row in observations}
     for key, (ref, intent) in unique_intents.items():
         if key not in completed_intents:
             observations.append({'race_id': intent['target']['race_id'], 'receipt_reference': None,
                                  'intent_reference': ref, 'status': 'CONSUMED_WITHOUT_COMPLETION',
+                                 'approved_admission_reference': intent['admission_reference'],
                                  'charged_attempts': 1, 'provider_requests': None, 'projection_item': None})
     output = Path(output)
     if output.exists() and any(output.iterdir()):
@@ -398,6 +471,8 @@ def run(benchmark_evidence, prior_projection_path, reconciliation_path, completi
                     'inputs': [reference(p) for p in [prior_projection_path, reconciliation_path, completion_manifest_path,
                     base / 'inventory/access-boundary.json', base / 'inventory/residual-membership.json', base / 'alignment/forecast-records.json', base / 'alignment/authenticated-originals.json']],
                     'approved_admission_reference': approved_admission_reference,
+                    'approved_admissions_reference': approved_admissions_reference,
+                    'approved_admission_bindings': approved_references,
                     'reviewed_reclassifications_reference': reviewed_reclassifications_reference,
                     'implementation': [reference(Path(__file__)), reference(Path(projector.__file__)), reference(Path(reviewed_projector.__file__)), reference(Path(alignment.__file__))],
                     'prior_evidence_preserved': True})
@@ -411,15 +486,23 @@ def main():
     parser.add_argument('--reconciliation', type=Path, required=True)
     parser.add_argument('--completion-manifest', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--approved-admission', type=Path, required=True)
-    parser.add_argument('--approved-admission-sha256', required=True)
+    parser.add_argument('--approved-admission', type=Path)
+    parser.add_argument('--approved-admission-sha256')
+    parser.add_argument('--approved-admissions', type=Path)
+    parser.add_argument('--approved-admissions-sha256')
     parser.add_argument('--reviewed-reclassifications', type=Path)
     parser.add_argument('--reviewed-reclassifications-sha256')
     args = parser.parse_args()
+    if bool(args.approved_admission) != bool(args.approved_admission_sha256) or bool(args.approved_admissions) != bool(args.approved_admissions_sha256):
+        parser.error('each admission mode requires both path and SHA256')
+    if bool(args.approved_admission) == bool(args.approved_admissions):
+        parser.error('supply exactly one of --approved-admission or --approved-admissions')
     if bool(args.reviewed_reclassifications) != bool(args.reviewed_reclassifications_sha256):
         parser.error('reviewed reclassifications require both path and SHA256')
     reviewed = {'path': str(args.reviewed_reclassifications), 'sha256': args.reviewed_reclassifications_sha256} if args.reviewed_reclassifications else None
-    print(json.dumps(run(args.benchmark_evidence, args.prior_projection, args.reconciliation, args.completion_manifest, args.output, {'path': str(args.approved_admission), 'sha256': args.approved_admission_sha256}, reviewed)))
+    single = {'path': str(args.approved_admission), 'sha256': args.approved_admission_sha256} if args.approved_admission else None
+    multiple = {'path': str(args.approved_admissions), 'sha256': args.approved_admissions_sha256} if args.approved_admissions else None
+    print(json.dumps(run(args.benchmark_evidence, args.prior_projection, args.reconciliation, args.completion_manifest, args.output, single, reviewed, multiple)))
 
 
 if __name__ == '__main__':

@@ -16,6 +16,14 @@ bash /mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquis
 
 **One request remains consumed;209 races remain unattempted.** The recorded operational hold is unchanged. The sole operational owner is handling detector repair and source-state reconciliation separately; offline recovery is not permission to reset accounting, retry this race or change access methods. Earlier snapshots below preserve the original failure and zero-qualified stages.
 
+## Offline continuity across verified collector versions
+
+The integrator now also accepts a SHA-pinned external list of already verified admissions. Each receipt must match an explicitly listed path/hash; unknown pins fail before admission or response decoding. Every binding must preserve the same210 forecasts, official identities/URLs, approval, queue, state paths and finite request controls. This list cannot authorize a new collector version or reset consumption.
+
+The actual historical `df8eedd…` and current `423df2e…` bindings were independently verified and listed in `acquisition/verified-admission-bindings-01.json`. A full one-receipt integration/rerun/check using that list passes under `acquisition/observed-first-completion-01/multi-admission-reproduction-01/`; all version metrics equal the first recovered snapshot. Root's expanded focused suite passes139 tests. No new runtime binding or request is accepted by this preparation.
+
+A separate proposed pre-race venue mapping remains unimplemented:12 `AP_K` records have conflicting generic-config and sealed-source route labels. Those mappings are not silently adopted, and the reviewed title adapter remains limited to exact Healesville identity. This does not alter the current qualified race or frozen selectors.
+
 ## Historical first request and held acquisition (11 October, 11:08 UTC)
 
 The approved route executed **one real request**, for `2026-07-17|HEA|7`, at11:08:43UTC. It completed at11:08:48UTC with HTTP200 metadata but an acquisition classification of `SOURCE_ACCESS_CHALLENGE`, `source_hold=true`, and `TERMINAL_SOURCE_HOLD_NO_RETRY`. One request is consumed;209 identities remain unattempted. There is no accepted new official result. The original210-race queue, consumed attempt, response and completion are preserved. The classification applies to this direct-GET attempt; it does not establish that every website route is unavailable. Offline verification of the challenge classification is tracked separately; no new probe, retry or route change follows from that inspection.

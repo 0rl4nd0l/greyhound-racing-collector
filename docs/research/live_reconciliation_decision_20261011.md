@@ -86,7 +86,7 @@ Additional result-purpose authority is required because the current standing eng
 
 ## Reproduction and evidence
 
-Current recovered artifacts are under `acquisition/observed-first-completion-01/`: `reviewed-integration/` contains all210 dispositions and correction events; `reviewed-completed/` contains machine-readable strict/diagnostic datasets, scorecards, calibration, date sensitivity and unchanged selector/pass records. `reviewed-independent-check.json` and a separate root reproduction both pass. **119 focused tests pass**. Independent review checks exact membership, identity, chronology, unchanged field, consumption, score calculations and failure cases. The installed projector retains its original hash.
+Current recovered artifacts are under `acquisition/observed-first-completion-01/`: `reviewed-integration/` contains all210 dispositions and correction events; `reviewed-completed/` contains machine-readable strict/diagnostic datasets, scorecards, calibration, date sensitivity and unchanged selector/pass records. `reviewed-independent-check.json` and a separate root reproduction both pass. **139 focused tests pass**. Independent review checks exact membership, identity, chronology, unchanged field, consumption, score calculations and failure cases. The installed projector retains its original hash.
 
 Reproduce the current actual benchmark into a fresh directory:
 

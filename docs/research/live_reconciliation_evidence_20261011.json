@@ -321,7 +321,7 @@
     "diagnostic_full_delta_brier": 0.005619280392362466,
     "diagnostic_full_delta_log_loss": -0.006312005097314222,
     "diagnostic_races": 8,
-    "focused_tests_passed": 119,
+    "focused_tests_passed": 139,
     "forecast_races": 210,
     "fully_evaluable_after_repair": 1,
     "fully_evaluable_without_repair": 0,
@@ -424,6 +424,64 @@
     "snapshot_intents": 0,
     "status": "INSTALLED_INDEPENDENTLY_VERIFIED_WAITING_PROTECTED_SCHEDULE_GAP",
     "strict_races": 0
+  },
+  "multiple_historical_admission_verification": {
+    "actual_completion_receipts": 1,
+    "artifacts": [
+      {
+        "bytes": 33783,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011/scripts/integrate_acquired_live_results.py",
+        "sha256": "54cd8deb0b54360050bac6666ec76b11b02a4c7cc22a8baec1741c248b2b39e7"
+      },
+      {
+        "bytes": 26243,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011/tests/test_integrate_acquired_live_results.py",
+        "sha256": "dd3d47539145a2aecd0c1410234032525bd4fc775eb728c6acee2eff4fcdca93"
+      },
+      {
+        "bytes": 1842,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/multiple-admission-integration-independent-v1.json",
+        "sha256": "af7a05b9649457d41ffa1f37fb02a166c0f75eaf1df1f66cc38616e89febec66"
+      },
+      {
+        "bytes": 1421,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/verified-admission-bindings-01.json",
+        "sha256": "ee7e3c8d076915096c33286fffc9138c059a1fe2ba3370ab0de8f2f114a1ddd4"
+      },
+      {
+        "bytes": 3099,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/multi-admission-reproduction-01/commands.json",
+        "sha256": "6219a3915e6e7a32fdc68686fda3e1ea631d6fd2b80015aa2eebe1e256909477"
+      },
+      {
+        "bytes": 104,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/multi-admission-reproduction-01/metric-comparison.json",
+        "sha256": "292daed789f41972a99e967646955053f9bff9b6b98677eab6d29577dd55e848"
+      },
+      {
+        "bytes": 47221,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/multi-admission-reproduction-01/independent-check.json",
+        "sha256": "a25f65d2c6156ec4b373428c89ee4b4e9ccedd0ada07c820ec17eb6a2a5f0a6a"
+      },
+      {
+        "bytes": 3843,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/multi-admission-reproduction-01/integration/provenance.json",
+        "sha256": "35c9df343255cb7384512424048d18b5262b8a278a41b1a09fd083abb93617db"
+      },
+      {
+        "bytes": 2653,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/multiple-admission-root-validation-01.json",
+        "sha256": "87a34a745954952605cb611344f035a410914437d75e2e2c3d42f883f346b52b"
+      },
+      {
+        "bytes": 26637,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/proposed-title-projection-policy-v1.json",
+        "sha256": "92364da8949855c90c1b5554f19fb7d4ea1d07e036024266da94517026923c6a"
+      }
+    ],
+    "focused_tests_passed": 139,
+    "known_admissions": 2,
+    "status": "OFFLINE_VERIFICATION_PASS_NO_NEW_RUNTIME_ADMISSION"
   },
   "parent_commit": "879e89f962b055e6b616a5ee2a8e7145e60b6cba",
   "reviewed_first_actual_response": {
