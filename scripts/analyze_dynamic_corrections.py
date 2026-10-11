@@ -66,6 +66,9 @@ def main():
     comparisons = [('reported_sp', 'matched_hybrid65'), ('reported_sp', 'saved_tree95_temperature'),
                    ('reported_sp', 'market_calibrated'), ('market_calibrated', 'hybrid_sp_combo')]
     comparisons += [('market_calibrated', name) for name in ['recency_sp_combo', 'dynamic_sp_combo'] if name in available]
+    comparisons += [('reported_sp', name) for name in ['recency', 'dynamic'] if name in available]
+    if {'recency', 'dynamic'} <= available:
+        comparisons.append(('recency', 'dynamic'))
     records = []
     for reference, model in comparisons:
         result = summarize(races, reference=reference, model=model)
