@@ -1,6 +1,32 @@
 # Approved July result acquisition — execution status
 
-## Installed recovery and scheduled acquisition update (11 October)
+## Recovered first official response (11 October, 11:22 UTC)
+
+**One race is now fully evaluable from the retained response.** Independent inspection demonstrated that the recorded challenge was a false positive: both `captcha` matches came from the ordinary `https://www.recaptcha.net/recaptcha/api.js` script reference. The body contains the official result table. No additional provider request was needed.
+
+A second offline parser gap rejected the page because it lacked canonical/OG metadata even though its exact native title identifies the approved venue, date and race. Independent review confirmed that the frozen protocol requires exact source identity, not that particular HTML layout. The versioned offline adapter accepts only the reviewed exact title mapping, rejects conflicting metadata and genuine challenge contexts, and preserves all existing runner/terminal checks. The installed pinned projector remains unchanged. A SHA-bound reviewed correction links the original completion, intent, admission, response, code and pre-score identity criteria; it never rewrites the source hold or consumption.
+
+The executed integration, frozen rerun and independent checks now report **one strict race, eight remaining weak diagnostics and201 absent joins**. The original full-strength shadow forecast's log loss is1.737304 versus market1.658763, paired difference+0.078541; Brier difference+0.033792. Both top selections lose. One race on one date cannot establish predictive advantage. All131 later selector forecasts still lack outcomes; thresholds and passes are byte-identical. The July operating policy retained the market baseline, so the shadow result must not be relabeled production performance.
+
+Current outputs: `acquisition/observed-first-completion-01/{reviewed-reclassifications.FROZEN.json,reviewed-integration/,reviewed-completed/,reviewed-independent-check.json}`. Root reproduced all three execution steps under `root-reproduction-01/`. Independent evidence includes `review/july-challenge-classification-independent-v02.json`, `review/source-title-identity-criteria-v1.json`, `review/reviewed-retained-result-repair-independent-v2.json` and `review/actual-reviewed-result-independent-check-v1.json`. Root validation:119 focused tests pass. Exact reproduction:
+
+```bash
+bash /mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reproduce-reviewed.sh /tmp/july-reviewed-benchmark
+```
+
+**One request remains consumed;209 races remain unattempted.** The recorded operational hold is unchanged. The sole operational owner is handling detector repair and source-state reconciliation separately; offline recovery is not permission to reset accounting, retry this race or change access methods. Earlier snapshots below preserve the original failure and zero-qualified stages.
+
+## Historical first request and held acquisition (11 October, 11:08 UTC)
+
+The approved route executed **one real request**, for `2026-07-17|HEA|7`, at11:08:43UTC. It completed at11:08:48UTC with HTTP200 metadata but an acquisition classification of `SOURCE_ACCESS_CHALLENGE`, `source_hold=true`, and `TERMINAL_SOURCE_HOLD_NO_RETRY`. One request is consumed;209 identities remain unattempted. There is no accepted new official result. The original210-race queue, consumed attempt, response and completion are preserved. The classification applies to this direct-GET attempt; it does not establish that every website route is unavailable. Offline verification of the challenge classification is tracked separately; no new probe, retry or route change follows from that inspection.
+
+Before processing the completion, independent review verified the replacement admission `423df2e28ef2622bea4c566e5e5c981796fa7c073aa76078d84b3948270fc6a3` against actual PID614959/startticks27738438, source `f11e2a9f`, exact configuration/interpreter/environment,13 source hashes and genuine campaign ownership. This superseded executing-source binding preserves the population, request allowance, state root and projector. The previous admission remains immutable. The prior collector had stopped at10:24UTC after an expert-page timeout was misreported as a missing download link; the operational owner reproduced and repaired that error classification and installed the reviewed successor at11:07UTC. Startup is not proof of forecast readiness or automatic-watcher restoration.
+
+The actual first-completion census, integration, frozen rerun and independent score verification are complete under `acquisition/observed-first-completion-01/`: **PASS;210 original forecasts, zero strict races, nine unchanged diagnostic races,201 absent joins, and all131 later selector forecasts still without outcomes**. The failed acquisition remains explicitly attached to HEA R7's prior weak diagnostic. All selections and passes retain their original hashes. No fitting, replacement prediction or new performance claim occurred.
+
+Independent runtime and terminal-accounting evidence is retained in `review/successor-july-runtime-independent-check-02.json` and `review/july-first-terminal-independent-accounting.json`. The first request manifest is `acquisition/observed-first-completion-01/metadata-census.json`; the actual admission is `service-activation/july-authorized-controls-02/owner-admission.AUTHORIZED.json`. Supply these to the commands below with fresh output directories to reproduce the terminal integration and metrics. Source clearance remains a separate operational-owner action; the audit cannot clear this hold or treat209 unused requests as dispatch permission.
+
+## Historical first recovery and empty census (11 October, 10:10 UTC)
 
 The collector has restarted under the approved recovery. Independent checks confirm PID 544848, source `c7f4e0bd`, the intended interpreter/configuration, the genuine campaign lock and July admission hash `df8eedd9410e83e0d1108796314521cf849fe605e2631461ade8d8c8edcf814a`. The old ownership record and all 923 partial-package files were preserved. Native preparation and installed source qualification passed without provider requests. The operator subsequently verified a fresh pre-jump prediction; that new October forecast is outside this frozen July benchmark.
 

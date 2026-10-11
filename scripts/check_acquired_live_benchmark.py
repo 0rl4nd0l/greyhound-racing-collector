@@ -3,6 +3,7 @@
 from __future__ import annotations
 import argparse
 from collections import Counter
+from datetime import date
 import json
 from pathlib import Path
 import re
@@ -49,8 +50,21 @@ def check_census(forecasts, dispositions, strict, diagnostic, projections):
         require((d['selected_projection'] is not None) == (d['race_id'] in selected),
                 'selected projection disposition mismatch')
         if d['race_id'] in ids[0]:
-            require(d['selected_projection'] == 'ACQUIRED' and d['disposition'].startswith('NEW_STRICT_RESULT'),
+            reviewed = d['disposition'] in {'REVIEWED_OFFLINE_RESULT_SUPERSEDES_PRIOR_DIAGNOSTIC',
+                                          'REVIEWED_OFFLINE_STRICT_RESULT'}
+            require(d['selected_projection'] == 'ACQUIRED' and
+                    (d['disposition'].startswith('NEW_STRICT_RESULT') or reviewed),
                     'strict result lacks acquired disposition')
+            if reviewed:
+                projection = selected[d['race_id']]
+                require(projection.get('original_transport_hold_preserved') is True
+                        and projection.get('reviewed_reclassification', {}).get('race_id') == d['race_id'],
+                        'reviewed result lacks preserved hold and correction')
+                observations = d.get('completion_observations', [])
+                require(len(observations) == 1 and observations[0]['source_hold'] is True
+                        and observations[0]['charged_attempts'] == observations[0]['provider_requests'] == 1
+                        and observations[0]['status'] == 'TERMINAL_SOURCE_HOLD_NO_RETRY',
+                        'reviewed result changed original terminal accounting')
     for r in strict + diagnostic:
         require(r['result_evidence'] == selected[r['race_id']], 'scored evidence differs from selected projection')
     return {'status': 'PASS', 'forecasts': len(expected), 'strict_races': len(ids[0]),
@@ -66,6 +80,8 @@ def source_rows(raw):
     """Independently extract every result-table row; never silently skip one."""
     from bs4 import BeautifulSoup
     soup = BeautifulSoup(raw, 'html.parser')
+    require(len(soup.select('table.race-runners--result')) == 1,
+            'source result table missing or ambiguous')
     rows = []
     for node in soup.select('table.race-runners--result tr.race-runner'):
         cells = [node.select_one('td.race-runners__' + name) for name in ('box', 'name', 'finish-position')]
@@ -95,6 +111,30 @@ def url_identity(url):
     return tuple(parts[2:5])
 
 
+def check_declared_identity(soup, expected_url, required_rule=None):
+    """Independent exact native-title witness; no projector/parser imports."""
+    expected = url_identity(expected_url)
+    nodes = soup.select('link[rel="canonical"], meta[property="og:url"]')
+    declared = [n.get('href') if n.name == 'link' else n.get('content') for n in nodes]
+    require(all(isinstance(u, str) and u and url_identity(u) == expected for u in declared),
+            'source declared race identity mismatch')
+    titles = soup.find_all('title')
+    # Preserve the existing canonical path for other source layouts. The new
+    # adapter explicitly declares the title rule, which must verify both.
+    if declared and required_rule != 'exact_source_title_venue_date_race_v1':
+        return 'canonical_or_og_url'
+    require(len(titles) == 1, 'source title missing or ambiguous')
+    months = ('January', 'February', 'March', 'April', 'May', 'June',
+              'July', 'August', 'September', 'October', 'November', 'December')
+    match = re.fullmatch(r'thedogs - Healesville ([1-9][0-9]?) ([A-Za-z]+) ([0-9]{4}) Race ([1-9][0-9]*)',
+                         titles[0].get_text().strip())
+    require(match is not None and match[2] in months, 'source title identity unsupported')
+    native_date = date(int(match[3]), months.index(match[2])+1, int(match[1])).isoformat()
+    require(('healesville', native_date, str(int(match[4]))) == expected,
+            'source title identity mismatch')
+    return 'exact_source_title_venue_date_race_v1'
+
+
 def check_source_identity(record, expected_url):
     require(record.get('official_runner_identity_observed') is True, 'strict source identity missing')
     evidence = record['result_evidence']
@@ -109,9 +149,9 @@ def check_source_identity(record, expected_url):
             and metadata['requested_url'] == metadata['final_url'] == expected_url, 'source metadata mismatch')
     # Membership and scope are checked by run before this function opens a body.
     soup, rows = source_rows(Path(provenance['response_path']).read_bytes())
-    declared = [n.get('href') for n in soup.select('link[rel="canonical"]')] + [n.get('content') for n in soup.select('meta[property="og:url"]')]
-    require(declared and all(url_identity(u) == url_identity(metadata['requested_url']) for u in declared),
-            'source declared race identity mismatch')
+    require(len(evidence['races']) == 1, 'ambiguous source race')
+    identity_rule = check_declared_identity(soup, metadata['requested_url'],
+        evidence['races'][0].get('source_identity', {}).get('identity_semantics'))
     require(len(evidence['races']) == 1 and evidence['races'][0]['native_official_rows'] == rows,
             'native source rows differ from independently parsed HTML')
     by_source = {r['box_number']: r for r in rows}
@@ -137,7 +177,7 @@ def check_source_identity(record, expected_url):
         require(src['status'] in {'SCR', 'L/SCR', 'LSCR'} and src['finish_position'] is None
                 and (box in (9, 10) or box in mapped), 'source runner silently dropped')
     return {'status': 'PASS', 'race_id': record['race_id'], 'source_runners': len(rows),
-            'forecast_runners': len(evidence['runners'])}
+            'forecast_runners': len(evidence['runners']), 'identity_rule': identity_rule}
 
 
 def run(baseline, integration, completed):

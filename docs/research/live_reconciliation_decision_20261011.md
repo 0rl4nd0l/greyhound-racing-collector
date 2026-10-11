@@ -1,8 +1,8 @@
 # Retained live forecast reconciliation — PR #231 continuation
 
-> Subsequent user approval covers the prepared210-result request and safe recovery/interface activation. [Current acquisition status](live_result_acquisition_status_20261011.md): collector and exact July admission independently verified; zero attempts in the latest census, awaiting a protected scheduling gap after22:04AEDT on11October. The offline integration, frozen rerun and independent checker have executed successfully; the scorecard below is unchanged. The historical request rationale remains as the decision record.
+**One race now supports a full decision-time comparison; model advantage remains inconclusive.** Offline repair recovered the first acquired official response after a false challenge classification and a source-title parser gap. Its original full/half shadow forecasts scored worse than the contemporaneous market. The actual July policy retained the market baseline, so this is no evidence of production improvement. No forecast, model, calibration or selector was changed.
 
-**Model advantage remains inconclusive.** Retained archives recover two result joins, but reveal a source-name retention defect affecting all nine joined races. None yet proves the complete decision-time comparison. The nine-race winning-box diagnostic is slightly worse than the market on both proper losses. No model or selector was fitted or changed.
+[Acquisition status](live_result_acquisition_status_20261011.md): one request consumed,209 unattempted; the original recorded source hold remains preserved. The completed offline correction does not itself resume collection.
 
 ## Reconciliation of the frozen population
 
@@ -10,35 +10,38 @@
 |---|---:|
 | Original forecasts |210|
 | Evaluable without repair |0|
-| Recovered and fully evaluable |0|
-| Retained evidence incomplete or contradictory |9|
+| Recovered and fully evaluable |1|
+| Retained evidence incomplete or contradictory |8|
 | Requires a specific fresh official-result acquisition |201|
 | Restricted within this exact population |0|
 
-The two newly recovered joins are **within the nine incomplete records**, not an additional population. The original 203 missing joins become 201. All original exclusions, failures, forecasts and allocation boundaries remain retained; zero restricted outcomes were borrowed.
+The two archive-recovered joins were within the original nine incomplete records. The newly retained response now qualifies one of those nine: Healesville July17 R7. Thus210 =0 without repair +1 recovered and evaluable +8 incomplete +201 requiring acquisition +0 restricted. The original203 missing joins remain reduced to201. All original exclusions, failures, forecasts and allocation boundaries remain retained; zero restricted outcomes were borrowed.
 
 The named July result lane contains 261 accepted observations of nine target races across 65 capture directories. Healesville July17 R7/R8 suffered 81 database rejections because losing runners tied for seventh/fifth. The offline WIN join now accepts valid competition-ranked losing ties while retaining ranks and rejecting winning ties, contradictions and invalid fields. The [qualification clarification](live_win_qualification_clarification_20261011.md) predates the new score inspection; original protocol bytes are unchanged.
 
-A deeper defect prevents qualification: native result writing copied runner names from forecast participants and discarded the official source's name map. Matching those names is circular. Even the two complete eight-box results cannot independently establish runner continuity. The other seven also lack explicit terminal dispositions for one to four original runners. A full losing finishing order is unnecessary; independently identified starters and explicit terminal statuses are necessary to distinguish losses from scratches/substitutions. Exact gaps and original job, race, roster, queue, closure and source references are in [the reconciliation report](live_result_reconciliation_20261011.md) and every row of `results/reconciliation.json`.
+A deeper defect prevented qualification of the original nine: native result writing copied runner names from forecast participants and discarded the official source's name map. Matching those names is circular. The new response independently authenticates Healesville R7; the remaining eight still lack sufficient evidence. The other seven also lack explicit terminal dispositions for one to four original runners. A full losing finishing order is unnecessary; independently identified starters and explicit terminal statuses are necessary to distinguish losses from scratches/substitutions. Exact gaps and original job, race, roster, queue, closure and source references are in [the reconciliation report](live_result_reconciliation_20261011.md) and every row of `results/reconciliation.json`.
 
 Thirteen targets have queue metadata; fourteen have any matching archive metadata. The other 196 have no matching metadata in that named lane. This distinguishes absent retained evidence from proven noncapture; it does not claim all 196 were never collected anywhere. A separate identity-only cross-check of earlier named private closure lanes inspected 18 databases and 1,275 metadata files, covering 44 distinct identities and **zero target matches**. It read no protected outcome columns or closure bodies. This is a bounded named-archive investigation, not a whole-host raw-data search.
 
 ## Actual rerun
 
-Strict scorecard: **zero races**, so no strict loss, calibration or accuracy estimate. Diagnostic scorecard: **nine races, 72 runner appearances, July17–18**, original artifact `624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d`. These are original July shadow forecasts of the installed artifact; the July operating policy retained the market baseline. They are not reconstructed predictions or proof of production use at those cutoffs.
+The strict population is **one race, eight runners, July17**, original model artifact `624bba020d24f93fac4d895a851195aed5d31cff2f35645d9253be1175cc694d`. The native July policy was `KEEP_MARKET_BASELINE`: its retained baseline is the market comparator, with zero difference by construction. The genuinely sealed full/half forecasts below were shadow variants, not later reconstructions or separate evidence of production use.
 
-The diagnostic maps an official winning box to the original forecast roster, conditionally assuming that identity is correct. Every original runner and probability remains present. Market probabilities are normalized inverse contemporaneous WIN odds; original odds and overround remain in the runner/per-race artifacts.
-
-| Diagnostic forecast | Log loss | Brier | Top credit |
+| Strict forecast | Log loss | Brier | Top credit |
 |---|---:|---:|---:|
-| Contemporaneous market |1.406093|0.633952|5/9|
-| Original full strength |1.409209|0.642702|5/9|
-| Original half strength |1.406150|0.637803|5/9|
-| Full minus market |+0.003116|+0.008750|0|
+| Contemporaneous market / retained policy baseline |1.658763|0.791786|0/1|
+| Original full-strength shadow |1.737304|0.825579|0/1|
+| Original half-strength shadow |1.697153|0.808562|0/1|
+| Full minus market |+0.078541|+0.033792|0|
+| Half minus market |+0.038390|+0.016775|0|
 
-Full-strength winner probability improves in four races and worsens in five. All nine top selections are unchanged, including four losses. July17's seven races have paired log-loss difference **+0.024124**; July18's two have **−0.070411**. Removing either date reverses the sign. The frozen 10,000-draw date bootstrap gives **[−0.070411,+0.024124]**; two dates and repeated dogs make this descriptive, not credible confirmation of generalization.
+All original eight runners remain. The two source-listed unused reserves are explicitly scratched and retained in the evidence; neither was in the forecast field. The source title, exact requested/final URL, independently sourced runner names/boxes, complete terminal field and original forecast chronology pass independent verification. The review accepted the exact native-title identity rule before scoring; canonical/OG markup is not a frozen protocol requirement. Original transport failure and one consumed request are linked through an append-only derived correction, not rewritten as a successful transport receipt.
 
-Ten fixed-bin runner ECE is 0.063824 for full strength versus 0.077235 for market. These sparse bins cannot establish reliability or outweigh the proper-loss comparison. Lead time is 20.73–54.42 minutes, median41.95; capture-start age is 144.39–353.71 seconds, median182.55. Provider quote-publication age remains unknown in all nine. Capture age is not quote age. No calibration fitting occurred.
+The forecast lead time was26.53minutes; capture age182.55seconds. Provider quote-publication age remains unknown. Complete original WIN odds and normalized inverse-odds probabilities are retained, with overround1.313203. The single top selection is unchanged and loses; the market assigns the winner more probability. Full-strength runner ECE0.128635 versus market0.131016 is a descriptive eight-runner bin calculation, not evidence of reliable calibration. There is **one date, so uncertainty is not estimable**; dropping it leaves no observations.
+
+The remaining **eight weak diagnostics,64 runners, July17–18** remain separate. Full-strength log loss1.368197 versus market1.374509 gives−0.006312, but Brier0.619843 versus0.614223 worsens by+0.005619. Both top credits are5/8, all top selections unchanged, and winner probability improves in four races and worsens in four. July17's six races have log-loss difference+0.015054; July18's two have−0.070411. Removing either date reverses direction. The frozen date bootstrap [−0.070411,+0.015054] is descriptive only. Their source identity gaps remain unresolved.
+
+The earlier nine-race diagnostic snapshot is preserved separately: full-strength log loss1.409209 versus market1.406093, Brier difference+0.008750. Promoting one race changes the strict/diagnostic partition, not any forecast or outcome value. The new strict race is not selected for favorable performance.
 
 ## Unchanged selective prediction
 
@@ -52,7 +55,7 @@ The byte-identical earlier-development plan uses 79 July17–19 forecasts and ev
 
 All entries are selected counts out of131. Each has a market-confidence control of the same size and a model-versus-market comparison on exactly its selected identities. **Every selected and control group still has zero matched outcomes; its missing count equals its selected count.** No selected race was replaced. Every pass and development disposition is preserved. Both recovered joins fall in development. Existing result-conditioned exploratory thresholds were not re-estimated from the enlarged nine-race diagnostic.
 
-Outcome availability is concentrated entirely in the earliest two dates; extrapolating complete cases would be unjustified. Enumerating every possible original winning runner gives full-population conditional mean log-loss-difference bounds **[−0.133615,+0.182852]** with no qualified labels. If all nine diagnostic mappings prove correct, bounds are **[−0.126587,+0.175306]**. Both signs remain possible. These are identification bounds, not confidence intervals, and require eventual proof of unchanged fields. Brier/top bounds and all 24 selected/control bounds are retained and independently reproduced.
+Outcome availability is concentrated entirely in the earliest two dates; extrapolating complete cases would be unjustified. Enumerating every possible original winning runner gives full-population conditional mean log-loss-difference bounds **[−0.132854,+0.182195]**, conditioning on the one qualified label. If all eight remaining diagnostic mappings prove correct as well, the earlier nine-label bounds remain **[−0.126587,+0.175306]**. Both signs remain possible. These are identification bounds, not confidence intervals, and require eventual proof of unchanged fields. Brier/top bounds and all 24 selected/control bounds are retained and independently reproduced.
 
 ## Operational failures and tested repair
 
@@ -67,13 +70,15 @@ There are **431 unique attempted races**, with 1,292 native attempts: 212 append
 
 The offline grade adapter reproduces all369 failing attempts and passes the complete original feature validator with unchanged feature bytes after finite-vocabulary comparison correction. **122 races /316 attempts** also pass retained form, market and chronology checks. This is an input-readiness ceiling, not122 new live forecasts or guaranteed throughput. Tests preserve genuine disagreements, unsafe metadata, ambiguous grades and hash failures, and verify that one rejected race does not erase unrelated dispositions.
 
-Read-only inspection confirms the installed source at `55f728a3` already contains grade canonicalization and the wider venue grammar. These historical findings do not justify redeploying an existing fix. [Failure diagnosis and exact accounting](live_forecast_failure_diagnosis_20261011.md).
+Earlier read-only inspection confirmed that the then-installed source `55f728a3` already contained grade canonicalization and the wider venue grammar. These historical findings do not justify redeploying an existing fix. [Failure diagnosis and exact accounting](live_forecast_failure_diagnosis_20261011.md).
 
-Forecast coverage remains **210/431 =48.72%** of recorded attempted races. The nine diagnostics represent4.29% of forecasts and2.09% of attempts; strict comparison coverage is0%. Pre-attempt downtime and unrecorded opportunities remain outside this denominator. Missing forecasts are not zero-probability predictions.
+Forecast coverage remains **210/431 =48.72%** of recorded attempted races. The one strict race represents0.48% of forecasts and0.23% of attempts. Eight additional weak diagnostics represent3.81% of forecasts; they do not increase strict comparison coverage. Pre-attempt downtime and unrecorded opportunities remain outside this denominator. Missing forecasts are not zero-probability predictions.
 
 ## Decision and remaining action
 
-The highest-value next action is **one scoped official-result closure pass for these exact210 races**, retaining independently sourced runner identities and terminal statuses. This can resolve201 absent joins and nine identity/field gaps, including all131 frozen later selector forecasts; success is not guaranteed. No model search, deployment or profitability claim is supported.
+The highest-value next action is **repair the demonstrated false challenge classifier and reconcile its hold through the operational owner**, then use the already approved remaining scope only if actual source controls permit it. Independently sourced runner identities and terminal statuses remain necessary for201 absent joins and eight remaining identity/field gaps, including all131 later selector forecasts. The first response is already recovered; its request remains consumed and must not be repeated. No model search or profitability claim is supported.
+
+The paragraphs below preserve the original request rationale, subsequently approved and activated; they are not current approval blockers.
 
 Prepared request: `acquisition-request.PREPARED.json`, bound to the210 exact identities/official URLs in `results/acquisition-needed.json`. Ceiling: **210 TheDogs public official-result GET attempts, one per identity, no automatic retry or alternate source**, concurrency1 and at least60seconds spacing, accepted-response reuse, raw-response/hash/name/status retention and append-only consumption. Existing holds, retry instructions and current-owner locks remain controlling. The operational owner must admit a safe result-purpose slot; no lock stealing, service change or study-budget reallocation is authorized by this proposal.
 
@@ -81,7 +86,17 @@ Additional result-purpose authority is required because the current standing eng
 
 ## Reproduction and evidence
 
-Evidence root: `/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence`. `artifact-references.json` hashes the deliverables. `results/reconciliation.json` contains all210 current and original dispositions; `failures/v2/` contains all431 races/1,292 attempts and derived corrections; `completed/` contains strict/diagnostic runner datasets, per-race scores, calibration, dates, unchanged selections/passes and missing-outcome bounds. Source archives remain local and unchanged.
+Current recovered artifacts are under `acquisition/observed-first-completion-01/`: `reviewed-integration/` contains all210 dispositions and correction events; `reviewed-completed/` contains machine-readable strict/diagnostic datasets, scorecards, calibration, date sensitivity and unchanged selector/pass records. `reviewed-independent-check.json` and a separate root reproduction both pass. **119 focused tests pass**. Independent review checks exact membership, identity, chronology, unchanged field, consumption, score calculations and failure cases. The installed projector retains its original hash.
+
+Reproduce the current actual benchmark into a fresh directory:
+
+```bash
+bash /mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reproduce-reviewed.sh /tmp/july-reviewed-benchmark
+```
+
+The earlier retained-only reproduction and artifacts below remain historical evidence.
+
+Evidence root: `/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence`. `artifact-references.json` hashes the deliverables. `results/reconciliation.json` preserves the pre-acquisition210 dispositions; current dispositions are in `acquisition/observed-first-completion-01/reviewed-integration/integration-dispositions.json`; `failures/v2/` contains all431 races/1,292 attempts and derived corrections; `completed/` contains strict/diagnostic runner datasets, per-race scores, calibration, dates, unchanged selections/passes and missing-outcome bounds. Source archives remain local and unchanged.
 
 ```bash
 python3 scripts/rerun_frozen_live_reconciliation.py \

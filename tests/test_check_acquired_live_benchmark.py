@@ -6,6 +6,56 @@ import pytest
 from scripts import check_acquired_live_benchmark as c
 
 URL = 'https://www.thedogs.com.au/racing/healesville/2026-07-17/7/test?trial=false'
+TITLE = 'thedogs - Healesville 17 July 2026 Race 7'
+
+
+def declared(markup, url=URL, required_rule=None):
+    from bs4 import BeautifulSoup
+    return c.check_declared_identity(BeautifulSoup(markup, 'html.parser'), url, required_rule)
+
+
+def test_existing_other_venue_canonical_path_preserved():
+    other = URL.replace('healesville', 'bendigo')
+    html = '<title>thedogs - Bendigo 17 July 2026 Race 7</title><link rel="canonical" href="'+other+'">'
+    assert declared(html, other) == 'canonical_or_og_url'
+    with pytest.raises(ValueError,match='unsupported'):
+        declared('<title>thedogs - Bendigo 17 July 2026 Race 7</title>',other)
+
+
+def test_title_adapter_cannot_bypass_title_with_matching_canonical():
+    html = '<title>'+TITLE.replace('Race 7','Race 8')+'</title><link rel="canonical" href="'+URL+'">'
+    with pytest.raises(ValueError,match='title identity mismatch'):
+        declared(html,required_rule='exact_source_title_venue_date_race_v1')
+
+
+def test_exact_source_title_can_independently_identify_missing_canonical():
+    assert declared('<title>'+TITLE+'</title>') == 'exact_source_title_venue_date_race_v1'
+
+
+@pytest.mark.parametrize('title', [TITLE.replace('Healesville','HEA'), TITLE.replace('17','18'),
+    TITLE.replace('Race 7','Race 8'), TITLE.replace('July','February').replace('17','31'),
+    TITLE.replace('2026','2025'), TITLE.replace('July','Jul'), TITLE+' trial',
+    TITLE.replace('Healesville','healesville')])
+def test_source_title_wrong_or_unsupported_identity_rejected(title):
+    with pytest.raises(ValueError): declared('<title>'+title+'</title>')
+
+
+@pytest.mark.parametrize('markup', ['', '<title>'+TITLE+'</title><title>'+TITLE+'</title>',
+    '<title>'+TITLE+'</title><link rel="canonical">',
+    '<title>'+TITLE+'</title><meta property="og:url" content="">',
+    '<title>'+TITLE+'</title><link rel="canonical" href="'+URL.replace('/7/','/8/')+'">'])
+def test_missing_ambiguous_or_contradictory_identity_rejected(markup):
+    with pytest.raises(ValueError): declared(markup)
+
+
+def test_title_does_not_bypass_trial_or_domain_boundary():
+    for url in (URL.replace('trial=false','trial=true'), URL.replace('www.thedogs.com.au','example.com')):
+        with pytest.raises(ValueError): declared('<title>'+TITLE+'</title>',url)
+
+
+def test_multiple_native_result_tables_rejected():
+    with pytest.raises(ValueError,match='table missing or ambiguous'):
+        c.source_rows('<table class="race-runners--result"></table>'*2)
 
 
 def fixture(tmp_path, rows=None):
@@ -23,6 +73,19 @@ def fixture(tmp_path, rows=None):
 
 def test_source_identity_dnf_and_unused_reserve(tmp_path):
     assert c.check_source_identity(fixture(tmp_path), URL)['source_runners']==3
+
+
+def test_native_race_identity_rule_requires_title_even_with_canonical(tmp_path):
+    row=fixture(tmp_path)
+    row['result_evidence']['races'][0]['source_identity']={'identity_semantics':'exact_source_title_venue_date_race_v1'}
+    raw=('<title>'+TITLE.replace('Race 7','Race 8')+'</title>').encode()+(tmp_path/'body').read_bytes()
+    (tmp_path/'body').write_bytes(raw)
+    metadata=json.loads((tmp_path/'metadata.json').read_text())
+    metadata['response_sha256']=c.digest(tmp_path/'body')
+    (tmp_path/'metadata.json').write_text(json.dumps(metadata))
+    row['result_evidence']['response_provenance'].update(response_sha256=c.digest(tmp_path/'body'),metadata_sha256=c.digest(tmp_path/'metadata.json'))
+    with pytest.raises(ValueError,match='title identity mismatch'):
+        c.check_source_identity(row,URL)
 
 
 @pytest.mark.parametrize('change,reason', [
@@ -66,6 +129,16 @@ def census():
 
 def test_nonzero_strict_census_supported():
     assert c.check_census(*census())['strict_races']==1
+
+
+def test_reviewed_strict_preserves_hold_and_consumption():
+    args=list(census())
+    args[1][0].update(disposition='REVIEWED_OFFLINE_STRICT_RESULT',completion_observations=[
+        {'source_hold':True,'charged_attempts':1,'provider_requests':1,'status':'TERMINAL_SOURCE_HOLD_NO_RETRY'}])
+    args[4][0].update(original_transport_hold_preserved=True,reviewed_reclassification={'race_id':'r'})
+    assert c.check_census(*args)['strict_races']==1
+    args[1][0]['completion_observations'][0]['source_hold']=False
+    with pytest.raises(ValueError,match='terminal accounting'): c.check_census(*args)
 
 
 @pytest.mark.parametrize('mutation,reason',[

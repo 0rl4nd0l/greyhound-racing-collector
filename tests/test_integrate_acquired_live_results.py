@@ -227,3 +227,120 @@ def test_nonwinning_terminal_status_only_revision_is_explicit():
     assert changes['blocking'] == []
     assert changes['nonblocking'][0]['prior_terminal_status'] == 'DNF'
     assert changes['nonblocking'][0]['new_terminal_status'] == 'DISQ'
+
+
+def reviewed_chain(tmp_path):
+    ref, receipt, allowed, urls, keys, admission = chain(tmp_path)
+    manifest = s.load_reference(receipt['result_reference'])
+    evidence = manifest['source_evidence']
+    request = s.load_reference(evidence['request'])
+    request['schema_version'] = 'july_result_http_request_v1'
+    evidence['request'] = put(tmp_path, 'reviewed-request.json', request)
+    response = s.load_reference(evidence['response'])
+    response.update(schema_version='july_result_http_response_v1', http_status=200, requested_url=URL, final_url=URL)
+    evidence['response'] = put(tmp_path, 'reviewed-response.json', response)
+    manifest['schema_version'] = 'july_raw_result_manifest_v1'
+    receipt['result_reference'] = put(tmp_path, 'reviewed-manifest.json', manifest)
+    receipt.update(status='TERMINAL_SOURCE_HOLD_NO_RETRY', reason='SOURCE_ACCESS_CHALLENGE', source_hold=True)
+    receipt.pop('projection_records')
+    ref = put(tmp_path, 'held-completion.json', receipt)
+    review = {'schema': 'machine_only_july_challenge_classification_review_v1',
+              'classification': 'DEMONSTRATED_FALSE_POSITIVE_GENERIC_RECAPTCHA_SCRIPT_REFERENCE',
+              'canonical_race_key': keys[RID], 'admission_reference': admission,
+              'response_reference': evidence['body'], 'original_completion_reference': ref,
+              'source_hold_unchanged': True, 'request_or_retry_authorized': False}
+    criteria = {'schema': 'independent_source_identity_criteria_v1', 'status': 'ACCEPTED_BEFORE_METRIC_INSPECTION',
+                'identity_rule': s.reviewed_projector.IDENTITY_RULE}
+    event = {'race_id': RID, 'completion_reference': ref, 'intent_reference': receipt['intent_reference'],
+             'admission_reference': admission, 'response_reference': evidence['body'],
+             'identity_rule': s.reviewed_projector.IDENTITY_RULE,
+             'adapter_reference': s.reference(Path(s.reviewed_projector.__file__).resolve()),
+             'independent_review_reference': put(tmp_path, 'review.json', review),
+             'identity_criteria_reference': put(tmp_path, 'criteria.json', criteria)}
+    obs = s.completion_item(ref, allowed, urls, keys, admission)
+    return obs, event, allowed, urls, keys, admission
+
+
+def test_reviewed_interpretation_preserves_original_transport_hold_and_consumption(tmp_path):
+    obs, event, *args = reviewed_chain(tmp_path)
+    before = Path(obs['receipt_reference']['path']).read_bytes()
+    assert obs['projection_item'] is None
+    derived = s.reviewed_completion_item(obs, event, *args)
+    assert derived['projection_item']['response_path'].endswith('response.body')
+    assert derived['status'] == 'TERMINAL_SOURCE_HOLD_NO_RETRY'
+    assert derived['source_hold'] is True
+    assert derived['charged_attempts'] == derived['provider_requests'] == 1
+    assert Path(obs['receipt_reference']['path']).read_bytes() == before
+    assert obs['projection_item'] is None
+
+
+@pytest.mark.parametrize('key', ['completion_reference', 'intent_reference', 'admission_reference', 'response_reference', 'adapter_reference'])
+def test_reviewed_reclassification_rejects_reference_substitution(tmp_path, key):
+    obs, event, *args = reviewed_chain(tmp_path)
+    event[key] = {'path': 'other', 'sha256': 'f'*64}
+    with pytest.raises(ValueError, match='binding_mismatch'):
+        s.reviewed_completion_item(obs, event, *args)
+
+
+def test_reviewed_reclassification_requires_actual_independent_false_positive(tmp_path):
+    obs, event, *args = reviewed_chain(tmp_path)
+    review = s.load_reference(event['independent_review_reference'])
+    review['classification'] = 'UNRESOLVED'
+    event['independent_review_reference'] = put(tmp_path, 'not-reviewed.json', review)
+    with pytest.raises(ValueError, match='independent_review_mismatch'):
+        s.reviewed_completion_item(obs, event, *args)
+
+
+def test_reviewed_derived_disposition_keeps_repair_trail(tmp_path):
+    obs, event, *args = reviewed_chain(tmp_path)
+    derived = s.reviewed_completion_item(obs, event, *args)
+    new = {**prior(RID), 'official_runner_identity_observed': True}
+    selected, dispositions, events = s.integrate({RID: 1}, [prior(RID)], [derived], lambda _: new)
+    assert selected == [new]
+    assert dispositions[0]['disposition'] == 'REVIEWED_OFFLINE_RESULT_SUPERSEDES_PRIOR_DIAGNOSTIC'
+    assert events[0]['original_transport_hold_preserved'] is True
+    assert events[0]['reviewed_reclassifications'] == [event]
+
+
+@pytest.mark.parametrize('field,value,reason', [
+    ('response_received_at', '2026-09-01T00:00:00+00:00', 'chronology_mismatch'),
+    ('retry_headers', {'Retry-After': '30'}, 'retry_instruction'),
+    ('http_status', 403, 'response_binding_mismatch'),
+    ('final_url', URL + '&redirect=true', 'response_binding_mismatch'),
+    ('schema_version', 'unrecognized_response', 'source_schema_mismatch'),
+])
+def test_reviewed_path_rechecks_actual_response_gates(tmp_path, field, value, reason):
+    obs, event, allowed, urls, keys, admission = reviewed_chain(tmp_path)
+    receipt = s.load_reference(obs['receipt_reference'])
+    manifest = s.load_reference(receipt['result_reference'])
+    response = s.load_reference(manifest['source_evidence']['response'])
+    response[field] = value
+    manifest['source_evidence']['response'] = put(tmp_path, 'bad-response.json', response)
+    receipt['result_reference'] = put(tmp_path, 'bad-source-manifest.json', manifest)
+    ref = put(tmp_path, 'bad-held-completion.json', receipt)
+    obs = s.completion_item(ref, allowed, urls, keys, admission)
+    event['completion_reference'] = ref
+    review = s.load_reference(event['independent_review_reference'])
+    review['original_completion_reference'] = ref
+    event['independent_review_reference'] = put(tmp_path, 'bad-chain-review.json', review)
+    with pytest.raises(ValueError, match=reason):
+        s.reviewed_completion_item(obs, event, allowed, urls, keys, admission)
+
+
+def test_rejected_offline_correction_keeps_actual_source_hold_in_accounting(tmp_path):
+    obs, event, allowed, urls, keys, admission = reviewed_chain(tmp_path)
+    event['identity_rule'] = 'not_frozen'
+    try:
+        s.reviewed_completion_item(obs, event, allowed, urls, keys, admission)
+    except ValueError as error:
+        receipt = s.load_reference(obs['receipt_reference'])
+        invalid = s.invalid_completion_observation(obs['receipt_reference'], receipt, s.load_reference(receipt['intent_reference']), error)
+    else:
+        pytest.fail('invalid correction accepted')
+    selected, dispositions, _ = s.integrate({RID: 1}, [prior(RID)], [invalid], lambda _: pytest.fail('must not parse'))
+    assert selected == [prior(RID)]
+    retained = dispositions[0]['completion_observations'][0]
+    assert retained['original_terminal_status'] == 'TERMINAL_SOURCE_HOLD_NO_RETRY'
+    assert retained['original_terminal_reason'] == 'SOURCE_ACCESS_CHALLENGE'
+    assert retained['source_hold'] is True
+    assert retained['charged_attempts'] == retained['provider_requests'] == 1

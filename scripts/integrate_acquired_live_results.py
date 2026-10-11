@@ -15,6 +15,7 @@ if str(Path(__file__).resolve().parents[1]) not in sys.path:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts import live_benchmark_alignment as alignment
 from scripts import project_acquired_live_results as projector
+from scripts import project_reviewed_live_results_v2 as reviewed_projector
 
 READY = 'RETAINED_RAW_RESULT_IDENTITY_UNVERIFIED'
 FIELD_CONTRADICTIONS = ('forecast_runner_scratched:', 'official_runner_name_changed_at_box:',
@@ -92,13 +93,26 @@ def completion_item(ref, allowed, expected_urls, canonical_keys, approved_admiss
         raise ValueError('ready_completion_not_one_actual_provider_request')
     if receipt.get('source_hold') is not False or receipt.get('charged_attempts') != 1:
         raise ValueError('ready_completion_hold_or_consumption_inconsistent')
+    projected, evidence = verified_response_chain(receipt, intent, expected_urls[rid])
+    if receipt.get('projection_records') != [projected]:
+        raise ValueError('completion_projection_paths_mismatch')
+    item['projection_item'] = projected
+    item['result_reference'] = receipt['result_reference']
+    item['source_evidence'] = evidence
+    return item
+
+
+def verified_response_chain(receipt, intent, expected_url):
+    target = intent['target']
+    rid = target['race_id']
+    intent_ref = receipt['intent_reference']
     manifest = load_reference(receipt['result_reference'])
     if manifest['target'] != target or manifest['intent_reference'] != intent_ref or manifest['admission_reference'] != receipt['admission_reference'] or manifest.get('approval_reference') != intent['approval_reference']:
         raise ValueError('result_manifest_identity_chain_mismatch')
     evidence = manifest['source_evidence']
     request = load_reference(evidence['request'])
     response = load_reference(evidence['response'])
-    if request.get('method') != 'GET' or request.get('url') != expected_urls[rid] or request.get('redirects') is not False:
+    if request.get('method') != 'GET' or request.get('url') != expected_url or request.get('redirects') is not False:
         raise ValueError('result_request_method_or_url_mismatch')
     if request.get('automatic_transport_retries') != 0 or request.get('intent_reference') != intent_ref:
         raise ValueError('result_request_consumption_chain_mismatch')
@@ -113,12 +127,70 @@ def completion_item(ref, allowed, expected_urls, canonical_keys, approved_admiss
     if response['response_sha256'] != evidence['body']['sha256']:
         raise ValueError('result_response_body_hash_reference_mismatch')
     projected = {'race_id': rid, 'response_path': evidence['body']['path'], 'metadata_path': evidence['response']['path']}
-    if receipt.get('projection_records') != [projected]:
-        raise ValueError('completion_projection_paths_mismatch')
-    item['projection_item'] = projected
-    item['result_reference'] = receipt['result_reference']
-    item['source_evidence'] = evidence
-    return item
+    return projected, evidence
+
+
+def reviewed_completion_item(item, event, allowed, expected_urls, canonical_keys, admission_ref):
+    """Append a reviewed offline interpretation; never rewrite the transport hold."""
+    ref = item['receipt_reference']
+    receipt = load_reference(ref)
+    intent = verified_intent(receipt['intent_reference'], allowed, expected_urls, canonical_keys, admission_ref)
+    rid = intent['target']['race_id']
+    if (event.get('race_id') != rid or event.get('completion_reference') != ref
+            or event.get('intent_reference') != receipt['intent_reference']
+            or event.get('admission_reference') != admission_ref
+            or event.get('identity_rule') != reviewed_projector.IDENTITY_RULE
+            or event.get('adapter_reference') != reference(Path(reviewed_projector.__file__).resolve())):
+        raise ValueError('reviewed_reclassification_identity_binding_mismatch')
+    if (receipt.get('status') != 'TERMINAL_SOURCE_HOLD_NO_RETRY'
+            or receipt.get('reason') != 'SOURCE_ACCESS_CHALLENGE'
+            or receipt.get('source_hold') is not True
+            or receipt.get('charged_attempts') != 1 or receipt.get('provider_requests') != 1
+            or receipt.get('synthetic_transport_calls') != 0):
+        raise ValueError('reviewed_reclassification_not_exact_actual_challenge_hold')
+    projected, evidence = verified_response_chain(receipt, intent, expected_urls[rid])
+    manifest = load_reference(receipt['result_reference'])
+    request, response = load_reference(evidence['request']), load_reference(evidence['response'])
+    if (manifest.get('schema_version') != 'july_raw_result_manifest_v1'
+            or request.get('schema_version') != 'july_result_http_request_v1'
+            or response.get('schema_version') != 'july_result_http_response_v1'):
+        raise ValueError('reviewed_reclassification_source_schema_mismatch')
+    if (response.get('http_status') != 200 or response.get('requested_url') != expected_urls[rid]
+            or response.get('final_url') != expected_urls[rid]
+            or event.get('response_reference') != evidence['body']):
+        raise ValueError('reviewed_reclassification_response_binding_mismatch')
+    review = load_reference(event['independent_review_reference'])
+    if (review.get('schema') != 'machine_only_july_challenge_classification_review_v1'
+            or review.get('classification') != 'DEMONSTRATED_FALSE_POSITIVE_GENERIC_RECAPTCHA_SCRIPT_REFERENCE'
+            or review.get('canonical_race_key') != canonical_keys[rid]
+            or review.get('admission_reference') != admission_ref
+            or review.get('response_reference') != evidence['body']
+            or review.get('original_completion_reference') != ref
+            or review.get('source_hold_unchanged') is not True
+            or review.get('request_or_retry_authorized') is not False):
+        raise ValueError('reviewed_reclassification_independent_review_mismatch')
+    criteria = load_reference(event['identity_criteria_reference'])
+    if (criteria.get('schema') != 'independent_source_identity_criteria_v1'
+            or criteria.get('status') != 'ACCEPTED_BEFORE_METRIC_INSPECTION'
+            or criteria.get('identity_rule') != reviewed_projector.IDENTITY_RULE):
+        raise ValueError('reviewed_reclassification_identity_criteria_not_frozen')
+    return {**item, 'projection_item': projected, 'source_evidence': evidence,
+            'result_reference': receipt['result_reference'], 'reviewed_reclassification': event,
+            'derived_interpretation': 'OFFLINE_REVIEWED_CLASSIFIER_FALSE_POSITIVE',
+            'runtime_source_hold_preserved': True}
+
+
+def invalid_completion_observation(ref, receipt, intent, error):
+    """Evidence processing failure never changes an actual transport terminal."""
+    return {'race_id': intent['target']['race_id'], 'receipt_reference': ref,
+            'intent_reference': receipt['intent_reference'],
+            'status': 'COMPLETION_EVIDENCE_INVALID', 'reason': str(error),
+            'original_terminal_status': receipt.get('status'),
+            'original_terminal_reason': receipt.get('reason'),
+            'source_hold': receipt.get('source_hold'),
+            'charged_attempts': receipt.get('charged_attempts'),
+            'provider_requests': receipt.get('provider_requests'),
+            'projection_item': None}
 
 
 def conflicts_with_prior(prior, acquired):
@@ -190,6 +262,8 @@ def integrate(population, prior, observations, acquire):
                         current, disposition = None, 'OFFICIAL_RESULT_CONTRADICTION_REQUIRES_REVIEW'
                     else:
                         current, disposition = new, 'NEW_STRICT_RESULT_SUPERSEDES_PRIOR_DIAGNOSTIC' if old else 'NEW_STRICT_RESULT'
+                        if observation.get('reviewed_reclassification'):
+                            disposition = 'REVIEWED_OFFLINE_RESULT_SUPERSEDES_PRIOR_DIAGNOSTIC' if old else 'REVIEWED_OFFLINE_STRICT_RESULT'
         if current is not None:
             selected.append(current)
         entry = {'race_id': rid, 'disposition': disposition, 'reasons': reasons,
@@ -203,11 +277,13 @@ def integrate(population, prior, observations, acquire):
                            'nonblocking_official_revisions': nonblocking,
                            'win_only_policy': 'Independent review before acquisition: losing ranks or terminal statuses cannot veto a complete source-identified unchanged field with the same unique winner.',
                            'prior_projection_sha256': entry['prior_projection_sha256'],
+                           'reviewed_reclassifications': [row['reviewed_reclassification'] for row in rows if row.get('reviewed_reclassification')],
+                           'original_transport_hold_preserved': any(row.get('runtime_source_hold_preserved') for row in rows),
                            'completion_references': [row['receipt_reference'] for row in rows]})
     return selected, dispositions, events
 
 
-def run(benchmark_evidence, prior_projection_path, reconciliation_path, completion_manifest_path, output, approved_admission_reference):
+def run(benchmark_evidence, prior_projection_path, reconciliation_path, completion_manifest_path, output, approved_admission_reference, reviewed_reclassifications_reference=None):
     base = Path(benchmark_evidence)
     boundary = projector.load(base / 'inventory/access-boundary.json')
     membership = projector.load(base / 'inventory/residual-membership.json')
@@ -247,18 +323,26 @@ def run(benchmark_evidence, prior_projection_path, reconciliation_path, completi
     for ref in intent_references:
         intent = verified_intent(ref, allowed, expected_urls, canonical, approved_admission_reference)
         unique_intents.setdefault(ref['sha256'], (ref, intent))
+    reviewed_events = {}
+    if reviewed_reclassifications_reference:
+        reviewed = load_reference(reviewed_reclassifications_reference)
+        if reviewed.get('schema') != 'reviewed_offline_live_reclassifications_v1':
+            raise ValueError('reviewed_reclassification_manifest_schema_mismatch')
+        for event in reviewed['records']:
+            key = event['completion_reference']['sha256']
+            if event['race_id'] not in allowed or key not in unique or key in reviewed_events:
+                raise ValueError('reviewed_reclassification_outside_census_or_duplicate')
+            reviewed_events[key] = event
     observations = []
     for ref, receipt, intent in completion_metadata:
         try:
             observation = completion_item(ref, allowed, expected_urls, canonical, approved_admission_reference)
+            if ref['sha256'] in reviewed_events:
+                observation = reviewed_completion_item(observation, reviewed_events[ref['sha256']], allowed, expected_urls, canonical, approved_admission_reference)
         except (ValueError, KeyError, OSError) as error:
             # The race and authority are already verified; broken retained
             # response metadata for it cannot terminate unrelated records.
-            observation = {'race_id': intent['target']['race_id'], 'receipt_reference': ref,
-                           'intent_reference': receipt['intent_reference'],
-                           'status': 'COMPLETION_EVIDENCE_INVALID', 'reason': str(error),
-                           'charged_attempts': 1, 'provider_requests': receipt.get('provider_requests'),
-                           'projection_item': None}
+            observation = invalid_completion_observation(ref, receipt, intent, error)
         observations.append(observation)
     completed_intents = {row['intent_reference']['sha256'] for row in observations}
     for key, (ref, intent) in unique_intents.items():
@@ -272,7 +356,11 @@ def run(benchmark_evidence, prior_projection_path, reconciliation_path, completi
     output.mkdir(parents=True, exist_ok=True)
     def acquire(observation):
         rid = observation['race_id']
-        projection = projector.project_one(observation['projection_item'], originals[allowed[rid]]['original'], expected_urls[rid], output / 'acquired-native' / allowed[rid])
+        selected_projector = reviewed_projector if observation.get('reviewed_reclassification') else projector
+        projection = selected_projector.project_one(observation['projection_item'], originals[allowed[rid]]['original'], expected_urls[rid], output / 'acquired-native' / allowed[rid])
+        if observation.get('reviewed_reclassification'):
+            projection['reviewed_reclassification'] = observation['reviewed_reclassification']
+            projection['original_transport_hold_preserved'] = True
         joined, error = alignment.join_result(originals[allowed[rid]]['original'], projection)
         if error or joined['field_status'] != 'EXACT_UNCHANGED':
             raise ValueError('acquired_alignment_not_strict:' + str(error))
@@ -301,6 +389,7 @@ def run(benchmark_evidence, prior_projection_path, reconciliation_path, completi
                'strict_races': len(strict) // 2, 'diagnostic_races': len(diagnostic) // 2,
                'unique_completion_receipts': len(unique), 'duplicate_index_entries': len(duplicates),
                'consumed_without_completion': sum(row['status'] == 'CONSUMED_WITHOUT_COMPLETION' for row in observations),
+               'reviewed_offline_reclassifications': sum(bool(row.get('reviewed_reclassification')) for row in observations),
                'dispositions': dict(Counter(r['disposition'] for r in dispositions)),
                'provider_requests_by_integrator': 0, 'fits': 0, 'selector_changes': 0}
     projector.write(output / 'summary.json', summary)
@@ -309,7 +398,8 @@ def run(benchmark_evidence, prior_projection_path, reconciliation_path, completi
                     'inputs': [reference(p) for p in [prior_projection_path, reconciliation_path, completion_manifest_path,
                     base / 'inventory/access-boundary.json', base / 'inventory/residual-membership.json', base / 'alignment/forecast-records.json', base / 'alignment/authenticated-originals.json']],
                     'approved_admission_reference': approved_admission_reference,
-                    'implementation': [reference(Path(__file__)), reference(Path(projector.__file__)), reference(Path(alignment.__file__))],
+                    'reviewed_reclassifications_reference': reviewed_reclassifications_reference,
+                    'implementation': [reference(Path(__file__)), reference(Path(projector.__file__)), reference(Path(reviewed_projector.__file__)), reference(Path(alignment.__file__))],
                     'prior_evidence_preserved': True})
     return summary
 
@@ -323,8 +413,13 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--approved-admission', type=Path, required=True)
     parser.add_argument('--approved-admission-sha256', required=True)
+    parser.add_argument('--reviewed-reclassifications', type=Path)
+    parser.add_argument('--reviewed-reclassifications-sha256')
     args = parser.parse_args()
-    print(json.dumps(run(args.benchmark_evidence, args.prior_projection, args.reconciliation, args.completion_manifest, args.output, {'path': str(args.approved_admission), 'sha256': args.approved_admission_sha256})))
+    if bool(args.reviewed_reclassifications) != bool(args.reviewed_reclassifications_sha256):
+        parser.error('reviewed reclassifications require both path and SHA256')
+    reviewed = {'path': str(args.reviewed_reclassifications), 'sha256': args.reviewed_reclassifications_sha256} if args.reviewed_reclassifications else None
+    print(json.dumps(run(args.benchmark_evidence, args.prior_projection, args.reconciliation, args.completion_manifest, args.output, {'path': str(args.approved_admission), 'sha256': args.approved_admission_sha256}, reviewed)))
 
 
 if __name__ == '__main__':

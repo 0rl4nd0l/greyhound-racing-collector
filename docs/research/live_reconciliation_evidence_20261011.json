@@ -47,6 +47,7 @@
         "sha256": "12fbc4497d2dfc91a40f6d57ea5c9bb72cbd652cb1bdffff66df2ff2458e5836"
       }
     ],
+    "historical_snapshot": true,
     "independent_review": "PASS",
     "max_requests": 210,
     "new_official_responses": 0,
@@ -313,29 +314,32 @@
       "sha256": "1ae6d40b9b9ff7c9830af93f97f15ed84e9f179be2c2effc7f8036933f7604dc"
     }
   ],
-  "authority": "Exact210 nonreserved reconciliation and431-race forecast-failure audit; provider requests0",
+  "authority": "Exact210 nonreserved reconciliation and431-race forecast-failure audit; approved finite acquisition executed solely by operational owner;1 request consumed,0 by offline audit.",
   "decision": {
     "attempted_races": 431,
     "byte_identical_metric_replay_artifacts": 13,
-    "diagnostic_full_delta_brier": 0.008749631108363057,
-    "diagnostic_full_delta_log_loss": 0.0031161345405035235,
-    "diagnostic_races": 9,
-    "focused_tests_passed": 77,
+    "diagnostic_full_delta_brier": 0.005619280392362466,
+    "diagnostic_full_delta_log_loss": -0.006312005097314222,
+    "diagnostic_races": 8,
+    "focused_tests_passed": 119,
     "forecast_races": 210,
-    "fully_evaluable_after_repair": 0,
+    "fully_evaluable_after_repair": 1,
     "fully_evaluable_without_repair": 0,
     "grade_defect_races": 126,
     "grade_repair_timely_input_ceiling": 122,
-    "incomplete": 9,
+    "incomplete": 8,
     "independent_review": "PASS",
     "later_frozen_forecasts": 131,
     "later_result_joins": 0,
     "original_forecasts": 210,
-    "provider_requests_made": 0,
+    "provider_requests_by_offline_audit": 0,
+    "provider_requests_made": 1,
     "recovered_diagnostic_joins": 2,
     "requires_acquisition": 201,
     "restricted": 0,
-    "strict_races": 0,
+    "strict_full_delta_brier": 0.03379243683636779,
+    "strict_full_delta_log_loss": 0.07854125164304548,
+    "strict_races": 1,
     "subtests_passed": 4,
     "unsuccessful_races": 221
   },
@@ -412,6 +416,7 @@
     "diagnostic_races": 9,
     "first_schedule_only_gap_after": "2026-10-11T22:04:00+11:00",
     "guaranteed_dispatch": false,
+    "historical_snapshot": true,
     "offline_monitor_agent": "/root/reconcile_results",
     "offline_monitor_terminal_callback_deadline": "2026-10-11T12:00:00Z",
     "schema": "july_installed_runtime_and_empty_census_snapshot_v1",
@@ -421,6 +426,191 @@
     "strict_races": 0
   },
   "parent_commit": "879e89f962b055e6b616a5ee2a8e7145e60b6cba",
+  "reviewed_first_actual_response": {
+    "artifacts": [
+      {
+        "bytes": 10543,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/replacement-july-admission-independent-check-02.json",
+        "sha256": "024451a46eebab9ac75dd8136474ebbee0bf8fa5109631bef09b4e4d105622ff"
+      },
+      {
+        "bytes": 2800,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/successor-july-runtime-independent-check-02.json",
+        "sha256": "f22deec44f03482e24d0d1abb65ecb318f8e286cc830e600d9fd9fca8d2c2a11"
+      },
+      {
+        "bytes": 4326,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/july-first-terminal-independent-accounting.json",
+        "sha256": "da90432fee18648c0a467267ac44db6cb32f55fad73fb63f9b5d9308314095bd"
+      },
+      {
+        "bytes": 3529,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/july-challenge-classification-independent-v02.json",
+        "sha256": "e799ae38a31273ea0dfc91819b96aa8cb40c84c3e7d7a9fa67dba9546d8472f3"
+      },
+      {
+        "bytes": 1953,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/source-title-identity-criteria-v1.json",
+        "sha256": "7203979b1154ad6ccda002f98b50220719d3292e92b50ac11615d34b1e493271"
+      },
+      {
+        "bytes": 3496,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/reviewed-retained-result-repair-independent-v2.json",
+        "sha256": "69c8951a84faab3198d9c5e5855518f69266142e21d4420ee097091728ee69d7"
+      },
+      {
+        "bytes": 46738,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/actual-reviewed-result-independent-check-v1.json",
+        "sha256": "c4fcfeaacfc7228f3c2ff31d7b161acc06697e0a0bd478389aa63ab21c6fc7c2"
+      },
+      {
+        "bytes": 3402,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/actual-reviewed-result-verdict-v1.json",
+        "sha256": "4b58cbbbe8e8d46f8439a757f1182cf609b75cb3127ef78cec6074f09c8ea082"
+      },
+      {
+        "bytes": 3391,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/review/root-reviewed-recovery-validation-01.json",
+        "sha256": "317e5d1ebcfd2cac5624403e7a87cbb391d86364e430a12e755ea160eeaef218"
+      },
+      {
+        "bytes": 790,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/metadata-census.json",
+        "sha256": "f9e5d0e646808b5d35858e5188d9f8e7a77db3227ce58c1994f981a81b6fcca5"
+      },
+      {
+        "bytes": 2535,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reviewed-reclassifications.FROZEN.json",
+        "sha256": "e6525a1454b1824a0495836b91a676cc846d590a6efe8525fe2b82a3468da80b"
+      },
+      {
+        "bytes": 46738,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reviewed-independent-check.json",
+        "sha256": "c4fcfeaacfc7228f3c2ff31d7b161acc06697e0a0bd478389aa63ab21c6fc7c2"
+      },
+      {
+        "bytes": 1769,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reproduce-reviewed.sh",
+        "sha256": "e781bef2543966ba976016659e0d55558fa2560c15dd7bb869f0f07354261e02"
+      },
+      {
+        "bytes": 745,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reviewed-integration/completion-index-audit.json",
+        "sha256": "8039f720ba34365410818730b632181206ddbbd430b5630069e9d1b70c1a1102"
+      },
+      {
+        "bytes": 312844,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reviewed-integration/diagnostic-records.json",
+        "sha256": "a97899708f2aabba224ccf3a3098ec438fe799f7d9fec159bae5dff93ed119de"
+      },
+      {
+        "bytes": 118135,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reviewed-integration/integrated-result-projection.json",
+        "sha256": "0b8e36d1816cffd435644611b19d499c729585934254ab689aed78a13d555d3f"
+      },
+      {
+        "bytes": 3400,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reviewed-integration/integration-correction-events.json",
+        "sha256": "8f6fa275520eb2c07598cb0f4b31eaaea60b588348920e3dd149309198e30ef8"
+      },
+      {
+        "bytes": 68915,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reviewed-integration/integration-dispositions.json",
+        "sha256": "fa381231bc267b905c430e5072d14d1d7a09b4dd39450335106ea0469b818023"
+      },
+      {
+        "bytes": 3272,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reviewed-integration/provenance.json",
+        "sha256": "d13e8f0715c60168901781ad476ff9dc454f4fa04f3b18a5bff710823fd14c13"
+      },
+      {
+        "bytes": 70288,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reviewed-integration/strict-records.json",
+        "sha256": "1997a43364f0657eddfccfab2d135f4b18d3a6625514cc5633cc2db593fbb846"
+      },
+      {
+        "bytes": 505,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reviewed-integration/summary.json",
+        "sha256": "0dc8fbf288b522ecf17a90af73115935946b9ee4d406ed1ee26f54e3cd8eee1a"
+      },
+      {
+        "bytes": 322974,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reviewed-completed/diagnostic-dataset.json",
+        "sha256": "57d83befb6ef15dfb31adb6d93ea3d13f3d7c8ebb1bddf94bbd01955d19f1441"
+      },
+      {
+        "bytes": 20631,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reviewed-completed/diagnostic-missing-outcome-sensitivity.json",
+        "sha256": "29504bcf73a7cfe4847220c545078da4a9f639da40921ea69a1d10a510c2c0c0"
+      },
+      {
+        "bytes": 39462,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reviewed-completed/diagnostic-scorecard.json",
+        "sha256": "fa40ba5b8da61552bb16bdd5602cb6f120aaf6c84056cf54042ff6c25c0f7d14"
+      },
+      {
+        "bytes": 69225,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reviewed-completed/diagnostic-selector-evaluation.json",
+        "sha256": "26d305aa9d124b398e58abf3746cd369036b90aaeff870b49c5bd23290ef020d"
+      },
+      {
+        "bytes": 558176,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reviewed-completed/forecast-dataset.json",
+        "sha256": "0865697701f2b75492d5efe0a272f6906b75792d44afc8567ddf0cec23fa70b8"
+      },
+      {
+        "bytes": 574227,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reviewed-completed/forecast-selector-dispositions.FROZEN.json",
+        "sha256": "f77316e5fad866d741137a5d230fa91d20ff7012ebe9f8bebd36fe06bb06fdbd"
+      },
+      {
+        "bytes": 2645,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reviewed-completed/forecast-selector-plan.FROZEN.json",
+        "sha256": "775ff69107a93cbabd803f5d24d614fe59d8468f2372493cae58c37329f5ffee"
+      },
+      {
+        "bytes": 1281,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reviewed-completed/manifest.json",
+        "sha256": "1d5a1adf700af37196f2c4564ae272a44aae8248e92c28705c2f8346fba30520"
+      },
+      {
+        "bytes": 72948,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reviewed-completed/strict-dataset.json",
+        "sha256": "ee26a1443a329ef9c8a1200de982fb51e750e583ed9c6697a4c131250ff4263d"
+      },
+      {
+        "bytes": 20629,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reviewed-completed/strict-missing-outcome-sensitivity.json",
+        "sha256": "ce72fe0db7015f76c45e36d62684724e3b661e5a10ed0f9a251867a0e204d657"
+      },
+      {
+        "bytes": 19483,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reviewed-completed/strict-scorecard.json",
+        "sha256": "c703e7c3fb949ec03ff065cef784f8c14158e7fbd038b7b8838642ff601b4ce4"
+      },
+      {
+        "bytes": 68889,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reviewed-completed/strict-selector-evaluation.json",
+        "sha256": "d5d6b128848a0f01446dc1ea7fac7c2c89bada824d178c1cb16c5e527547794b"
+      },
+      {
+        "bytes": 573,
+        "path": "/mnt/tenn-nvme2/tenn/greyhound-live-reconciliation-20261011-evidence/acquisition/observed-first-completion-01/reviewed-completed/summary.json",
+        "sha256": "37747fc4d722ff8b07ed2ee3f32edf134606af033fed52b8cc9cba85e100d8f0"
+      }
+    ],
+    "diagnostic_races": 8,
+    "later_selector_results": 0,
+    "missing_results": 201,
+    "production_policy": "KEEP_MARKET_BASELINE",
+    "provider_requests_consumed": 1,
+    "shadow_model_full_delta_log_loss": 0.07854125164304548,
+    "single_date_uncertainty": "NOT_ESTIMABLE",
+    "source_hold_preserved": true,
+    "status": "ONE_STRICT_RACE_RECOVERED_OFFLINE_ORIGINAL_TRANSPORT_HOLD_PRESERVED",
+    "strict_races": 1,
+    "unattempted": 209
+  },
   "schema": "live_reconciliation_artifact_references_v1",
   "service_activation_and_integration_preparation": {
     "artifacts": [
@@ -476,6 +666,7 @@
       }
     ],
     "at": "2026-10-11T09:23:46.295784+00:00",
+    "historical_snapshot": true,
     "new_official_results_confirmed": 0,
     "note": "Initial queue is not current consumption. Actual owner admission and all-intent census are required before acquisition integration.",
     "optional_tests_skipped": 4,
