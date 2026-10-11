@@ -1,0 +1,3693 @@
+{
+  "contrasts": {
+    "development": {
+      "average_minus_saved_baseline65": {
+        "date_bootstrap_95": [
+          0.0008340789638667607,
+          0.03683492464927841
+        ],
+        "dates": [
+          {
+            "date": "2025-09-01",
+            "delta_log_loss": -0.008759304871577143,
+            "leave_out_delta_log_loss": 0.022215713159687383,
+            "races": 88
+          },
+          {
+            "date": "2025-09-02",
+            "delta_log_loss": 0.007696847627809343,
+            "leave_out_delta_log_loss": 0.019946530874945766,
+            "races": 101
+          },
+          {
+            "date": "2025-09-03",
+            "delta_log_loss": 0.0021981840950093708,
+            "leave_out_delta_log_loss": 0.02118668314551575,
+            "races": 108
+          },
+          {
+            "date": "2025-09-04",
+            "delta_log_loss": 0.02580890421498036,
+            "leave_out_delta_log_loss": 0.016361069793003644,
+            "races": 118
+          },
+          {
+            "date": "2025-09-05",
+            "delta_log_loss": 0.03372417004331997,
+            "leave_out_delta_log_loss": 0.015041716766203143,
+            "races": 106
+          },
+          {
+            "date": "2025-09-06",
+            "delta_log_loss": 0.07992219255293051,
+            "leave_out_delta_log_loss": 0.01043374722978193,
+            "races": 72
+          },
+          {
+            "date": "2025-09-08",
+            "delta_log_loss": -0.012236047678379674,
+            "leave_out_delta_log_loss": 0.021279219645432654,
+            "races": 63
+          }
+        ],
+        "delta_log_loss": 0.018060527814029947,
+        "tracks": [
+          {
+            "delta_log_loss": 0.014498639371599004,
+            "races": 38,
+            "venue": "AP_K"
+          },
+          {
+            "delta_log_loss": -0.03579185956182894,
+            "races": 21,
+            "venue": "BAL"
+          },
+          {
+            "delta_log_loss": 0.03443919600693836,
+            "races": 11,
+            "venue": "BULLI"
+          },
+          {
+            "delta_log_loss": 0.033748713095521875,
+            "races": 19,
+            "venue": "CANN"
+          },
+          {
+            "delta_log_loss": 0.041863312893336516,
+            "races": 10,
+            "venue": "CASO"
+          },
+          {
+            "delta_log_loss": 0.046521054890313496,
+            "races": 8,
+            "venue": "DAPT"
+          },
+          {
+            "delta_log_loss": 0.1225421026692895,
+            "races": 4,
+            "venue": "DARW"
+          },
+          {
+            "delta_log_loss": 0.11502574048424002,
+            "races": 11,
+            "venue": "DUBBO"
+          },
+          {
+            "delta_log_loss": 0.035196741919115364,
+            "races": 16,
+            "venue": "GAWL"
+          },
+          {
+            "delta_log_loss": 0.023188100835871323,
+            "races": 33,
+            "venue": "GEE"
+          },
+          {
+            "delta_log_loss": 0.08123168020565336,
+            "races": 9,
+            "venue": "GOSF"
+          },
+          {
+            "delta_log_loss": -0.04625385406594971,
+            "races": 10,
+            "venue": "GOUL"
+          },
+          {
+            "delta_log_loss": -0.011099755229758182,
+            "races": 9,
+            "venue": "GRAF"
+          },
+          {
+            "delta_log_loss": -0.037972895359684664,
+            "races": 22,
+            "venue": "GRDN"
+          },
+          {
+            "delta_log_loss": -0.03537359735386775,
+            "races": 17,
+            "venue": "GUNN"
+          },
+          {
+            "delta_log_loss": 0.019154659705824775,
+            "races": 18,
+            "venue": "HEA"
+          },
+          {
+            "delta_log_loss": 0.02634023823921133,
+            "races": 17,
+            "venue": "HOBT"
+          },
+          {
+            "delta_log_loss": 0.07578014934175663,
+            "races": 19,
+            "venue": "HOR"
+          },
+          {
+            "delta_log_loss": 0.012806258248320252,
+            "races": 14,
+            "venue": "LAU"
+          },
+          {
+            "delta_log_loss": 0.03694814221696454,
+            "races": 25,
+            "venue": "MAND"
+          },
+          {
+            "delta_log_loss": 0.006019845795075392,
+            "races": 21,
+            "venue": "MEA"
+          },
+          {
+            "delta_log_loss": 0.11456930247193668,
+            "races": 10,
+            "venue": "MOUNT"
+          },
+          {
+            "delta_log_loss": -0.03596851985570105,
+            "races": 8,
+            "venue": "MURR"
+          },
+          {
+            "delta_log_loss": 0.03394433830765178,
+            "races": 11,
+            "venue": "MUSWELLBROOK"
+          },
+          {
+            "delta_log_loss": -0.03607805415195999,
+            "races": 21,
+            "venue": "NOR"
+          },
+          {
+            "delta_log_loss": -0.015019175070254409,
+            "races": 19,
+            "venue": "NOWRA"
+          },
+          {
+            "delta_log_loss": -0.16321326932637695,
+            "races": 3,
+            "venue": "QOT"
+          },
+          {
+            "delta_log_loss": 0.04641856525183915,
+            "races": 21,
+            "venue": "RICH"
+          },
+          {
+            "delta_log_loss": 0.016925785424543788,
+            "races": 8,
+            "venue": "ROCK"
+          },
+          {
+            "delta_log_loss": -0.026829459652823864,
+            "races": 29,
+            "venue": "SAN"
+          },
+          {
+            "delta_log_loss": 0.09312476564455832,
+            "races": 36,
+            "venue": "SHEP"
+          },
+          {
+            "delta_log_loss": 0.023022261246007328,
+            "races": 21,
+            "venue": "TAREE"
+          },
+          {
+            "delta_log_loss": 0.07590073531934735,
+            "races": 10,
+            "venue": "TEM"
+          },
+          {
+            "delta_log_loss": 0.03468271862304307,
+            "races": 17,
+            "venue": "TWN"
+          },
+          {
+            "delta_log_loss": -0.005564233318442557,
+            "races": 10,
+            "venue": "WAG"
+          },
+          {
+            "delta_log_loss": 0.014706266247036174,
+            "races": 36,
+            "venue": "WAR"
+          },
+          {
+            "delta_log_loss": 0.006434704279879958,
+            "races": 14,
+            "venue": "WPK"
+          },
+          {
+            "delta_log_loss": -0.027308117430149905,
+            "races": 30,
+            "venue": "WRGL"
+          }
+        ]
+      },
+      "dynamic_minus_average": {
+        "date_bootstrap_95": [
+          -0.007052794836170995,
+          0.004011717335824097
+        ],
+        "dates": [
+          {
+            "date": "2025-09-01",
+            "delta_log_loss": 0.004936902297255964,
+            "leave_out_delta_log_loss": -0.0031610327619743255,
+            "races": 88
+          },
+          {
+            "date": "2025-09-02",
+            "delta_log_loss": -0.004849369345424109,
+            "leave_out_delta_log_loss": -0.001569789013973076,
+            "races": 101
+          },
+          {
+            "date": "2025-09-03",
+            "delta_log_loss": 0.005592262204443364,
+            "leave_out_delta_log_loss": -0.003585736358983167,
+            "races": 108
+          },
+          {
+            "date": "2025-09-04",
+            "delta_log_loss": -0.009028656042382307,
+            "leave_out_delta_log_loss": -0.0005495126275869514,
+            "races": 118
+          },
+          {
+            "date": "2025-09-05",
+            "delta_log_loss": -0.008937307624021725,
+            "leave_out_delta_log_loss": -0.000752117451811981,
+            "races": 106
+          },
+          {
+            "date": "2025-09-06",
+            "delta_log_loss": -0.009286804893413528,
+            "leave_out_delta_log_loss": -0.0011855637916389009,
+            "races": 72
+          },
+          {
+            "date": "2025-09-08",
+            "delta_log_loss": 0.012249862706027362,
+            "leave_out_delta_log_loss": -0.0035965608045912577,
+            "races": 63
+          }
+        ],
+        "delta_log_loss": -0.0020747244003702626,
+        "tracks": [
+          {
+            "delta_log_loss": 0.006598363032369027,
+            "races": 38,
+            "venue": "AP_K"
+          },
+          {
+            "delta_log_loss": 0.01537942721917944,
+            "races": 21,
+            "venue": "BAL"
+          },
+          {
+            "delta_log_loss": -0.012042160542402258,
+            "races": 11,
+            "venue": "BULLI"
+          },
+          {
+            "delta_log_loss": -0.00633434173322156,
+            "races": 19,
+            "venue": "CANN"
+          },
+          {
+            "delta_log_loss": -0.014527330739631018,
+            "races": 10,
+            "venue": "CASO"
+          },
+          {
+            "delta_log_loss": -0.01165363097862071,
+            "races": 8,
+            "venue": "DAPT"
+          },
+          {
+            "delta_log_loss": 0.047389899437259464,
+            "races": 4,
+            "venue": "DARW"
+          },
+          {
+            "delta_log_loss": -0.020107411490710915,
+            "races": 11,
+            "venue": "DUBBO"
+          },
+          {
+            "delta_log_loss": 0.004356249106262235,
+            "races": 16,
+            "venue": "GAWL"
+          },
+          {
+            "delta_log_loss": -0.005089611220431796,
+            "races": 33,
+            "venue": "GEE"
+          },
+          {
+            "delta_log_loss": -0.0010512971491953601,
+            "races": 9,
+            "venue": "GOSF"
+          },
+          {
+            "delta_log_loss": -0.0032093881191757935,
+            "races": 10,
+            "venue": "GOUL"
+          },
+          {
+            "delta_log_loss": 0.004630891489026561,
+            "races": 9,
+            "venue": "GRAF"
+          },
+          {
+            "delta_log_loss": -0.0005830273917719418,
+            "races": 22,
+            "venue": "GRDN"
+          },
+          {
+            "delta_log_loss": 0.016250218814262887,
+            "races": 17,
+            "venue": "GUNN"
+          },
+          {
+            "delta_log_loss": -0.017110751233270653,
+            "races": 18,
+            "venue": "HEA"
+          },
+          {
+            "delta_log_loss": -0.01600363253850819,
+            "races": 17,
+            "venue": "HOBT"
+          },
+          {
+            "delta_log_loss": -0.009979235213324245,
+            "races": 19,
+            "venue": "HOR"
+          },
+          {
+            "delta_log_loss": 0.01681561645402807,
+            "races": 14,
+            "venue": "LAU"
+          },
+          {
+            "delta_log_loss": -0.018256620660397304,
+            "races": 25,
+            "venue": "MAND"
+          },
+          {
+            "delta_log_loss": -0.008274100679867183,
+            "races": 21,
+            "venue": "MEA"
+          },
+          {
+            "delta_log_loss": 0.004639157123542281,
+            "races": 10,
+            "venue": "MOUNT"
+          },
+          {
+            "delta_log_loss": -0.019259711108787124,
+            "races": 8,
+            "venue": "MURR"
+          },
+          {
+            "delta_log_loss": 0.009175568623791985,
+            "races": 11,
+            "venue": "MUSWELLBROOK"
+          },
+          {
+            "delta_log_loss": 0.003137748649423352,
+            "races": 21,
+            "venue": "NOR"
+          },
+          {
+            "delta_log_loss": 0.007100484898663585,
+            "races": 19,
+            "venue": "NOWRA"
+          },
+          {
+            "delta_log_loss": 0.0011984388594421524,
+            "races": 3,
+            "venue": "QOT"
+          },
+          {
+            "delta_log_loss": -0.011323813241511813,
+            "races": 21,
+            "venue": "RICH"
+          },
+          {
+            "delta_log_loss": 0.029133666202224073,
+            "races": 8,
+            "venue": "ROCK"
+          },
+          {
+            "delta_log_loss": -0.009135603814039394,
+            "races": 29,
+            "venue": "SAN"
+          },
+          {
+            "delta_log_loss": -0.013571565659521438,
+            "races": 36,
+            "venue": "SHEP"
+          },
+          {
+            "delta_log_loss": -0.005010405749037386,
+            "races": 21,
+            "venue": "TAREE"
+          },
+          {
+            "delta_log_loss": 0.015302685971534636,
+            "races": 10,
+            "venue": "TEM"
+          },
+          {
+            "delta_log_loss": 0.001654648550900623,
+            "races": 17,
+            "venue": "TWN"
+          },
+          {
+            "delta_log_loss": -0.001115618371446725,
+            "races": 10,
+            "venue": "WAG"
+          },
+          {
+            "delta_log_loss": 0.0006746273340978684,
+            "races": 36,
+            "venue": "WAR"
+          },
+          {
+            "delta_log_loss": -0.005517493895603869,
+            "races": 14,
+            "venue": "WPK"
+          },
+          {
+            "delta_log_loss": 0.004537043259266963,
+            "races": 30,
+            "venue": "WRGL"
+          }
+        ]
+      },
+      "dynamic_minus_recency": {
+        "date_bootstrap_95": [
+          -0.0015145367591677564,
+          -0.00028554033325313573
+        ],
+        "dates": [
+          {
+            "date": "2025-09-01",
+            "delta_log_loss": 0.0005692719219515801,
+            "leave_out_delta_log_loss": -0.0011005006074137475,
+            "races": 88
+          },
+          {
+            "date": "2025-09-02",
+            "delta_log_loss": -0.0009732753399967635,
+            "leave_out_delta_log_loss": -0.0008588965883596333,
+            "races": 101
+          },
+          {
+            "date": "2025-09-03",
+            "delta_log_loss": -0.0012373603038110094,
+            "leave_out_delta_log_loss": -0.0008053896041381033,
+            "races": 108
+          },
+          {
+            "date": "2025-09-04",
+            "delta_log_loss": -0.000653163746617314,
+            "leave_out_delta_log_loss": -0.000925492739365105,
+            "races": 118
+          },
+          {
+            "date": "2025-09-05",
+            "delta_log_loss": -0.0008713602718501904,
+            "leave_out_delta_log_loss": -0.0008774985946602716,
+            "races": 106
+          },
+          {
+            "date": "2025-09-06",
+            "delta_log_loss": -0.0028055246104920404,
+            "leave_out_delta_log_loss": -0.0006386826094586347,
+            "races": 72
+          },
+          {
+            "date": "2025-09-08",
+            "delta_log_loss": -0.0003446561902754978,
+            "leave_out_delta_log_loss": -0.0009330102460234623,
+            "races": 63
+          }
+        ],
+        "delta_log_loss": -0.0008765067315232767,
+        "tracks": [
+          {
+            "delta_log_loss": 0.001240694316197996,
+            "races": 38,
+            "venue": "AP_K"
+          },
+          {
+            "delta_log_loss": -0.0004069898919157666,
+            "races": 21,
+            "venue": "BAL"
+          },
+          {
+            "delta_log_loss": -0.0005783112974590807,
+            "races": 11,
+            "venue": "BULLI"
+          },
+          {
+            "delta_log_loss": -0.0031726792008532783,
+            "races": 19,
+            "venue": "CANN"
+          },
+          {
+            "delta_log_loss": -0.005192611375651945,
+            "races": 10,
+            "venue": "CASO"
+          },
+          {
+            "delta_log_loss": -0.0005273465600177663,
+            "races": 8,
+            "venue": "DAPT"
+          },
+          {
+            "delta_log_loss": -0.015609536296952997,
+            "races": 4,
+            "venue": "DARW"
+          },
+          {
+            "delta_log_loss": -0.0004630354507454516,
+            "races": 11,
+            "venue": "DUBBO"
+          },
+          {
+            "delta_log_loss": -0.002534744128390755,
+            "races": 16,
+            "venue": "GAWL"
+          },
+          {
+            "delta_log_loss": -0.00021242227151691164,
+            "races": 33,
+            "venue": "GEE"
+          },
+          {
+            "delta_log_loss": -0.0020218291575088265,
+            "races": 9,
+            "venue": "GOSF"
+          },
+          {
+            "delta_log_loss": -0.0014816836138973333,
+            "races": 10,
+            "venue": "GOUL"
+          },
+          {
+            "delta_log_loss": 0.0003648266944250454,
+            "races": 9,
+            "venue": "GRAF"
+          },
+          {
+            "delta_log_loss": -0.0031054365740866233,
+            "races": 22,
+            "venue": "GRDN"
+          },
+          {
+            "delta_log_loss": 0.004177031028412838,
+            "races": 17,
+            "venue": "GUNN"
+          },
+          {
+            "delta_log_loss": 0.001643481552554159,
+            "races": 18,
+            "venue": "HEA"
+          },
+          {
+            "delta_log_loss": 0.0009940996856967737,
+            "races": 17,
+            "venue": "HOBT"
+          },
+          {
+            "delta_log_loss": -5.260731841428308e-05,
+            "races": 19,
+            "venue": "HOR"
+          },
+          {
+            "delta_log_loss": 0.001322273372005792,
+            "races": 14,
+            "venue": "LAU"
+          },
+          {
+            "delta_log_loss": -0.0006120724648336084,
+            "races": 25,
+            "venue": "MAND"
+          },
+          {
+            "delta_log_loss": 0.001146852939578391,
+            "races": 21,
+            "venue": "MEA"
+          },
+          {
+            "delta_log_loss": 0.0017984001010150185,
+            "races": 10,
+            "venue": "MOUNT"
+          },
+          {
+            "delta_log_loss": -0.0017063220068575247,
+            "races": 8,
+            "venue": "MURR"
+          },
+          {
+            "delta_log_loss": -6.28821968484683e-05,
+            "races": 11,
+            "venue": "MUSWELLBROOK"
+          },
+          {
+            "delta_log_loss": -0.00035745301007545597,
+            "races": 21,
+            "venue": "NOR"
+          },
+          {
+            "delta_log_loss": 0.00020980742053543734,
+            "races": 19,
+            "venue": "NOWRA"
+          },
+          {
+            "delta_log_loss": 0.0007960127762518532,
+            "races": 3,
+            "venue": "QOT"
+          },
+          {
+            "delta_log_loss": -0.0015524321799756196,
+            "races": 21,
+            "venue": "RICH"
+          },
+          {
+            "delta_log_loss": -0.0019761067445980413,
+            "races": 8,
+            "venue": "ROCK"
+          },
+          {
+            "delta_log_loss": -0.003246565565778449,
+            "races": 29,
+            "venue": "SAN"
+          },
+          {
+            "delta_log_loss": -0.0032415130964114328,
+            "races": 36,
+            "venue": "SHEP"
+          },
+          {
+            "delta_log_loss": -0.0009709084023987735,
+            "races": 21,
+            "venue": "TAREE"
+          },
+          {
+            "delta_log_loss": -0.0010783093882184014,
+            "races": 10,
+            "venue": "TEM"
+          },
+          {
+            "delta_log_loss": -0.0004469218087100553,
+            "races": 17,
+            "venue": "TWN"
+          },
+          {
+            "delta_log_loss": 0.0024968437347383634,
+            "races": 10,
+            "venue": "WAG"
+          },
+          {
+            "delta_log_loss": -0.0009473655741202693,
+            "races": 36,
+            "venue": "WAR"
+          },
+          {
+            "delta_log_loss": -0.00442665186255875,
+            "races": 14,
+            "venue": "WPK"
+          },
+          {
+            "delta_log_loss": -0.0018271776634093924,
+            "races": 30,
+            "venue": "WRGL"
+          }
+        ]
+      },
+      "dynamic_minus_saved_baseline65": {
+        "date_bootstrap_95": [
+          0.0034555379610498086,
+          0.03183188219337465
+        ],
+        "dates": [
+          {
+            "date": "2025-09-01",
+            "delta_log_loss": -0.003822402574321179,
+            "leave_out_delta_log_loss": 0.019054680397713054,
+            "races": 88
+          },
+          {
+            "date": "2025-09-02",
+            "delta_log_loss": 0.002847478282385234,
+            "leave_out_delta_log_loss": 0.01837674186097269,
+            "races": 101
+          },
+          {
+            "date": "2025-09-03",
+            "delta_log_loss": 0.007790446299452735,
+            "leave_out_delta_log_loss": 0.01760094678653259,
+            "races": 108
+          },
+          {
+            "date": "2025-09-04",
+            "delta_log_loss": 0.016780248172598055,
+            "leave_out_delta_log_loss": 0.015811557165416695,
+            "races": 118
+          },
+          {
+            "date": "2025-09-05",
+            "delta_log_loss": 0.024786862419298245,
+            "leave_out_delta_log_loss": 0.01428959931439116,
+            "races": 106
+          },
+          {
+            "date": "2025-09-06",
+            "delta_log_loss": 0.07063538765951699,
+            "leave_out_delta_log_loss": 0.009248183438143029,
+            "races": 72
+          },
+          {
+            "date": "2025-09-08",
+            "delta_log_loss": 1.3815027647687405e-05,
+            "leave_out_delta_log_loss": 0.017682658840841393,
+            "races": 63
+          }
+        ],
+        "delta_log_loss": 0.015985803413659683,
+        "tracks": [
+          {
+            "delta_log_loss": 0.02109700240396803,
+            "races": 38,
+            "venue": "AP_K"
+          },
+          {
+            "delta_log_loss": -0.020412432342649504,
+            "races": 21,
+            "venue": "BAL"
+          },
+          {
+            "delta_log_loss": 0.0223970354645361,
+            "races": 11,
+            "venue": "BULLI"
+          },
+          {
+            "delta_log_loss": 0.027414371362300318,
+            "races": 19,
+            "venue": "CANN"
+          },
+          {
+            "delta_log_loss": 0.027335982153705495,
+            "races": 10,
+            "venue": "CASO"
+          },
+          {
+            "delta_log_loss": 0.034867423911692785,
+            "races": 8,
+            "venue": "DAPT"
+          },
+          {
+            "delta_log_loss": 0.16993200210654896,
+            "races": 4,
+            "venue": "DARW"
+          },
+          {
+            "delta_log_loss": 0.0949183289935291,
+            "races": 11,
+            "venue": "DUBBO"
+          },
+          {
+            "delta_log_loss": 0.0395529910253776,
+            "races": 16,
+            "venue": "GAWL"
+          },
+          {
+            "delta_log_loss": 0.018098489615439528,
+            "races": 33,
+            "venue": "GEE"
+          },
+          {
+            "delta_log_loss": 0.08018038305645799,
+            "races": 9,
+            "venue": "GOSF"
+          },
+          {
+            "delta_log_loss": -0.0494632421851255,
+            "races": 10,
+            "venue": "GOUL"
+          },
+          {
+            "delta_log_loss": -0.006468863740731622,
+            "races": 9,
+            "venue": "GRAF"
+          },
+          {
+            "delta_log_loss": -0.038555922751456605,
+            "races": 22,
+            "venue": "GRDN"
+          },
+          {
+            "delta_log_loss": -0.019123378539604864,
+            "races": 17,
+            "venue": "GUNN"
+          },
+          {
+            "delta_log_loss": 0.002043908472554121,
+            "races": 18,
+            "venue": "HEA"
+          },
+          {
+            "delta_log_loss": 0.010336605700703142,
+            "races": 17,
+            "venue": "HOBT"
+          },
+          {
+            "delta_log_loss": 0.06580091412843239,
+            "races": 19,
+            "venue": "HOR"
+          },
+          {
+            "delta_log_loss": 0.02962187470234832,
+            "races": 14,
+            "venue": "LAU"
+          },
+          {
+            "delta_log_loss": 0.018691521556567236,
+            "races": 25,
+            "venue": "MAND"
+          },
+          {
+            "delta_log_loss": -0.0022542548847917904,
+            "races": 21,
+            "venue": "MEA"
+          },
+          {
+            "delta_log_loss": 0.11920845959547896,
+            "races": 10,
+            "venue": "MOUNT"
+          },
+          {
+            "delta_log_loss": -0.05522823096448817,
+            "races": 8,
+            "venue": "MURR"
+          },
+          {
+            "delta_log_loss": 0.04311990693144376,
+            "races": 11,
+            "venue": "MUSWELLBROOK"
+          },
+          {
+            "delta_log_loss": -0.03294030550253664,
+            "races": 21,
+            "venue": "NOR"
+          },
+          {
+            "delta_log_loss": -0.007918690171590824,
+            "races": 19,
+            "venue": "NOWRA"
+          },
+          {
+            "delta_log_loss": -0.1620148304669348,
+            "races": 3,
+            "venue": "QOT"
+          },
+          {
+            "delta_log_loss": 0.035094752010327336,
+            "races": 21,
+            "venue": "RICH"
+          },
+          {
+            "delta_log_loss": 0.04605945162676786,
+            "races": 8,
+            "venue": "ROCK"
+          },
+          {
+            "delta_log_loss": -0.035965063466863255,
+            "races": 29,
+            "venue": "SAN"
+          },
+          {
+            "delta_log_loss": 0.07955319998503689,
+            "races": 36,
+            "venue": "SHEP"
+          },
+          {
+            "delta_log_loss": 0.01801185549696994,
+            "races": 21,
+            "venue": "TAREE"
+          },
+          {
+            "delta_log_loss": 0.09120342129088199,
+            "races": 10,
+            "venue": "TEM"
+          },
+          {
+            "delta_log_loss": 0.036337367173943695,
+            "races": 17,
+            "venue": "TWN"
+          },
+          {
+            "delta_log_loss": -0.0066798516898892825,
+            "races": 10,
+            "venue": "WAG"
+          },
+          {
+            "delta_log_loss": 0.015380893581134043,
+            "races": 36,
+            "venue": "WAR"
+          },
+          {
+            "delta_log_loss": 0.0009172103842760888,
+            "races": 14,
+            "venue": "WPK"
+          },
+          {
+            "delta_log_loss": -0.022771074170882945,
+            "races": 30,
+            "venue": "WRGL"
+          }
+        ]
+      },
+      "recency_minus_average": {
+        "date_bootstrap_95": [
+          -0.005987368494893821,
+          0.004738668638711451
+        ],
+        "dates": [
+          {
+            "date": "2025-09-01",
+            "delta_log_loss": 0.004367630375304384,
+            "leave_out_delta_log_loss": -0.002060532154560578,
+            "races": 88
+          },
+          {
+            "date": "2025-09-02",
+            "delta_log_loss": -0.0038760940054273453,
+            "leave_out_delta_log_loss": -0.0007108924256134424,
+            "races": 101
+          },
+          {
+            "date": "2025-09-03",
+            "delta_log_loss": 0.006829622508254373,
+            "leave_out_delta_log_loss": -0.0027803467548450636,
+            "races": 108
+          },
+          {
+            "date": "2025-09-04",
+            "delta_log_loss": -0.008375492295764992,
+            "leave_out_delta_log_loss": 0.0003759801117781535,
+            "races": 118
+          },
+          {
+            "date": "2025-09-05",
+            "delta_log_loss": -0.008065947352171534,
+            "leave_out_delta_log_loss": 0.00012538114284829074,
+            "races": 106
+          },
+          {
+            "date": "2025-09-06",
+            "delta_log_loss": -0.006481280282921488,
+            "leave_out_delta_log_loss": -0.0005468811821802659,
+            "races": 72
+          },
+          {
+            "date": "2025-09-08",
+            "delta_log_loss": 0.012594518896302859,
+            "leave_out_delta_log_loss": -0.0026635505585677955,
+            "races": 63
+          }
+        ],
+        "delta_log_loss": -0.0011982176688469857,
+        "tracks": [
+          {
+            "delta_log_loss": 0.005357668716171032,
+            "races": 38,
+            "venue": "AP_K"
+          },
+          {
+            "delta_log_loss": 0.015786417111095206,
+            "races": 21,
+            "venue": "BAL"
+          },
+          {
+            "delta_log_loss": -0.011463849244943177,
+            "races": 11,
+            "venue": "BULLI"
+          },
+          {
+            "delta_log_loss": -0.003161662532368282,
+            "races": 19,
+            "venue": "CANN"
+          },
+          {
+            "delta_log_loss": -0.00933471936397907,
+            "races": 10,
+            "venue": "CASO"
+          },
+          {
+            "delta_log_loss": -0.011126284418602944,
+            "races": 8,
+            "venue": "DAPT"
+          },
+          {
+            "delta_log_loss": 0.06299943573421246,
+            "races": 4,
+            "venue": "DARW"
+          },
+          {
+            "delta_log_loss": -0.019644376039965463,
+            "races": 11,
+            "venue": "DUBBO"
+          },
+          {
+            "delta_log_loss": 0.0068909932346529895,
+            "races": 16,
+            "venue": "GAWL"
+          },
+          {
+            "delta_log_loss": -0.004877188948914884,
+            "races": 33,
+            "venue": "GEE"
+          },
+          {
+            "delta_log_loss": 0.0009705320083134664,
+            "races": 9,
+            "venue": "GOSF"
+          },
+          {
+            "delta_log_loss": -0.0017277045052784602,
+            "races": 10,
+            "venue": "GOUL"
+          },
+          {
+            "delta_log_loss": 0.004266064794601516,
+            "races": 9,
+            "venue": "GRAF"
+          },
+          {
+            "delta_log_loss": 0.0025224091823146818,
+            "races": 22,
+            "venue": "GRDN"
+          },
+          {
+            "delta_log_loss": 0.012073187785850047,
+            "races": 17,
+            "venue": "GUNN"
+          },
+          {
+            "delta_log_loss": -0.018754232785824814,
+            "races": 18,
+            "venue": "HEA"
+          },
+          {
+            "delta_log_loss": -0.01699773222420496,
+            "races": 17,
+            "venue": "HOBT"
+          },
+          {
+            "delta_log_loss": -0.009926627894909962,
+            "races": 19,
+            "venue": "HOR"
+          },
+          {
+            "delta_log_loss": 0.01549334308202228,
+            "races": 14,
+            "venue": "LAU"
+          },
+          {
+            "delta_log_loss": -0.017644548195563697,
+            "races": 25,
+            "venue": "MAND"
+          },
+          {
+            "delta_log_loss": -0.009420953619445574,
+            "races": 21,
+            "venue": "MEA"
+          },
+          {
+            "delta_log_loss": 0.002840757022527263,
+            "races": 10,
+            "venue": "MOUNT"
+          },
+          {
+            "delta_log_loss": -0.0175533891019296,
+            "races": 8,
+            "venue": "MURR"
+          },
+          {
+            "delta_log_loss": 0.009238450820640454,
+            "races": 11,
+            "venue": "MUSWELLBROOK"
+          },
+          {
+            "delta_log_loss": 0.0034952016594988083,
+            "races": 21,
+            "venue": "NOR"
+          },
+          {
+            "delta_log_loss": 0.006890677478128149,
+            "races": 19,
+            "venue": "NOWRA"
+          },
+          {
+            "delta_log_loss": 0.00040242608319029927,
+            "races": 3,
+            "venue": "QOT"
+          },
+          {
+            "delta_log_loss": -0.009771381061536194,
+            "races": 21,
+            "venue": "RICH"
+          },
+          {
+            "delta_log_loss": 0.031109772946822115,
+            "races": 8,
+            "venue": "ROCK"
+          },
+          {
+            "delta_log_loss": -0.005889038248260944,
+            "races": 29,
+            "venue": "SAN"
+          },
+          {
+            "delta_log_loss": -0.010330052563110006,
+            "races": 36,
+            "venue": "SHEP"
+          },
+          {
+            "delta_log_loss": -0.004039497346638612,
+            "races": 21,
+            "venue": "TAREE"
+          },
+          {
+            "delta_log_loss": 0.016380995359753035,
+            "races": 10,
+            "venue": "TEM"
+          },
+          {
+            "delta_log_loss": 0.002101570359610678,
+            "races": 17,
+            "venue": "TWN"
+          },
+          {
+            "delta_log_loss": -0.003612462106185088,
+            "races": 10,
+            "venue": "WAG"
+          },
+          {
+            "delta_log_loss": 0.0016219929082181377,
+            "races": 36,
+            "venue": "WAR"
+          },
+          {
+            "delta_log_loss": -0.0010908420330451188,
+            "races": 14,
+            "venue": "WPK"
+          },
+          {
+            "delta_log_loss": 0.006364220922676356,
+            "races": 30,
+            "venue": "WRGL"
+          }
+        ]
+      },
+      "recency_minus_saved_baseline65": {
+        "date_bootstrap_95": [
+          0.0038842624308525484,
+          0.03334618643289265
+        ],
+        "dates": [
+          {
+            "date": "2025-09-01",
+            "delta_log_loss": -0.004391674496272758,
+            "leave_out_delta_log_loss": 0.020155181005126803,
+            "races": 88
+          },
+          {
+            "date": "2025-09-02",
+            "delta_log_loss": 0.0038207536223819976,
+            "leave_out_delta_log_loss": 0.019235638449332324,
+            "races": 101
+          },
+          {
+            "date": "2025-09-03",
+            "delta_log_loss": 0.009027806603263744,
+            "leave_out_delta_log_loss": 0.018406336390670693,
+            "races": 108
+          },
+          {
+            "date": "2025-09-04",
+            "delta_log_loss": 0.017433411919215366,
+            "leave_out_delta_log_loss": 0.016737049904781802,
+            "races": 118
+          },
+          {
+            "date": "2025-09-05",
+            "delta_log_loss": 0.02565822269114843,
+            "leave_out_delta_log_loss": 0.01516709790905143,
+            "races": 106
+          },
+          {
+            "date": "2025-09-06",
+            "delta_log_loss": 0.07344091227000904,
+            "leave_out_delta_log_loss": 0.009886866047601663,
+            "races": 72
+          },
+          {
+            "date": "2025-09-08",
+            "delta_log_loss": 0.00035847121792318874,
+            "leave_out_delta_log_loss": 0.018615669086864857,
+            "races": 63
+          }
+        ],
+        "delta_log_loss": 0.016862310145182958,
+        "tracks": [
+          {
+            "delta_log_loss": 0.019856308087770034,
+            "races": 38,
+            "venue": "AP_K"
+          },
+          {
+            "delta_log_loss": -0.020005442450733737,
+            "races": 21,
+            "venue": "BAL"
+          },
+          {
+            "delta_log_loss": 0.022975346761995183,
+            "races": 11,
+            "venue": "BULLI"
+          },
+          {
+            "delta_log_loss": 0.030587050563153594,
+            "races": 19,
+            "venue": "CANN"
+          },
+          {
+            "delta_log_loss": 0.03252859352935744,
+            "races": 10,
+            "venue": "CASO"
+          },
+          {
+            "delta_log_loss": 0.03539477047171055,
+            "races": 8,
+            "venue": "DAPT"
+          },
+          {
+            "delta_log_loss": 0.18554153840350196,
+            "races": 4,
+            "venue": "DARW"
+          },
+          {
+            "delta_log_loss": 0.09538136444427456,
+            "races": 11,
+            "venue": "DUBBO"
+          },
+          {
+            "delta_log_loss": 0.04208773515376835,
+            "races": 16,
+            "venue": "GAWL"
+          },
+          {
+            "delta_log_loss": 0.018310911886956438,
+            "races": 33,
+            "venue": "GEE"
+          },
+          {
+            "delta_log_loss": 0.08220221221396681,
+            "races": 9,
+            "venue": "GOSF"
+          },
+          {
+            "delta_log_loss": -0.04798155857122817,
+            "races": 10,
+            "venue": "GOUL"
+          },
+          {
+            "delta_log_loss": -0.0068336904351566675,
+            "races": 9,
+            "venue": "GRAF"
+          },
+          {
+            "delta_log_loss": -0.03545048617736998,
+            "races": 22,
+            "venue": "GRDN"
+          },
+          {
+            "delta_log_loss": -0.023300409568017703,
+            "races": 17,
+            "venue": "GUNN"
+          },
+          {
+            "delta_log_loss": 0.000400426919999962,
+            "races": 18,
+            "venue": "HEA"
+          },
+          {
+            "delta_log_loss": 0.009342506015006368,
+            "races": 17,
+            "venue": "HOBT"
+          },
+          {
+            "delta_log_loss": 0.06585352144684668,
+            "races": 19,
+            "venue": "HOR"
+          },
+          {
+            "delta_log_loss": 0.02829960133034253,
+            "races": 14,
+            "venue": "LAU"
+          },
+          {
+            "delta_log_loss": 0.019303594021400847,
+            "races": 25,
+            "venue": "MAND"
+          },
+          {
+            "delta_log_loss": -0.0034011078243701815,
+            "races": 21,
+            "venue": "MEA"
+          },
+          {
+            "delta_log_loss": 0.11741005949446395,
+            "races": 10,
+            "venue": "MOUNT"
+          },
+          {
+            "delta_log_loss": -0.05352190895763065,
+            "races": 8,
+            "venue": "MURR"
+          },
+          {
+            "delta_log_loss": 0.04318278912829223,
+            "races": 11,
+            "venue": "MUSWELLBROOK"
+          },
+          {
+            "delta_log_loss": -0.032582852492461185,
+            "races": 21,
+            "venue": "NOR"
+          },
+          {
+            "delta_log_loss": -0.008128497592126258,
+            "races": 19,
+            "venue": "NOWRA"
+          },
+          {
+            "delta_log_loss": -0.16281084324318665,
+            "races": 3,
+            "venue": "QOT"
+          },
+          {
+            "delta_log_loss": 0.03664718419030295,
+            "races": 21,
+            "venue": "RICH"
+          },
+          {
+            "delta_log_loss": 0.0480355583713659,
+            "races": 8,
+            "venue": "ROCK"
+          },
+          {
+            "delta_log_loss": -0.03271849790108481,
+            "races": 29,
+            "venue": "SAN"
+          },
+          {
+            "delta_log_loss": 0.08279471308144831,
+            "races": 36,
+            "venue": "SHEP"
+          },
+          {
+            "delta_log_loss": 0.018982763899368715,
+            "races": 21,
+            "venue": "TAREE"
+          },
+          {
+            "delta_log_loss": 0.0922817306791004,
+            "races": 10,
+            "venue": "TEM"
+          },
+          {
+            "delta_log_loss": 0.03678428898265375,
+            "races": 17,
+            "venue": "TWN"
+          },
+          {
+            "delta_log_loss": -0.009176695424627646,
+            "races": 10,
+            "venue": "WAG"
+          },
+          {
+            "delta_log_loss": 0.016328259155254307,
+            "races": 36,
+            "venue": "WAR"
+          },
+          {
+            "delta_log_loss": 0.0053438622468348395,
+            "races": 14,
+            "venue": "WPK"
+          },
+          {
+            "delta_log_loss": -0.02094389650747355,
+            "races": 30,
+            "venue": "WRGL"
+          }
+        ]
+      }
+    },
+    "later": {
+      "average_minus_saved_baseline65": {
+        "date_bootstrap_95": [
+          0.057383241085906395,
+          0.1010234960374156
+        ],
+        "dates": [
+          {
+            "date": "2025-09-09",
+            "delta_log_loss": 0.032417323549912676,
+            "leave_out_delta_log_loss": 0.08476666180211985,
+            "races": 105
+          },
+          {
+            "date": "2025-09-10",
+            "delta_log_loss": 0.022419849471955054,
+            "leave_out_delta_log_loss": 0.08731593105109699,
+            "races": 123
+          },
+          {
+            "date": "2025-09-11",
+            "delta_log_loss": 0.07835448433376457,
+            "leave_out_delta_log_loss": 0.0792356891355903,
+            "races": 118
+          },
+          {
+            "date": "2025-09-12",
+            "delta_log_loss": 0.21502364031067872,
+            "leave_out_delta_log_loss": 0.07729262725212711,
+            "races": 13
+          },
+          {
+            "date": "2025-09-16",
+            "delta_log_loss": 0.07000798047285092,
+            "leave_out_delta_log_loss": 0.08000015325886829,
+            "races": 85
+          },
+          {
+            "date": "2025-09-17",
+            "delta_log_loss": 0.0989872678938743,
+            "leave_out_delta_log_loss": 0.0767067483818578,
+            "races": 106
+          },
+          {
+            "date": "2025-09-18",
+            "delta_log_loss": 0.07252221072865216,
+            "leave_out_delta_log_loss": 0.08010955970409298,
+            "races": 126
+          },
+          {
+            "date": "2025-09-29",
+            "delta_log_loss": 0.10224903249595141,
+            "leave_out_delta_log_loss": 0.0765747819914326,
+            "races": 97
+          },
+          {
+            "date": "2025-09-30",
+            "delta_log_loss": 0.12545282908306415,
+            "leave_out_delta_log_loss": 0.07389381810657734,
+            "races": 99
+          },
+          {
+            "date": "2025-10-01",
+            "delta_log_loss": 0.10707868240084409,
+            "leave_out_delta_log_loss": 0.07582764960240615,
+            "races": 103
+          }
+        ],
+        "delta_log_loss": 0.07912904075957447,
+        "tracks": [
+          {
+            "delta_log_loss": 0.06042900544767927,
+            "races": 53,
+            "venue": "AP_K"
+          },
+          {
+            "delta_log_loss": 0.18465851623278393,
+            "races": 38,
+            "venue": "BAL"
+          },
+          {
+            "delta_log_loss": 0.0024146389839596973,
+            "races": 30,
+            "venue": "BEN"
+          },
+          {
+            "delta_log_loss": 0.1746873760045439,
+            "races": 23,
+            "venue": "BULLI"
+          },
+          {
+            "delta_log_loss": 0.06590753748051628,
+            "races": 30,
+            "venue": "CANN"
+          },
+          {
+            "delta_log_loss": 0.008370151654752949,
+            "races": 19,
+            "venue": "CAPA"
+          },
+          {
+            "delta_log_loss": -0.011870950909278621,
+            "races": 33,
+            "venue": "CASO"
+          },
+          {
+            "delta_log_loss": 0.04890534838684971,
+            "races": 12,
+            "venue": "DAPT"
+          },
+          {
+            "delta_log_loss": 0.2414949888882876,
+            "races": 6,
+            "venue": "DARW"
+          },
+          {
+            "delta_log_loss": 0.14563765353612995,
+            "races": 29,
+            "venue": "GAWL"
+          },
+          {
+            "delta_log_loss": 0.10552995710060678,
+            "races": 25,
+            "venue": "GEE"
+          },
+          {
+            "delta_log_loss": 0.11260559951635465,
+            "races": 33,
+            "venue": "GOSF"
+          },
+          {
+            "delta_log_loss": 0.11733077514285972,
+            "races": 12,
+            "venue": "GRAF"
+          },
+          {
+            "delta_log_loss": 0.09452042577329532,
+            "races": 33,
+            "venue": "GUNN"
+          },
+          {
+            "delta_log_loss": 0.1764801952031481,
+            "races": 15,
+            "venue": "HOBT"
+          },
+          {
+            "delta_log_loss": 0.08034308983087417,
+            "races": 27,
+            "venue": "HOR"
+          },
+          {
+            "delta_log_loss": 0.1178399253907012,
+            "races": 36,
+            "venue": "LAU"
+          },
+          {
+            "delta_log_loss": 0.059830850625385644,
+            "races": 46,
+            "venue": "MAND"
+          },
+          {
+            "delta_log_loss": 0.05567238516976405,
+            "races": 29,
+            "venue": "MEA"
+          },
+          {
+            "delta_log_loss": 0.15773310195339796,
+            "races": 22,
+            "venue": "MOUNT"
+          },
+          {
+            "delta_log_loss": -0.03466117403892019,
+            "races": 27,
+            "venue": "MURR"
+          },
+          {
+            "delta_log_loss": 0.1115952857986567,
+            "races": 16,
+            "venue": "MUSWELLBROOK"
+          },
+          {
+            "delta_log_loss": 0.05233931506303935,
+            "races": 10,
+            "venue": "NOR"
+          },
+          {
+            "delta_log_loss": 0.12947627332274028,
+            "races": 18,
+            "venue": "NOWRA"
+          },
+          {
+            "delta_log_loss": -0.02398418778043068,
+            "races": 27,
+            "venue": "QOT"
+          },
+          {
+            "delta_log_loss": 0.05941043214260364,
+            "races": 44,
+            "venue": "RICH"
+          },
+          {
+            "delta_log_loss": -0.03140772405008581,
+            "races": 20,
+            "venue": "ROCK"
+          },
+          {
+            "delta_log_loss": 0.034976765406236475,
+            "races": 31,
+            "venue": "SAL"
+          },
+          {
+            "delta_log_loss": 0.06300303714148388,
+            "races": 27,
+            "venue": "SAN"
+          },
+          {
+            "delta_log_loss": 0.09733714586891092,
+            "races": 32,
+            "venue": "SHEP"
+          },
+          {
+            "delta_log_loss": 0.0823707858510545,
+            "races": 26,
+            "venue": "TAREE"
+          },
+          {
+            "delta_log_loss": 0.10045818564693294,
+            "races": 27,
+            "venue": "TEM"
+          },
+          {
+            "delta_log_loss": 0.0021988198022503225,
+            "races": 31,
+            "venue": "TWN"
+          },
+          {
+            "delta_log_loss": 0.09997340317889743,
+            "races": 30,
+            "venue": "WAR"
+          },
+          {
+            "delta_log_loss": 0.14617614988673383,
+            "races": 14,
+            "venue": "WPK"
+          },
+          {
+            "delta_log_loss": 0.13977432259516734,
+            "races": 44,
+            "venue": "WRGL"
+          }
+        ]
+      },
+      "dynamic_minus_average": {
+        "date_bootstrap_95": [
+          -0.023182548122775825,
+          -0.013813528684477726
+        ],
+        "dates": [
+          {
+            "date": "2025-09-09",
+            "delta_log_loss": -0.013049425538488146,
+            "leave_out_delta_log_loss": -0.018942456737124427,
+            "races": 105
+          },
+          {
+            "date": "2025-09-10",
+            "delta_log_loss": -0.0072497204088888935,
+            "leave_out_delta_log_loss": -0.019904238770594097,
+            "races": 123
+          },
+          {
+            "date": "2025-09-11",
+            "delta_log_loss": -0.01255285984527669,
+            "leave_out_delta_log_loss": -0.019100221214815468,
+            "races": 118
+          },
+          {
+            "date": "2025-09-12",
+            "delta_log_loss": -0.0359828131820774,
+            "leave_out_delta_log_loss": -0.018068971384067052,
+            "races": 13
+          },
+          {
+            "date": "2025-09-16",
+            "delta_log_loss": -0.02390846945779951,
+            "leave_out_delta_log_loss": -0.01777292936958039,
+            "races": 85
+          },
+          {
+            "date": "2025-09-17",
+            "delta_log_loss": -0.020673480547073755,
+            "leave_out_delta_log_loss": -0.01801926134044843,
+            "races": 106
+          },
+          {
+            "date": "2025-09-18",
+            "delta_log_loss": -0.01292365202569011,
+            "leave_out_delta_log_loss": -0.01910688679340701,
+            "races": 126
+          },
+          {
+            "date": "2025-09-29",
+            "delta_log_loss": -0.022563769352561033,
+            "leave_out_delta_log_loss": -0.01783763259184634,
+            "races": 97
+          },
+          {
+            "date": "2025-09-30",
+            "delta_log_loss": -0.028884258200824825,
+            "leave_out_delta_log_loss": -0.017112540503376537,
+            "races": 99
+          },
+          {
+            "date": "2025-10-01",
+            "delta_log_loss": -0.02659215079296556,
+            "leave_out_delta_log_loss": -0.017329283843078042,
+            "races": 103
+          }
+        ],
+        "delta_log_loss": -0.018307822608040515,
+        "tracks": [
+          {
+            "delta_log_loss": 0.001367531423181813,
+            "races": 53,
+            "venue": "AP_K"
+          },
+          {
+            "delta_log_loss": -0.008665052919636911,
+            "races": 38,
+            "venue": "BAL"
+          },
+          {
+            "delta_log_loss": -0.017135517734369533,
+            "races": 30,
+            "venue": "BEN"
+          },
+          {
+            "delta_log_loss": -0.028240948815335433,
+            "races": 23,
+            "venue": "BULLI"
+          },
+          {
+            "delta_log_loss": -0.03582206286340986,
+            "races": 30,
+            "venue": "CANN"
+          },
+          {
+            "delta_log_loss": -0.005935536846471248,
+            "races": 19,
+            "venue": "CAPA"
+          },
+          {
+            "delta_log_loss": -0.015866114477876912,
+            "races": 33,
+            "venue": "CASO"
+          },
+          {
+            "delta_log_loss": -0.027610279859114312,
+            "races": 12,
+            "venue": "DAPT"
+          },
+          {
+            "delta_log_loss": -0.023266015180583504,
+            "races": 6,
+            "venue": "DARW"
+          },
+          {
+            "delta_log_loss": -0.06046484970956583,
+            "races": 29,
+            "venue": "GAWL"
+          },
+          {
+            "delta_log_loss": -0.002548841332394458,
+            "races": 25,
+            "venue": "GEE"
+          },
+          {
+            "delta_log_loss": -0.024158092261881623,
+            "races": 33,
+            "venue": "GOSF"
+          },
+          {
+            "delta_log_loss": -0.003028619177927646,
+            "races": 12,
+            "venue": "GRAF"
+          },
+          {
+            "delta_log_loss": -0.020989028083223147,
+            "races": 33,
+            "venue": "GUNN"
+          },
+          {
+            "delta_log_loss": -0.012063632177688155,
+            "races": 15,
+            "venue": "HOBT"
+          },
+          {
+            "delta_log_loss": -0.01834816698131005,
+            "races": 27,
+            "venue": "HOR"
+          },
+          {
+            "delta_log_loss": -0.029968372165725916,
+            "races": 36,
+            "venue": "LAU"
+          },
+          {
+            "delta_log_loss": -0.023457576656454576,
+            "races": 46,
+            "venue": "MAND"
+          },
+          {
+            "delta_log_loss": 0.0018260182934985722,
+            "races": 29,
+            "venue": "MEA"
+          },
+          {
+            "delta_log_loss": -0.0220534922051733,
+            "races": 22,
+            "venue": "MOUNT"
+          },
+          {
+            "delta_log_loss": -0.013918889548831222,
+            "races": 27,
+            "venue": "MURR"
+          },
+          {
+            "delta_log_loss": -0.007507904098645157,
+            "races": 16,
+            "venue": "MUSWELLBROOK"
+          },
+          {
+            "delta_log_loss": -0.02710892031959089,
+            "races": 10,
+            "venue": "NOR"
+          },
+          {
+            "delta_log_loss": -0.03827376117061621,
+            "races": 18,
+            "venue": "NOWRA"
+          },
+          {
+            "delta_log_loss": -0.007483623522069528,
+            "races": 27,
+            "venue": "QOT"
+          },
+          {
+            "delta_log_loss": -0.0390289422532836,
+            "races": 44,
+            "venue": "RICH"
+          },
+          {
+            "delta_log_loss": -0.008757909544158773,
+            "races": 20,
+            "venue": "ROCK"
+          },
+          {
+            "delta_log_loss": 0.028048077845984332,
+            "races": 31,
+            "venue": "SAL"
+          },
+          {
+            "delta_log_loss": -0.0430992981743179,
+            "races": 27,
+            "venue": "SAN"
+          },
+          {
+            "delta_log_loss": -0.0011626418025065567,
+            "races": 32,
+            "venue": "SHEP"
+          },
+          {
+            "delta_log_loss": -0.026660481649435266,
+            "races": 26,
+            "venue": "TAREE"
+          },
+          {
+            "delta_log_loss": -8.671728977829143e-05,
+            "races": 27,
+            "venue": "TEM"
+          },
+          {
+            "delta_log_loss": -0.027935606205678788,
+            "races": 31,
+            "venue": "TWN"
+          },
+          {
+            "delta_log_loss": -0.02110306776072156,
+            "races": 30,
+            "venue": "WAR"
+          },
+          {
+            "delta_log_loss": -0.014660327893726986,
+            "races": 14,
+            "venue": "WPK"
+          },
+          {
+            "delta_log_loss": -0.030822929233758043,
+            "races": 44,
+            "venue": "WRGL"
+          }
+        ]
+      },
+      "dynamic_minus_recency": {
+        "date_bootstrap_95": [
+          -0.002803711417157781,
+          -0.0011281183379578629
+        ],
+        "dates": [
+          {
+            "date": "2025-09-09",
+            "delta_log_loss": 0.0004258453824353895,
+            "leave_out_delta_log_loss": -0.002293921701075253,
+            "races": 105
+          },
+          {
+            "date": "2025-09-10",
+            "delta_log_loss": -0.0017015230924510708,
+            "leave_out_delta_log_loss": -0.002044261472310179,
+            "races": 123
+          },
+          {
+            "date": "2025-09-11",
+            "delta_log_loss": -0.0021179431516071237,
+            "leave_out_delta_log_loss": -0.00198492511422417,
+            "races": 118
+          },
+          {
+            "date": "2025-09-12",
+            "delta_log_loss": -0.004904648682912225,
+            "leave_out_delta_log_loss": -0.001961785532122552,
+            "races": 13
+          },
+          {
+            "date": "2025-09-16",
+            "delta_log_loss": -0.003640107605980982,
+            "leave_out_delta_log_loss": -0.0018444819868217647,
+            "races": 85
+          },
+          {
+            "date": "2025-09-17",
+            "delta_log_loss": -0.0026116649607032224,
+            "leave_out_delta_log_loss": -0.001926538123066988,
+            "races": 106
+          },
+          {
+            "date": "2025-09-18",
+            "delta_log_loss": -0.0038159623021498095,
+            "leave_out_delta_log_loss": -0.0017316688630257696,
+            "races": 126
+          },
+          {
+            "date": "2025-09-29",
+            "delta_log_loss": 0.00017528119141813585,
+            "leave_out_delta_log_loss": -0.0022414583033568487,
+            "races": 97
+          },
+          {
+            "date": "2025-09-30",
+            "delta_log_loss": -0.0020011763613323207,
+            "leave_out_delta_log_loss": -0.0020010064554884183,
+            "races": 99
+          },
+          {
+            "date": "2025-10-01",
+            "delta_log_loss": -0.0021803470696926904,
+            "leave_out_delta_log_loss": -0.0019798421635337233,
+            "races": 103
+          }
+        ],
+        "delta_log_loss": -0.0020010237074664147,
+        "tracks": [
+          {
+            "delta_log_loss": -0.002054164974454368,
+            "races": 53,
+            "venue": "AP_K"
+          },
+          {
+            "delta_log_loss": -0.0028921977726524563,
+            "races": 38,
+            "venue": "BAL"
+          },
+          {
+            "delta_log_loss": 0.0007859707613318446,
+            "races": 30,
+            "venue": "BEN"
+          },
+          {
+            "delta_log_loss": 0.003851118129239462,
+            "races": 23,
+            "venue": "BULLI"
+          },
+          {
+            "delta_log_loss": -0.003752979153985055,
+            "races": 30,
+            "venue": "CANN"
+          },
+          {
+            "delta_log_loss": 0.0016707735360847844,
+            "races": 19,
+            "venue": "CAPA"
+          },
+          {
+            "delta_log_loss": -0.0008024887122803881,
+            "races": 33,
+            "venue": "CASO"
+          },
+          {
+            "delta_log_loss": -0.0032672360321682934,
+            "races": 12,
+            "venue": "DAPT"
+          },
+          {
+            "delta_log_loss": -0.011834751518342382,
+            "races": 6,
+            "venue": "DARW"
+          },
+          {
+            "delta_log_loss": -0.010799650159403958,
+            "races": 29,
+            "venue": "GAWL"
+          },
+          {
+            "delta_log_loss": 0.00019265791386443353,
+            "races": 25,
+            "venue": "GEE"
+          },
+          {
+            "delta_log_loss": -0.007251475254828186,
+            "races": 33,
+            "venue": "GOSF"
+          },
+          {
+            "delta_log_loss": 0.011522431418084567,
+            "races": 12,
+            "venue": "GRAF"
+          },
+          {
+            "delta_log_loss": -0.0029281431129709263,
+            "races": 33,
+            "venue": "GUNN"
+          },
+          {
+            "delta_log_loss": -0.010759374449299752,
+            "races": 15,
+            "venue": "HOBT"
+          },
+          {
+            "delta_log_loss": 0.003607365803719104,
+            "races": 27,
+            "venue": "HOR"
+          },
+          {
+            "delta_log_loss": -0.006287654990722228,
+            "races": 36,
+            "venue": "LAU"
+          },
+          {
+            "delta_log_loss": -0.006157116477261536,
+            "races": 46,
+            "venue": "MAND"
+          },
+          {
+            "delta_log_loss": -0.002150116542088038,
+            "races": 29,
+            "venue": "MEA"
+          },
+          {
+            "delta_log_loss": 0.005053807940141688,
+            "races": 22,
+            "venue": "MOUNT"
+          },
+          {
+            "delta_log_loss": 0.0009735677081027413,
+            "races": 27,
+            "venue": "MURR"
+          },
+          {
+            "delta_log_loss": -0.008040395363072175,
+            "races": 16,
+            "venue": "MUSWELLBROOK"
+          },
+          {
+            "delta_log_loss": 0.0015759561806860556,
+            "races": 10,
+            "venue": "NOR"
+          },
+          {
+            "delta_log_loss": 0.00043838776991751553,
+            "races": 18,
+            "venue": "NOWRA"
+          },
+          {
+            "delta_log_loss": -0.002685734704534251,
+            "races": 27,
+            "venue": "QOT"
+          },
+          {
+            "delta_log_loss": -0.006452041934118261,
+            "races": 44,
+            "venue": "RICH"
+          },
+          {
+            "delta_log_loss": -0.005128814186865385,
+            "races": 20,
+            "venue": "ROCK"
+          },
+          {
+            "delta_log_loss": 0.0075751367509483665,
+            "races": 31,
+            "venue": "SAL"
+          },
+          {
+            "delta_log_loss": -0.0011927256406716118,
+            "races": 27,
+            "venue": "SAN"
+          },
+          {
+            "delta_log_loss": -0.0009323123137863244,
+            "races": 32,
+            "venue": "SHEP"
+          },
+          {
+            "delta_log_loss": -0.007297599844663938,
+            "races": 26,
+            "venue": "TAREE"
+          },
+          {
+            "delta_log_loss": 0.01134715723373576,
+            "races": 27,
+            "venue": "TEM"
+          },
+          {
+            "delta_log_loss": -0.00700269511324511,
+            "races": 31,
+            "venue": "TWN"
+          },
+          {
+            "delta_log_loss": -0.007100132284687658,
+            "races": 30,
+            "venue": "WAR"
+          },
+          {
+            "delta_log_loss": -0.004661510420115407,
+            "races": 14,
+            "venue": "WPK"
+          },
+          {
+            "delta_log_loss": 0.0033534352720911483,
+            "races": 44,
+            "venue": "WRGL"
+          }
+        ]
+      },
+      "dynamic_minus_saved_baseline65": {
+        "date_bootstrap_95": [
+          0.04274966443527189,
+          0.07821702522022302
+        ],
+        "dates": [
+          {
+            "date": "2025-09-09",
+            "delta_log_loss": 0.019367898011424533,
+            "leave_out_delta_log_loss": 0.06582420506499542,
+            "races": 105
+          },
+          {
+            "date": "2025-09-10",
+            "delta_log_loss": 0.015170129063066164,
+            "leave_out_delta_log_loss": 0.06741169228050288,
+            "races": 123
+          },
+          {
+            "date": "2025-09-11",
+            "delta_log_loss": 0.06580162448848788,
+            "leave_out_delta_log_loss": 0.06013546792077482,
+            "races": 118
+          },
+          {
+            "date": "2025-09-12",
+            "delta_log_loss": 0.17904082712860137,
+            "leave_out_delta_log_loss": 0.05922365586806006,
+            "races": 13
+          },
+          {
+            "date": "2025-09-16",
+            "delta_log_loss": 0.04609951101505141,
+            "leave_out_delta_log_loss": 0.06222722388928789,
+            "races": 85
+          },
+          {
+            "date": "2025-09-17",
+            "delta_log_loss": 0.07831378734680054,
+            "leave_out_delta_log_loss": 0.05868748704140936,
+            "races": 106
+          },
+          {
+            "date": "2025-09-18",
+            "delta_log_loss": 0.059598558702962046,
+            "leave_out_delta_log_loss": 0.06100267291068596,
+            "races": 126
+          },
+          {
+            "date": "2025-09-29",
+            "delta_log_loss": 0.07968526314339038,
+            "leave_out_delta_log_loss": 0.058737149399586255,
+            "races": 97
+          },
+          {
+            "date": "2025-09-30",
+            "delta_log_loss": 0.09656857088223934,
+            "leave_out_delta_log_loss": 0.0567812776032008,
+            "races": 99
+          },
+          {
+            "date": "2025-10-01",
+            "delta_log_loss": 0.08048653160787855,
+            "leave_out_delta_log_loss": 0.058498365759328104,
+            "races": 103
+          }
+        ],
+        "delta_log_loss": 0.06082121815153394,
+        "tracks": [
+          {
+            "delta_log_loss": 0.061796536870861084,
+            "races": 53,
+            "venue": "AP_K"
+          },
+          {
+            "delta_log_loss": 0.17599346331314697,
+            "races": 38,
+            "venue": "BAL"
+          },
+          {
+            "delta_log_loss": -0.014720878750409838,
+            "races": 30,
+            "venue": "BEN"
+          },
+          {
+            "delta_log_loss": 0.14644642718920844,
+            "races": 23,
+            "venue": "BULLI"
+          },
+          {
+            "delta_log_loss": 0.030085474617106422,
+            "races": 30,
+            "venue": "CANN"
+          },
+          {
+            "delta_log_loss": 0.0024346148082817006,
+            "races": 19,
+            "venue": "CAPA"
+          },
+          {
+            "delta_log_loss": -0.027737065387155535,
+            "races": 33,
+            "venue": "CASO"
+          },
+          {
+            "delta_log_loss": 0.0212950685277354,
+            "races": 12,
+            "venue": "DAPT"
+          },
+          {
+            "delta_log_loss": 0.2182289737077041,
+            "races": 6,
+            "venue": "DARW"
+          },
+          {
+            "delta_log_loss": 0.08517280382656413,
+            "races": 29,
+            "venue": "GAWL"
+          },
+          {
+            "delta_log_loss": 0.10298111576821231,
+            "races": 25,
+            "venue": "GEE"
+          },
+          {
+            "delta_log_loss": 0.08844750725447303,
+            "races": 33,
+            "venue": "GOSF"
+          },
+          {
+            "delta_log_loss": 0.11430215596493208,
+            "races": 12,
+            "venue": "GRAF"
+          },
+          {
+            "delta_log_loss": 0.07353139769007219,
+            "races": 33,
+            "venue": "GUNN"
+          },
+          {
+            "delta_log_loss": 0.1644165630254599,
+            "races": 15,
+            "venue": "HOBT"
+          },
+          {
+            "delta_log_loss": 0.06199492284956411,
+            "races": 27,
+            "venue": "HOR"
+          },
+          {
+            "delta_log_loss": 0.08787155322497528,
+            "races": 36,
+            "venue": "LAU"
+          },
+          {
+            "delta_log_loss": 0.036373273968931065,
+            "races": 46,
+            "venue": "MAND"
+          },
+          {
+            "delta_log_loss": 0.057498403463262626,
+            "races": 29,
+            "venue": "MEA"
+          },
+          {
+            "delta_log_loss": 0.13567960974822466,
+            "races": 22,
+            "venue": "MOUNT"
+          },
+          {
+            "delta_log_loss": -0.04858006358775141,
+            "races": 27,
+            "venue": "MURR"
+          },
+          {
+            "delta_log_loss": 0.10408738170001154,
+            "races": 16,
+            "venue": "MUSWELLBROOK"
+          },
+          {
+            "delta_log_loss": 0.02523039474344846,
+            "races": 10,
+            "venue": "NOR"
+          },
+          {
+            "delta_log_loss": 0.09120251215212406,
+            "races": 18,
+            "venue": "NOWRA"
+          },
+          {
+            "delta_log_loss": -0.03146781130250021,
+            "races": 27,
+            "venue": "QOT"
+          },
+          {
+            "delta_log_loss": 0.02038148988932004,
+            "races": 44,
+            "venue": "RICH"
+          },
+          {
+            "delta_log_loss": -0.04016563359424458,
+            "races": 20,
+            "venue": "ROCK"
+          },
+          {
+            "delta_log_loss": 0.06302484325222081,
+            "races": 31,
+            "venue": "SAL"
+          },
+          {
+            "delta_log_loss": 0.01990373896716598,
+            "races": 27,
+            "venue": "SAN"
+          },
+          {
+            "delta_log_loss": 0.09617450406640435,
+            "races": 32,
+            "venue": "SHEP"
+          },
+          {
+            "delta_log_loss": 0.05571030420161923,
+            "races": 26,
+            "venue": "TAREE"
+          },
+          {
+            "delta_log_loss": 0.10037146835715464,
+            "races": 27,
+            "venue": "TEM"
+          },
+          {
+            "delta_log_loss": -0.025736786403428465,
+            "races": 31,
+            "venue": "TWN"
+          },
+          {
+            "delta_log_loss": 0.07887033541817585,
+            "races": 30,
+            "venue": "WAR"
+          },
+          {
+            "delta_log_loss": 0.13151582199300685,
+            "races": 14,
+            "venue": "WPK"
+          },
+          {
+            "delta_log_loss": 0.1089513933614093,
+            "races": 44,
+            "venue": "WRGL"
+          }
+        ]
+      },
+      "recency_minus_average": {
+        "date_bootstrap_95": [
+          -0.021102630453790582,
+          -0.011807847650396794
+        ],
+        "dates": [
+          {
+            "date": "2025-09-09",
+            "delta_log_loss": -0.013475270920923535,
+            "leave_out_delta_log_loss": -0.016648535036049173,
+            "races": 105
+          },
+          {
+            "date": "2025-09-10",
+            "delta_log_loss": -0.0055481973164378225,
+            "leave_out_delta_log_loss": -0.017859977298283918,
+            "races": 123
+          },
+          {
+            "date": "2025-09-11",
+            "delta_log_loss": -0.010434916693669567,
+            "leave_out_delta_log_loss": -0.017115296100591298,
+            "races": 118
+          },
+          {
+            "date": "2025-09-12",
+            "delta_log_loss": -0.03107816449916517,
+            "leave_out_delta_log_loss": -0.016107185851944497,
+            "races": 13
+          },
+          {
+            "date": "2025-09-16",
+            "delta_log_loss": -0.020268361851818528,
+            "leave_out_delta_log_loss": -0.015928447382758625,
+            "races": 85
+          },
+          {
+            "date": "2025-09-17",
+            "delta_log_loss": -0.018061815586370534,
+            "leave_out_delta_log_loss": -0.016092723217381446,
+            "races": 106
+          },
+          {
+            "date": "2025-09-18",
+            "delta_log_loss": -0.0091076897235403,
+            "leave_out_delta_log_loss": -0.017375217930381243,
+            "races": 126
+          },
+          {
+            "date": "2025-09-29",
+            "delta_log_loss": -0.02273905054397917,
+            "leave_out_delta_log_loss": -0.015596174288489492,
+            "races": 97
+          },
+          {
+            "date": "2025-09-30",
+            "delta_log_loss": -0.02688308183949251,
+            "leave_out_delta_log_loss": -0.015111534047888122,
+            "races": 99
+          },
+          {
+            "date": "2025-10-01",
+            "delta_log_loss": -0.024411803723272868,
+            "leave_out_delta_log_loss": -0.015349441679544319,
+            "races": 103
+          }
+        ],
+        "delta_log_loss": -0.016306798900574106,
+        "tracks": [
+          {
+            "delta_log_loss": 0.003421696397636181,
+            "races": 53,
+            "venue": "AP_K"
+          },
+          {
+            "delta_log_loss": -0.0057728551469844545,
+            "races": 38,
+            "venue": "BAL"
+          },
+          {
+            "delta_log_loss": -0.017921488495701375,
+            "races": 30,
+            "venue": "BEN"
+          },
+          {
+            "delta_log_loss": -0.0320920669445749,
+            "races": 23,
+            "venue": "BULLI"
+          },
+          {
+            "delta_log_loss": -0.03206908370942481,
+            "races": 30,
+            "venue": "CANN"
+          },
+          {
+            "delta_log_loss": -0.007606310382556033,
+            "races": 19,
+            "venue": "CAPA"
+          },
+          {
+            "delta_log_loss": -0.015063625765596524,
+            "races": 33,
+            "venue": "CASO"
+          },
+          {
+            "delta_log_loss": -0.02434304382694602,
+            "races": 12,
+            "venue": "DAPT"
+          },
+          {
+            "delta_log_loss": -0.01143126366224112,
+            "races": 6,
+            "venue": "DARW"
+          },
+          {
+            "delta_log_loss": -0.04966519955016187,
+            "races": 29,
+            "venue": "GAWL"
+          },
+          {
+            "delta_log_loss": -0.0027414992462588914,
+            "races": 25,
+            "venue": "GEE"
+          },
+          {
+            "delta_log_loss": -0.016906617007053436,
+            "races": 33,
+            "venue": "GOSF"
+          },
+          {
+            "delta_log_loss": -0.014551050596012213,
+            "races": 12,
+            "venue": "GRAF"
+          },
+          {
+            "delta_log_loss": -0.018060884970252218,
+            "races": 33,
+            "venue": "GUNN"
+          },
+          {
+            "delta_log_loss": -0.0013042577283884026,
+            "races": 15,
+            "venue": "HOBT"
+          },
+          {
+            "delta_log_loss": -0.021955532785029153,
+            "races": 27,
+            "venue": "HOR"
+          },
+          {
+            "delta_log_loss": -0.02368071717500369,
+            "races": 36,
+            "venue": "LAU"
+          },
+          {
+            "delta_log_loss": -0.01730046017919304,
+            "races": 46,
+            "venue": "MAND"
+          },
+          {
+            "delta_log_loss": 0.00397613483558661,
+            "races": 29,
+            "venue": "MEA"
+          },
+          {
+            "delta_log_loss": -0.027107300145314987,
+            "races": 22,
+            "venue": "MOUNT"
+          },
+          {
+            "delta_log_loss": -0.014892457256933963,
+            "races": 27,
+            "venue": "MURR"
+          },
+          {
+            "delta_log_loss": 0.000532491264427018,
+            "races": 16,
+            "venue": "MUSWELLBROOK"
+          },
+          {
+            "delta_log_loss": -0.028684876500276946,
+            "races": 10,
+            "venue": "NOR"
+          },
+          {
+            "delta_log_loss": -0.03871214894053373,
+            "races": 18,
+            "venue": "NOWRA"
+          },
+          {
+            "delta_log_loss": -0.0047978888175352775,
+            "races": 27,
+            "venue": "QOT"
+          },
+          {
+            "delta_log_loss": -0.03257690031916534,
+            "races": 44,
+            "venue": "RICH"
+          },
+          {
+            "delta_log_loss": -0.003629095357293388,
+            "races": 20,
+            "venue": "ROCK"
+          },
+          {
+            "delta_log_loss": 0.020472941095035967,
+            "races": 31,
+            "venue": "SAL"
+          },
+          {
+            "delta_log_loss": -0.04190657253364628,
+            "races": 27,
+            "venue": "SAN"
+          },
+          {
+            "delta_log_loss": -0.0002303294887202323,
+            "races": 32,
+            "venue": "SHEP"
+          },
+          {
+            "delta_log_loss": -0.019362881804771328,
+            "races": 26,
+            "venue": "TAREE"
+          },
+          {
+            "delta_log_loss": -0.011433874523514052,
+            "races": 27,
+            "venue": "TEM"
+          },
+          {
+            "delta_log_loss": -0.020932911092433677,
+            "races": 31,
+            "venue": "TWN"
+          },
+          {
+            "delta_log_loss": -0.0140029354760339,
+            "races": 30,
+            "venue": "WAR"
+          },
+          {
+            "delta_log_loss": -0.009998817473611579,
+            "races": 14,
+            "venue": "WPK"
+          },
+          {
+            "delta_log_loss": -0.0341763645058492,
+            "races": 44,
+            "venue": "WRGL"
+          }
+        ]
+      },
+      "recency_minus_saved_baseline65": {
+        "date_bootstrap_95": [
+          0.044382346798943116,
+          0.08069608706512754
+        ],
+        "dates": [
+          {
+            "date": "2025-09-09",
+            "delta_log_loss": 0.018942052628989143,
+            "leave_out_delta_log_loss": 0.06811812676607067,
+            "races": 105
+          },
+          {
+            "date": "2025-09-10",
+            "delta_log_loss": 0.016871652155517232,
+            "leave_out_delta_log_loss": 0.06945595375281306,
+            "races": 123
+          },
+          {
+            "date": "2025-09-11",
+            "delta_log_loss": 0.067919567640095,
+            "leave_out_delta_log_loss": 0.062120393034998986,
+            "races": 118
+          },
+          {
+            "date": "2025-09-12",
+            "delta_log_loss": 0.18394547581151352,
+            "leave_out_delta_log_loss": 0.061185441400182616,
+            "races": 13
+          },
+          {
+            "date": "2025-09-16",
+            "delta_log_loss": 0.04973961862103238,
+            "leave_out_delta_log_loss": 0.06407170587610966,
+            "races": 85
+          },
+          {
+            "date": "2025-09-17",
+            "delta_log_loss": 0.08092545230750377,
+            "leave_out_delta_log_loss": 0.06061402516447636,
+            "races": 106
+          },
+          {
+            "date": "2025-09-18",
+            "delta_log_loss": 0.06341452100511186,
+            "leave_out_delta_log_loss": 0.06273434177371173,
+            "races": 126
+          },
+          {
+            "date": "2025-09-29",
+            "delta_log_loss": 0.07950998195197223,
+            "leave_out_delta_log_loss": 0.060978607702943104,
+            "races": 97
+          },
+          {
+            "date": "2025-09-30",
+            "delta_log_loss": 0.09856974724357168,
+            "leave_out_delta_log_loss": 0.05878228405868922,
+            "races": 99
+          },
+          {
+            "date": "2025-10-01",
+            "delta_log_loss": 0.0826668786775712,
+            "leave_out_delta_log_loss": 0.060478207922861835,
+            "races": 103
+          }
+        ],
+        "delta_log_loss": 0.06282224185900036,
+        "tracks": [
+          {
+            "delta_log_loss": 0.06385070184531545,
+            "races": 53,
+            "venue": "AP_K"
+          },
+          {
+            "delta_log_loss": 0.17888566108579942,
+            "races": 38,
+            "venue": "BAL"
+          },
+          {
+            "delta_log_loss": -0.015506849511741683,
+            "races": 30,
+            "venue": "BEN"
+          },
+          {
+            "delta_log_loss": 0.14259530905996898,
+            "races": 23,
+            "venue": "BULLI"
+          },
+          {
+            "delta_log_loss": 0.03383845377109147,
+            "races": 30,
+            "venue": "CANN"
+          },
+          {
+            "delta_log_loss": 0.0007638412721969161,
+            "races": 19,
+            "venue": "CAPA"
+          },
+          {
+            "delta_log_loss": -0.026934576674875144,
+            "races": 33,
+            "venue": "CASO"
+          },
+          {
+            "delta_log_loss": 0.024562304559903696,
+            "races": 12,
+            "venue": "DAPT"
+          },
+          {
+            "delta_log_loss": 0.23006372522604648,
+            "races": 6,
+            "venue": "DARW"
+          },
+          {
+            "delta_log_loss": 0.0959724539859681,
+            "races": 29,
+            "venue": "GAWL"
+          },
+          {
+            "delta_log_loss": 0.1027884578543479,
+            "races": 25,
+            "venue": "GEE"
+          },
+          {
+            "delta_log_loss": 0.09569898250930123,
+            "races": 33,
+            "venue": "GOSF"
+          },
+          {
+            "delta_log_loss": 0.10277972454684751,
+            "races": 12,
+            "venue": "GRAF"
+          },
+          {
+            "delta_log_loss": 0.0764595408030431,
+            "races": 33,
+            "venue": "GUNN"
+          },
+          {
+            "delta_log_loss": 0.1751759374747597,
+            "races": 15,
+            "venue": "HOBT"
+          },
+          {
+            "delta_log_loss": 0.05838755704584501,
+            "races": 27,
+            "venue": "HOR"
+          },
+          {
+            "delta_log_loss": 0.09415920821569751,
+            "races": 36,
+            "venue": "LAU"
+          },
+          {
+            "delta_log_loss": 0.04253039044619258,
+            "races": 46,
+            "venue": "MAND"
+          },
+          {
+            "delta_log_loss": 0.05964852000535066,
+            "races": 29,
+            "venue": "MEA"
+          },
+          {
+            "delta_log_loss": 0.130625801808083,
+            "races": 22,
+            "venue": "MOUNT"
+          },
+          {
+            "delta_log_loss": -0.049553631295854154,
+            "races": 27,
+            "venue": "MURR"
+          },
+          {
+            "delta_log_loss": 0.11212777706308372,
+            "races": 16,
+            "venue": "MUSWELLBROOK"
+          },
+          {
+            "delta_log_loss": 0.023654438562762403,
+            "races": 10,
+            "venue": "NOR"
+          },
+          {
+            "delta_log_loss": 0.09076412438220655,
+            "races": 18,
+            "venue": "NOWRA"
+          },
+          {
+            "delta_log_loss": -0.028782076597965958,
+            "races": 27,
+            "venue": "QOT"
+          },
+          {
+            "delta_log_loss": 0.026833531823438297,
+            "races": 44,
+            "venue": "RICH"
+          },
+          {
+            "delta_log_loss": -0.0350368194073792,
+            "races": 20,
+            "venue": "ROCK"
+          },
+          {
+            "delta_log_loss": 0.05544970650127244,
+            "races": 31,
+            "venue": "SAL"
+          },
+          {
+            "delta_log_loss": 0.02109646460783759,
+            "races": 27,
+            "venue": "SAN"
+          },
+          {
+            "delta_log_loss": 0.09710681638019067,
+            "races": 32,
+            "venue": "SHEP"
+          },
+          {
+            "delta_log_loss": 0.06300790404628319,
+            "races": 26,
+            "venue": "TAREE"
+          },
+          {
+            "delta_log_loss": 0.0890243111234189,
+            "races": 27,
+            "venue": "TEM"
+          },
+          {
+            "delta_log_loss": -0.018734091290183354,
+            "races": 31,
+            "venue": "TWN"
+          },
+          {
+            "delta_log_loss": 0.08597046770286351,
+            "races": 30,
+            "venue": "WAR"
+          },
+          {
+            "delta_log_loss": 0.13617733241312227,
+            "races": 14,
+            "venue": "WPK"
+          },
+          {
+            "delta_log_loss": 0.10559795808931813,
+            "races": 44,
+            "venue": "WRGL"
+          }
+        ]
+      }
+    }
+  },
+  "evaluation_status": "exploratory_development",
+  "fits_completed": 3,
+  "metrics": {
+    "development": {
+      "average": {
+        "brier": 0.8118309647104299,
+        "calibration": [
+          {
+            "low": 0.0,
+            "n": 1856,
+            "observed": 0.06519396551724138,
+            "predicted": 0.061271168281066726
+          },
+          {
+            "low": 0.1,
+            "n": 1792,
+            "observed": 0.14508928571428573,
+            "predicted": 0.1435863996264712
+          },
+          {
+            "low": 0.2,
+            "n": 676,
+            "observed": 0.2514792899408284,
+            "predicted": 0.24230352141747202
+          },
+          {
+            "low": 0.30000000000000004,
+            "n": 208,
+            "observed": 0.32211538461538464,
+            "predicted": 0.3444430457582971
+          },
+          {
+            "low": 0.4,
+            "n": 71,
+            "observed": 0.38028169014084506,
+            "predicted": 0.43757122813231913
+          },
+          {
+            "low": 0.5,
+            "n": 23,
+            "observed": 0.34782608695652173,
+            "predicted": 0.5435325996087405
+          },
+          {
+            "low": 0.6000000000000001,
+            "n": 7,
+            "observed": 0.2857142857142857,
+            "predicted": 0.6449339989699635
+          },
+          {
+            "low": 0.7000000000000001,
+            "n": 2,
+            "observed": 0.5,
+            "predicted": 0.7246022812906833
+          }
+        ],
+        "log_loss": 1.7886694890927488,
+        "races": 656,
+        "runner_ece": 0.006980238645735767,
+        "runners": 4635,
+        "top1": 0.29573170731707316,
+        "winner_rank": 2.9939024390243905
+      },
+      "dynamic": {
+        "brier": 0.810463225210922,
+        "calibration": [
+          {
+            "low": 0.0,
+            "n": 1848,
+            "observed": 0.06547619047619048,
+            "predicted": 0.06128283370008646
+          },
+          {
+            "low": 0.1,
+            "n": 1798,
+            "observed": 0.14516129032258066,
+            "predicted": 0.1435749434739659
+          },
+          {
+            "low": 0.2,
+            "n": 673,
+            "observed": 0.2526002971768202,
+            "predicted": 0.24162215884454163
+          },
+          {
+            "low": 0.30000000000000004,
+            "n": 222,
+            "observed": 0.3063063063063063,
+            "predicted": 0.3440920218830507
+          },
+          {
+            "low": 0.4,
+            "n": 64,
+            "observed": 0.390625,
+            "predicted": 0.4420270522341469
+          },
+          {
+            "low": 0.5,
+            "n": 22,
+            "observed": 0.36363636363636365,
+            "predicted": 0.5446013452830493
+          },
+          {
+            "low": 0.6000000000000001,
+            "n": 6,
+            "observed": 0.3333333333333333,
+            "predicted": 0.648941530352181
+          },
+          {
+            "low": 0.7000000000000001,
+            "n": 2,
+            "observed": 0.5,
+            "predicted": 0.7184115371550761
+          }
+        ],
+        "log_loss": 1.7865947646923788,
+        "races": 656,
+        "runner_ece": 0.0077626157728901855,
+        "runners": 4635,
+        "top1": 0.3048780487804878,
+        "winner_rank": 2.980182926829268
+      },
+      "recency": {
+        "brier": 0.8109108799027787,
+        "calibration": [
+          {
+            "low": 0.0,
+            "n": 1853,
+            "observed": 0.06583917970858068,
+            "predicted": 0.06132739787210969
+          },
+          {
+            "low": 0.1,
+            "n": 1789,
+            "observed": 0.14589155953046395,
+            "predicted": 0.14350463238101763
+          },
+          {
+            "low": 0.2,
+            "n": 677,
+            "observed": 0.24963072378138848,
+            "predicted": 0.24148278881681293
+          },
+          {
+            "low": 0.30000000000000004,
+            "n": 220,
+            "observed": 0.3090909090909091,
+            "predicted": 0.344064227142719
+          },
+          {
+            "low": 0.4,
+            "n": 66,
+            "observed": 0.3787878787878788,
+            "predicted": 0.4412113372375718
+          },
+          {
+            "low": 0.5,
+            "n": 22,
+            "observed": 0.36363636363636365,
+            "predicted": 0.5454294276292572
+          },
+          {
+            "low": 0.6000000000000001,
+            "n": 6,
+            "observed": 0.3333333333333333,
+            "predicted": 0.6491110152855509
+          },
+          {
+            "low": 0.7000000000000001,
+            "n": 2,
+            "observed": 0.5,
+            "predicted": 0.7192523278614591
+          }
+        ],
+        "log_loss": 1.7874712714239018,
+        "races": 656,
+        "runner_ece": 0.007830289701988279,
+        "runners": 4635,
+        "top1": 0.3048780487804878,
+        "winner_rank": 2.9878048780487805
+      },
+      "saved_baseline65": {
+        "brier": 0.8032948877877011,
+        "calibration": [
+          {
+            "low": 0.0,
+            "n": 1750,
+            "observed": 0.061142857142857145,
+            "predicted": 0.06227675232392935
+          },
+          {
+            "low": 0.1,
+            "n": 1912,
+            "observed": 0.14069037656903766,
+            "predicted": 0.14314244337455304
+          },
+          {
+            "low": 0.2,
+            "n": 693,
+            "observed": 0.24963924963924963,
+            "predicted": 0.23951534715751352
+          },
+          {
+            "low": 0.30000000000000004,
+            "n": 192,
+            "observed": 0.3802083333333333,
+            "predicted": 0.33888436331217636
+          },
+          {
+            "low": 0.4,
+            "n": 63,
+            "observed": 0.3492063492063492,
+            "predicted": 0.4414789574677172
+          },
+          {
+            "low": 0.5,
+            "n": 16,
+            "observed": 0.5625,
+            "predicted": 0.5381833557074285
+          },
+          {
+            "low": 0.6000000000000001,
+            "n": 7,
+            "observed": 0.2857142857142857,
+            "predicted": 0.6318381823713919
+          },
+          {
+            "low": 0.7000000000000001,
+            "n": 2,
+            "observed": 0.5,
+            "predicted": 0.7152115382493736
+          }
+        ],
+        "log_loss": 1.770608961278719,
+        "races": 656,
+        "runner_ece": 0.0066188276041365375,
+        "runners": 4635,
+        "top1": 0.3125,
+        "winner_rank": 2.966463414634146
+      }
+    },
+    "later": {
+      "average": {
+        "brier": 0.8262544132369853,
+        "calibration": [
+          {
+            "low": 0.0,
+            "n": 3056,
+            "observed": 0.07264397905759162,
+            "predicted": 0.05827897098661569
+          },
+          {
+            "low": 0.1,
+            "n": 2463,
+            "observed": 0.1559074299634592,
+            "predicted": 0.14278751533986556
+          },
+          {
+            "low": 0.2,
+            "n": 951,
+            "observed": 0.2082018927444795,
+            "predicted": 0.24145983408231902
+          },
+          {
+            "low": 0.30000000000000004,
+            "n": 355,
+            "observed": 0.29295774647887324,
+            "predicted": 0.34298591932613026
+          },
+          {
+            "low": 0.4,
+            "n": 123,
+            "observed": 0.34959349593495936,
+            "predicted": 0.443169834973776
+          },
+          {
+            "low": 0.5,
+            "n": 47,
+            "observed": 0.3191489361702128,
+            "predicted": 0.5388566163231998
+          },
+          {
+            "low": 0.6000000000000001,
+            "n": 16,
+            "observed": 0.3125,
+            "predicted": 0.6393243118324992
+          },
+          {
+            "low": 0.7000000000000001,
+            "n": 4,
+            "observed": 0.75,
+            "predicted": 0.7358666428720901
+          },
+          {
+            "low": 0.8,
+            "n": 1,
+            "observed": 1.0,
+            "predicted": 0.816704579978716
+          }
+        ],
+        "log_loss": 1.8300401790543037,
+        "races": 975,
+        "runner_ece": 0.02179408301919797,
+        "runners": 7016,
+        "top1": 0.2594871794871795,
+        "winner_rank": 3.126153846153846
+      },
+      "dynamic": {
+        "brier": 0.8191587105388148,
+        "calibration": [
+          {
+            "low": 0.0,
+            "n": 3029,
+            "observed": 0.06932981181908221,
+            "predicted": 0.05831133097707767
+          },
+          {
+            "low": 0.1,
+            "n": 2471,
+            "observed": 0.15742614326183732,
+            "predicted": 0.14274877607097727
+          },
+          {
+            "low": 0.2,
+            "n": 987,
+            "observed": 0.20972644376899696,
+            "predicted": 0.2419464113288984
+          },
+          {
+            "low": 0.30000000000000004,
+            "n": 357,
+            "observed": 0.28851540616246496,
+            "predicted": 0.3440615883359316
+          },
+          {
+            "low": 0.4,
+            "n": 112,
+            "observed": 0.39285714285714285,
+            "predicted": 0.44380214479177393
+          },
+          {
+            "low": 0.5,
+            "n": 47,
+            "observed": 0.3404255319148936,
+            "predicted": 0.5404006174552352
+          },
+          {
+            "low": 0.6000000000000001,
+            "n": 9,
+            "observed": 0.3333333333333333,
+            "predicted": 0.6493132187735897
+          },
+          {
+            "low": 0.7000000000000001,
+            "n": 3,
+            "observed": 0.6666666666666666,
+            "predicted": 0.7512617002185457
+          },
+          {
+            "low": 0.8,
+            "n": 1,
+            "observed": 1.0,
+            "predicted": 0.8093844748038734
+          }
+        ],
+        "log_loss": 1.811732356446263,
+        "races": 975,
+        "runner_ece": 0.019906889488096643,
+        "runners": 7016,
+        "top1": 0.26666666666666666,
+        "winner_rank": 3.0943589743589746
+      },
+      "recency": {
+        "brier": 0.8199493799888522,
+        "calibration": [
+          {
+            "low": 0.0,
+            "n": 3033,
+            "observed": 0.06791955159907682,
+            "predicted": 0.058234486496997105
+          },
+          {
+            "low": 0.1,
+            "n": 2460,
+            "observed": 0.1597560975609756,
+            "predicted": 0.14257155128381271
+          },
+          {
+            "low": 0.2,
+            "n": 988,
+            "observed": 0.2034412955465587,
+            "predicted": 0.24159114262728149
+          },
+          {
+            "low": 0.30000000000000004,
+            "n": 355,
+            "observed": 0.29577464788732394,
+            "predicted": 0.34337925159829474
+          },
+          {
+            "low": 0.4,
+            "n": 121,
+            "observed": 0.39669421487603307,
+            "predicted": 0.44087217597742334
+          },
+          {
+            "low": 0.5,
+            "n": 46,
+            "observed": 0.34782608695652173,
+            "predicted": 0.5397515015681847
+          },
+          {
+            "low": 0.6000000000000001,
+            "n": 9,
+            "observed": 0.3333333333333333,
+            "predicted": 0.646765762104179
+          },
+          {
+            "low": 0.7000000000000001,
+            "n": 3,
+            "observed": 0.6666666666666666,
+            "predicted": 0.7511326712708009
+          },
+          {
+            "low": 0.8,
+            "n": 1,
+            "observed": 1.0,
+            "predicted": 0.8087108251250759
+          }
+        ],
+        "log_loss": 1.8137333801537296,
+        "races": 975,
+        "runner_ece": 0.020478926873233598,
+        "runners": 7016,
+        "top1": 0.2605128205128205,
+        "winner_rank": 3.0892307692307694
+      },
+      "saved_baseline65": {
+        "brier": 0.7958814383886086,
+        "calibration": [
+          {
+            "low": 0.0,
+            "n": 2788,
+            "observed": 0.055236728837876614,
+            "predicted": 0.060819538557320904
+          },
+          {
+            "low": 0.1,
+            "n": 2778,
+            "observed": 0.15262778977681785,
+            "predicted": 0.14310085943546666
+          },
+          {
+            "low": 0.2,
+            "n": 1022,
+            "observed": 0.22309197651663404,
+            "predicted": 0.23922075880314617
+          },
+          {
+            "low": 0.30000000000000004,
+            "n": 303,
+            "observed": 0.3432343234323432,
+            "predicted": 0.34128626742514934
+          },
+          {
+            "low": 0.4,
+            "n": 92,
+            "observed": 0.5,
+            "predicted": 0.44376532726580503
+          },
+          {
+            "low": 0.5,
+            "n": 22,
+            "observed": 0.5454545454545454,
+            "predicted": 0.5319519917081333
+          },
+          {
+            "low": 0.6000000000000001,
+            "n": 7,
+            "observed": 0.5714285714285714,
+            "predicted": 0.6366935699697643
+          },
+          {
+            "low": 0.7000000000000001,
+            "n": 3,
+            "observed": 0.6666666666666666,
+            "predicted": 0.740110909662063
+          },
+          {
+            "low": 0.8,
+            "n": 1,
+            "observed": 1.0,
+            "predicted": 0.8010428190197295
+          }
+        ],
+        "log_loss": 1.750911138294729,
+        "races": 975,
+        "runner_ece": 0.009328870214766426,
+        "runners": 7016,
+        "top1": 0.2923076923076923,
+        "winner_rank": 2.962051282051282
+      }
+    },
+    "train": {
+      "average": {
+        "brier": 0.7789157218673031,
+        "calibration": [
+          {
+            "low": 0.0,
+            "n": 2030,
+            "observed": 0.047783251231527095,
+            "predicted": 0.06202659901393144
+          },
+          {
+            "low": 0.1,
+            "n": 2134,
+            "observed": 0.1373008434864105,
+            "predicted": 0.14326317578705872
+          },
+          {
+            "low": 0.2,
+            "n": 732,
+            "observed": 0.27049180327868855,
+            "predicted": 0.23921235943115823
+          },
+          {
+            "low": 0.30000000000000004,
+            "n": 237,
+            "observed": 0.39662447257383965,
+            "predicted": 0.3368805808110186
+          },
+          {
+            "low": 0.4,
+            "n": 53,
+            "observed": 0.5094339622641509,
+            "predicted": 0.4406108413298784
+          },
+          {
+            "low": 0.5,
+            "n": 13,
+            "observed": 0.5384615384615384,
+            "predicted": 0.5344354458970311
+          },
+          {
+            "low": 0.6000000000000001,
+            "n": 5,
+            "observed": 0.8,
+            "predicted": 0.6236413458343426
+          }
+        ],
+        "log_loss": 1.704659343801492,
+        "races": 720,
+        "runner_ece": 0.016002157235920102,
+        "runners": 5204,
+        "top1": 0.3402777777777778,
+        "winner_rank": 2.765277777777778
+      },
+      "dynamic": {
+        "brier": 0.7788581269130002,
+        "calibration": [
+          {
+            "low": 0.0,
+            "n": 2027,
+            "observed": 0.04785397138628515,
+            "predicted": 0.0619551440673907
+          },
+          {
+            "low": 0.1,
+            "n": 2135,
+            "observed": 0.13629976580796252,
+            "predicted": 0.1431440167402738
+          },
+          {
+            "low": 0.2,
+            "n": 733,
+            "observed": 0.27148703956343795,
+            "predicted": 0.239053012867356
+          },
+          {
+            "low": 0.30000000000000004,
+            "n": 237,
+            "observed": 0.39662447257383965,
+            "predicted": 0.33667612385726053
+          },
+          {
+            "low": 0.4,
+            "n": 54,
+            "observed": 0.5185185185185185,
+            "predicted": 0.43953556889836626
+          },
+          {
+            "low": 0.5,
+            "n": 13,
+            "observed": 0.5384615384615384,
+            "predicted": 0.5332730110269491
+          },
+          {
+            "low": 0.6000000000000001,
+            "n": 5,
+            "observed": 0.8,
+            "predicted": 0.6237755170219454
+          }
+        ],
+        "log_loss": 1.7044144793974507,
+        "races": 720,
+        "runner_ece": 0.01660090421409896,
+        "runners": 5204,
+        "top1": 0.3388888888888889,
+        "winner_rank": 2.761111111111111
+      },
+      "recency": {
+        "brier": 0.7788505618784105,
+        "calibration": [
+          {
+            "low": 0.0,
+            "n": 2028,
+            "observed": 0.04783037475345168,
+            "predicted": 0.061969839566372066
+          },
+          {
+            "low": 0.1,
+            "n": 2134,
+            "observed": 0.13636363636363635,
+            "predicted": 0.14316120760754772
+          },
+          {
+            "low": 0.2,
+            "n": 733,
+            "observed": 0.27148703956343795,
+            "predicted": 0.23906127206396474
+          },
+          {
+            "low": 0.30000000000000004,
+            "n": 238,
+            "observed": 0.39915966386554624,
+            "predicted": 0.33696404003867697
+          },
+          {
+            "low": 0.4,
+            "n": 53,
+            "observed": 0.5094339622641509,
+            "predicted": 0.4403542692623548
+          },
+          {
+            "low": 0.5,
+            "n": 13,
+            "observed": 0.5384615384615384,
+            "predicted": 0.5332258743407366
+          },
+          {
+            "low": 0.6000000000000001,
+            "n": 5,
+            "observed": 0.8,
+            "predicted": 0.6238163470929943
+          }
+        ],
+        "log_loss": 1.7043978506823032,
+        "races": 720,
+        "runner_ece": 0.016595254294815294,
+        "runners": 5204,
+        "top1": 0.3375,
+        "winner_rank": 2.763888888888889
+      },
+      "saved_baseline65": {
+        "brier": 0.7797449404034511,
+        "calibration": [
+          {
+            "low": 0.0,
+            "n": 2024,
+            "observed": 0.04891304347826087,
+            "predicted": 0.062225778790457785
+          },
+          {
+            "low": 0.1,
+            "n": 2134,
+            "observed": 0.1358950328022493,
+            "predicted": 0.1430219377208501
+          },
+          {
+            "low": 0.2,
+            "n": 740,
+            "observed": 0.2702702702702703,
+            "predicted": 0.23858460046500632
+          },
+          {
+            "low": 0.30000000000000004,
+            "n": 236,
+            "observed": 0.3940677966101695,
+            "predicted": 0.3362294207703523
+          },
+          {
+            "low": 0.4,
+            "n": 52,
+            "observed": 0.5384615384615384,
+            "predicted": 0.4396596122799115
+          },
+          {
+            "low": 0.5,
+            "n": 13,
+            "observed": 0.46153846153846156,
+            "predicted": 0.5353843497731847
+          },
+          {
+            "low": 0.6000000000000001,
+            "n": 5,
+            "observed": 0.8,
+            "predicted": 0.6242329200609562
+          }
+        ],
+        "log_loss": 1.7069398692383262,
+        "races": 720,
+        "runner_ece": 0.016569480367114538,
+        "runners": 5204,
+        "top1": 0.3333333333333333,
+        "winner_rank": 2.765277777777778
+      }
+    }
+  },
+  "promotion_eligible": false,
+  "state": "COMPLETE",
+  "test_labels_opened": false
+}
